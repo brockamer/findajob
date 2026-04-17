@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from findajob import config_loader
 from findajob.config_loader import (
-    ConfigError,
     is_company_of_interest,
     load_companies_of_interest,
 )

@@ -16,8 +16,6 @@ import warnings
 from pathlib import Path
 from typing import Optional
 
-import yaml
-
 from findajob.paths import BASE
 
 # Module-level paths (overridden in tests via conftest)
@@ -61,7 +59,10 @@ def load_companies_of_interest() -> frozenset[str]:
     try:
         raw = _COMPANIES_PATH.read_text()
     except FileNotFoundError:
-        _warn_once("config/companies_of_interest.txt missing — sync_sheet archival exception and notify mis-score check will be disabled")
+        _warn_once(
+            "config/companies_of_interest.txt missing — "
+            "sync_sheet archival exception and notify mis-score check will be disabled"
+        )
         _companies_cache = frozenset()
         return _companies_cache
 
@@ -73,7 +74,10 @@ def load_companies_of_interest() -> frozenset[str]:
         entries.add(stripped.lower())
 
     if not entries:
-        _warn_once("config/companies_of_interest.txt is empty — sync_sheet archival exception and notify mis-score check will be disabled")
+        _warn_once(
+            "config/companies_of_interest.txt is empty — "
+            "sync_sheet archival exception and notify mis-score check will be disabled"
+        )
 
     _companies_cache = frozenset(entries)
     return _companies_cache
