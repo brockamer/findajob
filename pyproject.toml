@@ -10,6 +10,7 @@ dependencies = [
     "requests>=2.31.0",
     "jsonschema>=4.26.0",
     "beautifulsoup4>=4.14.0",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]
