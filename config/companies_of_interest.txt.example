@@ -1,0 +1,34 @@
+# companies_of_interest.txt — employers worth tracking closely.
+# Copy this file to companies_of_interest.txt and edit. This file is gitignored.
+#
+# One company per line. Lines starting with # and blank lines are skipped.
+# Matching is case-insensitive substring, so "meta" matches "Meta Platforms, Inc."
+#
+# Used by:
+#   - scripts/sync_sheet.py — a job from one of these companies stays on Sheet1
+#     even if it scored low and is past the archive threshold.
+#   - scripts/notify.py — a job from one of these companies scored 3-6 shows up
+#     in the daily health check as a potential mis-score worth reviewing.
+#
+# NOT used by the prefilter — scoring is the same whether a company is on this
+# list or not.
+#
+# Missing file → both features degrade gracefully (warn).
+
+# Tech / AI infrastructure example:
+# meta
+# google
+# openai
+# anthropic
+
+# Healthcare example:
+# kaiser permanente
+# cedars-sinai
+
+# Education example:
+# lausd
+# san diego unified
+
+# Social services example:
+# la county department of mental health
+# st. jude children's research hospital

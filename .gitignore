@@ -38,3 +38,7 @@ data/pipeline.db-shm
 scripts/transfer_from_mac.sh
 scripts/setup_launchd.sh
 docs/master_resume.md.example
+
+config/prefilter_rules.yaml
+config/in_domain_patterns.yaml
+config/companies_of_interest.txt

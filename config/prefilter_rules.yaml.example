@@ -1,0 +1,57 @@
+# prefilter_rules.yaml — deterministic hard rejects for the title-only prefilter.
+# Copy this file to prefilter_rules.yaml and edit. This file is gitignored.
+#
+# SHAPE:
+#   hard_rejects:          (required; mapping of category → list of title regex)
+#     <category_name>:
+#       - '<regex>'
+#   context_suppressors:   (optional; list of regex that override a reject)
+#     - '<regex>'
+#
+# If any hard_reject pattern matches a job's title, the job scores 1
+# with no LLM call. If a context_suppressor also matches, the reject
+# is skipped and the title goes on to Stage 2 / LLM scoring.
+#
+# Missing file → prefilter hard-reject stage becomes a no-op (warn).
+
+hard_rejects:
+  spam:
+    # Job-board noise that isn't a real posting. Usually safe to keep this.
+    - '^manage\s+job\s+alerts?\b'
+    - '^your\s+job\s+alert\s+for\b'
+    - '\bjoin\s+our\s+talent\s+network\b'
+
+# ── Suggested categories to customize ──────────────────────────────────────────
+# Uncomment the block that fits your field, edit the patterns, delete the rest.
+#
+# Tech / data center operations candidate:
+#   software_engineering:
+#     - '\bsoftware\s+engineer(ing)?\b'
+#     - '\b(swe|sde)\b'
+#   sales:
+#     - '\baccount\s+executive\b'
+#     - '\bsales\s+representative\b'
+#
+# Healthcare / nursing candidate:
+#   non_clinical_admin:
+#     - '\bbilling\s+specialist\b'
+#     - '\bpatient\s+access\b'
+#
+# Education / teaching candidate:
+#   non_instructional:
+#     - '\bbus\s+driver\b'
+#     - '\bcafeteria\s+manager\b'
+#
+# Social work / human services candidate:
+#   unrelated_social:
+#     - '\bcase\s+manager\b.*\binsurance\b'
+
+# ── Context suppressors ──────────────────────────────────────────────────────
+# Title fragments that override a hard-reject match. Example: a candidate in DC
+# ops wants to see "Data Center Security Engineer" (a real job) even though
+# "security" is in their hard-reject list. Adding "data center" as a suppressor
+# lets that title through.
+#
+# context_suppressors:
+#   - '\bdata\s*center\b'
+#   - '\bdatacenter\b'

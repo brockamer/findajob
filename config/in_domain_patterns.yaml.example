@@ -1,0 +1,47 @@
+# in_domain_patterns.yaml — positive signal + poison for Stage 2 prefilter.
+# Copy this file to in_domain_patterns.yaml and edit. This file is gitignored.
+#
+# SHAPE:
+#   positive: (required; list of title regex — in-domain signal)
+#     - '<regex>'
+#   poison:   (optional; list of regex — negates an otherwise in-domain match)
+#     - '<regex>'
+#
+# When a job has no usable JD (auth wall, under 30 words, etc.), the prefilter
+# falls back to title-only signal. If a positive pattern matches AND no poison
+# pattern matches, the job scores 5 and bypasses the LLM.
+#
+# Missing file → Stage 2 becomes a no-op (warn); unknown-title no-JD jobs
+# just go to the LLM.
+
+positive:
+  # Placeholder — replace with patterns that identify your target roles by title.
+  - '\b__replace_me_with_a_title_regex__\b'
+
+# ── Suggested positive patterns per field ────────────────────────────────────
+# Tech / DC operations:
+#   - '\bdata\s*center\s+(operations|site|manager|lead|technician|engineer)\b'
+#   - '\bnpi\s+(manager|lead|engineer|program\s+manager)\b'
+#   - '\boperational\s+readiness\b'
+#
+# Healthcare / nursing:
+#   - '\b(registered|charge|ICU|PACU)\s+nurse\b'
+#   - '\bnurse\s+(manager|director|educator)\b'
+#
+# Teaching:
+#   - '\b(elementary|middle|high)\s+school\s+teacher\b'
+#   - '\bteach(er|ing)\s+(assistant|aide)\b'
+#
+# Social work:
+#   - '\bsocial\s+worker\b'
+#   - '\bclinical\s+social\s+worker\b'
+#   - '\bcase\s+manager\b'
+
+# ── Poison patterns ──────────────────────────────────────────────────────────
+# Title fragments that cancel an otherwise-positive match. Example: a DC ops
+# candidate's positive pattern for "site operations manager" would otherwise
+# match "workplace services site operations manager" — which is janitorial.
+# Adding "workplace services" as poison prevents that false positive.
+#
+# poison:
+#   - '\b(workplace\s+services|custodial|janitorial|facilities\s+only)\b'
