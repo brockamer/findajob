@@ -15,6 +15,8 @@ import re
 import warnings
 from pathlib import Path
 
+import yaml
+
 from findajob.paths import BASE
 
 # Module-level paths (overridden in tests via conftest)
@@ -41,7 +43,56 @@ class ConfigError(Exception):
 
 def load_hard_reject_rules() -> tuple[re.Pattern[str], re.Pattern[str] | None]:
     """(reject_re, suppressor_re). suppressor_re is None if no suppressors configured."""
-    raise NotImplementedError
+    global _hard_reject_cache
+    if _hard_reject_cache is not None:
+        return _hard_reject_cache
+
+    data = _safe_load_yaml(_RULES_PATH, "prefilter_rules.yaml")
+    if data is None:
+        _hard_reject_cache = (_NEVER_MATCH, None)
+        return _hard_reject_cache
+
+    hard_rejects = data.get("hard_rejects", {})
+    if not isinstance(hard_rejects, dict):
+        raise ConfigError(
+            f"prefilter_rules.yaml: 'hard_rejects' must be a mapping of category→list, "
+            f"got {type(hard_rejects).__name__}"
+        )
+
+    reject_patterns: list[str] = []
+    for category, patterns in hard_rejects.items():
+        if not isinstance(patterns, list):
+            raise ConfigError(
+                f"prefilter_rules.yaml: hard_rejects['{category}'] must be a list, "
+                f"got {type(patterns).__name__}"
+            )
+        for p in patterns:
+            if not isinstance(p, str):
+                raise ConfigError(
+                    f"prefilter_rules.yaml: pattern in '{category}' is not a string: {p!r}"
+                )
+            reject_patterns.append(p)
+
+    reject_re = _compile_patterns(reject_patterns, _RULES_PATH, "hard_rejects")
+
+    suppressors = data.get("context_suppressors", []) or []
+    if not isinstance(suppressors, list):
+        raise ConfigError(
+            f"prefilter_rules.yaml: 'context_suppressors' must be a list, "
+            f"got {type(suppressors).__name__}"
+        )
+    for p in suppressors:
+        if not isinstance(p, str):
+            raise ConfigError(
+                f"prefilter_rules.yaml: context_suppressor pattern is not a string: {p!r}"
+            )
+
+    suppressor_re: re.Pattern[str] | None = None
+    if suppressors:
+        suppressor_re = _compile_patterns(suppressors, _RULES_PATH, "context_suppressors")
+
+    _hard_reject_cache = (reject_re, suppressor_re)
+    return _hard_reject_cache
 
 
 def load_in_domain_rules() -> tuple[re.Pattern[str], re.Pattern[str] | None]:
@@ -105,3 +156,44 @@ def _reset_cache() -> None:
     _in_domain_cache = None
     _companies_cache = None
     _warned.clear()
+
+
+def _safe_load_yaml(path: Path, label: str) -> dict | None:
+    """Read YAML. Returns None if file missing (with warning) or empty.
+    Raises ConfigError on parse error or non-mapping top-level."""
+    try:
+        text = path.read_text()
+    except FileNotFoundError:
+        _warn_once(f"config/{label} missing — prefilter will be a no-op for this config")
+        return None
+
+    if not text.strip():
+        _warn_once(f"config/{label} is empty — prefilter will be a no-op for this config")
+        return None
+
+    try:
+        data = yaml.safe_load(text)
+    except yaml.YAMLError as e:
+        raise ConfigError(f"config/{label}: YAML parse error: {e}") from e
+
+    if data is None:
+        _warn_once(f"config/{label} parsed to null — prefilter will be a no-op for this config")
+        return None
+
+    if not isinstance(data, dict):
+        raise ConfigError(f"config/{label}: top level must be a mapping, got {type(data).__name__}")
+
+    return data
+
+
+def _compile_patterns(patterns: list[str], path: Path, label: str) -> re.Pattern[str]:
+    """Compile a list of regex strings into a single alternation. Bad patterns
+    raise ConfigError with the offending pattern surfaced."""
+    if not patterns:
+        return _NEVER_MATCH
+    for p in patterns:
+        try:
+            re.compile(p)
+        except re.error as e:
+            raise ConfigError(f"{path.name}: invalid regex in {label}: {p!r} — {e}") from e
+    return re.compile("|".join(f"(?:{p})" for p in patterns), re.IGNORECASE)
