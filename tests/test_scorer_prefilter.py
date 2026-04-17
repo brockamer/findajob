@@ -2,68 +2,7 @@
 
 import pytest
 
-from findajob.scorer_prefilter import _hard_reject_match, _in_domain_match, _is_tier1, prefilter_score
-
-# ── _is_tier1 ────────────────────────────────────────────────────────────────
-
-
-class TestIsTier1:
-    """Tier 1 company detection (case-insensitive substring match)."""
-
-    @pytest.mark.parametrize(
-        "company",
-        [
-            "Meta",
-            "meta",
-            "META",
-            "Google",
-            "OpenAI",
-            "CoreWeave",
-            "Anthropic",
-            "Amazon",
-            "AWS",
-            "Microsoft",
-            "xAI",
-            "Cerebras",
-            "Groq",
-            "Tenstorrent",
-            "SambaNova",
-            "Nebius",
-            "Crusoe",
-            "Etched",
-            "Nscale",
-            "Astera Labs",  # substring: "astera" matches
-        ],
-    )
-    def test_positive(self, company):
-        assert _is_tier1(company) is True
-
-    @pytest.mark.parametrize(
-        "company",
-        [
-            "Walmart",
-            "Starbucks",
-            "Acme Corp",
-            "Initech",
-            "Random Startup LLC",
-        ],
-    )
-    def test_negative(self, company):
-        assert _is_tier1(company) is False
-
-    def test_empty_string(self):
-        assert _is_tier1("") is False
-
-    def test_none(self):
-        # company param typed as str but guard handles falsy
-        assert _is_tier1(None) is False
-
-    def test_substring_match(self):
-        """Tier 1 check uses substring, so 'Google Cloud' still matches."""
-        assert _is_tier1("Google Cloud") is True
-        assert _is_tier1("Meta Platforms, Inc.") is True
-        assert _is_tier1("Amazon Web Services") is True
-
+from findajob.scorer_prefilter import _hard_reject_match, _in_domain_match, prefilter_score
 
 # ── _hard_reject_match ────────────────────────────────────────────────────────
 
@@ -349,16 +288,8 @@ class TestPrefilterScore:
         assert result is None
         assert reason is None
 
-    def test_stage2_in_domain_no_jd_tier1(self):
-        """In-domain title, no JD, Tier 1 company -> score 6."""
-        result, reason = prefilter_score("Data Center Operations Manager", "Google", jd_usable=False)
-        assert result is not None
-        assert result["relevance_score"] == 6
-        assert result["interview_likelihood"] == 5
-        assert "Tier 1" in reason
-
-    def test_stage2_in_domain_no_jd_non_tier1(self):
-        """In-domain title, no JD, non-Tier 1 -> score 5."""
+    def test_stage2_in_domain_no_jd(self):
+        """In-domain title, no JD -> score 5."""
         result, reason = prefilter_score("Data Center Operations Manager", "Acme Corp", jd_usable=False)
         assert result is not None
         assert result["relevance_score"] == 5

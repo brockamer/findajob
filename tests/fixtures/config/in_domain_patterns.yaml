@@ -1,7 +1,18 @@
 positive:
-  - '\bdata\s*center\s+(operations|technician|engineer)\b'
-  - '\bnpi\s+(manager|lead|engineer)\b'
+  - '\bdata\s*center\s+(operations|site|manager|lead|technician|engineer)\b'
+  - '\bdatacenter\s+(operations|site|manager|lead)\b'
+  - '\bdc\s+(ops|operations|site\s+manager)\b'
+  - '\bnpi\s+(manager|lead|engineer|program\s+manager)\b'
+  - '\bhardware\s+(ops|operations|bring.up|npi|program\s+manager)\b'
+  - '\binfrastructure\s+operations\s+(manager|lead|director)\b'
   - '\boperational\s+readiness\b'
+  - '\blab\s+operations\s+(manager|lead)\b'
+  - '\bsite\s+manager,?\s+datacenter\b'
+  - '\bdatacenter.*\boperations\s+manager\b'
+  - '\bdata\s+center.*\boperations\s+(area\s+)?manager\b'
+  - '\bsite\s+operations\s+manager\b'
+  - '\bengineering\s+operations\s+manager\b'
+  - '\bfield\s+operations\s+(manager|lead)\b'
 
 poison:
-  - '\b(workplace\s+services|custodial|janitorial)\b'
+  - '\b(workplace\s+services|custodial|janitorial|facilities\s+only|office\s+services)\b'

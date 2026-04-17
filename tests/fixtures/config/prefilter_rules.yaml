@@ -1,12 +1,98 @@
-# Test fixture — small but covers hard_rejects, grouping, and suppressors.
+# Test fixture — expanded to cover every pattern the test suite exercises.
 hard_rejects:
-  software:
+  software_engineering:
     - '\bsoftware\s+engineer(ing)?\b'
+    - '\bsoftware\s+developer\b'
+    - '\bsoftware\s+architect\b'
+    - '\bsoftware\s+development\s+engineer\b'
     - '\b(swe|sde)\b'
+  security:
+    - '\bsecurity\s+analyst\b'
+    - '\bsoc\s+analyst\b'
+    - '\bthreat\s+(detection|intelligence|hunting)\b'
+    - '\bcyber\s*security\b'
+    - '\binformation\s+security\b'
+  sales_bd:
+    - '\baccount\s+executive\b'
+    - '\bsales\s+specialist\b'
+    - '\bsales\s+representative\b'
+    - '\bsales\s+manager\b'
+    - '\benterprise\s+sales\b'
+    - '\bfield\s+sales\b'
+    - '\bbusiness\s+development\s+(manager|lead|director|representative)\b'
+  it_service:
+    - '\bit\s+service\s+management\b'
+    - '\bitsm\b'
+    - '\bit\s+help\s*desk\b'
+    - '\bservice\s+desk\s+manager\b'
+    - '\bit\s+support\s+manager\b'
+  supply_chain:
+    - '\bsupply\s+chain\b'
+    - '\bprocurement\s+(manager|lead|specialist|director)\b'
+    - '\bsourcing\s+(manager|lead|specialist)\b'
+    - '\blogistics\s+manager\b'
+    - '\bfulfillment\s+manager\b'
+    - '\binventory\s+(manager|analyst)\b'
+    - '\bwarehouse\s+manager\b'
+  networking:
+    - '\bnetwork\s+engineer(ing)?\b'
+    - '\bnetwork\s+architect\b'
+    - '\bnoc\s+engineer\b'
+    - '\bconnectivity\s+engineer\b'
+  hardware_design:
+    - '\bcontrols\s+engineer(ing)?\b'
+    - '\belectrical\s+engineer(ing)?\b'
+    - '\bmechanical\s+engineer(ing)?\b'
+    - '\bfirmware\s+engineer(ing)?\b'
+    - '\bfpga\b'
+    - '\bboard\s+design\b'
+    - '\bhardware\s+development\s+engineer\b'
+    - '\bhardware\s+design\s+engineer\b'
   healthcare:
     - '\bnurs(e|ing)\b'
-  sales:
-    - '\baccount\s+executive\b'
+    - '\bclinical\s+(manager|director|lead|specialist|coordinator|trial|research|lab)\b'
+    - '\bpatient\s+care\b'
+    - '\bhealthcare\s+(manager|administrator|coordinator)\b'
+    - '\bpharmaceut'
+    - '\bbiotech\b'
+  finance_legal_hr:
+    - '\bfinancial\s+(analyst|advisor|planner|controller)\b'
+    - '\baudit\s+(manager|director|analyst)\b'
+    - '\bcompliance\s+(manager|officer|analyst)\b'
+    - '\blegal\s+(counsel|manager|director)\b'
+    - '\bhuman\s+resources\s+(manager|director|business\s+partner)\b'
+    - '\btalent\s+acquisition\b'
+    - '\brecruiter\b'
+    - '\bmarketing\s+manager\b'
+  construction:
+    - '\bconstruction\s+(manager|safety|specialist)\b'
+    - '\bmep\s+superintendent\b'
+    - '\bcrane\b.*\b(supt|superintendent)\b'
+    - '\brigging\s+(supt|superintendent)\b'
+    - '\bgeneral\s+superintendent\b'
+    - '\bsite\s+superintendent\b'
+  manufacturing_quality:
+    - '\bproduction\s+(buyer|planner|engineer)\b'
+    - '\bplant\s+(manager|maintenance)\b'
+    - '\bmanufacturing\s+(engineer|manager|operations|test)\b'
+    - '\bquality\s+(engineer|technician|assurance|control)\b'
+    - '\bprocess\s+engineer\b'
+  sysadmin_sre_devops:
+    - '\bsystems\s+administrator\b'
+    - '\bstorage\s+engineer\b'
+    - '\bsite\s+reliability\s+engineer\b'
+    - '\bdevops\s+engineer\b'
+    - '\bdata\s+engineer\b'
+    - '\bkernel\s+engineer\b'
+  facilities_general:
+    - '\bcustodial\b'
+    - '\bjanitorial\b'
+    - '\bbuilding\s+manager\b'
+    - '\boffice\s+manager\b'
+    - '\bworkplace\s+manager\b'
+    - '\bfacilities\s+coordinator\b'
+    - '\bgeneral\s+manager\b'
+    - '\bmaintenance\s+technician\b'
 
 context_suppressors:
-  - '\bdata\s*center\b|\bdatacenter\b'
+  - '\bdata\s*center\b|\bdatacenter\b|\bdc\s+(ops|operations|site)\b'
