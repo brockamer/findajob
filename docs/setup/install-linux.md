@@ -1,4 +1,7 @@
-# Linux Setup (Pop!_OS / Ubuntu)
+# Linux Setup (Pop!_OS / Ubuntu) — native install
+
+> **Recommended path for new installs is Docker, not native.** See [install-docker.md](install-docker.md).
+> This guide remains for users running findajob directly on a Linux host without containers.
 
 This guide covers a fresh install on a Debian-based Linux system. Tested on Pop!_OS 22.04 LTS.
 
