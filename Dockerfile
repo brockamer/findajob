@@ -43,7 +43,9 @@ RUN set -eux; \
         "https://github.com/aptible/supercronic/releases/download/${SUPERCRONIC_VERSION}/${SUPERCRONIC_FILE}"; \
     echo "${SUPERCRONIC_SHA1SUM}  /usr/local/bin/supercronic" | sha1sum -c -; \
     chmod +x /usr/local/bin/supercronic; \
-    /usr/local/bin/supercronic -version
+    printf '* * * * * true\n' > /tmp/probe-crontab && \
+        /usr/local/bin/supercronic -test /tmp/probe-crontab && \
+        rm /tmp/probe-crontab
 
 # Editable install — src/ must be present before pip install -e . can register
 # the findajob package. Copy pyproject.toml + src/ together, install, then copy
