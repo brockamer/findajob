@@ -33,8 +33,8 @@ RUN set -eux; \
         "https://github.com/blob42/aichat-ng/releases/download/${AICHAT_NG_VERSION}/aichat-ng-${AICHAT_NG_VERSION}-${AICHAT_NG_ARCH}.tar.gz"; \
     echo "${AICHAT_NG_SHA256}  /tmp/aichat-ng.tar.gz" | sha256sum -c -; \
     tar -xzf /tmp/aichat-ng.tar.gz -C /tmp; \
-    install -m 0755 "/tmp/aichat-ng-${AICHAT_NG_VERSION}-${AICHAT_NG_ARCH}/aichat-ng" /usr/local/bin/aichat-ng; \
-    rm -rf /tmp/aichat-ng.tar.gz "/tmp/aichat-ng-${AICHAT_NG_VERSION}-${AICHAT_NG_ARCH}"; \
+    install -m 0755 /tmp/aichat-ng /usr/local/bin/aichat-ng; \
+    rm -f /tmp/aichat-ng.tar.gz /tmp/aichat-ng; \
     /usr/local/bin/aichat-ng --version
 
 # supercronic — SHA1-verified.
