@@ -5,6 +5,7 @@ Tests for scripts/gmail_auth.py — the standalone OAuth helper.
 Scope: argparse + mode dispatch. Actual OAuth calls are mocked — we don't
 exercise Google's endpoints from unit tests.
 """
+
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -60,13 +61,18 @@ def test_run_dispatches_to_device_mode(fake_client_secrets, tmp_path):
     mock_creds = MagicMock()
     mock_creds.to_json.return_value = '{"token": "fake"}'
 
-    with patch.object(gmail_auth, "run_device", return_value=mock_creds) as m_device, \
-         patch.object(gmail_auth, "run_local") as m_local:
+    with (
+        patch.object(gmail_auth, "run_device", return_value=mock_creds) as m_device,
+        patch.object(gmail_auth, "run_local") as m_local,
+    ):
         gmail_auth.main(
             [
-                "--mode", "device",
-                "--client-secrets", str(fake_client_secrets),
-                "--token-out", str(token_path),
+                "--mode",
+                "device",
+                "--client-secrets",
+                str(fake_client_secrets),
+                "--token-out",
+                str(token_path),
             ]
         )
 
@@ -83,14 +89,20 @@ def test_run_dispatches_to_local_mode(fake_client_secrets, tmp_path):
     mock_creds = MagicMock()
     mock_creds.to_json.return_value = '{"token": "fake-local"}'
 
-    with patch.object(gmail_auth, "run_local", return_value=mock_creds) as m_local, \
-         patch.object(gmail_auth, "run_device") as m_device:
+    with (
+        patch.object(gmail_auth, "run_local", return_value=mock_creds) as m_local,
+        patch.object(gmail_auth, "run_device") as m_device,
+    ):
         gmail_auth.main(
             [
-                "--mode", "local",
-                "--client-secrets", str(fake_client_secrets),
-                "--token-out", str(token_path),
-                "--port", "8080",
+                "--mode",
+                "local",
+                "--client-secrets",
+                str(fake_client_secrets),
+                "--token-out",
+                str(token_path),
+                "--port",
+                "8080",
             ]
         )
 
@@ -108,9 +120,12 @@ def test_missing_client_secrets_errors(tmp_path):
     with pytest.raises(SystemExit) as exc_info:
         gmail_auth.main(
             [
-                "--mode", "device",
-                "--client-secrets", str(missing_client),
-                "--token-out", str(token_path),
+                "--mode",
+                "device",
+                "--client-secrets",
+                str(missing_client),
+                "--token-out",
+                str(token_path),
             ]
         )
     assert exc_info.value.code != 0
