@@ -25,24 +25,21 @@ domain. Each item is a future task to make the pipeline domain-neutral.
 
 ## Hardcoded Domain Content (needs work)
 
-### Scorer prefilter — `scripts/scorer_prefilter.py`
+### Scorer prefilter — `src/findajob/scorer_prefilter.py`
 
-- [ ] **`TIER1` frozenset** (lines 22-27) — hardcoded tech/AI companies (Meta, Google, Microsoft, OpenAI, Nscale, etc.)
-  - Should be loaded from `config/target_companies.md` or a dedicated `config/tier1.txt`
-  - `_is_tier1()` already takes company name as arg; just needs the list externalized
+- [x] **`TIER1` frozenset** — dropped entirely in favor of `config/companies_of_interest.txt` (see changelog below). The prefilter no longer consults any company-level list.
 
-- [ ] **`_HARD_REJECT_PATTERNS`** (lines 39-225) — ~200 regex patterns for tech jobs
-  - Categories assume tech domain: software engineering, security, IT service management, supply chain (as a hard reject!), networking, hardware design, etc.
-  - For a social worker, "supply chain manager" isn't a hard reject — it's irrelevant (score low) but not a categorical NO
-  - Should be loaded from `config/prefilter_rules.yaml` or similar
-  - Structure: per-candidate categories, each with title regex patterns
+- [x] **`_HARD_REJECT_PATTERNS`** — externalized to `config/prefilter_rules.yaml` under `hard_rejects`, grouped by category. Loaded via `src/findajob/config_loader.py`.
 
-- [ ] **`_IN_DOMAIN_PATTERNS`** (lines 251-267) — tech/DC ops specific positive patterns
-  - "data center technician", "DC operations", "NPI program manager", "forward deployed engineer"
-  - Should be loaded from candidate profile or `config/in_domain_patterns.txt`
+- [x] **`_IN_DOMAIN_PATTERNS`** — externalized to `config/in_domain_patterns.yaml` under `positive`.
 
-- [ ] **`_IN_DOMAIN_POISON`** (lines 275-278) — "workplace services, custodial, janitorial, facilities only" — tech-ops specific disambiguation
-  - Each candidate needs their own poison patterns (e.g., for a teacher searching "principal": "managing principal" = finance, not education)
+- [x] **`_IN_DOMAIN_POISON`** — externalized to `config/in_domain_patterns.yaml` under `poison`.
+
+**Resolved 2026-04-17 (#10):**
+- `TIER1` was *dropped*, not externalized. The Tier-1 prefilter bonus (+1 score at the in-domain/no-JD floor) was removed entirely — the LLM already sees the target-companies list via prompt context, so the prefilter kludge is unnecessary.
+- The "companies I care about" concept lives on via `config/companies_of_interest.txt`, consumed by `scripts/sync_sheet.py` (archival exception for low-score-old jobs at these companies) and `scripts/notify.py` (mis-score health check). The prefilter does NOT consult this file.
+- Hard-reject + in-domain rules now load from `config/prefilter_rules.yaml` and `config/in_domain_patterns.yaml` through `src/findajob/config_loader.py`. Both files are gitignored; see `.example` siblings for templates.
+- Items 4 and 5 of #10 (prompt-level neutralization: `job_scorer.md` hard-reject enumerations + ENGINEER TITLE CALIBRATION move to `profile.md`) are **deferred** — they change LLM behavior and need their own validation loop. Tracked as a follow-up issue.
 
 ### Scorer role prompt — `config/roles/job_scorer.md`
 
@@ -133,10 +130,10 @@ All of these need a pass with a non-tech candidate profile to see what breaks.
 
 ## Order of Work (suggested)
 
-**Phase 1: Config externalization (high value, mechanical)**
-1. Move `TIER1` out of `scorer_prefilter.py` into `config/tier1.txt` (gitignored)
-2. Move `_HARD_REJECT_PATTERNS` into `config/prefilter_rules.yaml` (gitignored), keep the code as a rule loader
-3. Move `_IN_DOMAIN_PATTERNS` and `_IN_DOMAIN_POISON` similarly
+**Phase 1: Config externalization (high value, mechanical)** — ✅ shipped 2026-04-17 (#10)
+1. ~~Move `TIER1` out~~ → dropped; replaced by `config/companies_of_interest.txt` for non-prefilter consumers.
+2. ~~Move `_HARD_REJECT_PATTERNS`~~ → loaded from `config/prefilter_rules.yaml` via `config_loader`.
+3. ~~Move `_IN_DOMAIN_PATTERNS` and `_IN_DOMAIN_POISON`~~ → loaded from `config/in_domain_patterns.yaml`.
 
 **Phase 2: Prompt neutralization**
 4. Rewrite `job_scorer.md` hard reject section to reference profile categories rather than enumerate tech
