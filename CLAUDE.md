@@ -97,6 +97,29 @@ file. If you're refactoring an old hardcoded section, add a note to `docs/GENERA
 
 ---
 
+## Container Context (when running from the findajob Docker image)
+
+When the pipeline runs inside the `ghcr.io/brockamer/findajob` image, paths shift:
+
+| Thing | Native install | Container |
+|---|---|---|
+| `BASE` (from `findajob.paths`) | Repo clone path | `/app` (set via `JSP_BASE=/app` in compose) |
+| `data/pipeline.db` | `<repo>/data/pipeline.db` | `/app/data/pipeline.db` (bind-mounted from `./state/data/`) |
+| `config/roles/` | `<repo>/config/roles/` | `/app/config/roles/` (baked into image — NOT from bind mount) |
+| Personal config (`config/*.yaml|.txt|.json`) | `<repo>/config/` | `/app/config/` (bind-mounted from `./state/config/`) |
+| `candidate_context/` | `<repo>/candidate_context/` | `/app/candidate_context/` (bind-mount) |
+| `companies/` | `<repo>/companies/` | `/app/companies/` (bind-mount) |
+| `aichat-ng` | `/usr/local/bin/aichat-ng` | `/usr/local/bin/aichat-ng` (blob42/aichat-ng prebuilt) |
+| aichat-ng config dir | `~/.config/aichat_ng/` | `/root/.config/aichat_ng/` (bind-mount from `./state/aichat_ng/`) |
+| Scheduler | systemd user services | supercronic inside the container |
+
+**When authoring new scripts or tests:**
+- Always use `findajob.paths.BASE` — never hardcode `/home/...` or `/app/`.
+- Binary subprocess calls go through `AICHAT`/`PANDOC`/`RCLONE` from `findajob.paths`.
+- Tests must not depend on absolute paths — use tmpdirs or `BASE`-relative paths.
+
+---
+
 ## Key File Locations
 
 ```
