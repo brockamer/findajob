@@ -11,6 +11,13 @@ Usage:
     from findajob.paths import BASE, AICHAT, PANDOC, RCLONE
 
 Use sys.executable (not a PYTHON constant) for subprocess calls to other pipeline scripts.
+
+Containerized deploys:
+    When running in the findajob Docker image, the app is installed at /app
+    (not the repo's filesystem location). The compose file sets
+    JSP_BASE=/app to pin BASE correctly. See docs/setup/install-docker.md
+    and docs/superpowers/specs/2026-04-17-docker-compose-design.md for
+    the container architecture.
 """
 
 import os
