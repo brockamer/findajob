@@ -302,6 +302,20 @@ Core rules (enforced — see the doc for detail):
 
 ---
 
+## Plan Conventions
+
+Implementation plans live in `docs/superpowers/plans/`. Conventions are documented in [`docs/plan-conventions.md`](docs/plan-conventions.md).
+
+**Hard requirements for every plan:**
+- Numbered tasks with files, steps, verification commands, commit messages
+- A **Documentation Impact** section enumerating every doc surface that needs to change (README, docs/setup/*, CLAUDE.md, CHANGELOG.md, spec doc, docstrings). If none, say "None" — never omit the section
+- A whole-feature verification gate distinct from per-task checks
+- A self-review checklist mapping every spec section to its implementing task(s)
+
+A plan without Documentation Impact is incomplete — push back rather than execute it.
+
+---
+
 ## Working Style
 
 - Terse. User reports completion of each step before asking what's next.
