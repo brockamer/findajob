@@ -97,7 +97,43 @@ def load_hard_reject_rules() -> tuple[re.Pattern[str], re.Pattern[str] | None]:
 
 def load_in_domain_rules() -> tuple[re.Pattern[str], re.Pattern[str] | None]:
     """(in_domain_re, poison_re). poison_re is None if no poison configured."""
-    raise NotImplementedError
+    global _in_domain_cache
+    if _in_domain_cache is not None:
+        return _in_domain_cache
+
+    data = _safe_load_yaml(_IN_DOMAIN_PATH, "in_domain_patterns.yaml")
+    if data is None:
+        _in_domain_cache = (_NEVER_MATCH, None)
+        return _in_domain_cache
+
+    positive = data.get("positive", [])
+    if not isinstance(positive, list):
+        raise ConfigError(
+            f"in_domain_patterns.yaml: 'positive' must be a list, "
+            f"got {type(positive).__name__}"
+        )
+    for p in positive:
+        if not isinstance(p, str):
+            raise ConfigError(f"in_domain_patterns.yaml: positive pattern is not a string: {p!r}")
+
+    positive_re = _compile_patterns(positive, _IN_DOMAIN_PATH, "positive")
+
+    poison = data.get("poison", []) or []
+    if not isinstance(poison, list):
+        raise ConfigError(
+            f"in_domain_patterns.yaml: 'poison' must be a list, "
+            f"got {type(poison).__name__}"
+        )
+    for p in poison:
+        if not isinstance(p, str):
+            raise ConfigError(f"in_domain_patterns.yaml: poison pattern is not a string: {p!r}")
+
+    poison_re: re.Pattern[str] | None = None
+    if poison:
+        poison_re = _compile_patterns(poison, _IN_DOMAIN_PATH, "poison")
+
+    _in_domain_cache = (positive_re, poison_re)
+    return _in_domain_cache
 
 
 def load_companies_of_interest() -> frozenset[str]:

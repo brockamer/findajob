@@ -82,3 +82,28 @@ class TestLoadHardRejectRules:
         r1 = config_loader.load_hard_reject_rules()
         r2 = config_loader.load_hard_reject_rules()
         assert r1 is r2  # cache hit returns same tuple
+
+
+class TestLoadInDomainRules:
+    def test_positive_matches(self):
+        in_domain_re, _ = config_loader.load_in_domain_rules()
+        assert in_domain_re.search("Data Center Operations Engineer") is not None
+        assert in_domain_re.search("NPI Manager") is not None
+        assert in_domain_re.search("Operational Readiness Lead") is not None
+
+    def test_positive_misses_out_of_domain(self):
+        in_domain_re, _ = config_loader.load_in_domain_rules()
+        assert in_domain_re.search("Software Engineer") is None
+        assert in_domain_re.search("Account Executive") is None
+
+    def test_poison_compiled(self):
+        _, poison_re = config_loader.load_in_domain_rules()
+        assert poison_re is not None
+        assert poison_re.search("Data Center Workplace Services Manager") is not None
+        assert poison_re.search("Custodial Lead") is not None
+        assert poison_re.search("Data Center Operations") is None  # no poison term
+
+    def test_caches_result(self):
+        r1 = config_loader.load_in_domain_rules()
+        r2 = config_loader.load_in_domain_rules()
+        assert r1 is r2
