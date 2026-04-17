@@ -10,7 +10,9 @@ Runs BEFORE any LLM call. Two stages:
 If neither stage fires, returns (None, None) and caller should invoke the LLM.
 
 Rules are loaded from config/prefilter_rules.yaml and config/in_domain_patterns.yaml
-(both gitignored). See src/findajob/config_loader.py.
+(both gitignored). See src/findajob/config_loader.py. If either file is missing,
+that stage becomes a no-op (all jobs pass through to the LLM) — install config
+files per docs/setup/configure.md.
 
 Usage:
     from findajob.scorer_prefilter import prefilter_score
@@ -48,6 +50,10 @@ def prefilter_score(title: str, company: str, jd_usable: bool) -> tuple[dict[str
     """
     Returns (result_dict, reason_str) if a deterministic decision can be made,
     or (None, None) if the LLM should be invoked.
+
+    `company` is accepted for signature stability; no per-company rule is
+    supported today. Kept for callers (scoring.py) and potential future
+    per-company overrides.
     """
     t = (title or "").strip()
 

@@ -95,4 +95,6 @@ hard_rejects:
     - '\bmaintenance\s+technician\b'
 
 context_suppressors:
-  - '\bdata\s*center\b|\bdatacenter\b|\bdc\s+(ops|operations|site)\b'
+  - '\bdata\s*center\b'
+  - '\bdatacenter\b'
+  - '\bdc\s+(ops|operations|site)\b'
