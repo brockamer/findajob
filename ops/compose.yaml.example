@@ -1,0 +1,46 @@
+# ops/compose.yaml.example
+# Copy to your Dockge stack directory (e.g., /opt/stacks/findajob-<user>/compose.yaml)
+# and edit the adjacent .env to match your instance.
+#
+# See docs/setup/install-docker.md and ops/stack.env.example for setup.
+
+services:
+  scheduler:
+    image: ghcr.io/brockamer/findajob:${FINDAJOB_IMAGE_TAG:-v0.1}
+    restart: unless-stopped
+    env_file: ./state/data/.env
+    environment:
+      TZ: ${FINDAJOB_TZ:-America/New_York}
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      JSP_BASE: /app
+      FINDAJOB_JOBSYNC_ENABLED: ${FINDAJOB_JOBSYNC_ENABLED:-false}
+      FINDAJOB_TRIAGE_TIMEOUT: ${FINDAJOB_TRIAGE_TIMEOUT:-7200}
+    volumes:
+      - ./state/data:/app/data
+      - ./state/config:/app/config
+      - ./state/candidate_context:/app/candidate_context
+      - ./state/companies:/app/companies
+      - ./state/logs:/app/logs
+      - ./state/aichat_ng:/root/.config/aichat_ng
+    networks:
+      - findajob-network
+
+  gmail-auth:
+    image: ghcr.io/brockamer/findajob:${FINDAJOB_IMAGE_TAG:-v0.1}
+    profiles: [setup]
+    env_file: ./state/data/.env
+    environment:
+      TZ: ${FINDAJOB_TZ:-America/New_York}
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      JSP_BASE: /app
+    volumes:
+      - ./state/config:/app/config
+    command: python3 scripts/gmail_auth.py --mode=device
+    networks:
+      - findajob-network
+
+networks:
+  findajob-network:
+    driver: bridge
