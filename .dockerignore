@@ -29,11 +29,23 @@ manual_job.txt
 # unless excluded here. Keep PII and secrets out of the build entirely.
 CLAUDE.local.md
 
-# config/ — only roles/ is baked into the image (handled by Dockerfile COPY).
-# Exclude everything else (OAuth client, tokens, sheet IDs, personal YAML/txt).
-config
-!config/roles
-!config/roles/**
+# config/ — exclude operator-personal files (gitignored) by exact name so that
+# tracked config (roles/, scoring_schema.json, model_pricing.yaml, reference.docx,
+# strip-bookmarks.lua) stays in the build context and gets bundled into the image.
+# Keep this list in sync with .gitignore's config/ entries.
+config/gmail_oauth_client.json
+config/gmail_token.json
+config/gsheets_creds.json
+config/sheet_id.txt
+config/ntfy_topic.txt
+config/form_responses_sheet_id.txt
+config/feed_urls.txt
+config/jsearch_queries.txt
+config/target_companies.md
+config/companies_of_interest.txt
+config/prefilter_rules.yaml
+config/in_domain_patterns.yaml
+config/paths.env
 
 # Editor / OS
 .DS_Store
