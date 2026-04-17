@@ -1,0 +1,36 @@
+# .dockerignore — keep the build context small and secret-free
+
+# VCS
+.git
+.gitignore
+.github
+
+# Docs / dev artifacts
+docs
+tests
+README.md
+
+# Python caches
+__pycache__
+*.pyc
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# Local state — MUST never enter the image
+data
+candidate_context
+companies
+logs
+.tmux.conf
+manual_job.txt
+
+# Editor / OS
+.DS_Store
+.vscode
+.idea
+
+# Release / build artifacts
+dist
+build
+*.egg-info
