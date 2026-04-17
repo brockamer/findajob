@@ -14,7 +14,6 @@ from __future__ import annotations
 import re
 import warnings
 from pathlib import Path
-from typing import Optional
 
 from findajob.paths import BASE
 
@@ -28,9 +27,9 @@ _COMPANIES_PATH = Path(BASE) / "config" / "companies_of_interest.txt"
 _NEVER_MATCH = re.compile(r"(?!x)x")
 
 # Caches
-_hard_reject_cache: Optional[tuple[re.Pattern[str], Optional[re.Pattern[str]]]] = None
-_in_domain_cache: Optional[tuple[re.Pattern[str], Optional[re.Pattern[str]]]] = None
-_companies_cache: Optional[frozenset[str]] = None
+_hard_reject_cache: tuple[re.Pattern[str], re.Pattern[str] | None] | None = None
+_in_domain_cache: tuple[re.Pattern[str], re.Pattern[str] | None] | None = None
+_companies_cache: frozenset[str] | None = None
 
 # Warnings emitted (dedup per process)
 _warned: set[str] = set()
@@ -40,12 +39,12 @@ class ConfigError(Exception):
     """Raised when a config file is malformed (bad YAML, bad regex, wrong shape)."""
 
 
-def load_hard_reject_rules() -> tuple[re.Pattern[str], Optional[re.Pattern[str]]]:
+def load_hard_reject_rules() -> tuple[re.Pattern[str], re.Pattern[str] | None]:
     """(reject_re, suppressor_re). suppressor_re is None if no suppressors configured."""
     raise NotImplementedError
 
 
-def load_in_domain_rules() -> tuple[re.Pattern[str], Optional[re.Pattern[str]]]:
+def load_in_domain_rules() -> tuple[re.Pattern[str], re.Pattern[str] | None]:
     """(in_domain_re, poison_re). poison_re is None if no poison configured."""
     raise NotImplementedError
 
