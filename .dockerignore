@@ -10,9 +10,9 @@ docs
 tests
 README.md
 
-# Python caches
-__pycache__
-*.pyc
+# Python caches (glob patterns need ** to recurse in .dockerignore)
+**/__pycache__
+**/*.pyc
 .pytest_cache
 .mypy_cache
 .ruff_cache
@@ -25,6 +25,16 @@ logs
 .tmux.conf
 manual_job.txt
 
+# Personal config / credentials — gitignored files still land in Docker context
+# unless excluded here. Keep PII and secrets out of the build entirely.
+CLAUDE.local.md
+
+# config/ — only roles/ is baked into the image (handled by Dockerfile COPY).
+# Exclude everything else (OAuth client, tokens, sheet IDs, personal YAML/txt).
+config
+!config/roles
+!config/roles/**
+
 # Editor / OS
 .DS_Store
 .vscode
@@ -33,4 +43,4 @@ manual_job.txt
 # Release / build artifacts
 dist
 build
-*.egg-info
+**/*.egg-info
