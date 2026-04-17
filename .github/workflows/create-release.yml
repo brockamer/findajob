@@ -1,0 +1,62 @@
+name: Create release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve previous version tag
+        id: prev
+        run: |
+          CURRENT="${GITHUB_REF#refs/tags/}"
+          PREV=$(git tag --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | grep -v "^${CURRENT}$" | head -n1 || true)
+          echo "current=${CURRENT}" >> "$GITHUB_OUTPUT"
+          echo "previous=${PREV}" >> "$GITHUB_OUTPUT"
+          echo "Current: ${CURRENT}  Previous: ${PREV:-<none>}"
+
+      - name: Generate release notes
+        id: notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CURRENT="${{ steps.prev.outputs.current }}"
+          PREV="${{ steps.prev.outputs.previous }}"
+
+          # Use GitHub's release-notes generator if we have a previous tag;
+          # otherwise a first-release stub.
+          if [ -n "$PREV" ]; then
+            NOTES=$(gh api repos/${{ github.repository }}/releases/generate-notes \
+              -f tag_name="$CURRENT" \
+              -f previous_tag_name="$PREV" \
+              --jq .body)
+          else
+            NOTES="First release of the containerized pipeline. See the commit history and docs/superpowers/specs/ for design decisions."
+          fi
+
+          # Surface migration-required PRs at the top, if any
+          MIG_PRS=$(gh pr list --state merged --label migration-required --search "merged:>$(git log -1 --format=%cI ${PREV:-HEAD~1}) " --json number,title --jq '.[] | "- #\(.number) \(.title)"' || true)
+          if [ -n "$MIG_PRS" ]; then
+            NOTES=$(printf "### ⚠️ Action required before upgrade\n\nThe following changes need a manual step (DB migration, config change, or similar). Read each linked PR before running \`docker compose pull\`.\n\n%s\n\n---\n\n%s\n" "$MIG_PRS" "$NOTES")
+          fi
+
+          # Write notes to a file to avoid shell-quoting hell
+          printf '%s\n' "$NOTES" > /tmp/release-notes.md
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.prev.outputs.current }}" \
+            --title "${{ steps.prev.outputs.current }}" \
+            --notes-file /tmp/release-notes.md
