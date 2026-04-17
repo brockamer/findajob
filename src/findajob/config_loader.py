@@ -63,14 +63,11 @@ def load_hard_reject_rules() -> tuple[re.Pattern[str], re.Pattern[str] | None]:
     for category, patterns in hard_rejects.items():
         if not isinstance(patterns, list):
             raise ConfigError(
-                f"prefilter_rules.yaml: hard_rejects['{category}'] must be a list, "
-                f"got {type(patterns).__name__}"
+                f"prefilter_rules.yaml: hard_rejects['{category}'] must be a list, got {type(patterns).__name__}"
             )
         for p in patterns:
             if not isinstance(p, str):
-                raise ConfigError(
-                    f"prefilter_rules.yaml: pattern in '{category}' is not a string: {p!r}"
-                )
+                raise ConfigError(f"prefilter_rules.yaml: pattern in '{category}' is not a string: {p!r}")
             reject_patterns.append(p)
 
     reject_re = _compile_patterns(reject_patterns, _RULES_PATH, "hard_rejects")
@@ -78,14 +75,11 @@ def load_hard_reject_rules() -> tuple[re.Pattern[str], re.Pattern[str] | None]:
     suppressors = data.get("context_suppressors", []) or []
     if not isinstance(suppressors, list):
         raise ConfigError(
-            f"prefilter_rules.yaml: 'context_suppressors' must be a list, "
-            f"got {type(suppressors).__name__}"
+            f"prefilter_rules.yaml: 'context_suppressors' must be a list, got {type(suppressors).__name__}"
         )
     for p in suppressors:
         if not isinstance(p, str):
-            raise ConfigError(
-                f"prefilter_rules.yaml: context_suppressor pattern is not a string: {p!r}"
-            )
+            raise ConfigError(f"prefilter_rules.yaml: context_suppressor pattern is not a string: {p!r}")
 
     suppressor_re: re.Pattern[str] | None = None
     if suppressors:
@@ -108,10 +102,7 @@ def load_in_domain_rules() -> tuple[re.Pattern[str], re.Pattern[str] | None]:
 
     positive = data.get("positive", [])
     if not isinstance(positive, list):
-        raise ConfigError(
-            f"in_domain_patterns.yaml: 'positive' must be a list, "
-            f"got {type(positive).__name__}"
-        )
+        raise ConfigError(f"in_domain_patterns.yaml: 'positive' must be a list, got {type(positive).__name__}")
     for p in positive:
         if not isinstance(p, str):
             raise ConfigError(f"in_domain_patterns.yaml: positive pattern is not a string: {p!r}")
@@ -120,10 +111,7 @@ def load_in_domain_rules() -> tuple[re.Pattern[str], re.Pattern[str] | None]:
 
     poison = data.get("poison", []) or []
     if not isinstance(poison, list):
-        raise ConfigError(
-            f"in_domain_patterns.yaml: 'poison' must be a list, "
-            f"got {type(poison).__name__}"
-        )
+        raise ConfigError(f"in_domain_patterns.yaml: 'poison' must be a list, got {type(poison).__name__}")
     for p in poison:
         if not isinstance(p, str):
             raise ConfigError(f"in_domain_patterns.yaml: poison pattern is not a string: {p!r}")
