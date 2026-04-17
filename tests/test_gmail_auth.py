@@ -16,6 +16,12 @@ import pytest
 SCRIPTS_DIR = Path(__file__).parent.parent / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
+# tests/test_sync_sheet.py stubs google.oauth2 in sys.modules at import time.
+# When that file is collected before this one, the polling-loop tests below
+# can't lazy-import google.oauth2.credentials. Pre-seed a stub of our own so
+# the from-import in run_device resolves regardless of test ordering.
+sys.modules.setdefault("google.oauth2.credentials", MagicMock())
+
 
 @pytest.fixture
 def fake_client_secrets(tmp_path):
