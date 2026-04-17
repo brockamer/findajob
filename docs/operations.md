@@ -135,7 +135,7 @@ SELECT score_status, count(*) FROM jobs GROUP BY score_status;
 3. In scheduled mode, aichat-ng reads the file fresh on every invocation
 
 ### Change the default model
-1. Edit `~/Library/Application Support/aichat_ng/config.yaml` (macOS) or `~/.config/aichat_ng/config.yaml` (Linux)
+1. Edit `~/.config/aichat_ng/config.yaml`
 2. Change the `model:` line at the top
 3. Role-specific model overrides in the role `.md` frontmatter take precedence
 
@@ -171,7 +171,7 @@ rclone copy --update ~/Code/findajob/companies/ "gdrive:01 PROJECTS/Jobs To Appl
 
 ## Log Rotation
 
-`logs/pipeline.jsonl` grows without bound. Rotate manually or set up `logrotate` (Linux) / `newsyslog` (macOS) targeting `logs/*.jsonl` with weekly rotation, 4 copies kept.
+`logs/pipeline.jsonl` grows without bound. Rotate manually or set up `logrotate` targeting `logs/*.jsonl` with weekly rotation, 4 copies kept.
 
 Example `logrotate` entry (`/etc/logrotate.d/findajob`):
 ```
@@ -206,19 +206,3 @@ systemctl --user stop findajob-triage.timer
 systemctl --user start findajob-triage.timer  # re-enable
 ```
 
-## launchd Operations (macOS)
-
-```bash
-# Check loaded agents
-launchctl list | grep findajob
-
-# Force a manual run
-launchctl start com.findajob.triage
-
-# Unload/reload an agent after editing the plist
-launchctl unload ~/Library/LaunchAgents/com.findajob.triage.plist
-launchctl load ~/Library/LaunchAgents/com.findajob.triage.plist
-
-# Check logs (if plist writes to a log file)
-tail -f logs/triage.log
-```

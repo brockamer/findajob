@@ -2,7 +2,7 @@
 
 A self-hosted, AI-powered job search pipeline. Fetches leads from LinkedIn, Indeed, Greenhouse, and Gmail, scores them with an LLM, surfaces high-quality matches in a Google Sheet, and on demand generates a full application package: tailored resume, cover letter, company briefing, and network outreach drafts.
 
-Runs daily via a scheduler (launchd on macOS, systemd on Linux). No cloud infrastructure. No subscription. Costs ~$0.50–2/day in API usage depending on job volume.
+Runs daily via systemd user timers. No cloud infrastructure. No subscription. Costs ~$0.50–2/day in API usage depending on job volume.
 
 ---
 
@@ -28,7 +28,7 @@ Runs daily via a scheduler (launchd on macOS, systemd on Linux). No cloud infras
 | Job sources | RapidAPI jobs-api14, Gmail OAuth2, Greenhouse JSON API | Broad coverage |
 | Notifications | ntfy.sh | Free, cross-platform push |
 | File sync | rclone bisync | Google Drive sync for prep folders |
-| Scheduler | launchd (macOS) / systemd (Linux) | Native, no extra daemons |
+| Scheduler | systemd user timers | Native, no extra daemons |
 
 ---
 
@@ -73,7 +73,7 @@ chmod 600 data/.env
 python3 scripts/init_db.py
 
 # Full setup walkthrough
-# See docs/setup/ for platform-specific install guides
+# See docs/setup/install-linux.md
 ```
 
 ---
@@ -84,8 +84,7 @@ python3 scripts/init_db.py
 |---|---|
 | [docs/architecture.md](docs/architecture.md) | System design, data flow, component map |
 | [docs/setup/prerequisites.md](docs/setup/prerequisites.md) | API keys, accounts, tools you need |
-| [docs/setup/install-macos.md](docs/setup/install-macos.md) | macOS + Homebrew + launchd setup |
-| [docs/setup/install-linux.md](docs/setup/install-linux.md) | Pop!_OS / Ubuntu + systemd setup |
+| [docs/setup/install-linux.md](docs/setup/install-linux.md) | Ubuntu + systemd setup |
 | [docs/setup/configure.md](docs/setup/configure.md) | Profile, resume, queries, Google Sheets |
 | [docs/setup/state-migration.md](docs/setup/state-migration.md) | Moving an existing pipeline to a new machine |
 | [docs/operations.md](docs/operations.md) | Day-to-day use, monitoring, common tasks |

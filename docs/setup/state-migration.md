@@ -3,8 +3,8 @@
 How to move a running findajob pipeline from one machine to another without losing data.
 
 This guide assumes:
-- **Source machine**: existing running pipeline (e.g., macOS)
-- **Target machine**: new machine (e.g., Pop!_OS Linux laptop)
+- **Source machine**: existing running pipeline (Linux host)
+- **Target machine**: new Linux host
 - **Strategy**: parallel bring-up — keep source running until target is validated
 
 Do NOT decommission the source until you have confirmed a full triage cycle completes cleanly on the target.
@@ -28,12 +28,12 @@ Do NOT decommission the source until you have confirmed a full triage cycle comp
 | Search queries | `config/jsearch_queries.txt` | Copy file |
 | Greenhouse feed slugs | `config/feed_urls.txt` | Copy file |
 | LinkedIn connections | `data/connections.csv` | Copy file |
-| Binary path config | `config/paths.env` | Create new for target platform |
+| Binary path config | `config/paths.env` | Create new on target if paths differ |
 | Voice samples | `candidate_context/voice_samples/*.txt` | Copy directory |
 | RAG index | `rags/` or aichat-ng data dir | Rebuild on target (run `--rag rebuild`) |
 | Company prep folders | `companies/` | Optional — large, can sync via Google Drive |
-| aichat-ng config | Platform-specific (see below) | Create new for target platform |
-| Personal CLAUDE context | `CLAUDE.local.md` | Copy and update platform section |
+| aichat-ng config | `~/.config/aichat_ng/config.yaml` | Create new on target |
+| Personal CLAUDE context | `CLAUDE.local.md` | Copy |
 
 **Do NOT copy:**
 - `logs/` — not needed, starts fresh
@@ -87,7 +87,7 @@ chmod 600 ~/findajob/config/gsheets_creds.json
 chmod 600 ~/findajob/config/gmail_oauth_client.json
 ```
 
-### Step 3: Create Platform-Specific Config
+### Step 3: Create Target-Side Config
 
 On the **target machine**, create `config/paths.env`:
 ```bash
@@ -97,13 +97,11 @@ PANDOC=/usr/bin/pandoc
 RCLONE=/usr/bin/rclone
 ```
 
-Create the aichat-ng config (Linux path):
+Create the aichat-ng config:
 ```bash
 mkdir -p ~/.config/aichat_ng
 # Create ~/.config/aichat_ng/config.yaml — see configure.md for the template
 ```
-
-Update `CLAUDE.local.md` on the target to reflect Linux platform paths.
 
 ### Step 4: Verify Database Integrity
 
@@ -196,10 +194,9 @@ Only after:
 Then on the **source machine**:
 
 ```bash
-# Unload all launchd agents (macOS source)
-launchctl unload ~/Library/LaunchAgents/com.findajob.*.plist 2>/dev/null
-# Or for the old naming scheme:
-launchctl unload ~/Library/LaunchAgents/com.OWNER.jobpipeline.*.plist 2>/dev/null
+# Stop and disable all findajob timers on the source host
+systemctl --user stop 'findajob-*.timer'
+systemctl --user disable 'findajob-*.timer'
 ```
 
 ---

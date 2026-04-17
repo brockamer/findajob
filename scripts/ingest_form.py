@@ -19,7 +19,7 @@ Setup (one-time):
        echo 'YOUR_SHEET_ID' > ~/JobSearchPipeline/config/form_responses_sheet_id.txt
 
 The script writes 'Processed: <timestamp>' to col J (column 10) of each handled row.
-Run manually or add to the poller launchd agent.
+Run manually or add to the poller systemd unit.
 """
 
 import hashlib

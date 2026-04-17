@@ -32,6 +32,4 @@ Active job search targeting: [list your top 10–15 target companies]
 
 ## aichat-ng Config Location
 
-[Uncomment the one that applies:]
-# macOS: ~/Library/Application Support/aichat_ng/
-# Linux: ~/.config/aichat_ng/
+`~/.config/aichat_ng/`

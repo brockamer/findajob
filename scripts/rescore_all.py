@@ -3,7 +3,7 @@
 """
 Re-score jobs in the DB that have JD text.
 Useful after switching scorer model or updating the job_scorer role prompt.
-Run manually — not a launchd agent.
+Run manually — not a scheduled job.
 
 Usage:
     rescore_all.py                    # rescore every job in scored/manual_review/enriched

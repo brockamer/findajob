@@ -39,7 +39,7 @@ Claude Code is used for:
 - **Feature development** — writing new scripts, adding pipeline stages, improving role prompts
 - **Debugging** — diagnosing triage failures, sheet sync issues, API errors from log output
 - **Role prompt iteration** — editing `config/roles/*.md` after observing poor output quality
-- **Infrastructure changes** — modifying scheduler configs, adding new launchd/systemd agents
+- **Infrastructure changes** — modifying scheduler configs, adding new systemd units
 - **Documentation** — updating CLAUDE.md, GitHub issues, and these docs
 
 Claude Code is NOT used to:
@@ -59,7 +59,7 @@ Claude Code is NOT used to:
 
 `CLAUDE.local.md` should be updated when:
 - Your target company list changes
-- You migrate to a new machine (update platform paths)
+- You migrate to a new machine (update binary paths if they differ)
 - Your ntfy topic or Google Form URL changes
 
 ---
@@ -76,10 +76,10 @@ See `CLAUDE.local.md.example` for the template. Key sections:
 [Any abbreviations that LLMs commonly misinterpret]
 
 ## Platform
-[Your current platform, binary paths, aichat-ng config location]
+[Binary paths and aichat-ng config location]
 
-## Launchd/Systemd Schedule
-[Your actual agent names and timing]
+## Systemd Schedule
+[Your actual timer names and timing]
 
 ## Notification
 [Your ntfy topic]

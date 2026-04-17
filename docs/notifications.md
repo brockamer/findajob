@@ -115,9 +115,7 @@ Checks the latest GitHub Actions CI run. If it failed, sends a high-priority not
 | `send-raw` | Manual only |
 | `ci-check` | Manual / on-push |
 
-Schedules are defined in the scheduler config:
-- macOS: `~/Library/LaunchAgents/com.findajob.notify-*.plist`
-- Linux: `~/.config/systemd/user/findajob-notify-*.timer`
+Schedules are defined in systemd unit files at `~/.config/systemd/user/findajob-notify-*.timer`.
 
 ---
 
@@ -142,7 +140,7 @@ All notification content is in `scripts/notify.py`. The file is straightforward 
 To add a new notification type:
 1. Add a new function in `notify.py` (follow the pattern of existing ones)
 2. Add a new `elif` branch in `main()` for the new subcommand name
-3. Add a new scheduler entry (launchd plist or systemd unit)
+3. Add a new systemd timer + service unit
 
 ntfy supports additional features (priorities, tags, actions) via curl headers:
 ```bash

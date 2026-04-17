@@ -26,7 +26,7 @@ set -euo pipefail
 #   - Employer names from your career history (especially internal program names)
 #   - Certification or credential names unique to you
 #   - Personal service handles (ntfy topic, Google Form short URLs, Slack workspace)
-#   - Launchd/systemd label prefixes that include your name
+#   - systemd unit label prefixes that include your name
 #   - Home city if it's tied to your identity
 #
 PATTERNS=(
@@ -45,7 +45,7 @@ PATTERNS=(
     # "acmecorp"
     # "internal project codename"
 
-    # Launchd/systemd labels
+    # systemd unit labels
     # "com\.yourhandle\."
 )
 

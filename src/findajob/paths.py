@@ -5,7 +5,7 @@ BASE is derived from this file's location — works wherever the repo is cloned,
 regardless of directory name or home folder. No hardcoded paths.
 
 Binary paths (AICHAT, PANDOC, RCLONE) are read from config/paths.env.
-Defaults are Linux-appropriate; macOS users set overrides in that file.
+Override defaults via config/paths.env if your binaries live elsewhere.
 
 Usage:
     from findajob.paths import BASE, AICHAT, PANDOC, RCLONE
@@ -34,7 +34,7 @@ if _penv.exists():
             _cfg[_k.strip()] = os.path.expanduser(_v.strip().strip('"').strip("'"))
 
 # Binary paths — defaults are Linux-appropriate.
-# macOS and other users: set these in config/paths.env (see config/paths.env.example).
+# Override via config/paths.env if your install is non-standard.
 AICHAT: str = _cfg.get("AICHAT_NG", "/usr/local/bin/aichat-ng")
 PANDOC: str = _cfg.get("PANDOC", "/usr/bin/pandoc")
 RCLONE: str = _cfg.get("RCLONE", "/usr/bin/rclone")

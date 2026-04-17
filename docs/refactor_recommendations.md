@@ -5,14 +5,14 @@
 
 ## What's Actually Working Well
 
-The core architecture is sound. Three-stage scoring (deterministic prefilter → LLM → JSON validation) is the right pattern. Direct profile injection instead of RAG for candidate context was the right call. The launchd-driven daily run is solid. The role system in aichat-ng gives you per-model tuning without code changes. The fingerprint deduplication works. These are all good decisions — don't touch them.
+The core architecture is sound. Three-stage scoring (deterministic prefilter → LLM → JSON validation) is the right pattern. Direct profile injection instead of RAG for candidate context was the right call. The systemd-driven daily run is solid. The role system in aichat-ng gives you per-model tuning without code changes. The fingerprint deduplication works. These are all good decisions — don't touch them.
 
 ---
 
 ## Critical Issues (Fix Now)
 
 **1. API keys in aichat-ng's config.yaml are plaintext**
-Every key you use (Anthropic, Gemini, OpenAI, xAI, Groq, Perplexity, OpenRouter) is in a single unencrypted file. If you ever sync that Mac, back it up to a new machine, or run anything that reads `~/Library/Application Support/`, those keys are exposed. The fix is to move them to `~/.zshenv` as environment variables and reference them via `env:VARIABLE_NAME` in the aichat-ng config, which it supports natively.
+Every key you use (Anthropic, Gemini, OpenAI, xAI, Groq, Perplexity, OpenRouter) is in a single unencrypted file. If you back up your home directory or run anything that can read `~/.config/`, those keys are exposed. The fix is to move them to a `chmod 600` env-var file and reference them via `env:VARIABLE_NAME` in the aichat-ng config, which it supports natively. See #67.
 
 **~~2. No retry logic anywhere~~** *(fixed 2026-04-12)*
 Fetch retry loop added to `triage.py main()`: 3 attempts with 120s gaps and connectivity probing. Covers the "DNS is down at 7 AM" failure mode that caused a total whiff on 2026-04-12.
@@ -53,7 +53,7 @@ Dead code that adds confusion. Either implement it or remove it from the DB cons
 The function it patched is already live in `triage.py`. Delete it.
 
 **12. Log files grow forever**
-`pipeline.jsonl` is already 1.6 MB after a few weeks. No rotation. `launchd_poller_stderr.log` had 25 KB of the same error repeated. Add `newsyslog` entries or a weekly rotation cron.
+`pipeline.jsonl` is already 1.6 MB after a few weeks. No rotation. The poller stderr log had 25 KB of the same error repeated. Add a `logrotate` entry or a weekly rotation cron.
 
 ---
 

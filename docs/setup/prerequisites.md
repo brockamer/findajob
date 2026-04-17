@@ -86,10 +86,10 @@ Used by: `prep_application.py`, `poll_flags.py` — file sync to Google Drive
 
 | Tool | Minimum version | Install |
 |---|---|---|
-| Python | 3.11+ | System or Homebrew/apt |
+| Python | 3.11+ | System package manager (apt) |
 | aichat-ng | latest | See below |
-| pandoc | 3.x | `brew install pandoc` / `apt install pandoc` |
-| rclone | latest | `brew install rclone` / `apt install rclone` (optional) |
+| pandoc | 3.x | `apt install pandoc` |
+| rclone | latest | `apt install rclone` (optional) |
 
 ### Installing aichat-ng
 
@@ -110,9 +110,7 @@ Requires Rust (`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`)
 
 ### Configuring aichat-ng
 
-aichat-ng config lives at:
-- macOS: `~/Library/Application Support/aichat_ng/config.yaml`
-- Linux: `~/.config/aichat_ng/config.yaml`
+aichat-ng config lives at `~/.config/aichat_ng/config.yaml`.
 
 See [configure.md](configure.md) for the full config template.
 

@@ -121,9 +121,7 @@ Protect this file: `chmod 600 data/.env`
 
 ## aichat-ng config.yaml
 
-Located at:
-- macOS: `~/Library/Application Support/aichat_ng/config.yaml`
-- Linux: `~/.config/aichat_ng/config.yaml`
+Located at `~/.config/aichat_ng/config.yaml`.
 
 Full template:
 ```yaml
@@ -214,7 +212,7 @@ identifiers. Categories to add:
 - Phone number (if ever a risk of leaking)
 - Employer names from your career history
 - Personal service handles (ntfy topic, Google Form short URLs)
-- Launchd/systemd label prefixes
+- systemd unit label prefixes
 
 **Test:** Create a dummy file with one of your patterns, stage it, and attempt a commit.
 The hook should block it. Then unstage and delete the file.

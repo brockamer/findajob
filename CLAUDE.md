@@ -12,12 +12,11 @@ Before writing any command, path, binary call, or file location:
 - [ ] Python: use `sys.executable` in scripts; check `config/paths.env` for the platform path
 - [ ] aichat-ng: get path from `AICHAT` in `findajob.paths` — never hardcode, never call bare `aichat`
 - [ ] pandoc: get path from `PANDOC` in `findajob.paths`
-- [ ] aichat-ng config dir: macOS = `~/Library/Application Support/aichat_ng/`; Linux = `~/.config/aichat_ng/`
+- [ ] aichat-ng config dir: `~/.config/aichat_ng/`
 - [ ] Roles dir: `<repo>/config/roles/` — `.md` files only, never `.yaml`
 - [ ] Master resume: `candidate_context/master_resume.md` — never `config/master_resume.md` or `rag_sources/master_resume.md`
 - [ ] Anthropic client in aichat-ng config: `type: claude` — never `type: anthropic`; prefix `claude:` not `anthropic:`
 - [ ] RAG never passed to scorer, cover letter writer, or outreach drafter
-- [ ] macOS sed: `sed -i '' ...`; Linux sed: `sed -i ...` (no empty string)
 - [ ] All binary paths come from `findajob.paths` (`src/findajob/paths.py`) — never hardcode platform paths in scripts
 
 **If uncertain about any value: say so. Do not guess.**
@@ -92,7 +91,7 @@ file. If you're refactoring an old hardcoded section, add a note to `docs/GENERA
 | DB | `data/pipeline.db` |
 | Pre-filter | `src/findajob/scorer_prefilter.py` — Stage 1 regex hard reject, Stage 2 no-JD default |
 | RAG index | `job_search_rag` — never passed to scorer/CL/outreach |
-| Scheduler | macOS: launchd agents; Linux: systemd user services (see docs/setup/install-linux.md) |
+| Scheduler | systemd user services (see docs/setup/install-linux.md) |
 | ntfy topic | in `data/.env` as `NTFY_TOPIC`; also in `CLAUDE.local.md` |
 | Google Form | URL and response sheet ID in `CLAUDE.local.md` and `config/form_responses_sheet_id.txt` |
 
