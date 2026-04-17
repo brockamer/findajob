@@ -1,0 +1,7 @@
+positive:
+  - '\bdata\s*center\s+(operations|technician|engineer)\b'
+  - '\bnpi\s+(manager|lead|engineer)\b'
+  - '\boperational\s+readiness\b'
+
+poison:
+  - '\b(workplace\s+services|custodial|janitorial)\b'

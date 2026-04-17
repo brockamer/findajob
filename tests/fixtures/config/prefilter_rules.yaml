@@ -1,0 +1,12 @@
+# Test fixture — small but covers hard_rejects, grouping, and suppressors.
+hard_rejects:
+  software:
+    - '\bsoftware\s+engineer(ing)?\b'
+    - '\b(swe|sde)\b'
+  healthcare:
+    - '\bnurs(e|ing)\b'
+  sales:
+    - '\baccount\s+executive\b'
+
+context_suppressors:
+  - '\bdata\s*center\b|\bdatacenter\b'
