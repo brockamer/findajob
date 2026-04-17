@@ -54,12 +54,45 @@ def load_in_domain_rules() -> tuple[re.Pattern[str], Optional[re.Pattern[str]]]:
 
 def load_companies_of_interest() -> frozenset[str]:
     """Lowercase company names. Used for case-insensitive substring matching."""
-    raise NotImplementedError
+    global _companies_cache
+    if _companies_cache is not None:
+        return _companies_cache
+
+    try:
+        raw = _COMPANIES_PATH.read_text()
+    except FileNotFoundError:
+        _warn_once("config/companies_of_interest.txt missing — sync_sheet archival exception and notify mis-score check will be disabled")
+        _companies_cache = frozenset()
+        return _companies_cache
+
+    entries: set[str] = set()
+    for line in raw.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        entries.add(stripped.lower())
+
+    if not entries:
+        _warn_once("config/companies_of_interest.txt is empty — sync_sheet archival exception and notify mis-score check will be disabled")
+
+    _companies_cache = frozenset(entries)
+    return _companies_cache
 
 
 def is_company_of_interest(company: str) -> bool:
     """Case-insensitive substring check. False for empty/None inputs."""
-    raise NotImplementedError
+    if not company:
+        return False
+    c = company.lower()
+    return any(t in c for t in load_companies_of_interest())
+
+
+def _warn_once(msg: str) -> None:
+    """Emit a UserWarning only once per process. Deduped via _warned set."""
+    if msg in _warned:
+        return
+    _warned.add(msg)
+    warnings.warn(msg, UserWarning, stacklevel=3)
 
 
 def _reset_cache() -> None:
