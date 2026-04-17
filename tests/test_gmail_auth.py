@@ -79,6 +79,9 @@ def test_run_dispatches_to_device_mode(fake_client_secrets, tmp_path):
     m_device.assert_called_once()
     m_local.assert_not_called()
     assert token_path.read_text() == '{"token": "fake"}'
+    # Token file is the long-lived OAuth credential — must be 0600 to keep
+    # other container users from reading it.
+    assert (token_path.stat().st_mode & 0o777) == 0o600
 
 
 def test_run_dispatches_to_local_mode(fake_client_secrets, tmp_path):
@@ -108,6 +111,100 @@ def test_run_dispatches_to_local_mode(fake_client_secrets, tmp_path):
 
     m_local.assert_called_once()
     m_device.assert_not_called()
+
+
+def _device_code_response():
+    """Mock response for the initial /device/code POST."""
+    resp = MagicMock()
+    resp.raise_for_status.return_value = None
+    resp.json.return_value = {
+        "device_code": "dev-xyz",
+        "user_code": "ABCD-EFGH",
+        "verification_url": "https://www.google.com/device",
+        "expires_in": 600,
+        "interval": 0,  # zero so test doesn't actually sleep
+    }
+    return resp
+
+
+def _token_response(ok: bool, body: dict):
+    resp = MagicMock()
+    resp.ok = ok
+    resp.json.return_value = body
+    return resp
+
+
+def test_device_flow_retries_on_authorization_pending(fake_client_secrets, tmp_path):
+    """Polling continues while Google returns authorization_pending, succeeds when granted."""
+    import gmail_auth
+
+    token_path = tmp_path / "gmail_token.json"
+    success_body = {"access_token": "tok", "refresh_token": "ref"}
+
+    with (
+        patch("requests.post") as m_post,
+        patch("google.oauth2.credentials.Credentials") as m_creds_cls,
+    ):
+        m_post.side_effect = [
+            _device_code_response(),
+            _token_response(False, {"error": "authorization_pending"}),
+            _token_response(True, success_body),
+        ]
+        mock_creds = MagicMock()
+        mock_creds.to_json.return_value = '{"token": "tok"}'
+        m_creds_cls.return_value = mock_creds
+
+        gmail_auth.main(
+            [
+                "--mode",
+                "device",
+                "--client-secrets",
+                str(fake_client_secrets),
+                "--token-out",
+                str(token_path),
+            ]
+        )
+
+    # 1 device-code call + 2 token polls = 3 POSTs
+    assert m_post.call_count == 3
+    assert token_path.read_text() == '{"token": "tok"}'
+
+
+def test_device_flow_bumps_interval_on_slow_down(fake_client_secrets, tmp_path):
+    """slow_down response should increase the polling interval."""
+    import gmail_auth
+
+    token_path = tmp_path / "gmail_token.json"
+    success_body = {"access_token": "tok", "refresh_token": "ref"}
+    sleep_calls: list[float] = []
+
+    with (
+        patch("requests.post") as m_post,
+        patch("time.sleep", side_effect=sleep_calls.append),
+        patch("google.oauth2.credentials.Credentials") as m_creds_cls,
+    ):
+        m_post.side_effect = [
+            _device_code_response(),
+            _token_response(False, {"error": "slow_down"}),
+            _token_response(True, success_body),
+        ]
+        mock_creds = MagicMock()
+        mock_creds.to_json.return_value = '{"token": "tok"}'
+        m_creds_cls.return_value = mock_creds
+
+        gmail_auth.main(
+            [
+                "--mode",
+                "device",
+                "--client-secrets",
+                str(fake_client_secrets),
+                "--token-out",
+                str(token_path),
+            ]
+        )
+
+    # Two sleeps: first at base interval (0), second after slow_down bumps it (+5)
+    assert sleep_calls == [0, 5]
 
 
 def test_missing_client_secrets_errors(tmp_path):
