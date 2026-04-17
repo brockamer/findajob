@@ -14,8 +14,8 @@ from pathlib import Path
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
+from findajob.config_loader import is_company_of_interest
 from findajob.paths import BASE
-from findajob.scorer_prefilter import _is_tier1
 from findajob.utils import log_event
 
 DB_PATH = f"{BASE}/data/pipeline.db"
@@ -192,7 +192,7 @@ def sync_sheet1(svc, conn):
     """,
         (SHEET1_ARCHIVE_DAYS,),
     ).fetchall()
-    target_extras = [r for r in all_rows if r["id"] not in target_ids and _is_tier1(r["company"])]
+    target_extras = [r for r in all_rows if r["id"] not in target_ids and is_company_of_interest(r["company"])]
 
     combined = list(rows) + target_extras
     # Highest score first, then newest first within same score (ISO dates sort lexically)

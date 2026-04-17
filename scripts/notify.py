@@ -315,7 +315,7 @@ def cmd_health_check():
 
     # Target company jobs scored 3-6 in the last N days (potential mis-scores worth reviewing).
     # Score 1-2 are excluded — prefilter hard rejects or clear mismatches, not actionable.
-    from findajob.scorer_prefilter import TIER1
+    from findajob.config_loader import is_company_of_interest
 
     cutoff = (datetime.now(UTC) - timedelta(days=TARGET_LOWSCORE_DAYS)).isoformat()
     low_target = conn.execute(
@@ -327,11 +327,8 @@ def cmd_health_check():
     """,
         (cutoff,),
     ).fetchall()
-    # Filter in Python since TIER1 check is a substring match
     mis_scored = [
-        (r["title"], r["company"], r["relevance_score"])
-        for r in low_target
-        if r["company"] and any(t in r["company"].lower() for t in TIER1)
+        (r["title"], r["company"], r["relevance_score"]) for r in low_target if is_company_of_interest(r["company"])
     ]
     if mis_scored:
         issues.append(f"REVIEW: {len(mis_scored)} target-company job(s) scored 3-6 in last {TARGET_LOWSCORE_DAYS}d:")
