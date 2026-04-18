@@ -76,7 +76,7 @@ docker compose exec scheduler python3 /app/scripts/notify.py health-check
 |---|---|---|
 | `v0.1` | moving (auto-advances to latest `v0.1.x` patch) | **Default.** Most users. Auto-accepts bugfixes; breaking changes require an explicit `.env` edit. |
 | `v0.1.0` | immutable | Pin exactly when you need a known-good version and can't afford surprises (e.g., during an active job-hunt push). |
-| `latest` | moving (tip of `main`) | Dogfood track. Daniel runs this on his LXC to exercise releases before tagging. May break. |
+| `latest` | moving (tip of `main`) | Dogfood track. The upstream maintainer runs this to exercise releases before tagging. May break. |
 | `main-<sha>` | immutable (one tag per commit on `main`) | Precise pinning or bisecting when diagnosing a regression. |
 
 Switching between tags is a one-line `.env` edit followed by `docker compose pull && docker compose up -d`.
@@ -110,7 +110,7 @@ If a pull broke your stack and you need to get back to a working state immediate
    docker compose pull
    docker compose up -d
    ```
-3. Report the regression via a GitHub issue so the shared `:v0.1` alias can be rolled back globally (Daniel's call — see [release-process.md Rollback section](../release-process.md#rollback)).
+3. Report the regression via a GitHub issue so the shared `:v0.1` alias can be rolled back globally (the upstream maintainer's call — see [release-process.md Rollback section](../release-process.md#rollback)).
 
 A local rollback via `.env` pin doesn't affect other users on `:v0.1`.
 

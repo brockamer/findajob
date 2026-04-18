@@ -3,7 +3,7 @@
 This is the runbook Claude follows when cutting a release of the findajob pipeline's
 Docker image. Claude orchestrates the release end-to-end — proposing the cut, drafting
 the CHANGELOG, running the dogfood gate, writing notes, pushing the tag, verifying the
-outcome, and owning any rollback. Daniel reviews and approves the proposed cut but does
+outcome, and owning any rollback. The user reviews and approves the proposed cut but does
 not author any of the release artifacts. This split is codified in the
 `feedback_release_management.md` memory.
 
@@ -23,10 +23,9 @@ entries from the merged PRs in the range, running the full 48-hour dogfood gate,
 flagging migration markers on PRs as they come in (or retroactively if a trigger was
 missed), writing the release notes content, executing `git tag` and `git push origin
 vX.Y.Z`, running post-tag verification against GitHub Actions and GHCR, and owning
-rollback if anything goes wrong. Daniel's role is review-only: he looks at the
-proposed cut, confirms the dogfood signals, and approves or requests changes. He
-does not write CHANGELOG bullets, does not author the notes, and does not run the
-tag commands. If the release breaks something, Claude owns the recovery.
+rollback if anything goes wrong. The user's role is review-only: they look at the
+proposed cut, confirm the dogfood signals, and approve or request changes. They
+do not write CHANGELOG bullets, author the notes, or run the tag commands. If the release breaks something, Claude owns the recovery.
 
 ## Version scheme
 
@@ -49,7 +48,7 @@ The image tag taxonomy — which determines what a user pulling from GHCR actual
 
 | Tag | Type | Who pushes | Purpose |
 |---|---|---|---|
-| `:latest` | moving | `build-image.yml` on every `main` push | dogfood track — bleeding edge, what Daniel's LXC runs |
+| `:latest` | moving | `build-image.yml` on every `main` push | dogfood track — bleeding edge, what the maintainer's LXC runs |
 | `:main-<sha>` | immutable | `build-image.yml` on every `main` push | bisecting, precise pinning for diagnosis |
 | `:v0.1.0` | immutable | `build-image.yml` on `v*.*.*` tag push | pinned release, never moves |
 | `:v0.1` | moving | `build-image.yml` on `v*.*.*` tag push | auto-advances to the latest `v0.1.x` — the recommended user pin |
@@ -60,7 +59,7 @@ version when Claude explicitly cuts a new minor.
 
 ## Pre-release checklist
 
-Before proposing the cut, Claude runs through this list and reports results to Daniel.
+Before proposing the cut, Claude runs through this list and reports results to the user.
 
 First, confirm the CHANGELOG is ready. The `[Unreleased]` block at the top of
 `CHANGELOG.md` should have an entry for every PR that has merged since the last tag.
@@ -93,7 +92,7 @@ reference the new tag, the file is inconsistent — fix before cutting.
 ## Dogfood gate
 
 This is a hard binary gate. All six signals below must be clean across a continuous
-48-hour window on `:latest` running on Daniel's LXC at `findajob.lan`. If any signal
+48-hour window on `:latest` running on the maintainer's LXC at `findajob.lan`. If any signal
 fails at any point in the window, the clock restarts after the fix lands on `main`
 and `:latest` rebuilds. No averaging, no "mostly green" — the point is to catch
 regressions that only surface after multiple scheduler cycles.
@@ -124,7 +123,7 @@ ssh findajob.lan 'docker compose -f /opt/stacks/findajob-brock/compose.yaml logs
 Expected: many `poll_flags` invocations, zero `Traceback` lines. Supercronic prints
 each job's exit code — every `poll_flags` exit should be `0`.
 
-**3. 07:00 UTC daily health-check notify fired on Daniel's phone.** The
+**3. 07:00 UTC daily health-check notify fired on the maintainer's phone.** The
 `notify.py health-check` line fires daily at 07:00 UTC. The phone confirmation is
 the authoritative check (the notification actually reached ntfy). As a secondary
 scheduler-side check:
@@ -135,7 +134,7 @@ ssh findajob.lan 'docker compose -f /opt/stacks/findajob-brock/compose.yaml logs
 ```
 
 Expected: at least two `health-check` invocations with exit code 0 in the last 48h,
-and Daniel confirms the phone notification landed.
+and the maintainer confirms the phone notification landed.
 
 **4. Sheet syncs landed on two consecutive cycles.** Sheet1, Dashboard, and Applied
 tab writes are driven by `sync_sheet.py`. Two consecutive healthy cycles is enough
@@ -171,12 +170,12 @@ ssh findajob.lan 'docker compose -f /opt/stacks/findajob-brock/compose.yaml logs
 Expected: `0`.
 
 If and only if all six signals pass across the continuous 48h window, the gate is
-cleared and Claude may propose the cut to Daniel.
+cleared and Claude may propose the cut to the user.
 
 ## migration-required label criteria
 
 Claude applies the `migration-required` label at PR-open time when the PR contains
-any of the triggers below. Daniel can challenge the call in review if it looks
+any of the triggers below. The user can challenge the call in review if it looks
 wrong. The label drives the "Action required before upgrade" section at the top of
 the release notes — mislabeling is low-stakes because the label is editable
 post-merge.
