@@ -42,21 +42,21 @@ Expected output: empty (no existing label).
 
 - [ ] **Step 2: Create the label**
 
-Run:
+Run (note: GitHub enforces a 100-char max on label descriptions — the original spec phrasing is shortened):
 ```bash
 gh label create migration-required \
   --repo brockamer/findajob \
   --color BF5700 \
-  --description "Changes require a manual step (schema, config, crontab, mount layout, docker compose down) before pulling"
+  --description "Manual step required (schema/config/crontab/mount/compose-down) before docker compose pull"
 ```
-Expected output: `https://github.com/brockamer/findajob/labels/migration-required`
+Expected: no error output on success.
 
 - [ ] **Step 3: Verify the label**
 
-Run: `gh label list --repo brockamer/findajob --search migration-required --json name,color,description`
-Expected output:
-```json
-[{"color":"BF5700","description":"Changes require a manual step (schema, config, crontab, mount layout, docker compose down) before pulling","name":"migration-required"}]
+Run: `gh label list --repo brockamer/findajob | grep migration-required`
+Expected output (tab-separated):
+```
+migration-required	Manual step required (schema/config/crontab/mount/compose-down) before docker compose pull	#BF5700
 ```
 
 - [ ] **Step 4: No commit** — label creation is a GitHub side effect. Note in the PR description that Task 1 ran successfully.
