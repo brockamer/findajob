@@ -1,5 +1,10 @@
 # Scripts Reference
 
+> **Docker users:** Invocations shown are for the native install. Prefix with
+> `docker compose exec scheduler` to run inside a Compose stack. A
+> Docker-specific rewrite of this document is tracked as a separate follow-up issue.
+>
+
 All scripts live in `scripts/`. Diag scripts live in `scripts/diag/` and are run manually only.
 
 All scripts import `BASE`, `AICHAT`, `PANDOC`, and/or `RCLONE` from `findajob.paths` (`src/findajob/paths.py`).

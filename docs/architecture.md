@@ -1,12 +1,18 @@
 # Architecture
 
+> **Docker users:** This document describes system design using native-install
+> terminology. Pipeline structure is identical under Docker; the scheduler is
+> supercronic reading `ops/crontab` rather than systemd timers. A
+> Docker-specific refresh is tracked as a separate follow-up issue.
+>
+
 ## Overview
 
 Two distinct workflows, both scheduler-driven:
 
 | Workflow | Trigger | Duration | Output |
 |---|---|---|---|
-| **Daily Triage** | 7:00 AM via scheduler | 30–60 min | 100–500 jobs scored and written to SQLite |
+| **Daily Triage** | 00:00 daily via scheduler | 30–60 min | 100–500 jobs scored and written to SQLite |
 | **Prep** | User flags a job in the Dashboard | 5–10 min | Folder with resume, cover letter, briefing, outreach drafts |
 
 Everything between them is mediated by SQLite. The Google Sheet is a synced view — not the source of truth.
@@ -17,7 +23,7 @@ Everything between them is mediated by SQLite. The Google Sheet is a synced view
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    triage.py (7:00 AM)                  │
+│                    triage.py (00:00 daily)              │
 └──────────────────────┬──────────────────────────────────┘
                        │
           ┌────────────┴────────────┐
