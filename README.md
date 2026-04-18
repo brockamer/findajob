@@ -20,7 +20,7 @@ Runs daily via systemd user timers. No cloud infrastructure. No subscription. Co
 
 | Component | Choice | Why |
 |---|---|---|
-| Job scoring | [aichat-ng](https://github.com/sigoden/aichat) + DeepSeek v3 via OpenRouter | Fast, cheap, accurate for structured JSON output |
+| Job scoring | [aichat-ng](https://github.com/blob42/aichat-ng) + DeepSeek v3 via OpenRouter | Fast, cheap, accurate for structured JSON output |
 | Resume / cover letter | Claude Opus 4.6 (thinking mode) | Best writing quality at cost |
 | Company research | Perplexity Sonar Pro | Real-time web access |
 | Database | SQLite | Zero-config, ACID, queryable |
@@ -35,7 +35,7 @@ Runs daily via systemd user timers. No cloud infrastructure. No subscription. Co
 ## Prerequisites
 
 - Python 3.11+
-- [aichat-ng](https://github.com/sigoden/aichat) (`aichat-ng` binary, not `aichat`)
+- [aichat-ng](https://github.com/blob42/aichat-ng) (`aichat-ng` binary, not `aichat`)
 - pandoc
 - rclone (optional — only needed for Google Drive sync)
 - API keys: Anthropic, OpenRouter (DeepSeek), Perplexity, Google Gemini, RapidAPI

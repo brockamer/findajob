@@ -28,20 +28,28 @@ rclone version
 
 ---
 
-## 2. Install Rust and aichat-ng
+## 2. Install aichat-ng (prebuilt from blob42/aichat-ng)
+
+The Docker image and this native install both use the same prebuilt musl binary
+from the `blob42/aichat-ng` fork. No Rust toolchain required.
 
 ```bash
-# Install Rust
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-source ~/.cargo/env
+AICHAT_NG_VERSION=v0.31.0
+AICHAT_NG_ARCH=x86_64-unknown-linux-musl
+AICHAT_NG_SHA256=8e1f5a9cf09ae651168f2a425de20b2f6e8702072d47a7052c6229fa366aa57b
 
-# Build aichat-ng
-git clone https://github.com/sigoden/aichat /tmp/aichat-ng-build
-cd /tmp/aichat-ng-build
-cargo build --release
-sudo cp target/release/aichat /usr/local/bin/aichat-ng
-aichat-ng --version
+curl -fsSL -o /tmp/aichat-ng.tar.gz \
+    "https://github.com/blob42/aichat-ng/releases/download/${AICHAT_NG_VERSION}/aichat-ng-${AICHAT_NG_VERSION}-${AICHAT_NG_ARCH}.tar.gz"
+echo "${AICHAT_NG_SHA256}  /tmp/aichat-ng.tar.gz" | sha256sum -c -
+tar -xzf /tmp/aichat-ng.tar.gz -C /tmp
+sudo install -m 0755 /tmp/aichat-ng /usr/local/bin/aichat-ng
+rm -f /tmp/aichat-ng.tar.gz /tmp/aichat-ng
+/usr/local/bin/aichat-ng --version
 ```
+
+For a different architecture (arm64, etc.) or newer upstream version, check
+[blob42/aichat-ng releases](https://github.com/blob42/aichat-ng/releases)
+and update `AICHAT_NG_VERSION`, `AICHAT_NG_ARCH`, and `AICHAT_NG_SHA256`.
 
 ---
 
