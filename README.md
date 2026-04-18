@@ -2,7 +2,7 @@
 
 A self-hosted, AI-powered job search pipeline. Fetches leads from LinkedIn, Indeed, Greenhouse, and Gmail, scores them with an LLM, surfaces high-quality matches in a Google Sheet, and on demand generates a full application package: tailored resume, cover letter, company briefing, and network outreach drafts.
 
-Runs daily via systemd user timers. No cloud infrastructure. No subscription. Costs ~$0.50–2/day in API usage depending on job volume.
+Deploys as a Docker container via Compose. Native systemd install remains documented as a fallback. No cloud infrastructure. No subscription. Costs ~$0.50–2/day in API usage depending on job volume.
 
 ---
 
@@ -28,7 +28,7 @@ Runs daily via systemd user timers. No cloud infrastructure. No subscription. Co
 | Job sources | RapidAPI jobs-api14, Gmail OAuth2, Greenhouse JSON API | Broad coverage |
 | Notifications | ntfy.sh | Free, cross-platform push |
 | File sync | rclone bisync | Google Drive sync for prep folders |
-| Scheduler | systemd user timers | Native, no extra daemons |
+| Scheduler | supercronic (Docker) / systemd (native) | supercronic runs the crontab inside the image; systemd is the fallback on native installs |
 
 ---
 
@@ -45,36 +45,27 @@ Runs daily via systemd user timers. No cloud infrastructure. No subscription. Co
 
 ## Quick Start
 
+findajob ships as a Docker image pulled from GHCR and deployed via Docker Compose.
+
 ```bash
-git clone https://github.com/yourname/findajob ~/findajob
-cd ~/findajob
+# On your Docker host — replace <you> with a short tag (brock, amy, etc.)
+sudo mkdir -p /opt/stacks/findajob-<you>/state/{data,config,candidate_context,companies,logs,aichat_ng}
+sudo chown -R $(id -u):$(id -g) /opt/stacks/findajob-<you>/
+cd /opt/stacks/findajob-<you>
 
-# Create your personal config files from templates
-cp candidate_context/profile.md.example candidate_context/profile.md
-cp config/jsearch_queries.txt.example config/jsearch_queries.txt
-cp config/feed_urls.txt.example config/feed_urls.txt
-cp config/target_companies.md.example config/target_companies.md
-cp CLAUDE.local.md.example CLAUDE.local.md
-cp config/paths.env.example config/paths.env  # fill in your binary paths
+curl -fsSL -o compose.yaml https://raw.githubusercontent.com/brockamer/findajob/main/ops/compose.yaml.example
+curl -fsSL -o .env         https://raw.githubusercontent.com/brockamer/findajob/main/ops/stack.env.example
 
-# Create required directories
-mkdir -p logs companies/data
-
-# Install Python dependencies
-pip3 install --break-system-packages google-api-python-client google-auth-httplib2 \
-  google-auth-oauthlib requests jsonschema
-
-# Set up secrets
-cp data/.env.example data/.env
-chmod 600 data/.env
-# Edit data/.env and fill in all API keys
-
-# Initialize DB
-python3 scripts/init_db.py
-
-# Full setup walkthrough
-# See docs/setup/install-linux.md
+# Populate state/ with API keys, personal config, and candidate profile —
+# see the install guide for each file's purpose and template.
+docker compose up -d
 ```
+
+Full walkthrough (API keys, Gmail OAuth, Google Sheets, Drive sync) →
+[`docs/setup/install-docker.md`](docs/setup/install-docker.md).
+
+Running on a Linux host without Docker is still supported — see
+[`docs/setup/install-linux.md`](docs/setup/install-linux.md).
 
 ---
 
@@ -84,7 +75,8 @@ python3 scripts/init_db.py
 |---|---|
 | [docs/architecture.md](docs/architecture.md) | System design, data flow, component map |
 | [docs/setup/prerequisites.md](docs/setup/prerequisites.md) | API keys, accounts, tools you need |
-| [docs/setup/install-linux.md](docs/setup/install-linux.md) | Ubuntu + systemd setup |
+| [docs/setup/install-docker.md](docs/setup/install-docker.md) | **Docker Compose setup (recommended)** |
+| [docs/setup/install-linux.md](docs/setup/install-linux.md) | Ubuntu + systemd setup (native fallback) |
 | [docs/setup/configure.md](docs/setup/configure.md) | Profile, resume, queries, Google Sheets |
 | [docs/setup/state-migration.md](docs/setup/state-migration.md) | Moving an existing pipeline to a new machine |
 | [docs/operations.md](docs/operations.md) | Day-to-day use, monitoring, common tasks |
@@ -127,6 +119,8 @@ findajob/
 │   └── diag/                   # diagnostic scripts (run manually)
 ├── companies/                  # Generated prep folders (gitignored)
 ├── logs/                       # Pipeline logs (gitignored)
+├── ops/                        # Docker deploy: crontab, compose example, entrypoint
+├── Dockerfile                  # findajob image build (published to ghcr.io/brockamer/findajob)
 └── CLAUDE.md                   # Claude Code session context
 ```
 
