@@ -328,3 +328,33 @@ None at design time. All resolved during brainstorming 2026-04-17.
 8. Gmail: device flow only in v0.1.0; local callback flow in code but unused until v0.2.0's reverse-proxy routing
 9. Dockge-managed stacks under `/opt/stacks/findajob-<user>/`; per-stack bridge networks; Synology reverse proxy terminates TLS at `<user>.brockbot.com`
 10. TZ per tenant via stack `.env`, not a repo-wide default
+
+---
+
+## Decisions made during implementation
+
+Captured post-PR-#72 per `docs/plan-conventions.md`. These deltas do not
+invalidate the spec; they correct small details that shook out during build.
+
+1. **aichat-ng tarball layout.** The spec assumed the `blob42/aichat-ng` v0.31.0
+   release tarball wrapped the binary in `aichat-ng-${VERSION}-${ARCH}/`. The
+   tarball is actually flat (`tar -tzf` lists only `aichat-ng`). Dockerfile
+   extracts to `/tmp` and installs from there. Fixed in commit `e3b0e04`.
+
+2. **supercronic version probe.** supercronic v0.2.29 has no `-version` flag.
+   Build-time healthcheck replaced with `-test` against a no-op crontab, which
+   proves both binary executability and crontab-parsing capability. SHA1
+   verification is preserved. Fixed in commit `a4586bc`.
+
+3. **gmail_auth.py test count.** Spec called for 6 tests; shipped 8. The two
+   extra tests cover 0600 token-file mode enforcement and device-polling loop
+   coverage, added after in-PR code review flagged the gaps.
+
+4. **ops/crontab notify.py subcommand mismatches.** The shipped crontab used
+   three notify.py subcommand names (`stats`, `issues`, `feedback`) that the
+   dispatcher does not accept — the correct names are `daily-stats`,
+   `issues-ping`, `feedback-review`. Each invocation fired at its scheduled
+   time, printed the usage line, and exited 1 — silently disabling three
+   notifications on every Docker deploy. Fixed in PR #75 (issue #74) with a
+   pytest regression guard that AST-parses `notify.COMMANDS` and cross-checks
+   every `notify.py <subcmd>` invocation in `ops/crontab`.
