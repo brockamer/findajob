@@ -130,11 +130,11 @@ the authoritative check (the notification actually reached ntfy). As a secondary
 scheduler-side check:
 
 ```bash
-ssh findajob.lan 'docker compose -f /opt/stacks/findajob-brock/compose.yaml logs scheduler --since 24h' \
+ssh findajob.lan 'docker compose -f /opt/stacks/findajob-brock/compose.yaml logs scheduler --since 48h' \
   | grep 'health-check'
 ```
 
-Expected: at least one `health-check` invocation with exit code 0 in the last 24h,
+Expected: at least two `health-check` invocations with exit code 0 in the last 48h,
 and Daniel confirms the phone notification landed.
 
 **4. Sheet syncs landed on two consecutive cycles.** Sheet1, Dashboard, and Applied
@@ -247,6 +247,8 @@ After the CHANGELOG commit is on `main` and `:latest` has rebuilt off of it, Cla
 cuts the tag. Set `VERSION` locally (e.g. `VERSION=0.1.0`) before running:
 
 ```bash
+VERSION=0.1.0
+MAJOR_MINOR="${VERSION%.*}"  # e.g., 0.1 — used in Section 9 Rollback
 cd /home/brockamer/Code/findajob
 git fetch origin
 git checkout main
@@ -315,8 +317,9 @@ the prior image on their next `docker compose pull`.
 2. Re-point the moving alias. This requires being logged in to GHCR with a PAT
    that has package-write scope:
 
+   **Prerequisite:** You must be logged into GHCR with a personal access token that has `write:packages` scope. If not already logged in, run `echo $GHCR_PAT | docker login ghcr.io -u brockamer --password-stdin` first.
+
    ```bash
-   # One-time: echo $GHCR_PAT | docker login ghcr.io -u brockamer --password-stdin
    docker pull ghcr.io/brockamer/findajob:v${VERSION_PREV}
    docker tag ghcr.io/brockamer/findajob:v${VERSION_PREV} ghcr.io/brockamer/findajob:v${MAJOR_MINOR}
    docker push ghcr.io/brockamer/findajob:v${MAJOR_MINOR}
