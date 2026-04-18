@@ -10,6 +10,12 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Added
+- `docs/release-process.md` — Claude-facing release orchestration runbook: 48h dogfood gate, CHANGELOG workflow, tag cut mechanics, post-tag verification, rollback (#69)
+- `docs/setup/install-docker.md` — full external-user Docker install + operations guide replacing the stub (#69)
+- `migration-required` GitHub label for PRs needing post-pull manual steps; auto-surfaced by `create-release.yml` in "Action required" section of release notes (#69)
+- `CLAUDE.md` "Release Management" subsection pointing future sessions at the runbook (#69)
+
 ## [0.1.0] — TBD
 
 First containerized release. Ships the pipeline as a Docker image pulled
@@ -39,8 +45,8 @@ from GHCR and deployed via Docker Compose on a shared Docker host.
   during the observation window. (#13)
 
 ### Notes
-- Release management process itself is tracked in #69; once that ships, the
-  process doc lives at `docs/release-process.md`.
+- Release management process is documented in `docs/release-process.md` and
+  followed for this cut (#69).
 - Documentation cleanup — removing `sigoden/aichat` references in favor of
   `blob42/aichat-ng` — is tracked in #70.
 
