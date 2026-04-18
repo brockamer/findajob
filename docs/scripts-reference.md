@@ -1,8 +1,8 @@
 # Scripts Reference
 
 > **Docker users:** Invocations shown are for the native install. Prefix with
-> `docker compose exec scheduler` to run inside a Compose stack. A
-> Docker-specific rewrite of this document is tracked as a separate follow-up issue.
+> `docker compose exec scheduler` to run inside a Compose stack.
+> Docker-specific rewrite tracked in #76.
 >
 
 All scripts live in `scripts/`. Diag scripts live in `scripts/diag/` and are run manually only.

@@ -2,8 +2,8 @@
 
 > **Docker users:** This document describes system design using native-install
 > terminology. Pipeline structure is identical under Docker; the scheduler is
-> supercronic reading `ops/crontab` rather than systemd timers. A
-> Docker-specific refresh is tracked as a separate follow-up issue.
+> supercronic reading `ops/crontab` rather than systemd timers.
+> Docker-specific refresh tracked in #76.
 >
 
 ## Overview

@@ -3,7 +3,7 @@
 > **Docker users:** This document describes the native-install workflow.
 > Prefix pipeline commands with `docker compose exec scheduler` to run them
 > inside a Compose stack (e.g., `docker compose exec scheduler python3 scripts/triage.py`).
-> A Docker-specific rewrite of this document is tracked as a separate follow-up issue.
+> Docker-specific rewrite tracked in #76.
 >
 
 Day-to-day use of the pipeline.
