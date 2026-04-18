@@ -1,6 +1,6 @@
-# Docker Install (stub)
+# Docker Install
 
-> **Full deploy guide is being authored under #69.** This page documents just enough to stand up a stack today. When #69 ships, `docs/release-process.md` and a complete install walkthrough land here.
+This is the install + operations guide for external users running findajob from the prebuilt `ghcr.io/brockamer/findajob` image via Docker Compose. Claude's release orchestration runbook lives separately at [`docs/release-process.md`](../release-process.md).
 
 ## Who this is for
 
@@ -68,14 +68,55 @@ docker compose exec scheduler python3 /app/scripts/notify.py health-check
 # Sanity check: ntfy notification should land on your phone.
 ```
 
+## Tag pinning strategy
+
+`FINDAJOB_IMAGE_TAG` in your `.env` controls which image Docker Compose pulls. Pick based on how much change tolerance you want.
+
+| Value | Mutability | Recommended for |
+|---|---|---|
+| `v0.1` | moving (auto-advances to latest `v0.1.x` patch) | **Default.** Most users. Auto-accepts bugfixes; breaking changes require an explicit `.env` edit. |
+| `v0.1.0` | immutable | Pin exactly when you need a known-good version and can't afford surprises (e.g., during an active job-hunt push). |
+| `latest` | moving (tip of `main`) | Dogfood track. Daniel runs this on his LXC to exercise releases before tagging. May break. |
+| `main-<sha>` | immutable (one tag per commit on `main`) | Precise pinning or bisecting when diagnosing a regression. |
+
+Switching between tags is a one-line `.env` edit followed by `docker compose pull && docker compose up -d`.
+
 ## Updating
 
-```bash
-docker compose pull && docker compose up -d
-```
+Before running `docker compose pull && docker compose up -d`:
 
-Or click **Pull** + **Deploy** in Dockge.
+1. Check the [latest GitHub Release](https://github.com/brockamer/findajob/releases/latest) for an "⚠️ Action required before upgrade" section at the top of the notes.
+2. If the section is present, follow each linked PR's migration notes before pulling.
+3. If the section is absent, a straight pull-and-up is safe:
+   ```bash
+   cd /opt/stacks/findajob-<you>/
+   docker compose pull
+   docker compose up -d
+   ```
+   Or click **Pull** + **Deploy** in Dockge.
+
+The "Action required" section is driven by PRs labeled `migration-required` (see [`docs/release-process.md`](../release-process.md) for the criteria). If a release has no such PRs in its range, the section won't appear.
+
+## Rolling back locally
+
+If a pull broke your stack and you need to get back to a working state immediately:
+
+1. Edit `.env` to pin to a prior immutable tag, e.g.,
+   ```
+   FINDAJOB_IMAGE_TAG=v0.1.0
+   ```
+2. Re-deploy:
+   ```bash
+   docker compose pull
+   docker compose up -d
+   ```
+3. Report the regression via a GitHub issue so the shared `:v0.1` alias can be rolled back globally (Daniel's call — see [release-process.md Rollback section](../release-process.md#rollback)).
+
+A local rollback via `.env` pin doesn't affect other users on `:v0.1`.
 
 ## Troubleshooting
 
-See GitHub issues or open a new one at https://github.com/brockamer/findajob/issues.
+- Container fails to start: `docker compose logs scheduler` usually points at the issue.
+- Supercronic prints "schedule invalid": a crontab syntax error. Check `ops/crontab` for recent changes.
+- Gmail ingestion silently disabled: re-run `docker compose --profile setup run --rm gmail-auth` to refresh the token.
+- For anything else, open an issue at https://github.com/brockamer/findajob/issues.
