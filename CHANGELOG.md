@@ -41,8 +41,8 @@ from GHCR and deployed via Docker Compose on a shared Docker host.
 
 ### Deprecated
 - systemd user services for the pipeline scheduler — replaced by supercronic
-  inside the container. Existing systemd units stay archived on Daniel's LXC
-  during the observation window. (#13)
+  inside the container. Existing systemd units stay archived on the maintainer's
+  LXC during the observation window. (#13)
 
 ### Notes
 - Release management process is documented in `docs/release-process.md` and
