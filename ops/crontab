@@ -18,11 +18,11 @@ PYTHONUNBUFFERED=1
 
 # ── Notifications ────────────────────────────────────────────────────────────
 0    6   *  *  *        python3 /app/scripts/notify.py apply-reminder
-15   6   *  *  *        python3 /app/scripts/notify.py stats
+15   6   *  *  *        python3 /app/scripts/notify.py daily-stats
 0    7   *  *  *        python3 /app/scripts/notify.py health-check
-0    8   *  *  1,3,5    python3 /app/scripts/notify.py issues
+0    8   *  *  1,3,5    python3 /app/scripts/notify.py issues-ping
 30   8   *  *  1        python3 /app/scripts/notify.py scoreboard
-0    8   *  *  0        python3 /app/scripts/notify.py feedback
+0    8   *  *  0        python3 /app/scripts/notify.py feedback-review
 
 # ── RAG rebuild (Sunday 03:00) ───────────────────────────────────────────────
 0    3   *  *  0   /usr/local/bin/aichat-ng --rag job_search_rag --rebuild-rag
