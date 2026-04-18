@@ -166,6 +166,10 @@ When the pipeline runs inside the `ghcr.io/brockamer/findajob` image, paths shif
 <repo>/companies/_rejected/                  # rejected job folders (with marker files)
 <repo>/logs/pipeline.jsonl                  # structured event log
 
+# ── Operations ──────────────────────────────────────────────────────────────
+<repo>/docs/release-process.md              # Claude's release orchestration runbook — dogfood gate, tag cut, rollback
+<repo>/docs/setup/install-docker.md         # external-user Docker install + operations guide
+
 # ── Quality ─────────────────────────────────────────────────────────────────
 <repo>/pyproject.toml                       # deps, pytest, ruff, mypy config
 <repo>/tests/                               # 430 unit tests (pytest)
@@ -313,6 +317,12 @@ Implementation plans live in `docs/superpowers/plans/`. Conventions are document
 - A self-review checklist mapping every spec section to its implementing task(s)
 
 A plan without Documentation Impact is incomplete — push back rather than execute it.
+
+---
+
+## Release Management
+
+Docker image releases follow [`docs/release-process.md`](docs/release-process.md). Claude owns orchestration (dogfood gate, CHANGELOG drafting, tag cut, post-tag verification, rollback); Daniel reviews and approves the proposed cut. The dogfood gate is a binary 48h window on `:latest` — six observable signals must all be clean before any `v*.*.*` tag is pushed. PRs containing schema/config/crontab/mount/compose-down changes get the `migration-required` label at PR-open time so that release notes surface them for external users.
 
 ---
 
