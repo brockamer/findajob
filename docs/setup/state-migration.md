@@ -1,5 +1,11 @@
 # State Migration
 
+> **Note:** This guide covers **native → native** migration (moving a systemd
+> install between Linux hosts). For Docker deploys, migration is simpler:
+> `rsync` the stack directory's `state/` folder to the new host and bring
+> the stack up there. See [`install-docker.md`](install-docker.md).
+>
+
 How to move a running findajob pipeline from one machine to another without losing data.
 
 This guide assumes:

@@ -162,6 +162,25 @@ rag_reranker_model: ~
 
 ---
 
+## Path differences under Docker
+
+When running from the `ghcr.io/brockamer/findajob` image, user-editable files
+live under your Dockge stack's `state/` directory rather than the repo root.
+The pipeline itself sees them at `/app/…` inside the container via bind mounts:
+
+| What | Native host path | Docker host path | In-container path |
+|---|---|---|---|
+| API keys | `data/.env` | `state/data/.env` | `/app/data/.env` |
+| aichat-ng config | `~/.config/aichat_ng/config.yaml` | `state/aichat_ng/config.yaml` | `/root/.config/aichat_ng/config.yaml` |
+| Personal config | `config/*.yaml\|.txt\|.json` | `state/config/*` | `/app/config/*` |
+| Candidate profile | `candidate_context/profile.md` | `state/candidate_context/profile.md` | `/app/candidate_context/profile.md` |
+
+Where this doc says "edit `data/.env`" or "place file in `config/`," Docker
+users should substitute the corresponding `state/…` path on the host. Content
+and format are identical.
+
+---
+
 ## CLAUDE.local.md
 
 Personal context for Claude Code sessions. Created from `CLAUDE.local.md.example`. Never committed to git.

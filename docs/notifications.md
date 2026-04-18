@@ -24,7 +24,7 @@ Push notifications via [ntfy.sh](https://ntfy.sh) — free, open source, cross-p
 All notifications sent by `scripts/notify.py`. Pass the subcommand as the argument.
 
 ### `daily-stats` — Morning Summary
-**Default schedule:** 7:05 AM daily (5 min after triage starts)
+**Default schedule:** 06:15 daily (15 min after triage completes window)
 
 Content:
 - Number of jobs currently in the actionable queue (score ≥ 7, not rejected)
@@ -35,7 +35,7 @@ Content:
 ---
 
 ### `health-check` — Pipeline Health
-**Default schedule:** 9:10 AM daily (2h+ after 7:00 AM triage start, to give triage time to complete)
+**Default schedule:** 07:00 daily (triage runs at 00:00, so 7h later gives the run comfortable headroom to complete)
 
 Content:
 - Whether triage completed in the last 25h (looks for `pipeline_complete` event in logs)
@@ -59,7 +59,7 @@ Only fires if there are open issues. Silent if the list is clean.
 ---
 
 ### `apply-reminder` — Daily Nudge
-**Default schedule:** 5:00 AM daily
+**Default schedule:** 06:00 daily
 
 Content:
 - Rotating motivational quip (changes daily by day-of-year index)
@@ -81,6 +81,13 @@ To review manually:
 sqlite3 -csv data/pipeline.db \
   "SELECT reject_reason, count(*) as n FROM feedback_log GROUP BY reject_reason ORDER BY n DESC;"
 ```
+
+---
+
+### `scoreboard` — Weekly Pipeline Funnel
+**Default schedule:** Monday 08:30
+
+Updates issue #31 (Pipeline Scoreboard) with funnel metrics from the last 7 days: triage throughput, apply rate, interview rate, LLM spend, and low-signal feed diagnostics. Pinned issue — no user action required.
 
 ---
 
@@ -107,15 +114,17 @@ Checks the latest GitHub Actions CI run. If it failed, sends a high-priority not
 
 | Notification | Schedule |
 |---|---|
-| `daily-stats` | 7:05 AM daily |
-| `health-check` | 9:10 AM daily |
-| `apply-reminder` | 5:00 AM daily |
-| `issues-ping` | Mon/Wed/Fri 8:00 AM |
-| `feedback-review` | Sunday 8:00 AM |
+| `apply-reminder` | 06:00 daily |
+| `daily-stats` | 06:15 daily |
+| `health-check` | 07:00 daily |
+| `issues-ping` | Mon/Wed/Fri 08:00 |
+| `scoreboard` | Monday 08:30 |
+| `feedback-review` | Sunday 08:00 |
 | `send-raw` | Manual only |
 | `ci-check` | Manual / on-push |
 
-Schedules are defined in systemd unit files at `~/.config/systemd/user/findajob-notify-*.timer`.
+Schedules are defined in `ops/crontab` (Docker, canonical for v0.1.0) and
+mirrored 1:1 in `~/.config/systemd/user/findajob-notify-*.timer` on native installs.
 
 ---
 
