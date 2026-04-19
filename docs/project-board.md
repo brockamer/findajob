@@ -10,10 +10,10 @@ Five columns, left to right. An issue moves rightward as it progresses.
 
 | Column | Meaning | Expected count |
 |---|---|---|
-| **Backlog** | Captured but not yet scheduled. Triaged (has Priority + Work Stream) but not actively planned this cycle. | Unbounded |
+| **Backlog** | Captured but not yet scheduled. Triaged (has Priority) but not actively planned this cycle. | Unbounded |
 | **Up Next** | Scheduled to be picked up next. The on-deck queue. When In Progress frees up, the top of Up Next moves over. | 1–3 items |
 | **In Progress** | Actively being worked on right now. | 1–3 items |
-| **Blocked** | Pulled to In Progress and then hit an unanticipated stoppage. Has a `## Blocked by` body section naming the unblock owner. Returns to In Progress when unblocked, or Backlog if punted. Full convention rewrite lands in a follow-up PR. | 0–2 items |
+| **Blocked** | Was pulled to In Progress and then hit an unanticipated stoppage. Has a `## Blocked by` body section naming the unblock owner and the specific event being waited on. Returns to In Progress when unblocked or to Backlog if punted. | 0–2 items |
 | **Done** | Closed issues. Auto-populated when an issue closes. | Growing |
 
 **Rules:**
@@ -22,6 +22,20 @@ Five columns, left to right. An issue moves rightward as it progresses.
 - Nothing in In Progress without Priority set.
 - When an issue closes, it moves to Done automatically.
 - An issue with unmet `blockedBy` dependencies is **not** "Blocked" — it's just queued. Items move to Blocked only after being pulled to In Progress and hitting a stoppage.
+
+## Body sections — three independent dimensions
+
+A given issue answers three independent questions, each with its own home:
+
+| Question | Where it lives |
+|---|---|
+| Where is this work in the flow? | **Status column** (Backlog / Up Next / In Progress / Blocked / Done) |
+| What does this issue depend on? | **Native `blockedBy`** — set via the GitHub dependencies API, visible in the "Linked issues" panel and Projects v2 dependency views |
+| Who owns getting an actively-stuck item moving? | **`## Blocked by` body section** — present **only** on items currently in the Blocked Status column. Names the person, the specific event, and the expected-by date. |
+
+The `## Depends on` body section, if present, is **prose context only**. The relationship data lives in native `blockedBy`. Don't parse `- #N` bullets out of body text — query `Issue.blockedBy` instead.
+
+The `## Blocks` body section is retired. Express the inverse direction by adding a `blockedBy` edge on the dependent.
 
 ## Priority field
 
@@ -49,7 +63,6 @@ Active labels:
 |---|---|
 | `bug` | Something isn't working |
 | `enhancement` | New capability |
-| `blocked` | Waiting on a dependency (also note the dependency in the issue body) |
 | `job-search` | Directly impacts job search results |
 | `pipeline-quality` | Reliability, testing, ops |
 | `data-hygiene` | Cleanup of stale or inconsistent data |
@@ -61,6 +74,36 @@ Legacy labels (being phased out — Priority field is canonical):
 - `priority: high`, `priority: med`, `priority: low`
 
 If you see an issue with a `priority:` label but no Priority field value, reconcile by setting the field to match the label and either removing the label or leaving it for later cleanup.
+
+## Dependency relationships
+
+Native GitHub `blockedBy` is the canonical store for "issue X depends on issue Y."
+
+**Add an edge:**
+```bash
+ID_DEPENDENT=$(gh issue view <X> --repo brockamer/findajob --json id --jq '.id')
+ID_BLOCKER=$(gh issue view <Y> --repo brockamer/findajob --json id --jq '.id')
+gh api graphql -f query='
+  mutation($i: ID!, $b: ID!) {
+    addBlockedBy(input: {issueId: $i, blockingIssueId: $b}) {
+      issue { number }
+    }
+  }' -F i="$ID_DEPENDENT" -F b="$ID_BLOCKER"
+```
+
+**Read edges:**
+```bash
+gh api graphql -f query='
+  query($o: String!, $r: String!, $n: Int!) {
+    repository(owner: $o, name: $r) {
+      issue(number: $n) { blockedBy(first: 20) { nodes { number title state } } }
+    }
+  }' -F o=brockamer -F r=findajob -F n=<X>
+```
+
+A `## Depends on` body section, when present, is **human prose** explaining *why* the dependency matters. It does not need to be parseable. The authoritative edge is `blockedBy`.
+
+A `blockedBy` edge does **not** automatically move an issue to the Blocked column. Items move to Blocked only when actively stuck during In Progress.
 
 ## Triage checklist — new issue
 
