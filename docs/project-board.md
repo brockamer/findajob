@@ -6,13 +6,14 @@ This document describes the conventions so anyone (human or Claude session) can 
 
 ## Columns (Status field)
 
-Four columns, left to right. An issue moves rightward as it progresses.
+Five columns, left to right. An issue moves rightward as it progresses.
 
 | Column | Meaning | Expected count |
 |---|---|---|
 | **Backlog** | Captured but not yet scheduled. Triaged (has Priority + Work Stream) but not actively planned this cycle. | Unbounded |
 | **Up Next** | Scheduled to be picked up next. The on-deck queue. When In Progress frees up, the top of Up Next moves over. | 1–3 items |
 | **In Progress** | Actively being worked on right now. | 1–3 items |
+| **Blocked** | Pulled to In Progress and then hit an unanticipated stoppage. Has a `## Blocked by` body section naming the unblock owner. Returns to In Progress when unblocked, or Backlog if punted. Full convention rewrite lands in a follow-up PR. | 0–2 items |
 | **Done** | Closed issues. Auto-populated when an issue closes. | Growing |
 
 **Rules:**
@@ -20,6 +21,7 @@ Four columns, left to right. An issue moves rightward as it progresses.
 - Up Next should be ordered — top item is what gets worked next. Priority field breaks ties within the column.
 - Nothing in In Progress without Priority and Work Stream set.
 - When an issue closes, it moves to Done automatically.
+- An issue with unmet `blockedBy` dependencies is **not** "Blocked" — it's just queued. Items move to Blocked only after being pulled to In Progress and hitting a stoppage.
 
 ## Priority field
 
@@ -112,10 +114,11 @@ Per `CLAUDE.md`: **no new features or elective improvements until the user appli
 ```
 Project ID:          PVT_kwHOAgGulc4BUtxZ
 Status field ID:     PVTSSF_lAHOAgGulc4BUtxZzhCOoMM
-  Backlog:           ee143341
-  Up Next:           52541ab6
-  In Progress:       2c2c07d2
-  Done:              a2d5723e
+  Backlog:           59bd4809
+  Up Next:           f94b6c8d
+  In Progress:       87411b49
+  Blocked:           e0fccf99
+  Done:              1b523c26
 Priority field ID:   PVTSSF_lAHOAgGulc4BUtxZzhCWZ08
   High:              f0a4404c
   Medium:            4e8ef0ac
@@ -132,5 +135,5 @@ gh project item-edit \
   --project-id PVT_kwHOAgGulc4BUtxZ \
   --id <ITEM_ID> \
   --field-id PVTSSF_lAHOAgGulc4BUtxZzhCOoMM \
-  --single-select-option-id 52541ab6
+  --single-select-option-id f94b6c8d
 ```
