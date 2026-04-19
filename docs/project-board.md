@@ -18,7 +18,7 @@ Four columns, left to right. An issue moves rightward as it progresses.
 **Rules:**
 - In Progress should stay small. More than ~3 items means focus is scattered.
 - Up Next should be ordered — top item is what gets worked next. Priority field breaks ties within the column.
-- Nothing in In Progress without Priority and Work Stream set.
+- Nothing in In Progress without Priority set.
 - When an issue closes, it moves to Done automatically.
 
 ## Priority field
@@ -37,20 +37,6 @@ Three values. This is the canonical priority signal — **not** the legacy `prio
 - Two High items in In Progress at once should be rare and deliberate (e.g., one blocking work and one small bug fix alongside it).
 - If the user says "prioritize X," the intent is *X is the top of the queue*, not *X is another High item among many*.
 
-## Work Stream field
-
-Three streams. Every issue belongs to one.
-
-| Stream | Scope |
-|---|---|
-| **Job Search** | Anything that directly improves the quality, throughput, or accuracy of the applying-for-jobs pipeline for the current user. Scorer quality, prep output, feed breadth, notifications. |
-| **Generalization** | Making the pipeline usable by other job seekers in other fields. Config externalization, onboarding, documentation, beta testers. |
-| **Infrastructure** | Platform, storage, observability, CI, tests, database. Not user-visible but load-bearing. |
-
-**Rules:**
-- Job Search beats Generalization beats Infrastructure when prioritizing — the user is actively searching; generalization is a longer horizon.
-- If a Job Search need implies infrastructure work, file it as Infrastructure and link the Job Search issue — don't conflate them.
-
 ## Labels
 
 Labels describe **what kind of issue it is**, not where it lives on the board. Status and priority come from board fields, not labels.
@@ -67,6 +53,7 @@ Active labels:
 | `data-hygiene` | Cleanup of stale or inconsistent data |
 | `open-source` | Generalization and adoption |
 | `documentation` | Docs-only change |
+| `big-idea` | Speculative far-horizon concept; not on the active roadmap. Always pair with Priority: Low. |
 
 Legacy labels (being phased out — Priority field is canonical):
 - `priority: high`, `priority: med`, `priority: low`
@@ -79,11 +66,10 @@ When a new issue is filed (by the user, by Claude, or by auto-add):
 
 1. **Auto-add to board.** `gh issue create` does not auto-add; use `gh project item-add 1 --owner brockamer --url <issue_url>`. Verify after — occasional race conditions require a retry.
 2. **Set Priority** — High / Medium / Low per the definitions above.
-3. **Set Work Stream** — Job Search / Generalization / Infrastructure.
-4. **Leave Status as Backlog** unless explicitly scheduling.
-5. **Apply labels** for issue type (`bug`, `enhancement`, etc.) and scope (`job-search`, `pipeline-quality`, etc.).
+3. **Leave Status as Backlog** unless explicitly scheduling.
+4. **Apply labels** for issue type (`bug`, `enhancement`, etc.), scope (`job-search`, `pipeline-quality`, etc.), and `big-idea` if it's a speculative parking-lot item.
 
-An issue without Priority and Work Stream will sort into the "no-field" bucket at the bottom of the board — effectively invisible.
+An issue without Priority will sort into the "no-field" bucket at the bottom of the board — effectively invisible.
 
 ## Moving work — status transitions
 
@@ -102,7 +88,7 @@ Per `CLAUDE.md`: **no new features or elective improvements until the user appli
 ## Common inconsistencies to watch for
 
 1. **Label says `priority: high` but Priority field is empty** — reconcile by setting the field.
-2. **Status is In Progress but no Priority/Work Stream** — actively-worked items must be fully triaged.
+2. **Status is In Progress but no Priority** — actively-worked items must be fully triaged.
 3. **Issue on board but closed** — should auto-move to Done; if not, set status manually.
 4. **High-priority backlog items older than two weeks** — either promote to Up Next, downgrade to Medium, or close if no longer relevant.
 5. **More than 3 items in In Progress** — focus is scattered; pause and decide which to finish first.
@@ -120,10 +106,6 @@ Priority field ID:   PVTSSF_lAHOAgGulc4BUtxZzhCWZ08
   High:              f0a4404c
   Medium:            4e8ef0ac
   Low:               79925e2f
-Work Stream ID:      PVTSSF_lAHOAgGulc4BUtxZzhCWa0Y
-  Job Search:        36c0909b
-  Generalization:    506d8256
-  Infrastructure:    b1dd326d
 ```
 
 Example: move an item to Up Next:

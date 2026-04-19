@@ -292,11 +292,12 @@ Actions:
 
 All work is tracked on the GitHub Project board at https://github.com/users/brockamer/projects/1. **Not on the board = not on the roadmap.** No markdown tracking files, no TODO lists.
 
-Canonical conventions live in [`docs/project-board.md`](docs/project-board.md). Read it before any work that creates, moves, or reprioritizes issues. That doc covers columns, Priority field, Work Stream field, labels, triage checklist, and `gh project` CLI IDs.
+Canonical conventions live in [`docs/project-board.md`](docs/project-board.md). Read it before any work that creates, moves, or reprioritizes issues. That doc covers columns, Priority field, labels, triage checklist, and `gh project` CLI IDs.
 
 Core rules (enforced — see the doc for detail):
 - Creating an issue is **two steps**: `gh issue create` then `gh project item-add 1 --owner brockamer --url <url>`. New issues do not auto-add.
-- Every open issue on the board must have **Priority** (High/Medium/Low) and **Work Stream** (Job Search / Generalization / Infrastructure) set.
+- Every open issue on the board must have **Priority** (High/Medium/Low) set.
+- Speculative far-horizon ideas get the `big-idea` label and Priority: Low — keeps them on the board without cluttering the active roadmap.
 - `priority: high/med/low` labels are legacy — the **Priority field** is canonical. Reconcile mismatches.
 - In Progress should hold 1–3 items max. If more, focus is scattered.
 - Status transitions: Backlog → Up Next → In Progress → Done. Closing an issue auto-moves to Done; verify after closing.
