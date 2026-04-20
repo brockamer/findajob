@@ -77,6 +77,9 @@ CREATE TABLE IF NOT EXISTS cost_log (
     latency_ms INTEGER,
     success INTEGER DEFAULT 1,
     error_message TEXT,
+    input_tokens INTEGER,
+    output_tokens INTEGER,
+    cost_usd REAL,
     logged_at TEXT DEFAULT (datetime('now'))
 );
 
