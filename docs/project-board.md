@@ -1,8 +1,25 @@
 # Project Board — How It Works
 
-The GitHub Projects v2 board at [findajob Pipeline](https://github.com/users/brockamer/projects/1) is the **single source of truth for what is being worked on and why**. No markdown tracking files, no separate backlog lists, no TODO.md. If it isn't on the board, it isn't on the roadmap.
+The GitHub Projects v2 board at [findajob Pipeline](https://github.com/users/brockamer/projects/1) is the **single source of truth for execution state** — what is being worked on, by whom, what state. Phase-level narrative and cross-issue decisions live in [`roadmap.md`](roadmap.md). If it isn't on the board or in the roadmap, it isn't on the plan.
 
 This document describes the conventions so anyone (human or Claude session) can triage, prioritize, and move work consistently.
+
+## Division of labor — board vs. roadmap vs. canonical docs
+
+Drift is the main failure mode. Every fact has exactly one home. On conflict, the canonical home wins.
+
+| Fact type | Lives in | Wins on conflict |
+|---|---|---|
+| Phase arc + phase ordering rationale | [`roadmap.md`](roadmap.md) | roadmap |
+| Cross-issue decisions (numbered, append-only) | [`roadmap.md`](roadmap.md) | roadmap |
+| Milestone-level acceptance criteria | [`roadmap.md`](roadmap.md) | roadmap |
+| Issue Status, Priority, Milestone, labels | board | board |
+| Issue body (summary, per-issue acceptance, prose depends-on) | issue | issue |
+| Issue dependencies (`blockedBy` edges) | native GitHub dependency API | native edges |
+| Deployment / architecture facts | [`deployment-model.md`](deployment-model.md) | canonical doc |
+| Release process | [`release-process.md`](release-process.md) | canonical doc |
+
+Issue bodies may *reference* the roadmap ("see Phase 4 in roadmap.md") but should not restate phase ordering or decisions. That's how drift starts. The jared sweep includes a drift-scan check for this (see `jared/references/board-sweep.md`).
 
 ## Columns (Status field)
 
