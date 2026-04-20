@@ -101,21 +101,32 @@ Reactivation trigger is at the bottom of this section.
 
 Until reactivation, the pre-tag requirement is a lightweight smoke check: the
 maintainer's own `docker.lan` stack ran cleanly in the last 24 hours. Two
-commands, run from the dev laptop:
+commands, run from the dev laptop. First, set `STACK_DIR` to the absolute
+path of the maintainer's compose stack on docker.lan (operator's value
+lives in `CLAUDE.local.md`):
 
 ```bash
-ssh docker.lan 'docker compose -f /opt/stacks/findajob-brock/compose.yaml logs scheduler --since 24h' \
+STACK_DIR=/opt/stacks/findajob-<your-tag>
+```
+
+**1. No tracebacks in the scheduler container's stdout/stderr over the last 24 hours:**
+
+```bash
+ssh docker.lan "docker compose -f $STACK_DIR/compose.yaml logs scheduler --since 24h" \
   | grep -c Traceback
 ```
 
 Expected: `0`.
 
+**2. At least one `pipeline_complete` event written by `triage.py` in the last 24 hours.** `log_event()` writes to `/app/logs/pipeline.jsonl` (bind-mounted on docker.lan to `$STACK_DIR/state/logs/pipeline.jsonl`), not to stdout — so this check reads the jsonl file directly, not `docker compose logs`:
+
 ```bash
-ssh docker.lan 'docker compose -f /opt/stacks/findajob-brock/compose.yaml logs scheduler --since 24h' \
-  | grep pipeline_complete
+ssh docker.lan "awk -v cutoff=\"\$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%S)\" \
+  '/\"event\": \"pipeline_complete\"/ { split(\$0, a, \"\\\"ts\\\": \\\"\"); split(a[2], b, \"\\\"\"); if (b[1] >= cutoff) print }' \
+  $STACK_DIR/state/logs/pipeline.jsonl | wc -l"
 ```
 
-Expected: at least one `pipeline_complete` event (triage ran overnight).
+Expected: `≥1` (triage fires daily at 00:00 PT, so one event every 24h is the baseline).
 
 If both pass, the gate is cleared and Claude may propose the cut.
 
