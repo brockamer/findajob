@@ -43,16 +43,30 @@ if [ -d /opt/findajob/bundled-config ]; then
     cp -R /opt/findajob/bundled-config/. /app/config/
 fi
 
-# --- 2b. Seed bundled aichat-ng model catalog if missing ------------------
-# models-override.yaml gates which model flags (require_max_tokens, etc.)
-# apply to each provider. A stale/missing catalog breaks claude:* roles
-# silently. Ship a known-good baseline so fresh installs work out of the box.
-# Seed only if the target file is absent — preserves any user customizations
-# (custom models, pricing overrides) in an existing catalog.
+# --- 2b. Seed bundled aichat-ng config if missing -------------------------
+# models-override.yaml — always seeded if missing (owned by the project, not
+# the operator; catalog drift from the bundled version breaks claude:*
+# thinking modes silently).
+# config.yaml — seeded from config.yaml.example only if the destination is
+# absent. Operator customizations (custom model, added clients, REPL prefs)
+# survive container restarts; re-seeding would clobber them.
+# roles symlink — points at /app/config/roles (seeded by the image via
+# bundled-config, see section 2 above). Created only if not already present
+# as a symlink or real dir, so operators can override with their own dir.
 AICHAT_CFG_DIR="${HOME:-/root}/.config/aichat_ng"
-if [ -d /opt/findajob/bundled-aichat ] && [ ! -f "$AICHAT_CFG_DIR/models-override.yaml" ]; then
-    mkdir -p "$AICHAT_CFG_DIR"
-    cp -R /opt/findajob/bundled-aichat/. "$AICHAT_CFG_DIR/"
+mkdir -p "$AICHAT_CFG_DIR"
+
+if [ -d /opt/findajob/bundled-aichat ]; then
+    if [ ! -f "$AICHAT_CFG_DIR/models-override.yaml" ] && [ -f /opt/findajob/bundled-aichat/models-override.yaml ]; then
+        cp /opt/findajob/bundled-aichat/models-override.yaml "$AICHAT_CFG_DIR/models-override.yaml"
+    fi
+    if [ ! -f "$AICHAT_CFG_DIR/config.yaml" ] && [ -f /opt/findajob/bundled-aichat/config.yaml.example ]; then
+        cp /opt/findajob/bundled-aichat/config.yaml.example "$AICHAT_CFG_DIR/config.yaml"
+    fi
+fi
+
+if [ ! -e "$AICHAT_CFG_DIR/roles" ]; then
+    ln -s /app/config/roles "$AICHAT_CFG_DIR/roles"
 fi
 
 # --- 3. Chown writable dirs if ownership doesn't already match -----------
