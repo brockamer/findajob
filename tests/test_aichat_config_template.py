@@ -6,13 +6,13 @@ aichat-ng against the template itself (no API keys loaded at test time),
 but we can assert structure so a future edit doesn't accidentally break
 parseability.
 """
+
 from __future__ import annotations
 
 import re
 from pathlib import Path
 
 import yaml
-
 
 REPO = Path(__file__).resolve().parents[1]
 TEMPLATE = REPO / "ops" / "aichat-ng" / "config.yaml.example"
