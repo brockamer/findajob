@@ -8,6 +8,7 @@ When a one-shot migration is introduced (scripts/migrate_*.py), add a new
 test here asserting init_db.py covers its columns — otherwise fresh deploys
 will crash at the first production write to those columns.
 """
+
 from __future__ import annotations
 
 import os
