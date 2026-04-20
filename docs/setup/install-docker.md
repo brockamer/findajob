@@ -44,6 +44,30 @@ Edit `.env` to taste — at minimum set `FINDAJOB_TZ` and (if dogfooding) `FINDA
 - `state/config/*.yaml|.txt|.json` — personal config files. See [configure.md](configure.md) for each file's purpose.
 - `state/candidate_context/profile.md` + `master_resume.md` — your candidate profile. See [`candidate_context/profile.md.example`](https://github.com/brockamer/findajob/blob/main/candidate_context/profile.md.example).
 
+### What the entrypoint does automatically
+
+As of `:v0.1.1`, the container image's entrypoint handles these on every
+start — you do not run any of these commands manually:
+
+- Creates `state/data/pipeline.db` with the full schema if it's missing.
+  Idempotent: no-op on populated DBs (#116, #117).
+- Seeds `state/aichat_ng/config.yaml` from a sanitized template **only if
+  absent**. Your customizations (added clients, custom models, REPL prefs)
+  persist across image pulls (#118).
+- Seeds `state/aichat_ng/models-override.yaml` only if absent (#106).
+- Creates the `state/aichat_ng/roles` symlink pointing at the image's
+  bundled `/app/config/roles/` **only if absent** — so you can override
+  with your own roles dir (#118).
+- Seeds tracked config files (`roles/`, `scoring_schema.json`,
+  `model_pricing.yaml`, `reference.docx`, `strip-bookmarks.lua`) into
+  `state/config/` on every start — these are always overwritten so image
+  updates propagate on `docker compose up`. Your personal config files
+  (`sheet_id.txt`, `jsearch_queries.txt`, etc.) are left alone because
+  they don't exist in the bundled set.
+
+Fill in your personal config files above and run `docker compose up -d` —
+no manual schema init, no handcrafted aichat-ng config, no symlink setup.
+
 ## 4. Initial auth: Gmail (optional)
 
 ```bash
