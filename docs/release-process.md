@@ -2,11 +2,11 @@
 
 This is the runbook Claude follows when cutting a release of the findajob pipeline's
 Docker image. Claude orchestrates the release end-to-end — proposing the cut, drafting
-the CHANGELOG, running the pre-tag smoke check (the full dogfood gate is suspended —
-see §"Pre-tag smoke check"), writing notes, pushing the tag, verifying the outcome,
-and owning any rollback. The user reviews and approves the proposed cut but does
-not author any of the release artifacts. This split is codified in the
-`feedback_release_management.md` memory.
+the CHANGELOG, running the fresh-install pre-tag smoke check (see §"Pre-tag smoke
+check"), writing notes, pushing the tag, verifying the outcome, and owning any
+rollback. The user reviews and approves the proposed cut but does not author any
+of the release artifacts. This split is codified in the `feedback_release_management.md`
+memory.
 
 Two GitHub Actions workflows do the mechanical work once a tag is pushed.
 [`.github/workflows/build-image.yml`](../.github/workflows/build-image.yml) builds the
@@ -20,14 +20,15 @@ remain in place; if they change, update this doc in the same commit.
 ## Ownership
 
 Claude drives every release. That means proposing when to cut, drafting the CHANGELOG
-entries from the merged PRs in the range, running the pre-tag smoke check (the full
-48h dogfood gate is suspended — see §"Pre-tag smoke check"), flagging migration
-markers on PRs as they come in (or retroactively if a trigger was missed), writing
-the release notes content, executing `git tag` and `git push origin vX.Y.Z`, running
-post-tag verification against GitHub Actions and GHCR, and owning rollback if
-anything goes wrong. The user's role is review-only: they look at the proposed
-cut, confirm the smoke-check output, and approve or request changes. They
-do not write CHANGELOG bullets, author the notes, or run the tag commands. If the release breaks something, Claude owns the recovery.
+entries from the merged PRs in the range, running the fresh-install pre-tag smoke
+check (see §"Pre-tag smoke check"), flagging migration markers on PRs as they come
+in (or retroactively if a trigger was missed), writing the release notes content,
+executing `git tag` and `git push origin vX.Y.Z`, running post-tag verification
+against GitHub Actions and GHCR, and owning rollback if anything goes wrong. The
+user's role is review-only: they look at the proposed cut, confirm the smoke-check
+output, and approve or request changes. They do not write CHANGELOG bullets, author
+the notes, or run the tag commands. If the release breaks something, Claude owns
+the recovery.
 
 ## Version scheme
 
@@ -91,52 +92,56 @@ tag against `HEAD`, and each released version links to its tag page. If the late
 release added a new link and the previous `[Unreleased]` line wasn't updated to
 reference the new tag, the file is inconsistent — fix before cutting.
 
-## Pre-tag smoke check (dogfood gate suspended)
+## Pre-tag smoke check
 
-**Current status: suspended as of 2026-04-20.** The full 48h multi-signal dogfood
-gate is on hold until the first external tester is deployed on a pinned `:vX.Y`
-tag. Today there are zero external users on any tag — the gate would be forcing
-every `main` merge through a 48h window to protect users who don't exist yet.
-Reactivation trigger is at the bottom of this section.
+Before cutting any `v0.1.x` tag, the fresh-install smoke test must pass. The smoke
+test spins up a throwaway stack with **empty bind mounts**, runs the documented
+install procedure end-to-end, triggers `triage.py`, and asserts:
 
-Until reactivation, the pre-tag requirement is a lightweight smoke check: the
-maintainer's own `docker.lan` stack ran cleanly in the last 24 hours. Two
-commands, run from the dev laptop. First, set `STACK_DIR` to the absolute
-path of the maintainer's compose stack on docker.lan (operator's value
-lives in `CLAUDE.local.md`):
+1. `pipeline.jsonl` contains a `pipeline_complete` event with `scored > 0`
+2. `jobs` table has rows in stage `scored` or `manual_review`
+3. `cost_log` has rows (proves the #117 schema fold is working on fresh DBs)
+4. `/app/.config/aichat_ng/config.yaml` is present in the container (proves
+   the #118 entrypoint seed is working)
 
-```bash
-STACK_DIR=/opt/stacks/findajob-<your-tag>
-```
-
-**1. No tracebacks in the scheduler container's stdout/stderr over the last 24 hours:**
+Run locally on a docker-equipped host before proposing the tag. From the
+maintainer's dev laptop, the workflow is: build the image on `docker.lan` (or
+any docker-equipped host), then run the smoke script against it. Set
+`FINDAJOB_SMOKE_SHEET_ID` to the sheet ID the service account can write to
+(either the operator's existing test sheet or a dedicated smoke sheet):
 
 ```bash
-ssh docker.lan "docker compose -f $STACK_DIR/compose.yaml logs scheduler --since 24h" \
-  | grep -c Traceback
+# On docker.lan (or any host with docker + this repo checked out)
+cd /path/to/findajob
+docker build -t findajob:local .
+FINDAJOB_SMOKE_SHEET_ID=<sheet-id> FINDAJOB_TEST_IMAGE=findajob:local \
+  scripts/test_container_integration.sh
 ```
 
-Expected: `0`.
+The script takes 2–5 minutes (dominated by ~20 LLM scoring calls over the real
+network) and costs ≤$0.10 of API budget per run.
 
-**2. At least one `pipeline_complete` event written by `triage.py` in the last 24 hours.** `log_event()` writes to `/app/logs/pipeline.jsonl` (bind-mounted on docker.lan to `$STACK_DIR/state/logs/pipeline.jsonl`), not to stdout — so this check reads the jsonl file directly, not `docker compose logs`:
+**If the smoke is green on the commit you intend to tag, the gate is cleared
+and Claude may propose the cut.** No time window, no 24h/48h observation. A
+binary signal tied to what a fresh tester actually exercises.
 
-```bash
-ssh docker.lan "awk -v cutoff=\"\$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%S)\" \
-  '/\"event\": \"pipeline_complete\"/ { split(\$0, a, \"\\\"ts\\\": \\\"\"); split(a[2], b, \"\\\"\"); if (b[1] >= cutoff) print }' \
-  $STACK_DIR/state/logs/pipeline.jsonl | wc -l"
-```
+CI wiring for this smoke is deferred to a follow-up issue: the script depends
+on 9 live API keys + a writable Google Sheet, and wiring that into GitHub
+Actions is a meaningful security and ops decision orthogonal to the smoke
+itself. Until CI runs the smoke, Claude runs it locally before proposing each
+tag cut and reports the result to the user as part of the cut proposal.
 
-Expected: `≥1` (triage fires daily at 00:00 PT, so one event every 24h is the baseline).
+### Why no dogfood window
 
-If both pass, the gate is cleared and Claude may propose the cut.
-
-### When the gate reactivates
-
-As soon as any external user is deployed on a pinned `:v0.1` or `:v0.1.0` tag —
-Alice Doe (first external tester, #20), or any subsequent tester — re-read this
-section and rebuild the gate to match the signals that actually protect that
-user's experience. The six-signal, 48h-window version is preserved in git
-history (file revisions prior to 2026-04-20) as a starting draft.
+The previous gate observed the operator's own stack for 24–48h. That validated
+whether the operator's legacy state kept working; it did not validate whether
+a fresh deploy worked. Shipping v0.1.0 under that gate produced #115, #116,
+#117, #118 — four fresh-install bugs, none of which the operator's own stack
+could have surfaced. The gate was guarding users who didn't exist yet while
+letting real install bugs through. The fresh-install smoke catches the bug
+class that matters. The 48h gate is not coming back for v0.1.x; if future
+scale or multi-tenancy (see #71) requires a multi-signal time-window gate, it
+will be redesigned to observe external-user signals, not operator-stack ones.
 
 ## migration-required label criteria
 
