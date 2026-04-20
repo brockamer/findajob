@@ -65,5 +65,12 @@ for dir in /app/data /app/logs /app/companies /app/config /app/candidate_context
     fi
 done
 
+# --- 3b. Initialize DB schema (idempotent) --------------------------------
+# CREATE TABLE IF NOT EXISTS so re-runs on populated DBs are no-ops.
+# Runs as $PUID:$PGID so the resulting pipeline.db is owned correctly.
+if [ -w /app/data ]; then
+    gosu "$PUID:$PGID" python3 /app/scripts/init_db.py >/dev/null
+fi
+
 # --- 4. Drop privileges and exec the command ------------------------------
 exec gosu "$PUID:$PGID" "$@"
