@@ -56,7 +56,7 @@ if [ -d /opt/findajob/bundled-aichat ] && [ ! -f "$AICHAT_CFG_DIR/models-overrid
 fi
 
 # --- 3. Chown writable dirs if ownership doesn't already match -----------
-for dir in /app/data /app/logs /app/companies /app/config /app/candidate_context /root/.config/aichat_ng "$AICHAT_CFG_DIR"; do
+for dir in /app/data /app/logs /app/companies /app/config /app/candidate_context /app/.config/rclone "$AICHAT_CFG_DIR"; do
     if [ -d "$dir" ]; then
         current_owner="$(stat -c %u "$dir" 2>/dev/null || echo 0)"
         if [ "$current_owner" != "$PUID" ]; then

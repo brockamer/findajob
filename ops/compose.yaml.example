@@ -13,6 +13,7 @@ services:
       TZ: ${FINDAJOB_TZ:-America/New_York}
       PUID: ${PUID:-1000}
       PGID: ${PGID:-1000}
+      HOME: /app
       JSP_BASE: /app
       FINDAJOB_JOBSYNC_ENABLED: ${FINDAJOB_JOBSYNC_ENABLED:-false}
       FINDAJOB_TRIAGE_TIMEOUT: ${FINDAJOB_TRIAGE_TIMEOUT:-7200}
@@ -22,7 +23,8 @@ services:
       - ./state/candidate_context:/app/candidate_context
       - ./state/companies:/app/companies
       - ./state/logs:/app/logs
-      - ./state/aichat_ng:/root/.config/aichat_ng
+      - ./state/aichat_ng:/app/.config/aichat_ng
+      - ./state/rclone:/app/.config/rclone
     networks:
       - findajob-network
 
@@ -34,6 +36,7 @@ services:
       TZ: ${FINDAJOB_TZ:-America/New_York}
       PUID: ${PUID:-1000}
       PGID: ${PGID:-1000}
+      HOME: /app
       JSP_BASE: /app
     volumes:
       - ./state/config:/app/config
