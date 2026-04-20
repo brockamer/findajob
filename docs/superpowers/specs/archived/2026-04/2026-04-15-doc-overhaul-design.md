@@ -1,3 +1,7 @@
+---
+**Archived 2026-04-19. refs #18, #21 — both closed; doc overhaul work shipped.**
+---
+
 # Documentation Overhaul — Design Spec
 
 **Issue:** #18

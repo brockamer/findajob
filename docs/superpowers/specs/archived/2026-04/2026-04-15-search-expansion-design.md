@@ -1,3 +1,7 @@
+---
+**Archived 2026-04-19. work done — see retroactive tracking issue filed 2026-04-19 summarizing what landed.**
+---
+
 # Search Expansion: Signal-to-Noise Improvement
 
 **Date:** 2026-04-15

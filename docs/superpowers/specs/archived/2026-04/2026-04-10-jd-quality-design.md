@@ -1,3 +1,7 @@
+---
+**Archived 2026-04-19. shipped — strip_jd_boilerplate() and JD_MAX_CHARS present in src/findajob/.**
+---
+
 # JD Quality Improvement — Design Spec
 
 **Date:** 2026-04-10

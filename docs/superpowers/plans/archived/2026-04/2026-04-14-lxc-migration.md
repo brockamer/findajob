@@ -1,3 +1,7 @@
+---
+**Archived 2026-04-19. self-titled COMPLETE (2026-04-14); LXC migration shipped.**
+---
+
 # LXC Migration Implementation Plan — COMPLETE (2026-04-14)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

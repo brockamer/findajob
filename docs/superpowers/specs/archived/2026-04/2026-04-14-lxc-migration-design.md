@@ -1,3 +1,7 @@
+---
+**Archived 2026-04-19. design spec for the completed LXC migration plan.**
+---
+
 # Migration: Laptop → Proxmox LXC
 
 **Date:** 2026-04-14
