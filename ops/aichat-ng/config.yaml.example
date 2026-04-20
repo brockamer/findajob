@@ -1,0 +1,95 @@
+# aichat-ng config — seeded by ops/entrypoint.sh when state/aichat_ng/config.yaml
+# is absent. Re-pulling :v0.1.x will NOT overwrite your local edits; delete
+# the file first if you want to re-seed from this template.
+#
+# API keys come from state/data/.env via ${VAR} substitution that
+# aichat-ng performs at load time. Customize this file for operator-
+# specific settings (default model, keybindings, REPL prefs, custom
+# clients); never paste keys directly into the YAML.
+#
+# See https://github.com/sigoden/aichat/blob/main/config.example.yaml
+# for the full set of supported options.
+#
+# Note: the model catalog (pricing, token limits, thinking-mode flags)
+# lives in models-override.yaml, which entrypoint seeds separately.
+# Do NOT add a top-level `models:` block here or inline `models:` blocks
+# under existing clients — they will shadow models-override.yaml.
+
+model: gemini:gemini-3-flash-preview
+temperature: 0
+rag_embedding_model: gemini-embed:gemini-embedding-001
+rag_reranker_model: null
+rag_top_k: 6
+rag_chunk_size: 1200
+rag_chunk_overlap: 200
+
+document_loaders:
+  docx: 'pandoc -f docx -t plain $1'
+  pdf:  'pdftotext $1 -'
+
+function_calling: false
+
+# Roles are loaded from /app/config/roles (seeded by the image entrypoint);
+# ops/entrypoint.sh also creates the expected symlink at
+# $AICHAT_CFG_DIR/roles -> /app/config/roles on first container start.
+
+clients:
+  - type: openai
+    api_key: ${OPENAI_API_KEY}
+
+  - type: claude
+    api_base: https://api.anthropic.com/v1
+    api_key: ${ANTHROPIC_API_KEY}
+
+  - type: gemini
+    api_base: https://generativelanguage.googleapis.com/v1beta
+    api_key: ${GOOGLE_API_KEY}
+    # Disable content filters so the pipeline can score job postings that
+    # mention sensitive topics (harassment lawsuits, safety incidents, etc.)
+    # without silent blocks.
+    patch:
+      chat_completions:
+        '.*':
+          body:
+            safetySettings:
+              - category: HARM_CATEGORY_HARASSMENT
+                threshold: BLOCK_NONE
+              - category: HARM_CATEGORY_HATE_SPEECH
+                threshold: BLOCK_NONE
+              - category: HARM_CATEGORY_SEXUALLY_EXPLICIT
+                threshold: BLOCK_NONE
+              - category: HARM_CATEGORY_DANGEROUS_CONTENT
+                threshold: BLOCK_NONE
+
+  # gemini-embed: embedding endpoint. models-override.yaml ships
+  # text-embedding-004 under the gemini provider, but the pipeline uses
+  # gemini-embedding-001 — declare it inline so the catalog knows about it.
+  - type: gemini
+    name: gemini-embed
+    api_base: https://generativelanguage.googleapis.com/v1beta
+    api_key: ${GOOGLE_API_KEY}
+    models:
+      - name: gemini-embedding-001
+        type: embedding
+        default_chunk_size: 1500
+        max_batch_size: 100
+
+  - type: openai-compatible
+    name: openrouter
+    api_base: https://openrouter.ai/api/v1
+    api_key: ${OPENROUTER_API_KEY}
+
+  - type: openai-compatible
+    name: perplexity
+    api_base: https://api.perplexity.ai
+    api_key: ${PERPLEXITY_API_KEY}
+
+  - type: openai-compatible
+    name: groq
+    api_base: https://api.groq.com/openai/v1
+    api_key: ${GROQ_API_KEY}
+
+  - type: openai-compatible
+    name: xai
+    api_base: https://api.x.ai/v1
+    api_key: ${XAI_API_KEY}
