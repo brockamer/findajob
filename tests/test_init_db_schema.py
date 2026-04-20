@@ -59,3 +59,9 @@ def test_cost_log_has_token_and_cost_columns(fresh_db):
     assert "input_tokens" in cols
     assert "output_tokens" in cols
     assert "cost_usd" in cols
+
+
+def test_jobs_has_user_notes_column(fresh_db):
+    """poll_flags.py writes to jobs.user_notes from Applied-tab sheet edits."""
+    cols = _columns(fresh_db, "jobs")
+    assert "user_notes" in cols
