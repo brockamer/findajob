@@ -1,0 +1,5 @@
+# Minimal jsearch queries for fresh-install smoke test.
+# 2 queries keeps API budget ≤$0.10 per run (2 × (LinkedIn + Indeed) ≈ 80
+# raw jobs, ≤20 scored after prefilter + dedup).
+infrastructure engineer
+site reliability engineer

@@ -1,0 +1,13 @@
+# Recognizable employers so the smoke test's company-of-interest branch
+# gets exercised (sync_sheet archival exception + notify mis-score check
+# rely on this set being non-empty).
+amazon
+google
+microsoft
+apple
+nvidia
+equinix
+digitalrealty
+cloudflare
+stripe
+netflix

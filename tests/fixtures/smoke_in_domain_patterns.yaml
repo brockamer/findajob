@@ -1,0 +1,17 @@
+# In-domain patterns matched against Casey Example's target titles.
+# Lets a handful of raw jobs match the positive patterns so Stage 2 of the
+# prefilter (in-domain + no JD → score 5/6 deterministically) gets exercised
+# alongside the LLM scoring path.
+positive:
+  - '\binfrastructure\s+(engineer|operations|lead|manager)\b'
+  - '\bsite\s+reliability\s+(engineer|manager|lead)\b'
+  - '\bdata\s*center\s+(operations|manager|lead|technician|site|engineer)\b'
+  - '\bdatacenter\s+(operations|manager|lead|site)\b'
+  - '\bhardware\s+(operations|program\s+manager|npi)\b'
+  - '\bnpi\s+(program\s+manager|manager|lead|engineer)\b'
+  - '\boperational\s+readiness\b'
+  - '\bsite\s+operations\s+manager\b'
+  - '\bengineering\s+operations\s+(manager|lead)\b'
+
+poison:
+  - '\b(custodial|janitorial|workplace\s+services|office\s+services)\b'

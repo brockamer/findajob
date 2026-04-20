@@ -1,0 +1,26 @@
+# Minimal prefilter rules for the fresh-install smoke test.
+#
+# Intentionally permissive — we want the LLM scorer to be exercised, so we
+# hard-reject only the most obviously out-of-domain categories (sales,
+# clinical healthcare, legal/HR/finance, retail). Everything else falls
+# through to the scorer so `cost_log` gets rows and the DB ends up with
+# `scored`/`manual_review` jobs.
+hard_rejects:
+  sales_bd:
+    - '\baccount\s+executive\b'
+    - '\bsales\s+(specialist|representative|manager)\b'
+    - '\benterprise\s+sales\b'
+  clinical_healthcare:
+    - '\bnurs(e|ing)\b'
+    - '\bpatient\s+care\b'
+    - '\bpharmaceut'
+  finance_legal_hr:
+    - '\blegal\s+counsel\b'
+    - '\bhuman\s+resources\s+(manager|director)\b'
+    - '\brecruiter\b'
+  retail:
+    - '\bretail\s+(manager|associate|sales)\b'
+    - '\bcashier\b'
+
+# No context suppressors — smoke test doesn't need in-domain nuance.
+context_suppressors: []
