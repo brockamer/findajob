@@ -7,6 +7,12 @@ new columns NULL until they're updated).
 
 Idempotent — safe to re-run.
 
+As of v0.1.1 this migration's columns are folded into scripts/init_db.py.
+Fresh deploys get the columns from init_db on first container start;
+this script is retained as a no-op for legacy stacks that were migrated
+at the time of #32 landing. Safe to delete this file in v0.2.x once all
+known stacks have been verified on v0.1.1+.
+
 Usage:  python3 scripts/migrate_cost_log_columns.py
 """
 

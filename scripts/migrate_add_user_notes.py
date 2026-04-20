@@ -5,6 +5,12 @@ Free-text field the user edits on the Applied tab; poll_flags.py syncs
 Applied sheet edits back to this column. Idempotent — ALTER TABLE ADD
 COLUMN IF NOT EXISTS via column-presence check.
 
+As of v0.1.1 this migration's column is folded into scripts/init_db.py.
+Fresh deploys get the column from init_db on first container start;
+this script is retained as a no-op for legacy stacks that were migrated
+at the time of user_notes landing. Safe to delete this file in v0.2.x
+once all known stacks have been verified on v0.1.1+.
+
 Usage:  python3 scripts/migrate_add_user_notes.py
 """
 
