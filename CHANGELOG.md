@@ -10,6 +10,21 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Added
+- Web materials viewer (`#59`): local FastAPI service serves prep-folder contents
+  on `http://docker.lan:<port>/`. Replaces Google Drive folder browsing.
+
+### Removed
+- rclone integration and Google Drive sync (`#29`, `#59`). `FINDAJOB_JOBSYNC_*`
+  env vars deleted; `state/rclone/` bind mount no longer used; `rclone` removed
+  from the container image (~50 MB smaller).
+
+### Migration required
+
+Operators on prior versions who had `FINDAJOB_JOBSYNC_ENABLED=true` must
+perform a one-time stack update — see `docs/setup/state-migration.md` for
+the exact commands. Testers on fresh installs are unaffected.
+
 ## [0.1.1] — 2026-04-20
 
 Fresh-install fixes uncovered during the first external tester's deployment (#20 / #82). `v0.1.0` had only been validated against the operator's legacy stack; empty bind mounts hit four untested code paths. No migration required — all fixes are entrypoint-driven and idempotent. Existing operator stacks pull `:v0.1` and keep working; fresh deploys now reach a populated Dashboard without operator intervention beyond API keys + per-tester config.
