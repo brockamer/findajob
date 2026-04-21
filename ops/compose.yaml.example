@@ -8,6 +8,8 @@ services:
   scheduler:
     image: ghcr.io/brockamer/findajob:${FINDAJOB_IMAGE_TAG:-v0.1}
     restart: unless-stopped
+    ports:
+      - "${FINDAJOB_MATERIALS_PORT:-8090}:8090"
     env_file: ./state/data/.env
     environment:
       TZ: ${FINDAJOB_TZ:-America/New_York}
@@ -15,7 +17,6 @@ services:
       PGID: ${PGID:-1000}
       HOME: /app
       JSP_BASE: /app
-      FINDAJOB_JOBSYNC_ENABLED: ${FINDAJOB_JOBSYNC_ENABLED:-false}
       FINDAJOB_TRIAGE_TIMEOUT: ${FINDAJOB_TRIAGE_TIMEOUT:-7200}
     volumes:
       - ./state/data:/app/data
@@ -24,7 +25,6 @@ services:
       - ./state/companies:/app/companies
       - ./state/logs:/app/logs
       - ./state/aichat_ng:/app/.config/aichat_ng
-      - ./state/rclone:/app/.config/rclone
     networks:
       - findajob-network
 

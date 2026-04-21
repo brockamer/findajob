@@ -18,7 +18,6 @@ ARG SUPERCRONIC_FILE=supercronic-linux-amd64
 # the host's PUID:PGID.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         pandoc \
-        rclone \
         sqlite3 \
         tini \
         gosu \
