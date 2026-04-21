@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}findajob — pipeline{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-semibold mb-4">Pipeline at a glance</h1>
+<div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+  {% for stage, n in ordered %}
+    <div class="bg-white rounded-md shadow-sm p-4 flex flex-col items-center">
+      <div class="text-3xl font-mono">{{ n }}</div>
+      <div class="text-xs uppercase tracking-wide text-slate-500 mt-1">{{ stage }}</div>
+    </div>
+  {% endfor %}
+</div>
+{% endblock %}
