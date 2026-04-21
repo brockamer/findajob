@@ -245,6 +245,11 @@ return zero LinkedIn results. Validate each query manually before committing.
 
 ### Google Sheet Architecture
 
+> The web UI at `/board/*` renders the same column sets directly from the database.
+> `sync_sheet.py` and the web UI both read `state/data/pipeline.db`. Sheet1 will
+> be retired after PR 2 of 14b (#60) ships — the web `/board/archive` page
+> supersedes it. `sync_sheet.py` itself retires in 14d (#14).
+
 **Sheet1** — filtered archive (A–N), archival filter:
 Jobs appear if: `score>=5` OR `stage in lifecycle stages` OR `age < 14 days` OR `target company`.
 Low-score old jobs from non-target companies stay in DB only.
