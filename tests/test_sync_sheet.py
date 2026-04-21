@@ -29,6 +29,7 @@ with patch("builtins.open", side_effect=_patched_open):
         S1_LOOKUP,
         build_row,
         hyperlink,
+        materials_company_cell,
         safe_str,
     )
 
@@ -243,45 +244,94 @@ class TestBuildRowSheet1:
 
 
 # ---------------------------------------------------------------------------
-# Dashboard company hyperlink logic (replicating sync_dashboard conditional)
+# materials_company_cell() — hyperlinks company name to the web materials viewer
 # ---------------------------------------------------------------------------
 
 
-def _company_cell(row):
-    """Replicate the sync_dashboard conditional for company hyperlink."""
-    gdrive_url = row["gdrive_folder_url"] if "gdrive_folder_url" in row.keys() else None
-    if row["stage"] == "materials_drafted" and gdrive_url and str(gdrive_url).startswith("http"):
-        return hyperlink(gdrive_url, row["company"])
-    return safe_str(row["company"])
+class TestMaterialsCompanyCell:
+    """materials_company_cell builds =HYPERLINK when a folder exists and
+    FINDAJOB_MATERIALS_BASE_URL is set; otherwise returns plain company text."""
 
-
-class TestDashboardCompanyHyperlink:
-    def test_materials_drafted_with_gdrive_url(self):
-        row = _make_row(
-            stage="materials_drafted",
-            gdrive_folder_url="https://drive.google.com/folder/xyz",
+    def test_folder_stage_with_base_url_returns_hyperlink(self):
+        result = materials_company_cell(
             company="Acme Corp",
+            fingerprint="abc123",
+            stage="applied",
+            base_url="http://docker.lan:8090",
         )
-        result = _company_cell(row)
-        assert result == '=HYPERLINK("https://drive.google.com/folder/xyz","Acme Corp")'
+        assert result == '=HYPERLINK("http://docker.lan:8090/materials/abc123","Acme Corp")'
 
-    def test_materials_drafted_no_gdrive_url(self):
-        row = _make_row(
+    def test_materials_drafted_stage_returns_hyperlink(self):
+        result = materials_company_cell(
+            company="Acme",
+            fingerprint="fp-1",
             stage="materials_drafted",
-            gdrive_folder_url="",
-            company="Acme Corp",
+            base_url="http://docker.lan:8090",
         )
-        result = _company_cell(row)
-        assert result == "Acme Corp"
+        assert result == '=HYPERLINK("http://docker.lan:8090/materials/fp-1","Acme")'
 
-    def test_scored_with_gdrive_url_no_hyperlink(self):
-        row = _make_row(
+    def test_waitlisted_stage_returns_hyperlink(self):
+        result = materials_company_cell(
+            company="Acme",
+            fingerprint="fp-w",
+            stage="waitlisted",
+            base_url="http://docker.lan:8090",
+        )
+        assert result == '=HYPERLINK("http://docker.lan:8090/materials/fp-w","Acme")'
+
+    def test_scored_stage_no_folder_returns_plain(self):
+        result = materials_company_cell(
+            company="Acme Corp",
+            fingerprint="abc123",
             stage="scored",
-            gdrive_folder_url="https://drive.google.com/folder/xyz",
-            company="Acme Corp",
+            base_url="http://docker.lan:8090",
         )
-        result = _company_cell(row)
         assert result == "Acme Corp"
+
+    def test_manual_review_stage_no_folder_returns_plain(self):
+        result = materials_company_cell(
+            company="Acme",
+            fingerprint="fp-m",
+            stage="manual_review",
+            base_url="http://docker.lan:8090",
+        )
+        assert result == "Acme"
+
+    def test_empty_base_url_returns_plain(self):
+        result = materials_company_cell(
+            company="Acme Corp",
+            fingerprint="abc123",
+            stage="applied",
+            base_url="",
+        )
+        assert result == "Acme Corp"
+
+    def test_none_base_url_returns_plain(self):
+        result = materials_company_cell(
+            company="Acme Corp",
+            fingerprint="abc123",
+            stage="applied",
+            base_url=None,
+        )
+        assert result == "Acme Corp"
+
+    def test_trailing_slash_on_base_url_is_handled(self):
+        result = materials_company_cell(
+            company="Acme",
+            fingerprint="fp-1",
+            stage="applied",
+            base_url="http://docker.lan:8090/",
+        )
+        assert result == '=HYPERLINK("http://docker.lan:8090/materials/fp-1","Acme")'
+
+    def test_company_name_with_double_quote_is_escaped(self):
+        result = materials_company_cell(
+            company='O"Reilly Media',
+            fingerprint="fp-q",
+            stage="applied",
+            base_url="http://docker.lan:8090",
+        )
+        assert result == '=HYPERLINK("http://docker.lan:8090/materials/fp-q","O""Reilly Media")'
 
 
 # ---------------------------------------------------------------------------

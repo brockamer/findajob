@@ -8,6 +8,7 @@ Sync SQLite → Google Sheets.
              poll_flags.py reads STATUS + REJECT_REASON from Dashboard and Review tabs.
 """
 
+import os
 import sqlite3
 from pathlib import Path
 
@@ -16,12 +17,19 @@ from googleapiclient.discovery import build
 
 from findajob.config_loader import is_company_of_interest
 from findajob.paths import BASE
-from findajob.utils import log_event
+from findajob.utils import load_env, log_event
+
+load_env()
 
 DB_PATH = f"{BASE}/data/pipeline.db"
 SA_FILE = f"{BASE}/config/gsheets_creds.json"
 with open(f"{BASE}/config/sheet_id.txt") as f:
     SHEET_ID = f.read().strip()
+
+# Base URL for the materials viewer that hyperlinks company cells into.
+# Set per stack (e.g., http://docker.lan:8090 matching FINDAJOB_MATERIALS_PORT).
+# Unset → company cells render as plain text.
+MATERIALS_BASE_URL = os.getenv("FINDAJOB_MATERIALS_BASE_URL", "").strip()
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
@@ -106,6 +114,36 @@ def hyperlink(url, label):
     if not safe_url:
         return safe_label
     return f'=HYPERLINK("{safe_url}","{safe_label}")'
+
+
+# Stages where a companies/ folder exists on disk and the materials viewer
+# can render it. Used to decide whether the Sheet's company cell should
+# hyperlink into the viewer.
+_FOLDER_STAGES = frozenset(
+    {
+        "prep_in_progress",
+        "materials_drafted",
+        "applied",
+        "interview",
+        "offer",
+        "not_selected",
+        "waitlisted",
+        "rejected",
+    }
+)
+
+
+def materials_company_cell(company, fingerprint, stage, base_url):
+    """Return either a =HYPERLINK formula to the materials viewer or plain text.
+
+    Hyperlinks only when `base_url` is set AND `stage` is one where a folder
+    exists on disk. Missing base_url → plain text (no viewer configured for
+    this stack). Non-folder stage → plain text (viewer would 404).
+    """
+    if not base_url or stage not in _FOLDER_STAGES:
+        return safe_str(company)
+    url = f"{base_url.rstrip('/')}/materials/{fingerprint}"
+    return hyperlink(url, company)
 
 
 def safe_str(val):
@@ -282,6 +320,12 @@ def sync_dashboard(svc, conn):
         # Replace plain title with a HYPERLINK formula pointing to the JD URL
         title_idx = DASH_HEADERS.index("title")
         sheet_row[title_idx] = hyperlink(row["url"], row["title"])
+        # Replace plain company with a HYPERLINK into the materials viewer
+        # (only hyperlinks when a folder exists on disk and base URL is set)
+        company_idx = DASH_HEADERS.index("company")
+        sheet_row[company_idx] = materials_company_cell(
+            row["company"], row["fingerprint"], row["stage"], MATERIALS_BASE_URL
+        )
         sheet_rows.append(sheet_row)
 
     svc.spreadsheets().values().clear(spreadsheetId=SHEET_ID, range="Dashboard!A2:N10000").execute()
@@ -449,6 +493,12 @@ def sync_waitlist(svc, conn):
                 sheet_row.append(safe_str(pending_rejects.get(fp, row["reject_reason"] or "")))
             elif header == "title":
                 sheet_row.append(hyperlink(row["url"], row["title"]))
+            elif header == "company":
+                sheet_row.append(
+                    materials_company_cell(
+                        row["company"], row["fingerprint"], row["stage"], MATERIALS_BASE_URL
+                    )
+                )
             elif header == "blocking_app":
                 co = (row["company"] or "").strip().lower()
                 sheet_row.append(safe_str(active_by_company.get(co, "")))
@@ -469,7 +519,8 @@ def sync_waitlist(svc, conn):
 # ── Applied: post-application queue (stage in applied/interview/offer) ───────
 # Col A: STATUS (Interviewing/Offer/Ghosted/Not Selected/Withdrew),
 # Col B: REJECT_REASON, Col C: fingerprint (hidden).
-# Title → hyperlink to JD; Company → hyperlink to Drive folder.
+# Title → hyperlink to JD; Company → hyperlink to materials viewer folder
+# (when FINDAJOB_MATERIALS_BASE_URL is set and the row's stage has a folder).
 # Col F: applied_date, Col G: days_since_applied (live TODAY() formula).
 APPLIED_HEADERS = [
     "STATUS",
@@ -567,7 +618,9 @@ def sync_applied(svc, conn):
         # Live formula so "days_since_applied" updates without re-sync.
         days_formula = f'=IF(F{i}="","",TODAY()-F{i})' if applied_date else ""
         title_cell = hyperlink(row["url"], row["title"]) if row["url"] else safe_str(row["title"])
-        company_cell = safe_str(row["company"])
+        company_cell = materials_company_cell(
+            row["company"], row["fingerprint"], row["stage"], MATERIALS_BASE_URL
+        )
         sheet_rows.append(
             [
                 status,
@@ -640,7 +693,9 @@ def sync_rejected_apps(svc, conn):
     for row in rows:
         sheet_row = [
             hyperlink(row["url"], row["title"]),
-            safe_str(row["company"]),
+            materials_company_cell(
+                row["company"], row["fingerprint"], row["stage"], MATERIALS_BASE_URL
+            ),
             safe_str(row["reject_reason"] or ""),
             safe_str(applied_dates.get(row["id"], "")),
             safe_str(row["rejected_date"][:10] if row["rejected_date"] else ""),

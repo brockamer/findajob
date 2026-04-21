@@ -53,7 +53,7 @@ Columns A–N:
 | E | probability_score | System |
 | F | relevance_score | System |
 | G | title (hyperlink) | System |
-| H | company | System (hyperlink to Drive folder when prepped) |
+| H | company | System (plain text on Sheet1; hyperlinks into the materials viewer on Dashboard/Applied/Waitlist/Rejected Applications when `FINDAJOB_MATERIALS_BASE_URL` is set) |
 | I | location | System |
 | J | remote_status | System |
 | K | known_contacts | System |
@@ -124,7 +124,7 @@ Columns A–N:
 | B | REJECT_REASON | You (dropdown — same 11 options as Dashboard) |
 | C | fingerprint (hidden) | System |
 | D | title (hyperlink to JD) | System |
-| E | company (hyperlink to Drive folder) | System |
+| E | company (hyperlinks into materials viewer when `FINDAJOB_MATERIALS_BASE_URL` is set) | System |
 | F | applied_date | System (from `audit_log` first `applied` transition) |
 | G | days_since_applied | Live `=IF(F2="","",TODAY()-F2)` formula |
 | H | stage | System (`applied` / `interview` / `offer`) |
@@ -221,7 +221,7 @@ Columns A–H:
 | Col | Field |
 |---|---|
 | A | title (hyperlink) |
-| B | company (hyperlink to Drive folder if available) |
+| B | company (hyperlinks into materials viewer when `FINDAJOB_MATERIALS_BASE_URL` is set) |
 | C | reject_reason |
 | D | applied_date |
 | E | rejected_date |

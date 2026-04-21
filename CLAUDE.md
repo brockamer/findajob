@@ -243,7 +243,7 @@ Low-score old jobs from non-target companies stay in DB only.
 `STATUS(dropdown) | REJECT_REASON(dropdown) | fingerprint(hidden) | fit_score | probability_score | relevance_score | title(hyperlink) | company | location | remote | contacts | comp | notes | date`
 
 **Applied** — post-application queue (A–N), filter: `stage IN (applied, interview, offer)`. This is the UI for managing jobs you've submitted and are waiting to hear back on:
-`STATUS(dropdown) | REJECT_REASON(dropdown) | fingerprint(hidden) | title(hyperlink) | company(Drive hyperlink) | applied_date | days_since_applied(formula) | stage | user_notes | known_contacts | location | remote | comp | ai_notes`
+`STATUS(dropdown) | REJECT_REASON(dropdown) | fingerprint(hidden) | title(hyperlink) | company(viewer hyperlink) | applied_date | days_since_applied(formula) | stage | user_notes | known_contacts | location | remote | comp | ai_notes`
 - `STATUS` options (col A): `Interviewing` / `Offer` / `Ghosted` / `Not Selected` / `Withdrew`
 - `days_since_applied` = live `=IF(F2="","",TODAY()-F2)` formula — no re-sync needed
 - Row color by priority: Offer→gold, Interviewing→purple, Ghosted OR >=21d→gray, 14–20d→red, 7–13d→yellow, 0–6d→green

@@ -1212,7 +1212,7 @@ def main():
         col_width(applied_id, 0, 120),  # A: STATUS
         col_width(applied_id, 1, 140),  # B: REJECT_REASON
         col_width(applied_id, 3, 280),  # D: title (hyperlink)
-        col_width(applied_id, 4, 150),  # E: company (Drive hyperlink)
+        col_width(applied_id, 4, 150),  # E: company (hyperlinks into materials viewer)
         col_width(applied_id, 5, 100),  # F: applied_date
         col_width(applied_id, 6, 70),  # G: days_since_applied
         col_width(applied_id, 7, 90),  # H: stage

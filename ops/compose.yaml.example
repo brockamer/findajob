@@ -18,6 +18,7 @@ services:
       HOME: /app
       JSP_BASE: /app
       FINDAJOB_TRIAGE_TIMEOUT: ${FINDAJOB_TRIAGE_TIMEOUT:-7200}
+      FINDAJOB_MATERIALS_BASE_URL: ${FINDAJOB_MATERIALS_BASE_URL:-}
     volumes:
       - ./state/data:/app/data
       - ./state/config:/app/config
