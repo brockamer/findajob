@@ -13,7 +13,6 @@ Usage:
 ntfy topic is read from NTFY_TOPIC in data/.env, or falls back to NTFY_TOPIC env var.
 """
 
-import glob
 import json
 import os
 import sqlite3
@@ -263,13 +262,6 @@ def cmd_health_check():
             for k in dead_feeds:
                 issues.append(f"  • {k}: 0 today, peak {week_max_per_source[k]} in last 7d")
 
-    # Check rclone sync health
-    rclone_failures = [e for e in events if e.get("event") == "rclone_failed"]
-    if rclone_failures:
-        issues.append(f"WARN: {len(rclone_failures)} rclone sync failure(s) in last 25h")
-        for e in rclone_failures[:2]:
-            issues.append(f"  • {e.get('reason', '?')} exit={e.get('exit_code', '?')}")
-
     # ── System resource checks ──────────────────────────────────────────
     try:
         with open("/proc/meminfo") as f:
@@ -363,17 +355,6 @@ def cmd_health_check():
         for name in orphan_folders[:5]:
             issues.append(f"  • {name}")
 
-    # ── rclone bisync conflict files ─────────────────────────────────────────
-    conflict_files = glob.glob(f"{BASE}/companies/**/*.path1", recursive=True)
-    conflict_files += glob.glob(f"{BASE}/companies/**/*.path2", recursive=True)
-    if conflict_files:
-        folders = sorted(set(os.path.dirname(f) for f in conflict_files))
-        issues.append(
-            f"WARN: {len(conflict_files)} rclone conflict file(s) (.path1/.path2) in {len(folders)} folder(s)"
-        )
-        for folder in folders[:5]:
-            issues.append(f"  • {os.path.basename(folder)}")
-
     # ── Stuck prep_in_progress jobs ──────────────────────────────────────────
     stuck_cutoff = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
     stuck = conn.execute(
@@ -400,50 +381,6 @@ def cmd_health_check():
         issues.append(f"WARN: {len(orphaned)} job(s) have prep_folder_path pointing to missing dir:")
         for r in orphaned[:5]:
             issues.append(f"  • {r['company']}: {r['title']}")
-
-    # ── Drive sync integrity ──────────────────────────────────────────────
-    try:
-        from findajob.paths import RCLONE
-
-        drive_base = "gdrive:01 PROJECTS/Jobs To Apply For"
-
-        mismatches = []
-        for subdir in ["", "_applied", "_rejected", "_waitlisted"]:
-            # Local folders
-            local_path = os.path.join(companies_dir, subdir) if subdir else companies_dir
-            if not os.path.isdir(local_path):
-                continue
-            local_folders = {
-                d
-                for d in os.listdir(local_path)
-                if not d.startswith("_") and os.path.isdir(os.path.join(local_path, d))
-            }
-
-            # Drive folders
-            drive_path = f"{drive_base}/{subdir}" if subdir else drive_base
-            rc = subprocess.run([RCLONE, "lsf", "--dirs-only", drive_path], capture_output=True, text=True, timeout=60)
-            if rc.returncode != 0:
-                mismatches.append(f"rclone lsf failed for {subdir or 'root'}: exit {rc.returncode}")
-                continue
-            drive_folders = {
-                d.rstrip("/") for d in rc.stdout.strip().split("\n") if d.strip() and not d.startswith("_")
-            }
-
-            location = subdir or "root"
-            local_only = local_folders - drive_folders
-            drive_only = drive_folders - local_folders
-
-            for f in local_only:
-                mismatches.append(f"LOCAL ONLY ({location}): {f}")
-            for f in drive_only:
-                mismatches.append(f"DRIVE ONLY ({location}): {f}")
-
-        if mismatches:
-            issues.append(f"WARN: {len(mismatches)} local↔Drive sync mismatch(es):")
-            for m in mismatches[:8]:
-                issues.append(f"  • {m}")
-    except Exception as e:
-        issues.append(f"INFO: Drive sync check skipped: {e}")
 
     # ── Stage/folder location mismatches ─────────────────────────────────────
     mismatches_rows = conn.execute("""

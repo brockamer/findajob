@@ -12,7 +12,7 @@ import subprocess
 import sys
 from datetime import UTC, datetime
 
-from findajob.paths import AICHAT, BASE, PANDOC, RCLONE
+from findajob.paths import AICHAT, BASE, PANDOC
 from findajob.utils import (
     JD_MAX_CHARS,
     build_prep_filenames,
@@ -482,50 +482,9 @@ Generated: {date}
     log_event("prep_complete", company=company, title=title, folder=outdir)
     notify(f"Drafts ready: {company} — {title}\n{outdir}")
 
-    # ── Step 8: Push new folder to Drive immediately ──
-    # jobsync.timer runs rclone sync every 15 min as the steady-state mirror,
-    # but we push the new folder now so Step 9 (rclone link) can fetch the URL.
-    # Safe: jobsync uses rclone sync (not bisync), so no conflict copies.
-    folder_name = os.path.basename(outdir)
-    try:
-        subprocess.run(
-            [RCLONE, "copy", "--update", outdir, f"gdrive:01 PROJECTS/Jobs To Apply For/{folder_name}"],
-            capture_output=True,
-            text=True,
-            timeout=300,
-        )
-    except Exception as e:
-        log_event("rclone_immediate_push_failed", job_id=job_id, error=str(e))
-
-    # ── Step 9: Fetch the Drive folder URL and store it ──
-    # Used by sync_sheet.py to render the company name as a HYPERLINK to the Drive folder.
-    # Failure is non-fatal: the cell stays plain text if rclone link fails.
-    drive_url = None
-    try:
-        link_rc = subprocess.run(
-            [RCLONE, "link", f"gdrive:01 PROJECTS/Jobs To Apply For/{folder_name}"],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        if link_rc.returncode == 0 and link_rc.stdout.strip().startswith("http"):
-            drive_url = link_rc.stdout.strip()
-            conn.execute("UPDATE jobs SET gdrive_folder_url=? WHERE id=?", (drive_url, job_id))
-            conn.commit()
-            log_event("gdrive_link_stored", job_id=job_id, url=drive_url)
-        else:
-            log_event(
-                "gdrive_link_failed",
-                job_id=job_id,
-                exit_code=link_rc.returncode,
-                stderr=link_rc.stderr[:200] if link_rc.stderr else "",
-            )
-    except Exception as e:
-        log_event("gdrive_link_failed", job_id=job_id, error=str(e))
-
     conn.close()
 
-    # ── Step 10: Sync sheets (single call, after everything is ready) ──
+    # ── Step 9: Sync sheets (single call, after everything is ready) ──
     subprocess.run([sys.executable, f"{BASE}/scripts/sync_sheet.py"], check=False)
 
     print(f"PREP_COMPLETE:{outdir}")

@@ -282,7 +282,7 @@ class TestDBStateTransitions:
         assert row["probability_score"] == 60.0
 
     def test_gdrive_url_stored_on_success(self, db):
-        """Drive URL stored when rclone link succeeds."""
+        """Drive URL stored in DB when gdrive_folder_url is set."""
         job_id = insert_job(
             db, stage="materials_drafted", folder="/home/user/companies/Acme_Ops_Manager_2026-04-13_140000"
         )
@@ -294,12 +294,12 @@ class TestDBStateTransitions:
         row = db.execute("SELECT gdrive_folder_url FROM jobs WHERE id=?", (job_id,)).fetchone()
         assert row["gdrive_folder_url"] == drive_url
 
-    def test_gdrive_url_stays_null_on_failure(self, db):
-        """Drive URL stays NULL when rclone link fails (no update executed)."""
+    def test_gdrive_url_stays_null_when_not_set(self, db):
+        """Drive URL stays NULL when no update is executed."""
         job_id = insert_job(
             db, stage="materials_drafted", folder="/home/user/companies/Acme_Ops_Manager_2026-04-13_140000"
         )
-        # Simulate rclone failure — no UPDATE issued
+        # No UPDATE issued — URL should remain NULL
         row = db.execute("SELECT gdrive_folder_url FROM jobs WHERE id=?", (job_id,)).fetchone()
         assert row["gdrive_folder_url"] is None
 
@@ -370,45 +370,3 @@ class TestFileNaming:
         should_skip = existing and existing["prep_folder_path"] and existing["stage"] == "materials_drafted"
         assert not should_skip
 
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# Drive URL Flow Tests
-# ═══════════════════════════════════════════════════════════════════════════════
-
-
-class TestDriveURLFlow:
-    """Test the rclone link → DB storage flow logic."""
-
-    def test_rclone_link_success_stores_url(self, db):
-        """Simulate successful rclone link output: returncode=0, stdout starts with http."""
-        job_id = insert_job(
-            db, stage="materials_drafted", folder="/home/user/companies/Acme_Ops_Manager_2026-04-13_140000"
-        )
-        # Simulate: link_rc.returncode == 0, link_rc.stdout.strip().startswith("http")
-        returncode = 0
-        stdout = "https://drive.google.com/drive/folders/abc123\n"
-
-        if returncode == 0 and stdout.strip().startswith("http"):
-            drive_url = stdout.strip()
-            db.execute("UPDATE jobs SET gdrive_folder_url=? WHERE id=?", (drive_url, job_id))
-            db.commit()
-
-        row = db.execute("SELECT gdrive_folder_url FROM jobs WHERE id=?", (job_id,)).fetchone()
-        assert row["gdrive_folder_url"] == "https://drive.google.com/drive/folders/abc123"
-
-    def test_rclone_link_failure_leaves_null(self, db):
-        """Simulate rclone link failure: returncode=4, no URL stored."""
-        job_id = insert_job(
-            db, stage="materials_drafted", folder="/home/user/companies/Acme_Ops_Manager_2026-04-13_140000"
-        )
-        # Simulate: link_rc.returncode == 4
-        returncode = 4
-        stdout = "ERROR: command not found\n"
-
-        if returncode == 0 and stdout.strip().startswith("http"):
-            drive_url = stdout.strip()
-            db.execute("UPDATE jobs SET gdrive_folder_url=? WHERE id=?", (drive_url, job_id))
-            db.commit()
-
-        row = db.execute("SELECT gdrive_folder_url FROM jobs WHERE id=?", (job_id,)).fetchone()
-        assert row["gdrive_folder_url"] is None

@@ -282,16 +282,6 @@ def sync_dashboard(svc, conn):
         # Replace plain title with a HYPERLINK formula pointing to the JD URL
         title_idx = DASH_HEADERS.index("title")
         sheet_row[title_idx] = hyperlink(row["url"], row["title"])
-        # If materials have been prepped and we have a Drive folder URL, turn the
-        # company cell into a HYPERLINK to the Drive folder for quick access.
-        gdrive_url = row["gdrive_folder_url"] if "gdrive_folder_url" in row.keys() else None
-        if (
-            row["stage"] in ("materials_drafted", "applied", "interview", "offer")
-            and gdrive_url
-            and str(gdrive_url).startswith("http")
-        ):
-            company_idx = DASH_HEADERS.index("company")
-            sheet_row[company_idx] = hyperlink(gdrive_url, row["company"])
         sheet_rows.append(sheet_row)
 
     svc.spreadsheets().values().clear(spreadsheetId=SHEET_ID, range="Dashboard!A2:N10000").execute()
@@ -577,12 +567,7 @@ def sync_applied(svc, conn):
         # Live formula so "days_since_applied" updates without re-sync.
         days_formula = f'=IF(F{i}="","",TODAY()-F{i})' if applied_date else ""
         title_cell = hyperlink(row["url"], row["title"]) if row["url"] else safe_str(row["title"])
-        gdrive_url = row["gdrive_folder_url"] if "gdrive_folder_url" in row.keys() else None
-        company_cell = (
-            hyperlink(gdrive_url, row["company"])
-            if gdrive_url and str(gdrive_url).startswith("http")
-            else safe_str(row["company"])
-        )
+        company_cell = safe_str(row["company"])
         sheet_rows.append(
             [
                 status,
@@ -663,10 +648,6 @@ def sync_rejected_apps(svc, conn):
             safe_str(row["probability_score"] if row["probability_score"] else ""),
             safe_str(row["ai_notes"] or ""),
         ]
-        # Add Drive folder link on company cell if available
-        gdrive_url = row["gdrive_folder_url"] if "gdrive_folder_url" in row.keys() else None
-        if gdrive_url and str(gdrive_url).startswith("http"):
-            sheet_row[1] = hyperlink(gdrive_url, row["company"])
         sheet_rows.append(sheet_row)
 
     svc.spreadsheets().values().clear(spreadsheetId=SHEET_ID, range="Rejected Applications!A2:H10000").execute()
