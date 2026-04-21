@@ -65,3 +65,63 @@ def dashboard(
             "materials_base_url": materials_base_url,
         },
     )
+
+
+_APPLIED_COLS = [
+    ("Title", "title"),
+    ("Company", "company"),
+    ("Applied", "applied_date"),
+    ("Days", "days_since_applied"),
+    ("Stage", "stage"),
+    ("Notes", "user_notes"),
+    ("Contacts", "known_contacts"),
+    ("Location", "location"),
+    ("Remote", "remote_status"),
+    ("Comp", "comp_estimate"),
+    ("AI notes", "ai_notes"),
+]
+_APPLIED_SORTABLE = {c for _, c in _APPLIED_COLS if c not in {"days_since_applied"}} | {
+    "applied_date"
+}
+_APPLIED_DEFAULT_SORT = "applied_date"
+
+
+@router.get("/board/applied", response_class=HTMLResponse)
+def applied(
+    request: Request,
+    sort: str = Query(default=""),
+    desc: int = Query(default=1),
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> HTMLResponse:
+    sort_col = sort if sort in _APPLIED_SORTABLE else _APPLIED_DEFAULT_SORT
+    order = "DESC" if desc else "ASC"
+    sql = f"""
+    SELECT j.fingerprint, j.title, j.company, j.stage, j.location, j.remote_status,
+           j.known_contacts, j.comp_estimate, j.ai_notes, j.user_notes, j.created_at,
+           al.applied_date,
+           CAST((julianday('now') - julianday(al.applied_date)) AS INTEGER) AS days_since_applied
+    FROM jobs j
+    LEFT JOIN (
+      SELECT job_id, MIN(changed_at) AS applied_date
+      FROM audit_log
+      WHERE field_changed = 'stage' AND new_value = 'applied'
+      GROUP BY job_id
+    ) al ON al.job_id = j.fingerprint
+    WHERE j.stage IN ('applied','interview','offer')
+    ORDER BY {sort_col} {order}
+    """
+    rows = db.execute(sql).fetchall()
+    materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request=request,
+        name="board/applied.html",
+        context={
+            "columns": _APPLIED_COLS,
+            "rows": rows,
+            "sort": sort_col,
+            "desc": desc,
+            "tab": "applied",
+            "materials_base_url": materials_base_url,
+        },
+    )
