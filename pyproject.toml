@@ -11,6 +11,10 @@ dependencies = [
     "jsonschema>=4.26.0",
     "beautifulsoup4>=4.14.0",
     "pyyaml>=6.0",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "jinja2>=3.1.0",
+    "markdown>=3.7",
 ]
 
 [project.optional-dependencies]
