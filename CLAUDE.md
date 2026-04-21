@@ -181,6 +181,17 @@ When the pipeline runs inside the `ghcr.io/brockamer/findajob` image, paths shif
 <repo>/.github/workflows/ci.yml            # CI: ruff + mypy + pytest on every push
 ```
 
+### Web Frontend Architecture
+
+Lives at `src/findajob/web/`. One file per URL group in `routes/` (e.g. `routes/materials.py`, `routes/board.py`, `routes/landing.py`). Shared partials (`_nav.html`, `_job_row.html`) live in `templates/`.
+
+Foundational decisions (from `docs/superpowers/specs/2026-04-21-web-frontend-14b-design.md`):
+- Server-rendered HTML + HTMX (no SPA)
+- Grouped URL IA — top-nav = `/`, `/board/`, `/materials/`, `/ingest/`, `/tools/`, `/config/`, `/docs/`
+- Tailwind via CDN + `static/app.css` design tokens
+- URL query params for UI state (not cookies/localStorage)
+- Alpine.js added only when ephemeral client state is needed
+
 ---
 
 ## Critical Architecture Rules

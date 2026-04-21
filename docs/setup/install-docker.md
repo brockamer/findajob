@@ -82,6 +82,9 @@ VPN this is reachable from any device. The viewer is read-only — it displays p
 contents grouped by stage (staged, applied, waitlisted, rejected), renders Markdown inline,
 and offers `.docx` files for download.
 
+The viewer has a top nav linking all feature groups. `/` is a pipeline-at-a-glance landing
+page with stage counts; `/materials/` is the prep-folder index (previously served at `/`).
+
 ```bash
 # Quick smoke test after first deploy
 curl http://docker.lan:8090/healthz    # expect: ok
