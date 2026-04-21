@@ -1,4 +1,5 @@
 """Aggregates all sub-module routers into a single `router` the app includes."""
+
 from fastapi import APIRouter
 
 from findajob.web.routes import board, healthz, landing, materials

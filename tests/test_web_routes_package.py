@@ -1,9 +1,11 @@
 """Router package aggregates all sub-module routers and exposes a single `router`."""
+
 from findajob.web.routes import router as aggregated
 
 
 def test_router_is_apirouter():
     from fastapi import APIRouter
+
     assert isinstance(aggregated, APIRouter)
 
 

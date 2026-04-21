@@ -1,4 +1,5 @@
 """Landing page at / and placeholder groups."""
+
 from __future__ import annotations
 
 import sqlite3
@@ -59,6 +60,7 @@ def _make_placeholder(path: str, label: str, hint: str, issue: str):
             name="placeholders/coming_soon.html",
             context={"label": label, "hint": hint, "issue": issue},
         )
+
     _handler.__name__ = f"placeholder_{label.lower()}"
     return _handler
 

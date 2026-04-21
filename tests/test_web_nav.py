@@ -1,4 +1,5 @@
 """_nav.html partial highlights the current route."""
+
 import sqlite3
 from pathlib import Path
 

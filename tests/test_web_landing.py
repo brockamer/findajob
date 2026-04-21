@@ -1,4 +1,5 @@
 """Landing page shows stage counts."""
+
 import sqlite3
 from pathlib import Path
 
@@ -45,13 +46,16 @@ def test_landing_nav_home_active(client: TestClient) -> None:
     assert 'aria-current="page"' in r.text
 
 
-@pytest.mark.parametrize("path,label,issue", [
-    ("/board/", "Board", "#60"),
-    ("/ingest/", "Ingest", "#79"),
-    ("/tools/", "Tools", ""),
-    ("/config/", "Config", ""),
-    ("/docs/", "Docs", ""),
-])
+@pytest.mark.parametrize(
+    "path,label,issue",
+    [
+        ("/board/", "Board", "#60"),
+        ("/ingest/", "Ingest", "#79"),
+        ("/tools/", "Tools", ""),
+        ("/config/", "Config", ""),
+        ("/docs/", "Docs", ""),
+    ],
+)
 def test_placeholder_renders(client: TestClient, path: str, label: str, issue: str) -> None:
     r = client.get(path)
     assert r.status_code == 200

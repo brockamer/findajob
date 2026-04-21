@@ -1,4 +1,5 @@
 """Materials viewer routes: /, /materials/{fp}, /materials/{fp}/{file}."""
+
 from __future__ import annotations
 
 import re
