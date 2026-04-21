@@ -73,3 +73,31 @@ def test_resolve_null_prep_folder_path_returns_none(
         ("fp-nopath",),
     )
     assert resolve_folder("fp-nopath", db, companies_root) is None
+
+
+def test_rejects_absolute_path_outside_root(
+    companies_root: Path, db: sqlite3.Connection, tmp_path_factory: pytest.TempPathFactory
+) -> None:
+    outside = tmp_path_factory.mktemp("outside")
+    _seed(db, "fp-outside", str(outside))
+    assert resolve_folder("fp-outside", db, companies_root) is None
+
+
+def test_rejects_dotdot_traversal(
+    companies_root: Path, db: sqlite3.Connection
+) -> None:
+    malicious = str(companies_root / ".." / "outside-root")
+    _seed(db, "fp-traversal", malicious)
+    assert resolve_folder("fp-traversal", db, companies_root) is None
+
+
+def test_rejects_symlink_escaping_root(
+    companies_root: Path,
+    db: sqlite3.Connection,
+    tmp_path_factory: pytest.TempPathFactory,
+) -> None:
+    outside_target = tmp_path_factory.mktemp("outside_target")
+    link = companies_root / "escape_link"
+    link.symlink_to(outside_target)
+    _seed(db, "fp-symlink", str(link))
+    assert resolve_folder("fp-symlink", db, companies_root) is None
