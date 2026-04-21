@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}findajob — materials{% endblock %}
+{% block body %}
+<h1>findajob materials</h1>
+
+{% for section in sections %}
+<h2>{{ section.name }}</h2>
+{% if section.rows %}
+<ul>
+  {% for row in section.rows %}
+    <li>
+      <a href="/materials/{{ row.fingerprint }}">{{ row.company }} — {{ row.title }}</a>
+      {% if row.score %} <span class="score">[{{ row.score }}]</span>{% endif %}
+      <span class="meta">
+        (<span class="stage">{{ row.stage }}</span>)
+        {% if row.applied_date %} · {{ row.applied_date }}{% endif %}
+      </span>
+    </li>
+  {% endfor %}
+</ul>
+{% if section.overflow %}<p class="meta">…and more</p>{% endif %}
+{% else %}
+<p class="meta">None.</p>
+{% endif %}
+{% endfor %}
+
+<details>
+  <summary>Rejected ({{ rejected.count }})</summary>
+  {% if rejected.rows %}
+  <ul>
+    {% for row in rejected.rows %}
+      <li>
+        <a href="/materials/{{ row.fingerprint }}">{{ row.company }} — {{ row.title }}</a>
+        <span class="meta">· {{ row.stage }} · {{ row.created_at }}</span>
+      </li>
+    {% endfor %}
+  </ul>
+  {% if rejected.overflow %}<p class="meta">…and more</p>{% endif %}
+  {% else %}
+  <p class="meta">None.</p>
+  {% endif %}
+</details>
+{% endblock %}

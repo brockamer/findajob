@@ -192,3 +192,36 @@ def test_file_serve_markdown_escapes_raw_html(
     r = client.get("/materials/fp-xss/bad.md")
     assert r.status_code == 200
     assert "<script>" not in r.text
+
+
+def test_index_groups_jobs_by_stage(
+    client: TestClient, companies_root: Path, db_path: Path
+) -> None:
+    for folder_name in ("M1", "_applied/M2", "_waitlisted/M3", "_rejected/M4"):
+        (companies_root / folder_name).mkdir(parents=True)
+
+    conn = sqlite3.connect(db_path)
+    conn.executemany(
+        "INSERT INTO jobs (fingerprint, prep_folder_path, stage, title, company, score, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [
+            ("fp-a", str(companies_root / "M1"), "materials_drafted", "SWE", "InFlightCo", 8, "2026-04-20"),
+            ("fp-b", str(companies_root / "_applied" / "M2"), "applied", "PM", "AppliedCo", 7, "2026-04-15"),
+            ("fp-c", str(companies_root / "_waitlisted" / "M3"), "waitlisted", "DE", "WaitCo", 6, "2026-04-10"),
+            ("fp-d", str(companies_root / "_rejected" / "M4"), "rejected", "SRE", "RejCo", 5, "2026-04-01"),
+        ],
+    )
+    conn.commit()
+    conn.close()
+
+    r = client.get("/")
+    assert r.status_code == 200
+    assert "In flight" in r.text
+    assert "InFlightCo" in r.text
+    assert "Applied" in r.text
+    assert "AppliedCo" in r.text
+    assert "Waitlisted" in r.text
+    assert "WaitCo" in r.text
+    # Rejected is in a <details>; content is still rendered in HTML
+    assert "<details>" in r.text
+    assert "RejCo" in r.text

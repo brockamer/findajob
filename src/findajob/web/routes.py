@@ -105,3 +105,50 @@ def file_serve(
         filename=candidate.name,
         headers={"content-disposition": f'attachment; filename="{candidate.name}"'},
     )
+
+
+_INDEX_QUERY_SECTIONS = [
+    (
+        "In flight",
+        "stage IN ('materials_drafted', 'prep_in_progress')",
+        "created_at DESC",
+    ),
+    (
+        "Applied",
+        "stage IN ('applied', 'interview', 'offer')",
+        "COALESCE(applied_date, created_at) DESC",
+    ),
+    ("Waitlisted", "stage = 'waitlisted'", "created_at DESC"),
+]
+_REJECTED_CLAUSE = "stage IN ('rejected', 'not_selected')"
+_PER_SECTION_CAP = 50
+
+
+def _fetch_section(db: sqlite3.Connection, where: str, order: str) -> list[sqlite3.Row]:
+    return db.execute(
+        f"SELECT fingerprint, title, company, stage, score, created_at, applied_date "
+        f"FROM jobs WHERE {where} ORDER BY {order} LIMIT {_PER_SECTION_CAP + 1}"
+    ).fetchall()
+
+
+@router.get("/", response_class=HTMLResponse)
+def index(request: Request, db: sqlite3.Connection = Depends(get_db)) -> HTMLResponse:
+    sections = []
+    for name, where, order in _INDEX_QUERY_SECTIONS:
+        rows = _fetch_section(db, where, order)
+        overflow = len(rows) > _PER_SECTION_CAP
+        sections.append({"name": name, "rows": rows[:_PER_SECTION_CAP], "overflow": overflow})
+
+    rejected_rows = _fetch_section(db, _REJECTED_CLAUSE, "created_at DESC")
+    rejected = {
+        "rows": rejected_rows[:_PER_SECTION_CAP],
+        "overflow": len(rejected_rows) > _PER_SECTION_CAP,
+        "count": len(rejected_rows) if len(rejected_rows) <= _PER_SECTION_CAP else f"{_PER_SECTION_CAP}+",
+    }
+
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request=request,
+        name="index.html",
+        context={"sections": sections, "rejected": rejected},
+    )
