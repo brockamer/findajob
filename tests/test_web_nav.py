@@ -29,7 +29,6 @@ def client(tmp_path: Path) -> TestClient:
 
 
 def test_nav_present_on_landing(client: TestClient) -> None:
-    # / has no handler yet (landing arrives in Task 6); test nav on /materials/ in the meantime.
     r = client.get("/materials/")
     assert r.status_code == 200
     assert 'href="/"' in r.text

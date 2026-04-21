@@ -1,5 +1,9 @@
-{# Filter input that swaps the #rows tbody via HTMX on each keystroke. #}
+{# Filter input that swaps the #rows tbody via HTMX on each keystroke.
+   Hidden sort/desc inputs let hx-include carry the current sort state to the
+   /rows endpoint so filtering doesn't reset column sort. #}
 <form class="mb-3">
+  <input type="hidden" name="sort" value="{{ sort }}">
+  <input type="hidden" name="desc" value="{{ desc }}">
   <input type="text" name="q" placeholder="Filter by title or company..."
          class="border border-slate-300 rounded px-3 py-1 w-full md:w-1/3"
          hx-get="{{ request.url.path }}/rows"

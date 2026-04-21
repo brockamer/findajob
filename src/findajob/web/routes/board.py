@@ -92,7 +92,7 @@ _APPLIED_COLS = [
     ("Comp", "comp_estimate"),
     ("AI notes", "ai_notes"),
 ]
-_APPLIED_SORTABLE = {c for _, c in _APPLIED_COLS if c not in {"days_since_applied"}} | {"applied_date"}
+_APPLIED_SORTABLE = {c for _, c in _APPLIED_COLS} | {"applied_date"}
 _APPLIED_DEFAULT_SORT = "applied_date"
 
 
@@ -105,6 +105,10 @@ def applied(
 ) -> HTMLResponse:
     sort_col = sort if sort in _APPLIED_SORTABLE else _APPLIED_DEFAULT_SORT
     order = "DESC" if desc else "ASC"
+    # applied_date = earliest audit_log transition into a post-application stage.
+    # Mirrors scripts/sync_sheet.py — jobs can skip 'applied' (recruiter flows go
+    # straight to 'interview'), and audit_log.job_id stores jobs.id (UUID), not
+    # jobs.fingerprint.
     sql = f"""
     SELECT j.fingerprint, j.title, j.company, j.stage, j.location, j.remote_status,
            j.known_contacts, j.comp_estimate, j.ai_notes, j.user_notes, j.created_at,
@@ -114,9 +118,9 @@ def applied(
     LEFT JOIN (
       SELECT job_id, MIN(changed_at) AS applied_date
       FROM audit_log
-      WHERE field_changed = 'stage' AND new_value = 'applied'
+      WHERE field_changed = 'stage' AND new_value IN ('applied','interview','offer')
       GROUP BY job_id
-    ) al ON al.job_id = j.fingerprint
+    ) al ON al.job_id = j.id
     WHERE j.stage IN ('applied','interview','offer')
     ORDER BY {sort_col} {order}
     """
@@ -371,9 +375,9 @@ def applied_rows(
     LEFT JOIN (
       SELECT job_id, MIN(changed_at) AS applied_date
       FROM audit_log
-      WHERE field_changed = 'stage' AND new_value = 'applied'
+      WHERE field_changed = 'stage' AND new_value IN ('applied','interview','offer')
       GROUP BY job_id
-    ) al ON al.job_id = j.fingerprint
+    ) al ON al.job_id = j.id
     WHERE j.stage IN ('applied','interview','offer'){qualified_filter}
     ORDER BY {sort_col} {order}
     """
