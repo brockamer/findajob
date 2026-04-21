@@ -1,7 +1,7 @@
 """Board Applied tab — reads applied_date from audit_log, renders materials link."""
 
 import sqlite3
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -24,7 +24,7 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
         "CREATE TABLE audit_log (id INTEGER PRIMARY KEY, job_id TEXT, field_changed TEXT, "
         "old_value TEXT, new_value TEXT, changed_at TEXT, changed_by TEXT)"
     )
-    ten_days_ago = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
+    ten_days_ago = (datetime.now(UTC) - timedelta(days=10)).isoformat()
     conn.execute(
         "INSERT INTO jobs (fingerprint, title, company, stage) "
         "VALUES ('fp-app','Eng Mgr','Anthropic','applied')"
