@@ -70,7 +70,7 @@ if [ ! -e "$AICHAT_CFG_DIR/roles" ]; then
 fi
 
 # --- 3. Chown writable dirs if ownership doesn't already match -----------
-for dir in /app/data /app/logs /app/companies /app/config /app/candidate_context /app/.config/rclone "$AICHAT_CFG_DIR"; do
+for dir in /app/data /app/logs /app/companies /app/config /app/candidate_context "$AICHAT_CFG_DIR"; do
     if [ -d "$dir" ]; then
         current_owner="$(stat -c %u "$dir" 2>/dev/null || echo 0)"
         if [ "$current_owner" != "$PUID" ]; then
@@ -86,5 +86,15 @@ if [ -w /app/data ]; then
     gosu "$PUID:$PGID" python3 /app/scripts/init_db.py >/dev/null
 fi
 
-# --- 4. Drop privileges and exec the command ------------------------------
+# --- 4. Launch materials viewer (uvicorn) in background -------------------
+# Supercronic stays PID 1 for compose restart tracking. Uvicorn runs as a
+# child process. If it crashes, supercronic keeps running — /healthz is the
+# outside signal. Operator restarts the container if needed.
+gosu "$PUID:$PGID" python3 -m uvicorn findajob.web.app:default_app --factory --host 0.0.0.0 --port 8090 --log-level info &
+UVICORN_PID=$!
+
+# Forward SIGTERM / SIGINT to uvicorn so docker compose down shuts it down cleanly.
+trap 'kill -TERM "$UVICORN_PID" 2>/dev/null; exit 0' TERM INT
+
+# --- 5. Drop privileges and exec the command ------------------------------
 exec gosu "$PUID:$PGID" "$@"

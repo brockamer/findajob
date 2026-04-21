@@ -1,6 +1,7 @@
 """FastAPI app factory for the materials viewer."""
 from __future__ import annotations
 
+import os
 import sqlite3
 from collections.abc import Generator
 from pathlib import Path
@@ -31,3 +32,14 @@ def create_app(*, companies_root: Path, db_path: Path) -> FastAPI:
     app.dependency_overrides.setdefault(routes.get_db, get_db)
     app.include_router(routes.router)
     return app
+
+
+def default_app() -> FastAPI:
+    """Factory used by uvicorn at container start.
+
+    Reads COMPANIES_ROOT and DB_PATH from env. Defaults match the
+    in-container layout.
+    """
+    companies_root = Path(os.environ.get("COMPANIES_ROOT", "/app/companies"))
+    db_path = Path(os.environ.get("DB_PATH", "/app/data/pipeline.db"))
+    return create_app(companies_root=companies_root, db_path=db_path)

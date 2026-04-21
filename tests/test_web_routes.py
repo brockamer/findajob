@@ -225,3 +225,28 @@ def test_index_groups_jobs_by_stage(
     # Rejected is in a <details>; content is still rendered in HTML
     assert "<details>" in r.text
     assert "RejCo" in r.text
+
+
+def test_default_app_uses_env_vars(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from findajob.web.app import default_app
+
+    companies = tmp_path / "companies"
+    companies.mkdir()
+    db_path = tmp_path / "pipeline.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "CREATE TABLE jobs (fingerprint TEXT, prep_folder_path TEXT, stage TEXT, "
+        "title TEXT, company TEXT, score INTEGER, created_at TEXT, applied_date TEXT)"
+    )
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setenv("COMPANIES_ROOT", str(companies))
+    monkeypatch.setenv("DB_PATH", str(db_path))
+
+    app = default_app()
+    client = TestClient(app)
+    r = client.get("/healthz")
+    assert r.status_code == 200
