@@ -1,6 +1,6 @@
 """Conditional-formatting helpers for board rows."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -8,7 +8,7 @@ from findajob.web.helpers import applied_age_bucket, remote_cell_class, stage_ro
 
 
 def _iso_days_ago(n: int) -> str:
-    return (datetime.now(timezone.utc) - timedelta(days=n)).isoformat()
+    return (datetime.now(UTC) - timedelta(days=n)).isoformat()
 
 
 @pytest.mark.parametrize(

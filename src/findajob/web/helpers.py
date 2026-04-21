@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 
 def applied_age_bucket(applied_date_iso: str | None) -> str:
@@ -21,8 +21,8 @@ def applied_age_bucket(applied_date_iso: str | None) -> str:
     except (TypeError, ValueError):
         return ""
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    age_days = (datetime.now(timezone.utc) - dt).days
+        dt = dt.replace(tzinfo=UTC)
+    age_days = (datetime.now(UTC) - dt).days
     if age_days <= 6:
         return "row-applied-fresh"
     if age_days <= 13:
