@@ -43,7 +43,6 @@ def landing(
 
 
 _PLACEHOLDERS = [
-    ("/board/", "Board", "Dashboard, Applied, Review, Waitlist, Archive will live here.", "#60"),
     ("/ingest/", "Ingest", "Manual job form and synthetic JD submission.", "#79"),
     ("/tools/", "Tools", "Doctor, stats, scoreboard.", ""),
     ("/config/", "Config", "Roles, prefilter rules, feedback tuning.", ""),

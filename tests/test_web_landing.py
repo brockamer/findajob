@@ -49,7 +49,6 @@ def test_landing_nav_home_active(client: TestClient) -> None:
 @pytest.mark.parametrize(
     "path,label,issue",
     [
-        ("/board/", "Board", "#60"),
         ("/ingest/", "Ingest", "#79"),
         ("/tools/", "Tools", ""),
         ("/config/", "Config", ""),

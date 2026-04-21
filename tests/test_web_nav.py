@@ -15,7 +15,10 @@ def client(tmp_path: Path) -> TestClient:
     conn = sqlite3.connect(db)
     conn.execute(
         "CREATE TABLE jobs (fingerprint TEXT, title TEXT, company TEXT, stage TEXT, "
-        "fit_score REAL, created_at TEXT, stage_updated TEXT)"
+        "fit_score REAL, probability_score REAL, relevance_score INTEGER, "
+        "location TEXT, remote_status TEXT, known_contacts TEXT, comp_estimate TEXT, "
+        "ai_notes TEXT, user_notes TEXT, score_flag_reason TEXT, source TEXT, url TEXT, "
+        "created_at TEXT, stage_updated TEXT)"
     )
     conn.commit()
     conn.close()
@@ -31,7 +34,7 @@ def test_nav_present_on_landing(client: TestClient) -> None:
     assert r.status_code == 200
     assert 'href="/"' in r.text
     assert 'href="/materials/"' in r.text
-    assert 'href="/board/"' in r.text
+    assert 'href="/board/dashboard"' in r.text
     assert 'href="/ingest/"' in r.text
     assert 'href="/tools/"' in r.text
     assert 'href="/config/"' in r.text
@@ -46,6 +49,6 @@ def test_materials_index_moved(client: TestClient) -> None:
 
 def test_every_nav_link_resolves(client: TestClient) -> None:
     """Regression: every href in the top nav returns 200, not 404."""
-    for path in ["/", "/materials/", "/board/", "/ingest/", "/tools/", "/config/", "/docs/"]:
+    for path in ["/", "/materials/", "/board/dashboard", "/ingest/", "/tools/", "/config/", "/docs/"]:
         r = client.get(path)
         assert r.status_code == 200, f"Nav link {path} returned {r.status_code}"
