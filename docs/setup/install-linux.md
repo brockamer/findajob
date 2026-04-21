@@ -13,7 +13,6 @@ This guide covers a fresh install on a Debian-based Linux system. Tested on Pop!
 sudo apt update && sudo apt install -y \
   python3 python3-pip \
   pandoc \
-  rclone \
   curl \
   git \
   build-essential  # needed for Rust/aichat-ng build
@@ -23,7 +22,6 @@ Verify:
 ```bash
 python3 --version    # should be 3.11+
 pandoc --version
-rclone version
 ```
 
 ---
@@ -99,7 +97,6 @@ Linux typically installs binaries in standard locations. Verify yours:
 ```bash
 which python3    # likely /usr/bin/python3
 which pandoc     # likely /usr/bin/pandoc
-which rclone     # likely /usr/bin/rclone
 which aichat-ng  # likely /usr/local/bin/aichat-ng (installed in step 2)
 ```
 
@@ -258,26 +255,9 @@ systemctl --user enable --now findajob-triage.timer
 
 See [bootstrap.sh](../../scripts/bootstrap.sh) for all service unit definitions.
 
-### Google Drive jobsync
+### Materials Viewer
 
-The `findajob-jobsync.service` uses push-only `rclone copy --update` to sync local `companies/` to Google Drive every 15 minutes. This is simpler than the previous bisync approach:
-
-- New prep folders created locally are pushed to Drive
-- `--update` skips files that are newer on Drive, preserving edits made via phone/browser
-- No state files, no `--resync` initialization, no conflict copies
-- Folder moves (reject → `_rejected/`, apply → `_applied/`, waitlist → `_waitlisted/`) are handled inline by `poll_flags.py` using `rclone move` within Drive (server-side)
-
-No one-time initialization is needed. The jobsync timer will push files on its next run after your first prep. To verify the remote is configured:
-
-```bash
-rclone lsd "gdrive:01 PROJECTS/Jobs To Apply For"
-```
-
-To push manually:
-
-```bash
-rclone copy --update ~/Code/findajob/companies/ "gdrive:01 PROJECTS/Jobs To Apply For"
-```
+Prep folders are served locally via a FastAPI web viewer running on `localhost:8080`. No external cloud sync or Google Drive dependencies. Markdown is rendered inline; `.docx` files are offered as downloads. This replaces the prior rclone-based Drive sync approach.
 
 ---
 

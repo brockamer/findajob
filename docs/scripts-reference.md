@@ -7,7 +7,7 @@
 
 All scripts live in `scripts/`. Diag scripts live in `scripts/diag/` and are run manually only.
 
-All scripts import `BASE`, `AICHAT`, `PANDOC`, and/or `RCLONE` from `findajob.paths` (`src/findajob/paths.py`).
+All scripts import `BASE`, `AICHAT`, and/or `PANDOC` from `findajob.paths` (`src/findajob/paths.py`).
 Never hardcode binary paths in scripts — add overrides to `config/paths.env` instead.
 
 ---
@@ -44,7 +44,7 @@ Generates a full application package for one job. LLM calls run sequentially.
 - `job_description.txt`
 - `REVIEW_CHECKLIST.md`
 
-**After completion:** updates DB to `stage=materials_drafted`, calls `sync_sheet.py`, sends ntfy notification, pushes folder to Google Drive via `rclone copy`.
+**After completion:** updates DB to `stage=materials_drafted`, calls `sync_sheet.py`, sends ntfy notification.
 
 ---
 
@@ -56,7 +56,7 @@ Reads STATUS, REJECT_REASON, and fingerprint from four tabs: `Dashboard!A2:C1000
 
 **STATUS logic (Dashboard + Applied, in priority order):**
 1. If `STATUS` is `Not Selected` and job is in `applied/interview/offer` → calls `handle_not_selected()`: sets `stage=not_selected`, drops marker file in `_applied/`, NO `feedback_log` write
-2. If `REJECT_REASON` is set and job not already rejected → calls `handle_rejection()`: updates DB, writes `feedback_log`, moves prep folder to `_rejected/`, fires rclone sync (non-blocking)
+2. If `REJECT_REASON` is set and job not already rejected → calls `handle_rejection()`: updates DB, writes `feedback_log`, moves prep folder to `_rejected/`
 3. If `STATUS` is `Regenerate` → deletes existing prep folder, re-runs prep
 4. If `STATUS` is `Applied/Interviewing/Offer/Withdrew` → updates DB stage; `Applied` moves folder to `_applied/`
 5. If `STATUS` is `Waitlist` → sets stage=waitlisted, moves folder to `_waitlisted/`

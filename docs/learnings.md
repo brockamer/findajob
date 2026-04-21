@@ -29,8 +29,8 @@ Updated as we learn. Not a task list — a knowledge base.
 
 - **SQLite busy_timeout** must be set on every connection (30s). Without it, concurrent access from triage + poller crashes with "database is locked."
 - **systemd `OnUnitActiveSec` timers** lose their re-arm chain after boot. Use `OnCalendar` instead.
-- **`rclone bisync`** fights with any other process that writes to Drive. Replaced with push-only `rclone copy --update` which never overwrites user edits on Drive.
-- **Drive-side `rclone move`** preserves file content during folder transitions (applied, rejected, waitlisted). Local copy + purge destroyed user edits.
+- ~~**`rclone bisync`** fights with any other process that writes to Drive.~~ *(removed 2026-04-20: all Drive sync removed; local folders are now source of truth)*
+- ~~**Drive-side `rclone move`** preserves file content during folder transitions.~~ *(removed 2026-04-20: local folder moves are final; no Drive push)*
 - **Greenhouse public API** (`boards-api.greenhouse.io`) has no auth, no documented rate limits, and is designed for programmatic use. Safe to poll daily.
 - **LinkedIn direct curl** always returns auth wall. Must use RapidAPI `/v2/linkedin/get?id=` for JD fetching.
 

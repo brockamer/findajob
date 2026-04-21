@@ -72,14 +72,6 @@ Used by: `notify.py`
 - Add topic to `data/.env` as `NTFY_TOPIC`
 - Optional: self-host ntfy for privacy
 
-### 8. rclone (Google Drive sync)
-Used by: `prep_application.py`, `poll_flags.py` — file sync to Google Drive
-
-- Optional: only needed if you want company folders synced to Google Drive
-- Install rclone: https://rclone.org/install/
-- Configure a `gdrive` remote: `rclone config` → Google Drive
-- Set your Drive target path in `scripts/prep_application.py` (search for `gdrive:`)
-
 ---
 
 ## Required Tools
@@ -89,7 +81,6 @@ Used by: `prep_application.py`, `poll_flags.py` — file sync to Google Drive
 | Python | 3.11+ | System package manager (apt) |
 | aichat-ng | latest | See below |
 | pandoc | 3.x | `apt install pandoc` |
-| rclone | latest | `apt install rclone` (optional) |
 
 ### Installing aichat-ng
 

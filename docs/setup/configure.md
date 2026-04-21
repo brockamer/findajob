@@ -95,7 +95,6 @@ Binary path overrides for your platform. Only needed if your binaries are in non
 ```bash
 AICHAT_NG=/usr/local/bin/aichat-ng
 PANDOC=/usr/bin/pandoc           # Linux default
-RCLONE=/usr/bin/rclone           # Linux default
 ```
 
 Linux defaults are already built into `src/findajob/paths.py`. If everything is in the expected locations, you can skip this file.

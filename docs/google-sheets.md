@@ -101,8 +101,7 @@ Behavior depends on the STATUS column:
 2. DB updated: `stage=rejected`, `reject_reason=<value>`
 3. Row written to `feedback_log` table (for pattern analysis)
 4. If a prep folder exists for this job: it is moved to `companies/_rejected/`
-5. rclone sync fires immediately (non-blocking) to push the move to Google Drive
-6. Job disappears from Dashboard on next sync
+5. Job disappears from Dashboard on next sync
 
 "Not Selected" is checked before generic rejection in the poll cycle to prevent routing errors.
 
