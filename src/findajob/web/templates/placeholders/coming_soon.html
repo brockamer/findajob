@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}{{ label }} — Coming soon{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-semibold mb-2">{{ label }}</h1>
+<p class="text-slate-600">Coming soon. {{ hint }}
+{% if issue %}Tracking: <a class="underline" href="https://github.com/brockamer/findajob/issues/{{ issue[1:] }}">{{ issue }}</a>.{% endif %}
+</p>
+{% endblock %}
