@@ -46,3 +46,31 @@ def test_healthz_returns_ok(client: TestClient) -> None:
     r = client.get("/healthz")
     assert r.status_code == 200
     assert r.text == "ok"
+
+
+def test_folder_route_lists_files(
+    client: TestClient, companies_root: Path, db_path: Path
+) -> None:
+    folder = companies_root / "Meta_SWE_2026-04-20_120000"
+    folder.mkdir()
+    (folder / "tailored_resume.docx").write_bytes(b"docx-bytes")
+    (folder / "cover_letter.md").write_text("# Hello\n")
+
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "INSERT INTO jobs (fingerprint, prep_folder_path, stage, title, company) "
+        "VALUES (?, ?, 'materials_drafted', 'SWE', 'Meta')",
+        ("fp-1", str(folder)),
+    )
+    conn.commit()
+    conn.close()
+
+    r = client.get("/materials/fp-1")
+    assert r.status_code == 200
+    assert "tailored_resume.docx" in r.text
+    assert "cover_letter.md" in r.text
+
+
+def test_folder_route_404_on_unknown_fingerprint(client: TestClient) -> None:
+    r = client.get("/materials/fp-does-not-exist")
+    assert r.status_code == 404

@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}{{ company }} — {{ title }}{% endblock %}
+{% block body %}
+<p><a href="/">← back to index</a></p>
+<h1>{{ company }} — {{ title }}</h1>
+<p class="meta">{{ folder_name }} · <span class="stage">{{ stage }}</span></p>
+<ul>
+  {% for name in files %}
+    <li><a href="/materials/{{ fingerprint }}/{{ name }}">{{ name }}</a></li>
+  {% endfor %}
+</ul>
+{% endblock %}
