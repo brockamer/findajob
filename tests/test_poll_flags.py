@@ -1,7 +1,7 @@
-"""Tests for poll_flags.py state machine: DB transitions, folder moves, Drive sync.
+"""Tests for poll_flags.py state machine: DB transitions, folder moves, and stage updates.
 
-Uses a real in-memory SQLite database. Mocks Google Sheets API, rclone subprocess,
-and module-level side effects so poll_flags can be imported cleanly.
+Uses a real in-memory SQLite database. Mocks Google Sheets API and module-level side effects
+so poll_flags can be imported cleanly.
 """
 
 import importlib
@@ -175,9 +175,6 @@ def companies_dir(tmp_path):
 def _patch_poll_flags(poll_flags_mod, tmp_path, monkeypatch):
     """Patch poll_flags module globals for every test."""
     monkeypatch.setattr(poll_flags_mod, "BASE", str(tmp_path))
-    monkeypatch.setattr(poll_flags_mod, "RCLONE", "/bin/true")
-    monkeypatch.setattr(poll_flags_mod, "sync_folder_to_drive", lambda *a, **kw: True)
-    monkeypatch.setattr(poll_flags_mod, "delete_drive_folder", lambda *a, **kw: True)
     monkeypatch.setattr(poll_flags_mod, "log_event", lambda *a, **kw: None)
     # Ensure companies subdirectories exist under tmp_path
     os.makedirs(os.path.join(str(tmp_path), "companies", "_applied"), exist_ok=True)
@@ -278,23 +275,6 @@ class TestHandleRejection:
         fb = db.execute("SELECT * FROM feedback_log WHERE job_id=?", (job["id"],)).fetchone()
         assert fb is not None
 
-    def test_rejection_from_waitlisted_source_subdir(self, poll_flags_mod, db, tmp_path, monkeypatch):
-        """Rejecting from Waitlist tab uses move_drive_folder from _waitlisted to _rejected."""
-        folder = tmp_path / "companies" / "_waitlisted" / "Acme_Ops_2026-04-13_130000"
-        folder.mkdir(parents=True, exist_ok=True)
-
-        move_calls = []
-        monkeypatch.setattr(
-            poll_flags_mod, "move_drive_folder", lambda name, src, dst: move_calls.append((name, src, dst))
-        )
-
-        job = insert_job(db, stage="waitlisted", folder=str(folder))
-        poll_flags_mod.handle_rejection(db, job, "No Longer Interested", source_subdir="_waitlisted")
-
-        assert len(move_calls) == 1
-        assert move_calls[0][1] == "_waitlisted"
-        assert move_calls[0][2] == "_rejected"
-
     def test_rejection_writes_jd_excerpt(self, poll_flags_mod, db):
         """If job has raw_jd_text, feedback_log gets first 500 chars."""
         long_jd = "A" * 1000
@@ -389,20 +369,11 @@ class TestHandleNotSelected:
 
 
 class TestHandleWaitlist:
-    def test_waitlist_with_folder(self, poll_flags_mod, db, tmp_path, monkeypatch):
-        """Folder moves to _waitlisted/, stage updated, Drive moved server-side."""
+    def test_waitlist_with_folder(self, poll_flags_mod, db, tmp_path):
+        """Folder moves to _waitlisted/, stage updated."""
         folder = tmp_path / "companies" / "Acme_Ops_2026-04-13_140000"
         folder.mkdir(parents=True, exist_ok=True)
         (folder / "cover_letter.docx").touch()
-
-        sync_calls = []
-        monkeypatch.setattr(
-            poll_flags_mod, "sync_folder_to_drive", lambda path, subdir="": sync_calls.append((path, subdir))
-        )
-        move_calls = []
-        monkeypatch.setattr(
-            poll_flags_mod, "move_drive_folder", lambda name, src, dst: move_calls.append((name, src, dst))
-        )
 
         job = insert_job(db, stage="materials_drafted", folder=str(folder))
         result = poll_flags_mod.handle_waitlist(db, job)
@@ -413,14 +384,6 @@ class TestHandleWaitlist:
         assert row["stage"] == "waitlisted"
         assert "_waitlisted" in row["prep_folder_path"]
         assert os.path.isdir(row["prep_folder_path"])
-
-        # Drive sync called to push any new local content
-        assert len(sync_calls) == 1
-        assert sync_calls[0][1] == "_waitlisted"
-        # Server-side move from top-level to _waitlisted
-        assert len(move_calls) == 1
-        assert move_calls[0][1] == ""
-        assert move_calls[0][2] == "_waitlisted"
 
     def test_waitlist_without_folder(self, poll_flags_mod, db):
         """No folder: stage updated, no folder operations, returns False."""
@@ -447,16 +410,11 @@ class TestHandleWaitlist:
 
 
 class TestHandleReactivate:
-    def test_reactivate_with_folder(self, poll_flags_mod, db, tmp_path, monkeypatch):
+    def test_reactivate_with_folder(self, poll_flags_mod, db, tmp_path):
         """Folder moves back from _waitlisted/, stage→materials_drafted."""
         folder = tmp_path / "companies" / "_waitlisted" / "Acme_Ops_2026-04-13_150000"
         folder.mkdir(parents=True, exist_ok=True)
         (folder / "resume.pdf").touch()
-
-        sync_calls = []
-        monkeypatch.setattr(
-            poll_flags_mod, "sync_folder_to_drive", lambda path, subdir="": sync_calls.append((path, subdir))
-        )
 
         job = insert_job(db, stage="waitlisted", folder=str(folder))
         result = poll_flags_mod.handle_reactivate(db, job)
@@ -468,10 +426,6 @@ class TestHandleReactivate:
         assert "_waitlisted" not in row["prep_folder_path"]
         assert os.path.isdir(row["prep_folder_path"])
         assert os.path.isfile(os.path.join(row["prep_folder_path"], "resume.pdf"))
-
-        # Drive sync: new location synced, old _waitlisted location deleted
-        assert len(sync_calls) == 1
-        assert sync_calls[0][1] == ""  # top-level, not in a subdir
 
     def test_reactivate_without_folder(self, poll_flags_mod, db):
         """No folder: stage→scored."""
@@ -556,18 +510,13 @@ class TestDashboardFlagForPrep:
 
 
 class TestDashboardRegenerate:
-    def test_regenerate_with_folder(self, poll_flags_mod, db, tmp_path, monkeypatch):
-        """Regenerate: folder deleted, Drive folder deleted, stage=prep_in_progress."""
+    def test_regenerate_with_folder(self, poll_flags_mod, db, tmp_path):
+        """Regenerate: folder deleted locally, stage=prep_in_progress."""
         from datetime import UTC, datetime
 
         folder = tmp_path / "companies" / "Acme_Ops_2026-04-13_160000"
         folder.mkdir(parents=True, exist_ok=True)
         (folder / "resume.pdf").touch()
-
-        delete_calls = []
-        monkeypatch.setattr(
-            poll_flags_mod, "delete_drive_folder", lambda name, subdir="": delete_calls.append((name, subdir))
-        )
 
         job = insert_job(
             db, stage="materials_drafted", folder=str(folder), gdrive_url="https://drive.google.com/folder/abc"
@@ -581,7 +530,6 @@ class TestDashboardRegenerate:
                 import shutil
 
                 shutil.rmtree(f)
-                poll_flags_mod.delete_drive_folder(os.path.basename(f))
             now = datetime.now(UTC).isoformat()
             db.execute(
                 """UPDATE jobs SET stage='prep_in_progress', prep_folder_path=NULL,
@@ -600,7 +548,6 @@ class TestDashboardRegenerate:
         assert row["gdrive_folder_url"] is None
         assert row["apply_flag"] == 1
         assert not folder.exists()
-        assert len(delete_calls) == 1
 
     def test_regenerate_without_folder(self, poll_flags_mod, db):
         """Regenerate when prep_folder_path is NULL → still sets prep_in_progress."""
@@ -623,18 +570,13 @@ class TestDashboardRegenerate:
 
 
 class TestDashboardStatusUpdates:
-    def test_applied_with_folder(self, poll_flags_mod, db, tmp_path, monkeypatch):
+    def test_applied_with_folder(self, poll_flags_mod, db, tmp_path):
         """Applied: stage=applied, folder moves to _applied/."""
         from datetime import UTC, datetime
 
         folder = tmp_path / "companies" / "Acme_Ops_2026-04-13_170000"
         folder.mkdir(parents=True, exist_ok=True)
         (folder / "cover_letter.pdf").touch()
-
-        sync_calls = []
-        monkeypatch.setattr(
-            poll_flags_mod, "sync_folder_to_drive", lambda path, subdir="": sync_calls.append((path, subdir))
-        )
 
         job = insert_job(db, stage="materials_drafted", folder=str(folder))
 
@@ -657,13 +599,11 @@ class TestDashboardStatusUpdates:
             shutil.move(f, dest)
             db.execute("UPDATE jobs SET prep_folder_path=? WHERE id=?", (dest, job["id"]))
             db.commit()
-            poll_flags_mod.sync_folder_to_drive(dest, "_applied")
 
         row = db.execute("SELECT stage, prep_folder_path FROM jobs WHERE id=?", (job["id"],)).fetchone()
         assert row["stage"] == "applied"
         assert "_applied" in row["prep_folder_path"]
         assert os.path.isdir(row["prep_folder_path"])
-        assert len(sync_calls) == 1
 
     def test_applied_without_folder(self, poll_flags_mod, db):
         """Applied without folder: stage=applied, no folder move."""
@@ -814,25 +754,6 @@ class TestWaitlistTab:
         row = db.execute("SELECT stage FROM jobs WHERE id=?", (job["id"],)).fetchone()
         assert row["stage"] == "scored"
 
-    def test_reject_from_waitlist(self, poll_flags_mod, db, tmp_path, monkeypatch):
-        """Reject from Waitlist tab uses move_drive_folder from _waitlisted to _rejected."""
-        folder = tmp_path / "companies" / "_waitlisted" / "Acme_Ops_2026-04-13_180000"
-        folder.mkdir(parents=True, exist_ok=True)
-
-        move_calls = []
-        monkeypatch.setattr(
-            poll_flags_mod, "move_drive_folder", lambda name, src, dst: move_calls.append((name, src, dst))
-        )
-
-        job = insert_job(db, stage="waitlisted", folder=str(folder))
-        poll_flags_mod.handle_rejection(db, job, "Company Withdrew", source_subdir="_waitlisted")
-
-        row = db.execute("SELECT stage FROM jobs WHERE id=?", (job["id"],)).fetchone()
-        assert row["stage"] == "rejected"
-        assert len(move_calls) == 1
-        assert move_calls[0][1] == "_waitlisted"
-        assert move_calls[0][2] == "_rejected"
-
     def test_rejection_priority_over_reactivate(self, poll_flags_mod, db):
         """Both reject and reactivate set → rejection wins (main() logic)."""
         job = insert_job(db, stage="waitlisted")
@@ -841,7 +762,7 @@ class TestWaitlistTab:
 
         # main() checks reject_val first
         if reject_val:
-            poll_flags_mod.handle_rejection(db, job, reject_val, source_subdir="_waitlisted")
+            poll_flags_mod.handle_rejection(db, job, reject_val)
         elif status_val == "Reactivate":
             poll_flags_mod.handle_reactivate(db, job)
 

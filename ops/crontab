@@ -13,9 +13,6 @@ PYTHONUNBUFFERED=1
 */10 *   *  *  *   timeout 900 python3 /app/scripts/poll_flags.py
 */30 *   *  *  *   python3 /app/scripts/ingest_form.py
 
-# ── Google Drive sync (gated by env, disabled by default) ────────────────────
-*/15 *   *  *  *   [ "$FINDAJOB_JOBSYNC_ENABLED" = "true" ] && rclone copy --update /app/companies/ "$FINDAJOB_JOBSYNC_REMOTE"
-
 # ── Notifications ────────────────────────────────────────────────────────────
 0    6   *  *  *        python3 /app/scripts/notify.py apply-reminder
 15   6   *  *  *        python3 /app/scripts/notify.py daily-stats

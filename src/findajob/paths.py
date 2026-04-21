@@ -4,11 +4,11 @@ Central path and base-directory resolver for all pipeline scripts.
 BASE is derived from this file's location — works wherever the repo is cloned,
 regardless of directory name or home folder. No hardcoded paths.
 
-Binary paths (AICHAT, PANDOC, RCLONE) are read from config/paths.env.
+Binary paths (AICHAT, PANDOC) are read from config/paths.env.
 Override defaults via config/paths.env if your binaries live elsewhere.
 
 Usage:
-    from findajob.paths import BASE, AICHAT, PANDOC, RCLONE
+    from findajob.paths import BASE, AICHAT, PANDOC
 
 Use sys.executable (not a PYTHON constant) for subprocess calls to other pipeline scripts.
 
@@ -44,4 +44,3 @@ if _penv.exists():
 # Override via config/paths.env if your install is non-standard.
 AICHAT: str = _cfg.get("AICHAT_NG", "/usr/local/bin/aichat-ng")
 PANDOC: str = _cfg.get("PANDOC", "/usr/bin/pandoc")
-RCLONE: str = _cfg.get("RCLONE", "/usr/bin/rclone")
