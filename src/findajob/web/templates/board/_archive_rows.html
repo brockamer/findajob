@@ -1,0 +1,10 @@
+{% for row in rows %}
+  {% include "_job_row.html" %}
+{% endfor %}
+{% if next_offset is not none %}
+  <tr hx-get="/board/archive/rows?offset={{ next_offset }}&sort={{ sort }}&desc={{ desc }}"
+      hx-trigger="revealed"
+      hx-swap="outerHTML">
+    <td colspan="{{ columns|length }}" class="px-3 py-2 text-xs text-slate-400">loading…</td>
+  </tr>
+{% endif %}

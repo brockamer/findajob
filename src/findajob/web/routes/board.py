@@ -219,3 +219,84 @@ def waitlist(
             "materials_base_url": materials_base_url,
         },
     )
+
+
+_ARCHIVE_COLS = [
+    ("Score", "fit_score"),
+    ("Title", "title"),
+    ("Company", "company"),
+    ("Stage", "stage"),
+    ("Location", "location"),
+    ("Remote", "remote_status"),
+    ("Date", "created_at"),
+    ("Source", "source"),
+    ("URL", "url"),
+]
+_ARCHIVE_SORTABLE = {c for _, c in _ARCHIVE_COLS}
+_ARCHIVE_DEFAULT_SORT = "created_at"
+_ARCHIVE_PAGE_SIZE = 100
+
+
+def _archive_select_sql(sort_col: str, order: str) -> str:
+    return (
+        "SELECT fingerprint, title, company, stage, fit_score, location, remote_status, "
+        "source, url, created_at, stage_updated "
+        f"FROM jobs ORDER BY {sort_col} {order} LIMIT ? OFFSET ?"
+    )
+
+
+@router.get("/board/archive", response_class=HTMLResponse)
+def archive(
+    request: Request,
+    sort: str = Query(default=""),
+    desc: int = Query(default=1),
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> HTMLResponse:
+    sort_col = sort if sort in _ARCHIVE_SORTABLE else _ARCHIVE_DEFAULT_SORT
+    order = "DESC" if desc else "ASC"
+    rows = db.execute(_archive_select_sql(sort_col, order), (_ARCHIVE_PAGE_SIZE, 0)).fetchall()
+    has_more = len(rows) == _ARCHIVE_PAGE_SIZE
+    materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request=request,
+        name="board/archive.html",
+        context={
+            "columns": _ARCHIVE_COLS,
+            "rows": rows,
+            "sort": sort_col,
+            "desc": desc,
+            "tab": "archive",
+            "next_offset": _ARCHIVE_PAGE_SIZE if has_more else None,
+            "materials_base_url": materials_base_url,
+        },
+    )
+
+
+@router.get("/board/archive/rows", response_class=HTMLResponse)
+def archive_rows(
+    request: Request,
+    offset: int = Query(default=0),
+    sort: str = Query(default=""),
+    desc: int = Query(default=1),
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> HTMLResponse:
+    sort_col = sort if sort in _ARCHIVE_SORTABLE else _ARCHIVE_DEFAULT_SORT
+    order = "DESC" if desc else "ASC"
+    rows = db.execute(_archive_select_sql(sort_col, order), (_ARCHIVE_PAGE_SIZE, offset)).fetchall()
+    has_more = len(rows) == _ARCHIVE_PAGE_SIZE
+    materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request=request,
+        name="board/_archive_rows.html",
+        context={
+            "columns": _ARCHIVE_COLS,
+            "rows": rows,
+            "tab": "archive",
+            "next_offset": offset + _ARCHIVE_PAGE_SIZE if has_more else None,
+            "sort": sort_col,
+            "desc": desc,
+            "materials_base_url": materials_base_url,
+        },
+    )

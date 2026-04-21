@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Archive — findajob{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-semibold mb-4">Archive ({{ rows|length }}+)</h1>
+<table class="min-w-full bg-white shadow-sm rounded-sm">
+  <thead class="bg-slate-100 text-left text-xs uppercase tracking-wide text-slate-600">
+    <tr>
+      {% for display, field in columns %}
+      <th class="px-3 py-2">
+        <a href="?sort={{ field }}&desc={% if sort == field and desc %}0{% else %}1{% endif %}">
+          {{ display }}{% if sort == field %}{% if desc %} ▼{% else %} ▲{% endif %}{% endif %}
+        </a>
+      </th>
+      {% endfor %}
+    </tr>
+  </thead>
+  <tbody id="rows">
+    {% include "board/_archive_rows.html" %}
+  </tbody>
+</table>
+{% endblock %}
