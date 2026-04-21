@@ -10,20 +10,22 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+## [0.1.2] — 2026-04-21
+
+Retires the Google Drive / rclone folder-browsing surface in favor of a local FastAPI web viewer served per stack. The container image loses the `rclone` apt package (~50 MB smaller), gains a uvicorn co-process, and publishes a new `FINDAJOB_MATERIALS_PORT` — each stack picks its own. Operators with `FINDAJOB_JOBSYNC_ENABLED=true` on v0.1.x need a one-time stack update; fresh-install testers are unaffected.
+
 ### Added
-- Web materials viewer (`#59`): local FastAPI service serves prep-folder contents
-  on `http://docker.lan:<port>/`. Replaces Google Drive folder browsing.
+- Web materials viewer on `http://docker.lan:<port>/` serves prep-folder contents — markdown rendered inline, `.docx` downloads, index grouped by lifecycle stage (In flight / Applied / Waitlisted / Rejected). Replaces Google Drive folder browsing (#125, closes #59, closes #29).
 
 ### Removed
-- rclone integration and Google Drive sync (`#29`, `#59`). `FINDAJOB_JOBSYNC_*`
-  env vars deleted; `state/rclone/` bind mount no longer used; `rclone` removed
-  from the container image (~50 MB smaller).
+- rclone integration and Google Drive sync plumbing. `FINDAJOB_JOBSYNC_*` env vars deleted; `state/rclone/` bind mount no longer used; `rclone` removed from the container image; `poll_flags.py` / `prep_application.py` / `notify.py` rclone call sites deleted; `scripts/bootstrap.sh` no longer installs rclone (#125).
+
+### Fixed
+- Viewer index route queried `score` and `applied_date` columns that don't exist on the production `jobs` schema; both replaced with `fit_score` (REAL) and `stage_updated` (TEXT). Test fixtures rewritten against the real schema so future drift surfaces in CI rather than prod (#127).
 
 ### Migration required
 
-Operators on prior versions who had `FINDAJOB_JOBSYNC_ENABLED=true` must
-perform a one-time stack update — see `docs/setup/state-migration.md` for
-the exact commands. Testers on fresh installs are unaffected.
+Operator stacks that had `FINDAJOB_JOBSYNC_ENABLED=true` on v0.1.x must stop the stack, remove the `state/rclone/` bind mount, add a `FINDAJOB_MATERIALS_PORT` to `.env`, add a `ports:` block to `compose.yaml`, and drop the `FINDAJOB_JOBSYNC_ENABLED` env line before pulling. Exact steps in `docs/setup/state-migration.md`. Fresh-install testers are unaffected.
 
 ## [0.1.1] — 2026-04-20
 
@@ -85,5 +87,7 @@ from GHCR and deployed via Docker Compose on a shared Docker host.
 - Documentation cleanup — removing `sigoden/aichat` references in favor of
   `blob42/aichat-ng` — is tracked in #70
 
-[Unreleased]: https://github.com/brockamer/findajob/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/brockamer/findajob/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/brockamer/findajob/releases/tag/v0.1.2
+[0.1.1]: https://github.com/brockamer/findajob/releases/tag/v0.1.1
 [0.1.0]: https://github.com/brockamer/findajob/releases/tag/v0.1.0
