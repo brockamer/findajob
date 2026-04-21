@@ -59,7 +59,7 @@ def index(request: Request, db: sqlite3.Connection = Depends(get_db)) -> HTMLRes
     templates = request.app.state.templates
     return templates.TemplateResponse(
         request=request,
-        name="index.html",
+        name="materials/index.html",
         context={"sections": sections, "rejected": rejected},
     )
 
@@ -79,7 +79,7 @@ def folder_view(
     templates = request.app.state.templates
     return templates.TemplateResponse(
         request=request,
-        name="folder.html",
+        name="materials/folder.html",
         context={
             "fingerprint": fingerprint,
             "folder_name": folder.name,
