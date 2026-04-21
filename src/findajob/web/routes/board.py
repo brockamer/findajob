@@ -364,7 +364,7 @@ def applied_rows(
     sort_col = sort if sort in _APPLIED_SORTABLE else _APPLIED_DEFAULT_SORT
     order = "DESC" if desc else "ASC"
     filter_sql, params = _filter_clause(q)
-    # The filter applies to jobs' own title/company columns, not the joined ones
+    qualified_filter = filter_sql.replace("title", "j.title").replace("company", "j.company")
     sql = f"""
     SELECT j.fingerprint, j.title, j.company, j.stage, j.location, j.remote_status,
            j.known_contacts, j.comp_estimate, j.ai_notes, j.user_notes, j.created_at,
@@ -377,7 +377,7 @@ def applied_rows(
       WHERE field_changed = 'stage' AND new_value = 'applied'
       GROUP BY job_id
     ) al ON al.job_id = j.fingerprint
-    WHERE j.stage IN ('applied','interview','offer'){filter_sql.replace("title", "j.title").replace("company", "j.company")}
+    WHERE j.stage IN ('applied','interview','offer'){qualified_filter}
     ORDER BY {sort_col} {order}
     """
     rows = db.execute(sql, params).fetchall()
@@ -437,6 +437,7 @@ def waitlist_rows(
     sort_col = sort if sort in _WAITLIST_SORTABLE else _WAITLIST_DEFAULT_SORT
     order = "DESC" if desc else "ASC"
     filter_sql, params = _filter_clause(q)
+    qualified_filter = filter_sql.replace("title", "w.title").replace("company", "w.company")
     sql = f"""
     SELECT w.fingerprint, w.title, w.company, w.relevance_score, w.location, w.remote_status,
            w.ai_notes, w.created_at, w.stage,
@@ -448,7 +449,7 @@ def waitlist_rows(
              ORDER BY j2.stage_updated DESC
              LIMIT 1) AS blocking_app
     FROM jobs w
-    WHERE w.stage = 'waitlisted'{filter_sql.replace("title", "w.title").replace("company", "w.company")}
+    WHERE w.stage = 'waitlisted'{qualified_filter}
     ORDER BY {sort_col} {order}
     """
     rows = db.execute(sql, params).fetchall()
