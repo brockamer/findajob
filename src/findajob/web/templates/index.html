@@ -10,10 +10,10 @@
   {% for row in section.rows %}
     <li>
       <a href="/materials/{{ row.fingerprint }}">{{ row.company }} — {{ row.title }}</a>
-      {% if row.score %} <span class="score">[{{ row.score }}]</span>{% endif %}
+      {% if row.fit_score is not none %} <span class="score">[{{ '%.1f'|format(row.fit_score) }}]</span>{% endif %}
       <span class="meta">
         (<span class="stage">{{ row.stage }}</span>)
-        {% if row.applied_date %} · {{ row.applied_date }}{% endif %}
+        {% if row.stage_updated %} · {{ row.stage_updated[:10] }}{% endif %}
       </span>
     </li>
   {% endfor %}

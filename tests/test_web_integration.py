@@ -31,23 +31,55 @@ def world(tmp_path: Path) -> dict:
 
     db = tmp_path / "pipeline.db"
     conn = sqlite3.connect(db)
-    conn.execute(
-        """CREATE TABLE jobs (
-            fingerprint TEXT PRIMARY KEY,
-            prep_folder_path TEXT,
-            stage TEXT,
-            title TEXT,
-            company TEXT,
-            score INTEGER,
-            created_at TEXT,
-            applied_date TEXT
-        )"""
+    conn.executescript(
+        """
+CREATE TABLE jobs (
+    id TEXT PRIMARY KEY,
+    fingerprint TEXT UNIQUE NOT NULL,
+    url TEXT NOT NULL,
+    title TEXT NOT NULL,
+    company TEXT NOT NULL,
+    location TEXT DEFAULT '',
+    source TEXT NOT NULL,
+    stage TEXT DEFAULT 'discovered',
+    stage_updated TEXT,
+    prep_folder_path TEXT,
+    fit_score REAL,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+)
+"""
     )
+    cols = "id, fingerprint, url, title, company, source, stage, prep_folder_path, fit_score, created_at, stage_updated"
     conn.executemany(
-        "INSERT INTO jobs VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        f"INSERT INTO jobs ({cols}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
-            ("fp-active", str(active), "materials_drafted", "SWE", "Meta", 8, "2026-04-20", None),
-            ("fp-applied", str(applied), "applied", "PM", "Google", 7, "2026-04-15", "2026-04-15"),
+            (
+                "fp-active",
+                "fp-active",
+                "https://x/a",
+                "SWE",
+                "Meta",
+                "test",
+                "materials_drafted",
+                str(active),
+                8.0,
+                "2026-04-20",
+                None,
+            ),
+            (
+                "fp-applied",
+                "fp-applied",
+                "https://x/b",
+                "PM",
+                "Google",
+                "test",
+                "applied",
+                str(applied),
+                7.0,
+                "2026-04-15",
+                "2026-04-15",
+            ),
         ],
     )
     conn.commit()

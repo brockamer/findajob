@@ -114,7 +114,7 @@ _INDEX_QUERY_SECTIONS = [
     (
         "Applied",
         "stage IN ('applied', 'interview', 'offer')",
-        "COALESCE(applied_date, created_at) DESC",
+        "COALESCE(stage_updated, created_at) DESC",
     ),
     ("Waitlisted", "stage = 'waitlisted'", "created_at DESC"),
 ]
@@ -124,7 +124,7 @@ _PER_SECTION_CAP = 50
 
 def _fetch_section(db: sqlite3.Connection, where: str, order: str) -> list[sqlite3.Row]:
     return db.execute(
-        f"SELECT fingerprint, title, company, stage, score, created_at, applied_date "
+        f"SELECT fingerprint, title, company, stage, fit_score, created_at, stage_updated "
         f"FROM jobs WHERE {where} ORDER BY {order} LIMIT {_PER_SECTION_CAP + 1}"
     ).fetchall()
 

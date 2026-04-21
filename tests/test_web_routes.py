@@ -16,22 +16,50 @@ def companies_root(tmp_path: Path) -> Path:
     return tmp_path
 
 
+_JOBS_SCHEMA_SQL = """
+CREATE TABLE jobs (
+    id TEXT PRIMARY KEY,
+    fingerprint TEXT UNIQUE NOT NULL,
+    url TEXT NOT NULL,
+    title TEXT NOT NULL,
+    company TEXT NOT NULL,
+    location TEXT DEFAULT '',
+    source TEXT NOT NULL,
+    stage TEXT DEFAULT 'discovered',
+    stage_updated TEXT,
+    prep_folder_path TEXT,
+    fit_score REAL,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+)
+"""
+
+
+def _insert_job(conn: sqlite3.Connection, fp: str, **kwargs: object) -> None:
+    """Insert a minimal jobs row, filling NOT NULL columns with sensible defaults.
+
+    Callers pass fingerprint-as-id via `fp` and override any of: title, company,
+    url, source, stage, prep_folder_path, fit_score, created_at, stage_updated.
+    """
+    fields = {
+        "id": fp,
+        "fingerprint": fp,
+        "url": f"https://example.com/{fp}",
+        "title": "Untitled",
+        "company": "Unknown",
+        "source": "test",
+    }
+    fields.update(kwargs)
+    cols = ", ".join(fields.keys())
+    placeholders = ", ".join("?" * len(fields))
+    conn.execute(f"INSERT INTO jobs ({cols}) VALUES ({placeholders})", tuple(fields.values()))
+
+
 @pytest.fixture
 def db_path(tmp_path: Path) -> Path:
     p = tmp_path / "pipeline.db"
     conn = sqlite3.connect(p)
-    conn.execute(
-        """CREATE TABLE jobs (
-            fingerprint TEXT PRIMARY KEY,
-            prep_folder_path TEXT,
-            stage TEXT,
-            title TEXT,
-            company TEXT,
-            score INTEGER,
-            created_at TEXT,
-            applied_date TEXT
-        )"""
-    )
+    conn.executescript(_JOBS_SCHEMA_SQL)
     conn.commit()
     conn.close()
     return p
@@ -56,11 +84,7 @@ def test_folder_route_lists_files(client: TestClient, companies_root: Path, db_p
     (folder / "cover_letter.md").write_text("# Hello\n")
 
     conn = sqlite3.connect(db_path)
-    conn.execute(
-        "INSERT INTO jobs (fingerprint, prep_folder_path, stage, title, company) "
-        "VALUES (?, ?, 'materials_drafted', 'SWE', 'Meta')",
-        ("fp-1", str(folder)),
-    )
+    _insert_job(conn, "fp-1", prep_folder_path=str(folder), stage="materials_drafted", title="SWE", company="Meta")
     conn.commit()
     conn.close()
 
@@ -81,10 +105,7 @@ def test_file_serve_markdown_rendered_inline(client: TestClient, companies_root:
     (folder / "notes.md").write_text("# Hello\n\n```python\nprint('hi')\n```\n")
 
     conn = sqlite3.connect(db_path)
-    conn.execute(
-        "INSERT INTO jobs (fingerprint, prep_folder_path, stage) VALUES ('fp-md', ?, 'materials_drafted')",
-        (str(folder),),
-    )
+    _insert_job(conn, "fp-md", prep_folder_path=str(folder), stage="materials_drafted")
     conn.commit()
     conn.close()
 
@@ -101,10 +122,7 @@ def test_file_serve_docx_as_attachment(client: TestClient, companies_root: Path,
     (folder / "resume.docx").write_bytes(b"PK\x03\x04fake-docx-bytes")
 
     conn = sqlite3.connect(db_path)
-    conn.execute(
-        "INSERT INTO jobs (fingerprint, prep_folder_path, stage) VALUES ('fp-docx', ?, 'materials_drafted')",
-        (str(folder),),
-    )
+    _insert_job(conn, "fp-docx", prep_folder_path=str(folder), stage="materials_drafted")
     conn.commit()
     conn.close()
 
@@ -120,10 +138,7 @@ def test_file_serve_txt_inline(client: TestClient, companies_root: Path, db_path
     (folder / "raw.txt").write_text("plain text body\n")
 
     conn = sqlite3.connect(db_path)
-    conn.execute(
-        "INSERT INTO jobs (fingerprint, prep_folder_path, stage) VALUES ('fp-txt', ?, 'materials_drafted')",
-        (str(folder),),
-    )
+    _insert_job(conn, "fp-txt", prep_folder_path=str(folder), stage="materials_drafted")
     conn.commit()
     conn.close()
 
@@ -137,10 +152,7 @@ def test_file_serve_404_on_unknown_filename(client: TestClient, companies_root: 
     folder = companies_root / "Company_W_2026-04-20_160000"
     folder.mkdir()
     conn = sqlite3.connect(db_path)
-    conn.execute(
-        "INSERT INTO jobs (fingerprint, prep_folder_path, stage) VALUES ('fp-empty', ?, 'materials_drafted')",
-        (str(folder),),
-    )
+    _insert_job(conn, "fp-empty", prep_folder_path=str(folder), stage="materials_drafted")
     conn.commit()
     conn.close()
 
@@ -152,10 +164,7 @@ def test_file_serve_rejects_traversal(client: TestClient, companies_root: Path, 
     folder = companies_root / "Company_T_2026-04-20_170000"
     folder.mkdir()
     conn = sqlite3.connect(db_path)
-    conn.execute(
-        "INSERT INTO jobs (fingerprint, prep_folder_path, stage) VALUES ('fp-t', ?, 'materials_drafted')",
-        (str(folder),),
-    )
+    _insert_job(conn, "fp-t", prep_folder_path=str(folder), stage="materials_drafted")
     conn.commit()
     conn.close()
 
@@ -169,10 +178,7 @@ def test_file_serve_markdown_escapes_raw_html(client: TestClient, companies_root
     (folder / "bad.md").write_text("# Title\n\n<script>alert('x')</script>\n")
 
     conn = sqlite3.connect(db_path)
-    conn.execute(
-        "INSERT INTO jobs (fingerprint, prep_folder_path, stage) VALUES ('fp-xss', ?, 'materials_drafted')",
-        (str(folder),),
-    )
+    _insert_job(conn, "fp-xss", prep_folder_path=str(folder), stage="materials_drafted")
     conn.commit()
     conn.close()
 
@@ -186,15 +192,46 @@ def test_index_groups_jobs_by_stage(client: TestClient, companies_root: Path, db
         (companies_root / folder_name).mkdir(parents=True)
 
     conn = sqlite3.connect(db_path)
-    conn.executemany(
-        "INSERT INTO jobs (fingerprint, prep_folder_path, stage, title, company, score, created_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)",
-        [
-            ("fp-a", str(companies_root / "M1"), "materials_drafted", "SWE", "InFlightCo", 8, "2026-04-20"),
-            ("fp-b", str(companies_root / "_applied" / "M2"), "applied", "PM", "AppliedCo", 7, "2026-04-15"),
-            ("fp-c", str(companies_root / "_waitlisted" / "M3"), "waitlisted", "DE", "WaitCo", 6, "2026-04-10"),
-            ("fp-d", str(companies_root / "_rejected" / "M4"), "rejected", "SRE", "RejCo", 5, "2026-04-01"),
-        ],
+    _insert_job(
+        conn,
+        "fp-a",
+        prep_folder_path=str(companies_root / "M1"),
+        stage="materials_drafted",
+        title="SWE",
+        company="InFlightCo",
+        fit_score=8.0,
+        created_at="2026-04-20",
+    )
+    _insert_job(
+        conn,
+        "fp-b",
+        prep_folder_path=str(companies_root / "_applied" / "M2"),
+        stage="applied",
+        title="PM",
+        company="AppliedCo",
+        fit_score=7.0,
+        created_at="2026-04-15",
+        stage_updated="2026-04-15",
+    )
+    _insert_job(
+        conn,
+        "fp-c",
+        prep_folder_path=str(companies_root / "_waitlisted" / "M3"),
+        stage="waitlisted",
+        title="DE",
+        company="WaitCo",
+        fit_score=6.0,
+        created_at="2026-04-10",
+    )
+    _insert_job(
+        conn,
+        "fp-d",
+        prep_folder_path=str(companies_root / "_rejected" / "M4"),
+        stage="rejected",
+        title="SRE",
+        company="RejCo",
+        fit_score=5.0,
+        created_at="2026-04-01",
     )
     conn.commit()
     conn.close()
@@ -219,10 +256,7 @@ def test_default_app_uses_env_vars(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
     companies.mkdir()
     db_path = tmp_path / "pipeline.db"
     conn = sqlite3.connect(db_path)
-    conn.execute(
-        "CREATE TABLE jobs (fingerprint TEXT, prep_folder_path TEXT, stage TEXT, "
-        "title TEXT, company TEXT, score INTEGER, created_at TEXT, applied_date TEXT)"
-    )
+    conn.executescript(_JOBS_SCHEMA_SQL)
     conn.commit()
     conn.close()
 
