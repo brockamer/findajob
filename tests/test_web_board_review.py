@@ -1,0 +1,40 @@
+"""Board Review tab."""
+
+import sqlite3
+from pathlib import Path
+
+import pytest
+from fastapi.testclient import TestClient
+
+from findajob.web.app import create_app
+
+
+@pytest.fixture
+def client(tmp_path: Path) -> TestClient:
+    db = tmp_path / "pipeline.db"
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE jobs (fingerprint TEXT, title TEXT, company TEXT, stage TEXT, "
+        "score_flag_reason TEXT, source TEXT, created_at TEXT, stage_updated TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO jobs (fingerprint, title, company, stage, score_flag_reason, source, created_at) "
+        "VALUES ('fp-rev','Ambiguous Title','Meta','manual_review','target company bump','greenhouse','2026-04-20')"
+    )
+    conn.execute(
+        "INSERT INTO jobs (fingerprint, title, company, stage) "
+        "VALUES ('fp-scored','Other','Acme','scored')"
+    )
+    conn.commit()
+    conn.close()
+    companies = tmp_path / "companies"
+    companies.mkdir()
+    return TestClient(create_app(companies_root=companies, db_path=db))
+
+
+def test_review_shows_manual_review_only(client: TestClient) -> None:
+    r = client.get("/board/review")
+    assert r.status_code == 200
+    assert "Ambiguous Title" in r.text
+    assert "Other" not in r.text
+    assert "target company bump" in r.text

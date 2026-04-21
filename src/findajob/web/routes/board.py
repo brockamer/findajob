@@ -125,3 +125,97 @@ def applied(
             "materials_base_url": materials_base_url,
         },
     )
+
+
+_REVIEW_COLS = [
+    ("Title", "title"),
+    ("Company", "company"),
+    ("Flag reason", "score_flag_reason"),
+    ("Source", "source"),
+    ("Date", "created_at"),
+]
+_REVIEW_SORTABLE = {c for _, c in _REVIEW_COLS}
+_REVIEW_DEFAULT_SORT = "created_at"
+
+
+@router.get("/board/review", response_class=HTMLResponse)
+def review(
+    request: Request,
+    sort: str = Query(default=""),
+    desc: int = Query(default=1),
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> HTMLResponse:
+    sort_col = sort if sort in _REVIEW_SORTABLE else _REVIEW_DEFAULT_SORT
+    order = "DESC" if desc else "ASC"
+    rows = db.execute(
+        f"SELECT fingerprint, title, company, score_flag_reason, source, created_at, stage "
+        f"FROM jobs WHERE stage = 'manual_review' ORDER BY {sort_col} {order}"
+    ).fetchall()
+    materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request=request,
+        name="board/review.html",
+        context={
+            "columns": _REVIEW_COLS,
+            "rows": rows,
+            "sort": sort_col,
+            "desc": desc,
+            "tab": "review",
+            "materials_base_url": materials_base_url,
+        },
+    )
+
+
+_WAITLIST_COLS = [
+    ("Title", "title"),
+    ("Company", "company"),
+    ("Rel", "relevance_score"),
+    ("Location", "location"),
+    ("Remote", "remote_status"),
+    ("AI notes", "ai_notes"),
+    ("Date", "created_at"),
+    ("Blocking app", "blocking_app"),
+]
+_WAITLIST_SORTABLE = {c for _, c in _WAITLIST_COLS if c != "blocking_app"}
+_WAITLIST_DEFAULT_SORT = "created_at"
+
+
+@router.get("/board/waitlist", response_class=HTMLResponse)
+def waitlist(
+    request: Request,
+    sort: str = Query(default=""),
+    desc: int = Query(default=1),
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> HTMLResponse:
+    sort_col = sort if sort in _WAITLIST_SORTABLE else _WAITLIST_DEFAULT_SORT
+    order = "DESC" if desc else "ASC"
+    sql = f"""
+    SELECT w.fingerprint, w.title, w.company, w.relevance_score, w.location, w.remote_status,
+           w.ai_notes, w.created_at, w.stage,
+           (SELECT j2.title || ' (' || j2.stage || ')'
+              FROM jobs j2
+             WHERE j2.company = w.company
+               AND j2.fingerprint != w.fingerprint
+               AND j2.stage IN ('applied','interview','offer','materials_drafted','prep_in_progress')
+             ORDER BY j2.stage_updated DESC
+             LIMIT 1) AS blocking_app
+    FROM jobs w
+    WHERE w.stage = 'waitlisted'
+    ORDER BY {sort_col} {order}
+    """
+    rows = db.execute(sql).fetchall()
+    materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request=request,
+        name="board/waitlist.html",
+        context={
+            "columns": _WAITLIST_COLS,
+            "rows": rows,
+            "sort": sort_col,
+            "desc": desc,
+            "tab": "waitlist",
+            "materials_base_url": materials_base_url,
+        },
+    )

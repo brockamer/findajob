@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Waitlist — findajob{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-semibold mb-4">Waitlist</h1>
+{% include "_filters.html" ignore missing %}
+<table class="min-w-full bg-white shadow-sm rounded-sm">
+  <thead class="bg-slate-100 text-left text-xs uppercase tracking-wide text-slate-600">
+    <tr>
+      {% for display, field in columns %}
+      <th class="px-3 py-2">
+        <a href="?sort={{ field }}&desc={% if sort == field and desc %}0{% else %}1{% endif %}">
+          {{ display }}{% if sort == field %}{% if desc %} ▼{% else %} ▲{% endif %}{% endif %}
+        </a>
+      </th>
+      {% endfor %}
+    </tr>
+  </thead>
+  <tbody id="rows">
+    {% for row in rows %}
+      {% include "_job_row.html" %}
+    {% else %}
+      <tr><td colspan="{{ columns|length }}" class="px-3 py-4 text-slate-500">No waitlisted jobs right now.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
