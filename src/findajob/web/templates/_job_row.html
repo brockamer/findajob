@@ -1,0 +1,29 @@
+{#
+  Shared row partial for board tables. Inputs:
+    row — a sqlite3.Row (or dict) with fields for the current tab's columns
+    columns — list of (display_name, field_name) tuples to render in order
+    tab — "dashboard" | "applied" | "review" | "waitlist" | "archive"
+    materials_base_url — optional URL for the materials viewer hyperlink
+  Applies tab-specific conditional formatting via findajob.web.helpers
+  (exposed as Jinja globals in app.py::create_app).
+#}
+{% set row_classes = [] %}
+{% if tab == "applied" %}
+  {% set age_class = applied_age_bucket(row.applied_date) %}
+  {% if age_class %}{% set _ = row_classes.append(age_class) %}{% endif %}
+  {% set stage_class = stage_row_class(row.stage) %}
+  {% if stage_class %}{% set _ = row_classes.append(stage_class) %}{% endif %}
+{% endif %}
+<tr class="{{ row_classes | join(' ') }}" data-fingerprint="{{ row.fingerprint }}">
+  {% for display, field in columns %}
+    <td class="px-3 py-1 align-top text-sm
+               {% if field == 'known_contacts' and row[field] %}cell-contact-amber{% endif %}
+               {% if field == 'remote_status' %}{{ remote_cell_class(row[field]) }}{% endif %}">
+      {% if field == 'company' and tab == 'applied' and row.fingerprint and row.stage in folder_stages and materials_base_url %}
+        <a class="underline" href="{{ materials_base_url }}/materials/{{ row.fingerprint }}">{{ row[field] }}</a>
+      {% else %}
+        {{ row[field] }}
+      {% endif %}
+    </td>
+  {% endfor %}
+</tr>
