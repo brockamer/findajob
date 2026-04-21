@@ -5,10 +5,9 @@ import re
 import sqlite3
 from pathlib import Path
 
+import markdown as md_lib
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
-
-import markdown as md_lib
 
 from findajob.web.folder_resolver import resolve_folder
 
@@ -31,7 +30,7 @@ def healthz(request: Request) -> Response:
 def folder_view(
     fingerprint: str,
     request: Request,
-    db: sqlite3.Connection = Depends(get_db),
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
 ) -> HTMLResponse:
     root: Path = request.app.state.companies_root
     folder = resolve_folder(fingerprint, db, root)
@@ -72,7 +71,7 @@ def file_serve(
     fingerprint: str,
     filename: str,
     request: Request,
-    db: sqlite3.Connection = Depends(get_db),
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
 ):
     root: Path = request.app.state.companies_root
     folder = resolve_folder(fingerprint, db, root)
@@ -83,7 +82,7 @@ def file_serve(
     try:
         candidate.relative_to(folder.resolve())
     except ValueError:
-        raise HTTPException(status_code=404, detail="invalid filename")
+        raise HTTPException(status_code=404, detail="invalid filename") from None
     if not candidate.is_file():
         raise HTTPException(status_code=404, detail="file not found")
 
@@ -132,7 +131,7 @@ def _fetch_section(db: sqlite3.Connection, where: str, order: str) -> list[sqlit
 
 
 @router.get("/", response_class=HTMLResponse)
-def index(request: Request, db: sqlite3.Connection = Depends(get_db)) -> HTMLResponse:
+def index(request: Request, db: sqlite3.Connection = Depends(get_db)) -> HTMLResponse:  # noqa: B008
     sections = []
     for name, where, order in _INDEX_QUERY_SECTIONS:
         rows = _fetch_section(db, where, order)
