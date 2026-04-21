@@ -70,7 +70,7 @@ check_deps() {
 install_apt_deps() {
   info "Installing system packages..."
   sudo apt-get update -q
-  sudo apt-get install -y python3 python3-pip pandoc rclone curl git build-essential
+  sudo apt-get install -y python3 python3-pip pandoc curl git build-essential
   ok "System packages installed"
 }
 
@@ -401,26 +401,6 @@ Persistent=true
 WantedBy=timers.target
 EOF
 
-  # rclone jobsync — every 15 min
-  # Push-only: local → Drive. --update skips files where Drive is newer,
-  # preserving any edits made directly in Drive without bisync conflict copies.
-  cat > "${SYSTEMD_DIR}/findajob-jobsync.service" << EOF
-[Unit]
-Description=findajob Google Drive push-only sync
-After=network-online.target
-
-[Service]
-Type=oneshot
-# push-only: local → Drive. --update skips files where Drive is newer,
-# preserving any edits made directly in Drive.
-ExecStart=/usr/bin/rclone copy --update ${REPO}/companies/ "gdrive:01 PROJECTS/Jobs To Apply For"
-WorkingDirectory=${REPO}
-TimeoutStartSec=600
-StandardOutput=append:${LOG_DIR}/jobsync.log
-StandardError=append:${LOG_DIR}/jobsync.log
-EOF
-  write_interval_timer "jobsync" "findajob Google Drive push-only sync" "15min"
-
   # RAG rebuild — Sunday 6:00 AM
   AICHAT_BIN="${aichat_bin}"
   write_aichat_service "rag-rebuild" "RAG index rebuild" "--rag job_search_rag --rebuild-rag"
@@ -434,7 +414,7 @@ EOF
 
   local timers=(
     triage poller form-ingest notify-stats notify-health notify-apply
-    notify-issues notify-scoreboard notify-feedback jobsync rag-rebuild
+    notify-issues notify-scoreboard notify-feedback rag-rebuild
   )
   for t in "${timers[@]}"; do
     systemctl --user enable "findajob-${t}.timer" 2>/dev/null || true
@@ -442,7 +422,7 @@ EOF
 
   ok "  All timers enabled. Start them with:"
   echo "     systemctl --user start findajob-triage.timer"
-  echo "     (or start all: systemctl --user start findajob-{triage,poller,form-ingest,notify-stats,notify-health,notify-apply,notify-issues,notify-scoreboard,notify-feedback,jobsync,rag-rebuild}.timer)"
+  echo "     (or start all: systemctl --user start findajob-{triage,poller,form-ingest,notify-stats,notify-health,notify-apply,notify-issues,notify-scoreboard,notify-feedback,rag-rebuild}.timer)"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────

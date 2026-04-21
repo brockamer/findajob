@@ -95,7 +95,7 @@ trap cleanup EXIT
 
 echo "[setup] scratch dir: $SCRATCH  image: $IMAGE"
 
-mkdir -p "$SCRATCH/state"/{data,config,candidate_context,companies,logs,aichat_ng,rclone}
+mkdir -p "$SCRATCH/state"/{data,config,candidate_context,companies,logs,aichat_ng}
 
 # ────────────────────────────────────────────────────────────────────────────
 # 4. Seed inputs into the bind mounts
@@ -144,7 +144,8 @@ services:
       - ./state/companies:/app/companies
       - ./state/logs:/app/logs
       - ./state/aichat_ng:/app/.config/aichat_ng
-      - ./state/rclone:/app/.config/rclone
+    ports:
+      - "${TEST_MATERIALS_PORT:-18090}:8090"
 EOF
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -262,7 +263,34 @@ fi
 echo "  aichat-ng config.yaml: OK"
 
 # ────────────────────────────────────────────────────────────────────────────
-# 12. Done — cleanup runs on EXIT
+# 12. Materials viewer smoke
+# ────────────────────────────────────────────────────────────────────────────
+
+echo "[assert] materials viewer smoke"
+VIEWER_PORT="${TEST_MATERIALS_PORT:-18090}"
+
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:${VIEWER_PORT}/healthz" || echo "FAIL")
+if [ "$HTTP_CODE" != "200" ]; then
+    echo "ERROR: /healthz returned $HTTP_CODE (expected 200)" >&2
+    exit 1
+fi
+echo "  /healthz: 200 OK"
+
+BODY=$(curl -s "http://localhost:${VIEWER_PORT}/" || echo "FAIL")
+if ! echo "$BODY" | grep -q "In flight"; then
+    echo "ERROR: index did not contain 'In flight'" >&2
+    exit 1
+fi
+echo "  index renders with expected sections"
+
+if (cd "$SCRATCH" && docker compose exec -T scheduler which rclone >/dev/null 2>&1); then
+    echo "ERROR: rclone is still in the image" >&2
+    exit 1
+fi
+echo "  rclone absent from image"
+
+# ────────────────────────────────────────────────────────────────────────────
+# 13. Done — cleanup runs on EXIT
 # ────────────────────────────────────────────────────────────────────────────
 
 echo
