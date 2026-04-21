@@ -1,0 +1,22 @@
+/* Design tokens matching the Google Sheet's conditional formatting palette. */
+:root {
+  --color-applied-fresh: #c6e6b9;  /* 0–6 days, green */
+  --color-applied-week:  #fff3b0;  /* 7–13 days, yellow */
+  --color-applied-stale: #f4b7b0;  /* 14–20 days, red */
+  --color-applied-cold:  #d6d6d6;  /* 21+ days, gray */
+  --color-offer:         #ffd700;  /* gold */
+  --color-interviewing:  #c8a2d8;  /* purple */
+  --color-ghosted:       #d6d6d6;  /* gray */
+  --color-contact-amber: #ffbf00;
+}
+
+/* Apply via Tailwind arbitrary-value utilities: bg-[var(--color-applied-fresh)] */
+
+.row-applied-fresh  { background-color: var(--color-applied-fresh); }
+.row-applied-week   { background-color: var(--color-applied-week); }
+.row-applied-stale  { background-color: var(--color-applied-stale); }
+.row-applied-cold   { background-color: var(--color-applied-cold); }
+.row-offer          { background-color: var(--color-offer); }
+.row-interviewing   { background-color: var(--color-interviewing); }
+.row-ghosted        { background-color: var(--color-ghosted); }
+.cell-contact-amber { background-color: var(--color-contact-amber); }

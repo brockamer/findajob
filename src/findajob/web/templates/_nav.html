@@ -1,0 +1,26 @@
+{# Top navigation. Highlights the active group via aria-current="page". #}
+{% set groups = [
+  ("/", "Home"),
+  ("/board/dashboard", "Board"),
+  ("/materials/", "Materials"),
+  ("/ingest/", "Ingest"),
+  ("/tools/", "Tools"),
+  ("/config/", "Config"),
+  ("/docs/", "Docs"),
+] %}
+<nav class="bg-slate-800 text-slate-100 px-4 py-2 shadow-sm">
+  <ul class="flex gap-4 items-center">
+    <li class="font-bold mr-4">findajob</li>
+    {% for href, label in groups %}
+      {% set active = request.url.path == href
+           or (href != "/" and request.url.path.startswith(href)) %}
+      <li>
+        <a href="{{ href }}"
+           {% if active %}aria-current="page"{% endif %}
+           class="px-2 py-1 rounded {% if active %}bg-slate-600{% else %}hover:bg-slate-700{% endif %}">
+          {{ label }}
+        </a>
+      </li>
+    {% endfor %}
+  </ul>
+</nav>

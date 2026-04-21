@@ -8,6 +8,7 @@ from collections.abc import Generator
 from pathlib import Path
 
 from fastapi import Depends, FastAPI  # noqa: F401 — Depends used in Task 6
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from findajob.web.routes import materials as _materials_routes
@@ -18,6 +19,9 @@ def create_app(*, companies_root: Path, db_path: Path) -> FastAPI:
     app = FastAPI(title="findajob materials viewer", docs_url=None, redoc_url=None)
 
     templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+
+    static_dir = Path(__file__).parent / "static"
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
     app.state.companies_root = companies_root
     app.state.db_path = db_path
