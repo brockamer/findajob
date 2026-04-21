@@ -495,9 +495,7 @@ def sync_waitlist(svc, conn):
                 sheet_row.append(hyperlink(row["url"], row["title"]))
             elif header == "company":
                 sheet_row.append(
-                    materials_company_cell(
-                        row["company"], row["fingerprint"], row["stage"], MATERIALS_BASE_URL
-                    )
+                    materials_company_cell(row["company"], row["fingerprint"], row["stage"], MATERIALS_BASE_URL)
                 )
             elif header == "blocking_app":
                 co = (row["company"] or "").strip().lower()
@@ -618,9 +616,7 @@ def sync_applied(svc, conn):
         # Live formula so "days_since_applied" updates without re-sync.
         days_formula = f'=IF(F{i}="","",TODAY()-F{i})' if applied_date else ""
         title_cell = hyperlink(row["url"], row["title"]) if row["url"] else safe_str(row["title"])
-        company_cell = materials_company_cell(
-            row["company"], row["fingerprint"], row["stage"], MATERIALS_BASE_URL
-        )
+        company_cell = materials_company_cell(row["company"], row["fingerprint"], row["stage"], MATERIALS_BASE_URL)
         sheet_rows.append(
             [
                 status,
@@ -693,9 +689,7 @@ def sync_rejected_apps(svc, conn):
     for row in rows:
         sheet_row = [
             hyperlink(row["url"], row["title"]),
-            materials_company_cell(
-                row["company"], row["fingerprint"], row["stage"], MATERIALS_BASE_URL
-            ),
+            materials_company_cell(row["company"], row["fingerprint"], row["stage"], MATERIALS_BASE_URL),
             safe_str(row["reject_reason"] or ""),
             safe_str(applied_dates.get(row["id"], "")),
             safe_str(row["rejected_date"][:10] if row["rejected_date"] else ""),
