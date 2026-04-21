@@ -95,7 +95,7 @@ def test_full_flow(world: dict) -> None:
     r = client.get("/healthz")
     assert r.status_code == 200
 
-    r = client.get("/")
+    r = client.get("/materials/")
     assert r.status_code == 200
     assert "Meta" in r.text
     assert "Google" in r.text

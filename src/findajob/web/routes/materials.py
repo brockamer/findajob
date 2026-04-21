@@ -43,8 +43,8 @@ def _fetch_section(db: sqlite3.Connection, where: str, order: str) -> list[sqlit
     ).fetchall()
 
 
-@router.get("/", response_class=HTMLResponse)
-def index(request: Request, db: sqlite3.Connection = Depends(get_db)) -> HTMLResponse:  # noqa: B008
+@router.get("/materials/", response_class=HTMLResponse)
+def materials_index(request: Request, db: sqlite3.Connection = Depends(get_db)) -> HTMLResponse:  # noqa: B008
     sections = []
     for name, where, order in _INDEX_QUERY_SECTIONS:
         rows = _fetch_section(db, where, order)

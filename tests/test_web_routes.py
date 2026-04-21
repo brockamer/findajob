@@ -236,7 +236,7 @@ def test_index_groups_jobs_by_stage(client: TestClient, companies_root: Path, db
     conn.commit()
     conn.close()
 
-    r = client.get("/")
+    r = client.get("/materials/")
     assert r.status_code == 200
     assert "In flight" in r.text
     assert "InFlightCo" in r.text

@@ -25,7 +25,8 @@ def client(tmp_path: Path) -> TestClient:
 
 
 def test_nav_present_on_landing(client: TestClient) -> None:
-    r = client.get("/")
+    # / has no handler yet (landing arrives in Task 6); test nav on /materials/ in the meantime.
+    r = client.get("/materials/")
     assert r.status_code == 200
     assert 'href="/"' in r.text
     assert 'href="/materials/"' in r.text
@@ -34,3 +35,9 @@ def test_nav_present_on_landing(client: TestClient) -> None:
     assert 'href="/tools/"' in r.text
     assert 'href="/config/"' in r.text
     assert 'href="/docs/"' in r.text
+
+
+def test_materials_index_moved(client: TestClient) -> None:
+    r = client.get("/materials/")
+    assert r.status_code == 200
+    assert "In flight" in r.text or "Applied" in r.text or "Rejected" in r.text
