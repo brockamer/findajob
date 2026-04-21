@@ -21,10 +21,7 @@ def client(tmp_path: Path) -> TestClient:
         "INSERT INTO jobs (fingerprint, title, company, stage, score_flag_reason, source, created_at) "
         "VALUES ('fp-rev','Ambiguous Title','Meta','manual_review','target company bump','greenhouse','2026-04-20')"
     )
-    conn.execute(
-        "INSERT INTO jobs (fingerprint, title, company, stage) "
-        "VALUES ('fp-scored','Other','Acme','scored')"
-    )
+    conn.execute("INSERT INTO jobs (fingerprint, title, company, stage) VALUES ('fp-scored','Other','Acme','scored')")
     conn.commit()
     conn.close()
     companies = tmp_path / "companies"

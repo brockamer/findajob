@@ -25,8 +25,7 @@ def client(tmp_path: Path) -> TestClient:
         ("fp3", "TPM", "Meta"),
     ]:
         conn.execute(
-            "INSERT INTO jobs (fingerprint, title, company, stage, fit_score) "
-            "VALUES (?, ?, ?, 'scored', 8.0)",
+            "INSERT INTO jobs (fingerprint, title, company, stage, fit_score) VALUES (?, ?, ?, 'scored', 8.0)",
             (fp, title, company),
         )
     conn.commit()

@@ -44,8 +44,7 @@ _DASHBOARD_SORTABLE = {c for _, c in _DASHBOARD_COLS}
 _DASHBOARD_DEFAULT_SORT = "fit_score"
 
 _DASHBOARD_WHERE = (
-    "(fit_score >= 7 AND stage IN ('scored','manual_review')) "
-    "OR stage IN ('prep_in_progress','materials_drafted')"
+    "(fit_score >= 7 AND stage IN ('scored','manual_review')) OR stage IN ('prep_in_progress','materials_drafted')"
 )
 
 
@@ -93,9 +92,7 @@ _APPLIED_COLS = [
     ("Comp", "comp_estimate"),
     ("AI notes", "ai_notes"),
 ]
-_APPLIED_SORTABLE = {c for _, c in _APPLIED_COLS if c not in {"days_since_applied"}} | {
-    "applied_date"
-}
+_APPLIED_SORTABLE = {c for _, c in _APPLIED_COLS if c not in {"days_since_applied"}} | {"applied_date"}
 _APPLIED_DEFAULT_SORT = "applied_date"
 
 

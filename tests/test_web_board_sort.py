@@ -46,8 +46,7 @@ def test_dashboard_sort_by_fit_score_desc(client: TestClient) -> None:
     i_charlie = r.text.find("Charlie")
     i_bravo = r.text.find("Bravo")
     assert 0 < i_alpha < i_charlie < i_bravo, (
-        f"Expected Alpha < Charlie < Bravo in desc-by-fit_score order, "
-        f"got positions {i_alpha}, {i_charlie}, {i_bravo}"
+        f"Expected Alpha < Charlie < Bravo in desc-by-fit_score order, got positions {i_alpha}, {i_charlie}, {i_bravo}"
     )
 
 

@@ -26,8 +26,7 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     )
     ten_days_ago = (datetime.now(UTC) - timedelta(days=10)).isoformat()
     conn.execute(
-        "INSERT INTO jobs (fingerprint, title, company, stage) "
-        "VALUES ('fp-app','Eng Mgr','Anthropic','applied')"
+        "INSERT INTO jobs (fingerprint, title, company, stage) VALUES ('fp-app','Eng Mgr','Anthropic','applied')"
     )
     conn.execute(
         "INSERT INTO audit_log (job_id, field_changed, old_value, new_value, changed_at, changed_by) "
