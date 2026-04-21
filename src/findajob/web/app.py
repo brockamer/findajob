@@ -10,7 +10,8 @@ from pathlib import Path
 from fastapi import Depends, FastAPI  # noqa: F401 — Depends used in Task 6
 from fastapi.templating import Jinja2Templates
 
-from findajob.web import routes
+from findajob.web.routes import materials as _materials_routes
+from findajob.web.routes import router as _aggregated_router
 
 
 def create_app(*, companies_root: Path, db_path: Path) -> FastAPI:
@@ -30,8 +31,8 @@ def create_app(*, companies_root: Path, db_path: Path) -> FastAPI:
         finally:
             conn.close()
 
-    app.dependency_overrides.setdefault(routes.get_db, get_db)
-    app.include_router(routes.router)
+    app.dependency_overrides.setdefault(_materials_routes.get_db, get_db)
+    app.include_router(_aggregated_router)
     return app
 
 
