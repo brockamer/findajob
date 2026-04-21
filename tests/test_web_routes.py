@@ -74,3 +74,121 @@ def test_folder_route_lists_files(
 def test_folder_route_404_on_unknown_fingerprint(client: TestClient) -> None:
     r = client.get("/materials/fp-does-not-exist")
     assert r.status_code == 404
+
+
+def test_file_serve_markdown_rendered_inline(
+    client: TestClient, companies_root: Path, db_path: Path
+) -> None:
+    folder = companies_root / "Company_X_2026-04-20_130000"
+    folder.mkdir()
+    (folder / "notes.md").write_text("# Hello\n\n```python\nprint('hi')\n```\n")
+
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "INSERT INTO jobs (fingerprint, prep_folder_path, stage) VALUES ('fp-md', ?, 'materials_drafted')",
+        (str(folder),),
+    )
+    conn.commit()
+    conn.close()
+
+    r = client.get("/materials/fp-md/notes.md")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/html")
+    assert "<h1>Hello</h1>" in r.text
+    assert "<code>print" in r.text
+
+
+def test_file_serve_docx_as_attachment(
+    client: TestClient, companies_root: Path, db_path: Path
+) -> None:
+    folder = companies_root / "Company_Y_2026-04-20_140000"
+    folder.mkdir()
+    (folder / "resume.docx").write_bytes(b"PK\x03\x04fake-docx-bytes")
+
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "INSERT INTO jobs (fingerprint, prep_folder_path, stage) VALUES ('fp-docx', ?, 'materials_drafted')",
+        (str(folder),),
+    )
+    conn.commit()
+    conn.close()
+
+    r = client.get("/materials/fp-docx/resume.docx")
+    assert r.status_code == 200
+    assert "attachment" in r.headers.get("content-disposition", "")
+    assert "resume.docx" in r.headers.get("content-disposition", "")
+
+
+def test_file_serve_txt_inline(
+    client: TestClient, companies_root: Path, db_path: Path
+) -> None:
+    folder = companies_root / "Company_Z_2026-04-20_150000"
+    folder.mkdir()
+    (folder / "raw.txt").write_text("plain text body\n")
+
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "INSERT INTO jobs (fingerprint, prep_folder_path, stage) VALUES ('fp-txt', ?, 'materials_drafted')",
+        (str(folder),),
+    )
+    conn.commit()
+    conn.close()
+
+    r = client.get("/materials/fp-txt/raw.txt")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/plain")
+    assert "plain text body" in r.text
+
+
+def test_file_serve_404_on_unknown_filename(
+    client: TestClient, companies_root: Path, db_path: Path
+) -> None:
+    folder = companies_root / "Company_W_2026-04-20_160000"
+    folder.mkdir()
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "INSERT INTO jobs (fingerprint, prep_folder_path, stage) VALUES ('fp-empty', ?, 'materials_drafted')",
+        (str(folder),),
+    )
+    conn.commit()
+    conn.close()
+
+    r = client.get("/materials/fp-empty/nonexistent.md")
+    assert r.status_code == 404
+
+
+def test_file_serve_rejects_traversal(
+    client: TestClient, companies_root: Path, db_path: Path
+) -> None:
+    folder = companies_root / "Company_T_2026-04-20_170000"
+    folder.mkdir()
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "INSERT INTO jobs (fingerprint, prep_folder_path, stage) VALUES ('fp-t', ?, 'materials_drafted')",
+        (str(folder),),
+    )
+    conn.commit()
+    conn.close()
+
+    r = client.get("/materials/fp-t/..%2Fescape")
+    assert r.status_code == 404
+
+
+def test_file_serve_markdown_escapes_raw_html(
+    client: TestClient, companies_root: Path, db_path: Path
+) -> None:
+    folder = companies_root / "Company_XSS_2026-04-20_180000"
+    folder.mkdir()
+    (folder / "bad.md").write_text("# Title\n\n<script>alert('x')</script>\n")
+
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "INSERT INTO jobs (fingerprint, prep_folder_path, stage) VALUES ('fp-xss', ?, 'materials_drafted')",
+        (str(folder),),
+    )
+    conn.commit()
+    conn.close()
+
+    r = client.get("/materials/fp-xss/bad.md")
+    assert r.status_code == 200
+    assert "<script>" not in r.text

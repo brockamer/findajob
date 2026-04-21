@@ -1,11 +1,14 @@
 """Route handlers for the materials viewer."""
 from __future__ import annotations
 
+import re
 import sqlite3
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
+
+import markdown as md_lib
 
 from findajob.web.folder_resolver import resolve_folder
 
@@ -52,4 +55,53 @@ def folder_view(
             "stage": row["stage"] if row else "",
             "files": files,
         },
+    )
+
+
+def _render_markdown(text: str) -> str:
+    html = md_lib.markdown(text, extensions=["fenced_code", "tables"], output_format="html")
+    # Strip class attributes added by fenced_code (e.g. class="language-python")
+    html = re.sub(r' class="[^"]*"', "", html)
+    # Neutralize raw script tags that Python-Markdown passes through unchanged
+    html = re.sub(r"<(/?script)", r"&lt;\1", html, flags=re.IGNORECASE)
+    return html
+
+
+@router.get("/materials/{fingerprint}/{filename}")
+def file_serve(
+    fingerprint: str,
+    filename: str,
+    request: Request,
+    db: sqlite3.Connection = Depends(get_db),
+):
+    root: Path = request.app.state.companies_root
+    folder = resolve_folder(fingerprint, db, root)
+    if folder is None:
+        raise HTTPException(status_code=404, detail="folder not found")
+
+    candidate = (folder / filename).resolve()
+    try:
+        candidate.relative_to(folder.resolve())
+    except ValueError:
+        raise HTTPException(status_code=404, detail="invalid filename")
+    if not candidate.is_file():
+        raise HTTPException(status_code=404, detail="file not found")
+
+    ext = candidate.suffix.lower()
+    if ext == ".md":
+        body = candidate.read_text(encoding="utf-8", errors="replace")
+        templates = request.app.state.templates
+        return templates.TemplateResponse(
+            request=request,
+            name="base.html",
+            context={"_rendered_md": _render_markdown(body)},
+            headers={"content-type": "text/html; charset=utf-8"},
+        )
+    if ext == ".txt":
+        return PlainTextResponse(content=candidate.read_text(encoding="utf-8", errors="replace"))
+    # Everything else (.docx, .pdf, unknown) → attachment
+    return FileResponse(
+        path=candidate,
+        filename=candidate.name,
+        headers={"content-disposition": f'attachment; filename="{candidate.name}"'},
     )

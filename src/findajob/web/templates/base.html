@@ -20,6 +20,11 @@
   </style>
 </head>
 <body>
-{% block body %}{% endblock %}
+{% if _rendered_md is defined %}
+  <p><a href="javascript:history.back()">← back</a></p>
+  {{ _rendered_md | safe }}
+{% else %}
+  {% block body %}{% endblock %}
+{% endif %}
 </body>
 </html>
