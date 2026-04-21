@@ -22,11 +22,11 @@ See [configure.md](configure.md). API keys and personal config end up in `state/
 
 ```bash
 # On the Docker host
-sudo mkdir -p /opt/stacks/findajob-<you>/state/{data,config,candidate_context,companies,logs,aichat_ng,rclone}
+sudo mkdir -p /opt/stacks/findajob-<you>/state/{data,config,candidate_context,companies,logs,aichat_ng}
 sudo chown -R $(id -u):$(id -g) /opt/stacks/findajob-<you>/
 ```
 
-Replace `<you>` with a short user tag (`brock`, `amy`, etc.).
+Replace `<you>` with a short user tag.
 
 ## 2. Drop in the compose template and env
 
@@ -36,7 +36,7 @@ curl -fsSL -o compose.yaml https://raw.githubusercontent.com/brockamer/findajob/
 curl -fsSL -o .env https://raw.githubusercontent.com/brockamer/findajob/main/ops/stack.env.example
 ```
 
-Edit `.env` to taste — at minimum set `FINDAJOB_TZ` and (if dogfooding) `FINDAJOB_IMAGE_TAG=latest`.
+Edit `.env` to taste — at minimum set `FINDAJOB_TZ`, `FINDAJOB_MATERIALS_PORT`, and (if dogfooding) `FINDAJOB_IMAGE_TAG=latest`.
 
 ## 3. Populate `state/`
 
@@ -67,6 +67,25 @@ start — you do not run any of these commands manually:
 
 Fill in your personal config files above and run `docker compose up -d` —
 no manual schema init, no handcrafted aichat-ng config, no symlink setup.
+
+### Materials viewer port
+
+Set `FINDAJOB_MATERIALS_PORT` in your stack `.env` to a free host port (default `8090`).
+Each stack on the same host must use a unique port number.
+
+```
+FINDAJOB_MATERIALS_PORT=8090
+```
+
+The container publishes the viewer at `http://<docker-host>:<port>/`. On a LAN or Wireguard
+VPN this is reachable from any device. The viewer is read-only — it displays prep-folder
+contents grouped by stage (staged, applied, waitlisted, rejected), renders Markdown inline,
+and offers `.docx` files for download.
+
+```bash
+# Quick smoke test after first deploy
+curl http://docker.lan:8090/healthz    # expect: ok
+```
 
 ## 4. Initial auth: Gmail (optional)
 
@@ -121,9 +140,9 @@ Before running `docker compose pull && docker compose up -d`:
 
 The "Action required" section is driven by PRs labeled `migration-required` (see [`docs/release-process.md`](../release-process.md) for the criteria). If a release has no such PRs in its range, the section won't appear.
 
-## Migrating from an older image: aichat-ng / rclone mount paths
+## Migrating from an older image: aichat-ng mount path fix
 
-If your stack was deployed before the aichat-ng mount-path fix, your `compose.yaml` still mounts `./state/aichat_ng` to `/root/.config/aichat_ng`. The container now runs as a non-root user (PUID), so `/root` is unreadable and all scoring calls fail silently. You also need a new `rclone` mount and a `HOME=/app` env var.
+If your stack was deployed before the aichat-ng mount-path fix, your `compose.yaml` still mounts `./state/aichat_ng` to `/root/.config/aichat_ng`. The container now runs as a non-root user (PUID), so `/root` is unreadable and all scoring calls fail silently.
 
 Apply these changes once, per instance:
 
@@ -133,39 +152,32 @@ Apply these changes once, per instance:
    docker compose down
    ```
 
-2. **Create the new `state/rclone/` bind-mount directory.**
-   ```bash
-   mkdir -p state/rclone
-   sudo chown $(id -u):$(id -g) state/rclone
-   ```
-
-3. **Edit `compose.yaml`** (or re-pull `ops/compose.yaml.example` if you haven't customized it). Three changes to the `scheduler` service:
+2. **Edit `compose.yaml`** (or re-pull `ops/compose.yaml.example` if you haven't customized it). Two changes to the `scheduler` service:
 
    - Under `environment:`, add `HOME: /app`.
    - Change the aichat-ng volume from `./state/aichat_ng:/root/.config/aichat_ng` to `./state/aichat_ng:/app/.config/aichat_ng`.
-   - Add a new volume: `./state/rclone:/app/.config/rclone`.
 
    Apply the same `HOME: /app` change to the `gmail-auth` service.
 
-4. **Fix ownership of `state/aichat_ng/`** in case it was populated under the old path:
+3. **Fix ownership of `state/aichat_ng/`** in case it was populated under the old path:
    ```bash
    sudo chown -R $(id -u):$(id -g) state/aichat_ng
    ```
 
-5. **Pull and bring the stack back up.**
+4. **Pull and bring the stack back up.**
    ```bash
    docker compose pull
    docker compose up -d
    docker compose logs -f scheduler  # Ctrl-C once you see supercronic's schedule dump
    ```
 
-6. **(If using jobsync)** Re-run `docker compose exec scheduler rclone config` so the rclone remote lands in `/app/.config/rclone/rclone.conf` (the new persistent location).
-
 Verify with a scoring smoke test:
 ```bash
 docker compose exec scheduler aichat-ng -m claude:claude-sonnet-4-6 -- 'reply "ok"'
 ```
 Expected output: `ok`. If aichat-ng errors with "no such file or directory" or returns nothing, the config is still in the old location — re-check the mount path.
+
+For instructions on migrating from rclone/Drive to the materials viewer, see [`docs/setup/state-migration.md`](state-migration.md).
 
 ## Rolling back locally
 

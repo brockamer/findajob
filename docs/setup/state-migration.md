@@ -37,7 +37,7 @@ Do NOT decommission the source until you have confirmed a full triage cycle comp
 | Binary path config | `config/paths.env` | Create new on target if paths differ |
 | Voice samples | `candidate_context/voice_samples/*.txt` | Copy directory |
 | RAG index | `rags/` or aichat-ng data dir | Rebuild on target (run `--rag rebuild`) |
-| Company prep folders | `companies/` | Optional — large, can sync via Google Drive |
+| Company prep folders | `companies/` | Optional — large, rsync or copy manually |
 | aichat-ng config | `~/.config/aichat_ng/config.yaml` | Create new on target |
 | Personal CLAUDE context | `CLAUDE.local.md` | Copy |
 
@@ -100,7 +100,6 @@ On the **target machine**, create `config/paths.env`:
 # Linux defaults — adjust if your install is non-standard
 AICHAT_NG=/usr/local/bin/aichat-ng
 PANDOC=/usr/bin/pandoc
-RCLONE=/usr/bin/rclone
 ```
 
 Create the aichat-ng config:
@@ -181,7 +180,6 @@ systemctl --user enable --now findajob-notify-issues.timer
 systemctl --user enable --now findajob-notify-apply.timer
 systemctl --user enable --now findajob-notify-feedback.timer
 systemctl --user enable --now findajob-rag-rebuild.timer
-systemctl --user enable --now findajob-jobsync.timer
 ```
 
 Verify all timers are loaded and show next trigger times:
@@ -230,3 +228,54 @@ Usually means a stale WAL file from an interrupted transaction. Remove `data/pip
 
 **Dedup mismatch (same jobs appear twice)**
 The fingerprint is based on `SHA-256(title+company+url)[:16]`. If your source machine's DB has jobs that the target will also fetch, the dedup will correctly skip them on first run. No action needed.
+
+---
+
+## Migrating from rclone/Drive to the materials viewer
+
+Applies to operator stacks that were running with `FINDAJOB_JOBSYNC_ENABLED=true`
+on v0.1.x. Testers on fresh installs can skip this — they never had rclone enabled.
+
+### Steps
+
+1. Stop the stack:
+   ```bash
+   docker compose down
+   ```
+
+2. Remove the now-unused bind mount:
+   ```bash
+   rm -rf state/rclone
+   ```
+
+3. Edit `.env` to add a port for the materials viewer:
+   ```
+   FINDAJOB_MATERIALS_PORT=8090   # or next free port if 8090 is taken
+   ```
+
+4. Edit `compose.yaml`:
+   - Remove:  `- ./state/rclone:/app/.config/rclone`
+   - Remove env var: `FINDAJOB_JOBSYNC_ENABLED`
+   - Add a ports block under the `scheduler` service:
+   ```yaml
+   ports:
+     - "${FINDAJOB_MATERIALS_PORT}:8090"
+   ```
+
+5. Pull and start:
+   ```bash
+   docker compose pull
+   docker compose up -d
+   ```
+
+6. Verify:
+   ```bash
+   curl http://docker.lan:8090/healthz    # expect: ok
+   ```
+   Then open `http://docker.lan:8090/` in a browser to browse materials.
+
+### Existing Drive folders
+
+Nothing automated. Drive folders that rclone synced remain at
+drive.google.com. Delete them manually if desired — findajob will
+never look at them again.

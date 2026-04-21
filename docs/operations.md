@@ -160,17 +160,17 @@ Safe to re-run — skips already-renamed folders.
 
 ---
 
-## Google Drive Sync (rclone)
+## Materials Viewer
 
-The pipeline uses push-only `rclone copy --update` to sync `companies/` to Google Drive at `gdrive:01 PROJECTS/Jobs To Apply For`. Local is authoritative for new content; `--update` never overwrites newer files on Drive (preserving user edits made via phone/browser).
+The container publishes a read-only web viewer on `FINDAJOB_MATERIALS_PORT` (default `8090`).
+Access it at `http://<docker-host>:<port>/` on your LAN or via Wireguard.
 
-The `findajob-jobsync.timer` runs `rclone copy --update` every 15 minutes. Additionally, `prep_application.py` and `poll_flags.py` push individual folders immediately after creating or moving them.
+The viewer displays prep-folder contents grouped by stage (staged, applied, waitlisted,
+rejected), renders Markdown inline, and offers `.docx` files for download.
 
-Folder moves (reject → `_rejected/`, apply → `_applied/`, waitlist → `_waitlisted/`) use `rclone move` within Drive (server-side) to preserve user edits, then `rclone copy` to push any new local files (e.g., marker files).
-
-Manual sync:
 ```bash
-rclone copy --update ~/Code/findajob/companies/ "gdrive:01 PROJECTS/Jobs To Apply For"
+# Quick check
+curl http://docker.lan:8090/healthz    # expect: ok
 ```
 
 ---

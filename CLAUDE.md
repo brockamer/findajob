@@ -110,12 +110,13 @@ When the pipeline runs inside the `ghcr.io/brockamer/findajob` image, paths shif
 | `candidate_context/` | `<repo>/candidate_context/` | `/app/candidate_context/` (bind-mount) |
 | `companies/` | `<repo>/companies/` | `/app/companies/` (bind-mount) |
 | `aichat-ng` | `/usr/local/bin/aichat-ng` | `/usr/local/bin/aichat-ng` (blob42/aichat-ng prebuilt) |
-| aichat-ng config dir | `~/.config/aichat_ng/` | `/root/.config/aichat_ng/` (bind-mount from `./state/aichat_ng/`) |
+| aichat-ng config dir | `~/.config/aichat_ng/` | `/app/.config/aichat_ng/` (bind-mount from `./state/aichat_ng/`) |
 | Scheduler | systemd user services | supercronic inside the container |
+| Web viewer | `src/findajob/web/` (package) | uvicorn co-process on container port 8090 (mapped to `FINDAJOB_MATERIALS_PORT`) |
 
 **When authoring new scripts or tests:**
 - Always use `findajob.paths.BASE` — never hardcode `/home/...` or `/app/`.
-- Binary subprocess calls go through `AICHAT`/`PANDOC`/`RCLONE` from `findajob.paths`.
+- Binary subprocess calls go through `AICHAT`/`PANDOC` from `findajob.paths`.
 - Tests must not depend on absolute paths — use tmpdirs or `BASE`-relative paths.
 
 ---
@@ -124,12 +125,16 @@ When the pipeline runs inside the `ghcr.io/brockamer/findajob` image, paths shif
 
 ```
 # ── Package (pip install -e .) ──────────────────────────────────────────────
-<repo>/src/findajob/paths.py                # central path resolver — from findajob.paths import BASE, AICHAT, PANDOC, RCLONE
+<repo>/src/findajob/paths.py                # central path resolver — from findajob.paths import BASE, AICHAT, PANDOC
 <repo>/src/findajob/utils.py                # shared utilities: log_event(), write_audit(), load_env()
 <repo>/src/findajob/cleaning.py             # normalize, fingerprint, clean_title, clean_company
 <repo>/src/findajob/fetchers.py             # Greenhouse, RapidAPI, Gmail job fetching
 <repo>/src/findajob/scoring.py              # score_job(), _build_feedback_block()
 <repo>/src/findajob/scorer_prefilter.py     # deterministic pre-filter (Stage 1 + 2)
+<repo>/src/findajob/web/app.py               # FastAPI app factory (create_app)
+<repo>/src/findajob/web/routes.py            # /healthz, /folders/<stage>/<name>/*, /files/* routes
+<repo>/src/findajob/web/folder_resolver.py   # resolves stage→filesystem path, path-traversal guards
+<repo>/src/findajob/web/templates/           # Jinja2 templates (index.html, folder.html, viewer.html)
 
 # ── Entry point scripts (called by systemd / CLI) ──────────────────────────
 <repo>/scripts/triage.py                    # daily ingest → score → DB
@@ -181,7 +186,7 @@ When the pipeline runs inside the `ghcr.io/brockamer/findajob` image, paths shif
 ## Critical Architecture Rules
 
 ### Path Resolution
-All binary paths (AICHAT, PANDOC, RCLONE) come from `findajob.paths` (`src/findajob/paths.py`), which reads `config/paths.env`.
+All binary paths (AICHAT, PANDOC) come from `findajob.paths` (`src/findajob/paths.py`), which reads `config/paths.env`.
 Never hardcode platform paths in scripts. `BASE` is derived from `__file__` — the repo can live anywhere.
 For subprocess calls to other pipeline scripts, always use `sys.executable`, not a hardcoded Python path.
 Library code lives in `src/findajob/` (installed via `pip install -e .`). Entry point scripts in `scripts/` import via `from findajob.* import ...`. No `sys.path.insert` hacks.
@@ -274,7 +279,7 @@ Actions:
 
 **REJECT_REASON dropdown** (col B): 11 options (includes "Low Fit Score"). Behavior depends on STATUS:
 - If STATUS = `Not Selected`: company rejection → `stage=not_selected`, NO `feedback_log`, folder stays in `_applied/` with `NOT_SELECTED_` marker file
-- Otherwise: user rejection → `stage=rejected`, writes `feedback_log`, moves folder to `_rejected/`, syncs to Drive
+- Otherwise: user rejection → `stage=rejected`, writes `feedback_log`, moves folder to `_rejected/`
 
 **poll_flags.py** reads `Dashboard!A2:C10000`, `Applied!A2:C10000`, `Review!A2:C10000`, and `Waitlist!A2:C10000`. "Not Selected" is checked before generic rejection to prevent routing errors. `Ghosted` STATUS on the Applied tab is a no-op in DB (visual only) but is preserved across syncs via pending_statuses.
 

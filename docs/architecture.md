@@ -2,7 +2,9 @@
 
 > **Docker users:** This document describes system design using native-install
 > terminology. Pipeline structure is identical under Docker; the scheduler is
-> supercronic reading `ops/crontab` rather than systemd timers.
+> supercronic reading `ops/crontab` rather than systemd timers. The container
+> also runs uvicorn alongside supercronic as a co-process, serving the
+> materials viewer on `FINDAJOB_MATERIALS_PORT`.
 > Docker-specific refresh tracked in #76.
 >
 
@@ -105,7 +107,7 @@ prep_application.py (runs in foreground)
     DB updated: stage = materials_drafted
     sync_sheet.py: Dashboard STATUS → "Ready to Apply"
     ntfy notification sent
-    rclone copy: companies/ → Google Drive
+    Materials viewer reflects new folder immediately (no sync required)
 ```
 
 ---
@@ -139,7 +141,7 @@ known_contacts TEXT
 user_notes TEXT              -- free text set via Applied tab col I
 stage_updated TEXT           -- ISO timestamp of last stage change
 prep_folder_path TEXT        -- absolute path to companies/ subfolder
-gdrive_folder_url TEXT       -- link to prep folder on Drive
+gdrive_folder_url TEXT       -- legacy column (Drive sync removed; unused since v0.2)
 fit_score REAL               -- 0-100% avg from fit_analyst
 probability_score REAL       -- 0-100% avg from fit_analyst
 created_at TEXT
@@ -205,7 +207,7 @@ poll_flags.py reads this tab every 10 min. Once the user marks STATUS=Applied, t
 | E | probability_score | LLM-assigned interview probability |
 | F | relevance_score | 1–10 composite score |
 | G | title | Hyperlink to job URL |
-| H | company | Hyperlink to Drive folder when prepped |
+| H | company | Company name |
 | I | location | |
 | J | remote_status | Color-coded |
 | K | known_contacts | Amber when non-empty |
@@ -215,7 +217,7 @@ poll_flags.py reads this tab every 10 min. Once the user marks STATUS=Applied, t
 
 **STATUS dropdown options (Dashboard — pre-application):** `Flag for Prep` → `Prep in Progress` *(system)* → `Ready to Apply` *(system)* → `Applied` *(user)*. Also: `Regenerate` (re-runs prep), `Waitlist` (defers the job). Once marked `Applied`, the poller sets stage=applied and the row moves to the Applied tab where `Interviewing` / `Offer` / `Ghosted` / `Not Selected` / `Withdrew` are set.
 
-**REJECT_REASON:** behavior depends on STATUS. If STATUS = `Not Selected`: company rejection → `stage=not_selected`, no feedback_log, folder stays in `_applied/`. Otherwise: user rejection → `stage=rejected`, feedback_log entry, folder move to `_rejected/`, immediate rclone sync to Drive.
+**REJECT_REASON:** behavior depends on STATUS. If STATUS = `Not Selected`: company rejection → `stage=not_selected`, no feedback_log, folder stays in `_applied/`. Otherwise: user rejection → `stage=rejected`, feedback_log entry, folder moved to `_rejected/`.
 
 ### Applied — Post-Application Queue (A–N)
 Filter: `stage IN (applied, interview, offer)`. UI for managing jobs that have been submitted.
@@ -226,7 +228,7 @@ Filter: `stage IN (applied, interview, offer)`. UI for managing jobs that have b
 | B | REJECT_REASON | Dropdown — same 11 options as Dashboard |
 | C | fingerprint | Hidden |
 | D | title | Hyperlink to job URL |
-| E | company | Hyperlink to Drive folder |
+| E | company | Company name |
 | F | applied_date | Date job was marked Applied (from `audit_log`) |
 | G | days_since_applied | Live `=IF(F2="","",TODAY()-F2)` formula |
 | H | stage | `applied` / `interview` / `offer` (read-only) |
@@ -280,7 +282,7 @@ Jobs that were rejected after reaching `applied` stage. Read-only reference view
 | Col | Field | Notes |
 |---|---|---|
 | A | title | Hyperlink to job URL |
-| B | company | Hyperlink to Drive folder if available |
+| B | company | Company name |
 | C | reject_reason | |
 | D | applied_date | Date the job was marked Applied |
 | E | rejected_date | Date the rejection was recorded |
@@ -298,6 +300,6 @@ Jobs that were rejected after reaching `applied` stage. Read-only reference view
 | Direct profile injection (not RAG) | RAG chunking drops contact info, employer names, and dates. Profile is short enough to inject raw. |
 | Two-stage prefilter before LLM | Hard rejects (wrong domain, title-deterministic) don't need LLM calls. Saves ~$0.10/day and speeds triage. |
 | JSON output validation | `jsonschema` validates every LLM scoring response. Malformed output → manual_review, not a crash. |
-| rclone copy --update (push-only) | Bisync was replaced — conflict copies and state-file corruption outweighed bidirectional convenience. Local is authoritative for new content; Drive edits are preserved by `--update` (never overwrites newer remote files). Folder moves use `rclone move` within Drive (server-side). |
+| Web materials viewer (not Drive) | Prep folders are served locally via uvicorn/FastAPI — no cloud sync dependency. Markdown rendered inline; `.docx` offered as download. Eliminates rclone auth complexity and Drive quota issues. |
 | Rejection before prep in poll_flags | Prevents a race condition where a job gets prepped and then rejected in the same poll cycle. |
 | `abbrev_title()` in folder names | Same-day preps for the same company would overwrite each other without title disambiguation. HHMMSS suffix prevents same-title same-day overwrites. |

@@ -12,7 +12,8 @@ Deploys as a Docker container via Compose. Native systemd install remains docume
 2. **Flag → Prep** — you flag a job in the Dashboard; the pipeline generates a tailored resume, cover letter, company briefing, and LinkedIn outreach drafts
 3. **Notifications** — push notifications via ntfy.sh: daily stats, health check, apply reminders
 4. **Rejection tracking** — reject with a reason in the sheet; the pipeline logs it for pattern analysis and moves the folder to `_rejected/`
-5. **Manual injection** — Google Form lets you add any job (found outside the pipeline) and optionally trigger prep immediately
+5. **Materials viewer** — local web UI (FastAPI, port-configurable) displays prep-folder contents grouped by stage; Markdown rendered inline, `.docx` files downloadable
+6. **Manual injection** — Google Form lets you add any job (found outside the pipeline) and optionally trigger prep immediately
 
 ---
 
@@ -27,7 +28,7 @@ Deploys as a Docker container via Compose. Native systemd install remains docume
 | Sheet UI | Google Sheets API v4 | Familiar interface, cross-device |
 | Job sources | RapidAPI jobs-api14, Gmail OAuth2, Greenhouse JSON API | Broad coverage |
 | Notifications | ntfy.sh | Free, cross-platform push |
-| File sync | rclone bisync | Google Drive sync for prep folders |
+| Materials viewer | FastAPI + uvicorn | Local web viewer for prep-folder contents — Markdown rendered inline, `.docx` download |
 | Scheduler | supercronic (Docker) / systemd (native) | supercronic runs the crontab inside the image; systemd is the fallback on native installs |
 
 ---
@@ -37,7 +38,6 @@ Deploys as a Docker container via Compose. Native systemd install remains docume
 - Python 3.11+
 - [aichat-ng](https://github.com/blob42/aichat-ng) (`aichat-ng` binary, not `aichat`)
 - pandoc
-- rclone (optional — only needed for Google Drive sync)
 - API keys: Anthropic, OpenRouter (DeepSeek), Perplexity, Google Gemini, RapidAPI
 - Google Cloud project with Sheets API and Gmail API enabled
 
@@ -48,7 +48,7 @@ Deploys as a Docker container via Compose. Native systemd install remains docume
 findajob ships as a Docker image pulled from GHCR and deployed via Docker Compose.
 
 ```bash
-# On your Docker host — replace <you> with a short tag (brock, amy, etc.)
+# On your Docker host — replace <you> with a short tag
 sudo mkdir -p /opt/stacks/findajob-<you>/state/{data,config,candidate_context,companies,logs,aichat_ng}
 sudo chown -R $(id -u):$(id -g) /opt/stacks/findajob-<you>/
 cd /opt/stacks/findajob-<you>
@@ -61,7 +61,7 @@ curl -fsSL -o .env         https://raw.githubusercontent.com/brockamer/findajob/
 docker compose up -d
 ```
 
-Full walkthrough (API keys, Gmail OAuth, Google Sheets, Drive sync) →
+Full walkthrough (API keys, Gmail OAuth, Google Sheets) →
 [`docs/setup/install-docker.md`](docs/setup/install-docker.md).
 
 Running on a Linux host without Docker is still supported — see
