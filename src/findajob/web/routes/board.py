@@ -13,6 +13,19 @@ from findajob.web.routes.materials import get_db
 router = APIRouter()
 
 
+def _filter_clause(q: str) -> tuple[str, list[str]]:
+    """Build a case-insensitive LIKE filter against title + company.
+
+    Returns ('', []) when q is empty — callers skip the filter entirely.
+    Otherwise returns the SQL fragment (leading space, AND ...) and the
+    two %q% params to bind.
+    """
+    if not q:
+        return "", []
+    like = f"%{q}%"
+    return " AND (title LIKE ? COLLATE NOCASE OR company LIKE ? COLLATE NOCASE)", [like, like]
+
+
 _DASHBOARD_COLS = [
     ("Score", "fit_score"),
     ("Prob", "probability_score"),
@@ -297,6 +310,157 @@ def archive_rows(
             "next_offset": offset + _ARCHIVE_PAGE_SIZE if has_more else None,
             "sort": sort_col,
             "desc": desc,
+            "materials_base_url": materials_base_url,
+        },
+    )
+
+
+# ──────────────────────────────────────────────────────────────────────
+# HTMX filter endpoints — each tab renders only its <tbody> rows as
+# _job_rows_fragment.html. Shared ?q= text filters title + company.
+# ──────────────────────────────────────────────────────────────────────
+
+
+@router.get("/board/dashboard/rows", response_class=HTMLResponse)
+def dashboard_rows(
+    request: Request,
+    q: str = Query(default=""),
+    sort: str = Query(default=""),
+    desc: int = Query(default=1),
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> HTMLResponse:
+    sort_col = sort if sort in _DASHBOARD_SORTABLE else _DASHBOARD_DEFAULT_SORT
+    order = "DESC" if desc else "ASC"
+    filter_sql, params = _filter_clause(q)
+    rows = db.execute(
+        f"SELECT fingerprint, title, company, location, remote_status, known_contacts, "
+        f"comp_estimate, ai_notes, fit_score, probability_score, relevance_score, "
+        f"stage, created_at, stage_updated FROM jobs WHERE ({_DASHBOARD_WHERE}) {filter_sql} "
+        f"ORDER BY {sort_col} {order}",
+        params,
+    ).fetchall()
+    materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request=request,
+        name="_job_rows_fragment.html",
+        context={
+            "columns": _DASHBOARD_COLS,
+            "rows": rows,
+            "tab": "dashboard",
+            "materials_base_url": materials_base_url,
+        },
+    )
+
+
+@router.get("/board/applied/rows", response_class=HTMLResponse)
+def applied_rows(
+    request: Request,
+    q: str = Query(default=""),
+    sort: str = Query(default=""),
+    desc: int = Query(default=1),
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> HTMLResponse:
+    sort_col = sort if sort in _APPLIED_SORTABLE else _APPLIED_DEFAULT_SORT
+    order = "DESC" if desc else "ASC"
+    filter_sql, params = _filter_clause(q)
+    # The filter applies to jobs' own title/company columns, not the joined ones
+    sql = f"""
+    SELECT j.fingerprint, j.title, j.company, j.stage, j.location, j.remote_status,
+           j.known_contacts, j.comp_estimate, j.ai_notes, j.user_notes, j.created_at,
+           al.applied_date,
+           CAST((julianday('now') - julianday(al.applied_date)) AS INTEGER) AS days_since_applied
+    FROM jobs j
+    LEFT JOIN (
+      SELECT job_id, MIN(changed_at) AS applied_date
+      FROM audit_log
+      WHERE field_changed = 'stage' AND new_value = 'applied'
+      GROUP BY job_id
+    ) al ON al.job_id = j.fingerprint
+    WHERE j.stage IN ('applied','interview','offer'){filter_sql.replace("title", "j.title").replace("company", "j.company")}
+    ORDER BY {sort_col} {order}
+    """
+    rows = db.execute(sql, params).fetchall()
+    materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request=request,
+        name="_job_rows_fragment.html",
+        context={
+            "columns": _APPLIED_COLS,
+            "rows": rows,
+            "tab": "applied",
+            "materials_base_url": materials_base_url,
+        },
+    )
+
+
+@router.get("/board/review/rows", response_class=HTMLResponse)
+def review_rows(
+    request: Request,
+    q: str = Query(default=""),
+    sort: str = Query(default=""),
+    desc: int = Query(default=1),
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> HTMLResponse:
+    sort_col = sort if sort in _REVIEW_SORTABLE else _REVIEW_DEFAULT_SORT
+    order = "DESC" if desc else "ASC"
+    filter_sql, params = _filter_clause(q)
+    rows = db.execute(
+        f"SELECT fingerprint, title, company, score_flag_reason, source, created_at, stage "
+        f"FROM jobs WHERE stage = 'manual_review' {filter_sql} "
+        f"ORDER BY {sort_col} {order}",
+        params,
+    ).fetchall()
+    materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request=request,
+        name="_job_rows_fragment.html",
+        context={
+            "columns": _REVIEW_COLS,
+            "rows": rows,
+            "tab": "review",
+            "materials_base_url": materials_base_url,
+        },
+    )
+
+
+@router.get("/board/waitlist/rows", response_class=HTMLResponse)
+def waitlist_rows(
+    request: Request,
+    q: str = Query(default=""),
+    sort: str = Query(default=""),
+    desc: int = Query(default=1),
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> HTMLResponse:
+    sort_col = sort if sort in _WAITLIST_SORTABLE else _WAITLIST_DEFAULT_SORT
+    order = "DESC" if desc else "ASC"
+    filter_sql, params = _filter_clause(q)
+    sql = f"""
+    SELECT w.fingerprint, w.title, w.company, w.relevance_score, w.location, w.remote_status,
+           w.ai_notes, w.created_at, w.stage,
+           (SELECT j2.title || ' (' || j2.stage || ')'
+              FROM jobs j2
+             WHERE j2.company = w.company
+               AND j2.fingerprint != w.fingerprint
+               AND j2.stage IN ('applied','interview','offer','materials_drafted','prep_in_progress')
+             ORDER BY j2.stage_updated DESC
+             LIMIT 1) AS blocking_app
+    FROM jobs w
+    WHERE w.stage = 'waitlisted'{filter_sql.replace("title", "w.title").replace("company", "w.company")}
+    ORDER BY {sort_col} {order}
+    """
+    rows = db.execute(sql, params).fetchall()
+    materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request=request,
+        name="_job_rows_fragment.html",
+        context={
+            "columns": _WAITLIST_COLS,
+            "rows": rows,
+            "tab": "waitlist",
             "materials_base_url": materials_base_url,
         },
     )

@@ -1,0 +1,5 @@
+{% for row in rows %}
+  {% include "_job_row.html" %}
+{% else %}
+  <tr><td colspan="{{ columns|length }}" class="px-3 py-4 text-slate-500">No matches.</td></tr>
+{% endfor %}
