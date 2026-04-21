@@ -20,7 +20,9 @@ def get_db() -> sqlite3.Connection:  # pragma: no cover — overridden in app fa
 
 def _render_markdown(text: str) -> str:
     html = md_lib.markdown(text, extensions=["fenced_code", "tables"], output_format="html")
+    # Strip class attributes added by fenced_code (e.g. class="language-python")
     html = re.sub(r' class="[^"]*"', "", html)
+    # Neutralize raw script tags that Python-Markdown passes through unchanged
     html = re.sub(r"<(/?script)", r"&lt;\1", html, flags=re.IGNORECASE)
     return html
 
