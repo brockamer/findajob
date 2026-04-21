@@ -3,6 +3,7 @@
 Spins up a FastAPI TestClient against a tmpdir `companies/` tree and a
 scratch SQLite. Validates all routes together.
 """
+
 from __future__ import annotations
 
 import sqlite3

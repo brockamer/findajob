@@ -1,4 +1,5 @@
 """FastAPI app factory for the materials viewer."""
+
 from __future__ import annotations
 
 import os

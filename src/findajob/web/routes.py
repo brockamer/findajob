@@ -1,4 +1,5 @@
 """Route handlers for the materials viewer."""
+
 from __future__ import annotations
 
 import re
@@ -37,9 +38,7 @@ def folder_view(
     if folder is None:
         raise HTTPException(status_code=404, detail="folder not found")
 
-    row = db.execute(
-        "SELECT title, company, stage FROM jobs WHERE fingerprint = ?", (fingerprint,)
-    ).fetchone()
+    row = db.execute("SELECT title, company, stage FROM jobs WHERE fingerprint = ?", (fingerprint,)).fetchone()
 
     files = sorted(p.name for p in folder.iterdir() if p.is_file())
     templates = request.app.state.templates

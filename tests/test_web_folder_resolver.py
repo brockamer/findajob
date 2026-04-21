@@ -1,4 +1,5 @@
 """Tests for fingerprint → folder path resolution."""
+
 from __future__ import annotations
 
 import sqlite3
@@ -22,9 +23,7 @@ def companies_root(tmp_path: Path) -> Path:
 def db() -> sqlite3.Connection:
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
-    conn.execute(
-        "CREATE TABLE jobs (fingerprint TEXT PRIMARY KEY, prep_folder_path TEXT, stage TEXT)"
-    )
+    conn.execute("CREATE TABLE jobs (fingerprint TEXT PRIMARY KEY, prep_folder_path TEXT, stage TEXT)")
     return conn
 
 
@@ -52,22 +51,16 @@ def test_resolve_applied_folder(companies_root: Path, db: sqlite3.Connection) ->
     assert result == companies_root / "_applied" / "Google_PM_2026-04-15_100000"
 
 
-def test_resolve_unknown_fingerprint_returns_none(
-    companies_root: Path, db: sqlite3.Connection
-) -> None:
+def test_resolve_unknown_fingerprint_returns_none(companies_root: Path, db: sqlite3.Connection) -> None:
     assert resolve_folder("fp-unknown", db, companies_root) is None
 
 
-def test_resolve_folder_missing_on_disk_returns_none(
-    companies_root: Path, db: sqlite3.Connection
-) -> None:
+def test_resolve_folder_missing_on_disk_returns_none(companies_root: Path, db: sqlite3.Connection) -> None:
     _seed(db, "fp-ghost", str(companies_root / "Ghost_Folder_Never_Existed"))
     assert resolve_folder("fp-ghost", db, companies_root) is None
 
 
-def test_resolve_null_prep_folder_path_returns_none(
-    companies_root: Path, db: sqlite3.Connection
-) -> None:
+def test_resolve_null_prep_folder_path_returns_none(companies_root: Path, db: sqlite3.Connection) -> None:
     db.execute(
         "INSERT INTO jobs (fingerprint, prep_folder_path, stage) VALUES (?, NULL, 'scored')",
         ("fp-nopath",),
@@ -83,9 +76,7 @@ def test_rejects_absolute_path_outside_root(
     assert resolve_folder("fp-outside", db, companies_root) is None
 
 
-def test_rejects_dotdot_traversal(
-    companies_root: Path, db: sqlite3.Connection
-) -> None:
+def test_rejects_dotdot_traversal(companies_root: Path, db: sqlite3.Connection) -> None:
     malicious = str(companies_root / ".." / "outside-root")
     _seed(db, "fp-traversal", malicious)
     assert resolve_folder("fp-traversal", db, companies_root) is None

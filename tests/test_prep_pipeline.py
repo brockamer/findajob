@@ -369,4 +369,3 @@ class TestFileNaming:
 
         should_skip = existing and existing["prep_folder_path"] and existing["stage"] == "materials_drafted"
         assert not should_skip
-
