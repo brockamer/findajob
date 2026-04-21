@@ -18,6 +18,7 @@ from googleapiclient.discovery import build
 from findajob.config_loader import is_company_of_interest
 from findajob.paths import BASE
 from findajob.utils import load_env, log_event
+from findajob.web.constants import FOLDER_STAGES as _CANONICAL_FOLDER_STAGES
 
 load_env()
 
@@ -118,19 +119,10 @@ def hyperlink(url, label):
 
 # Stages where a companies/ folder exists on disk and the materials viewer
 # can render it. Used to decide whether the Sheet's company cell should
-# hyperlink into the viewer.
-_FOLDER_STAGES = frozenset(
-    {
-        "prep_in_progress",
-        "materials_drafted",
-        "applied",
-        "interview",
-        "offer",
-        "not_selected",
-        "waitlisted",
-        "rejected",
-    }
-)
+# hyperlink into the viewer. Canonical list lives in findajob.web.constants
+# (imported at top of file) so this helper and
+# src/findajob/web/templates/_job_row.html can't drift.
+_FOLDER_STAGES = frozenset(_CANONICAL_FOLDER_STAGES)
 
 
 def materials_company_cell(company, fingerprint, stage, base_url):
