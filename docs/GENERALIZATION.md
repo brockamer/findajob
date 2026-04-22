@@ -58,11 +58,12 @@ domain. Each item is a future task to make the pipeline domain-neutral.
 
 - [ ] **`briefing_writer.md`** — mostly generic but may include tech interview framing
 - [ ] **`fit_analyst.md`** — scoring dimensions may be tech-biased
-- [ ] **`company_researcher.md`** — assumes company has "products", "funding rounds" — may not fit nonprofit/public sector
+- [x] **`company_researcher.md`** — fixed 2026-04-22 (#156): opening sentence no longer says "senior infrastructure job candidate"; "Infrastructure Footprint (data centers, cloud strategy, hardware at scale)" section replaced with "Organizational Footprint (locations, scale of operations, resources relevant to this role type)"
 - [ ] **`outreach_drafter.md`** — tone is tech-industry informal; social work/education may need more formal
-- [ ] **`cover_letter_writer.md`** — generic-ish, verify
+- [x] **`cover_letter_writer.md`** — fixed 2026-04-22 (#156): two issues resolved — (1) peer quote attribution example was "a director in site operations" (operator-specific role title copied literally by LLM); (2) metric example included "MW, rack counts" (data center vocabulary). Both replaced with field-neutral alternatives.
+- [x] **`resume_tailor.md`** — fixed 2026-04-22 (#156): "NEVER do" examples used operator-specific labels (`**Data Center Builds**`, `**Infrastructure NPI Operations**`); replaced with generic placeholders (`**Key Projects**`, `**Strategic Initiatives**`)
 
-All of these need a pass with a non-tech candidate profile to see what breaks.
+Remaining roles audited 2026-04-22 and found clean: `briefing_writer.md`, `fit_analyst.md`, `network_analyst.md`, `outreach_drafter.md`, `resume_change_reviewer.md`. `outreach_drafter.md` tone kept as `[ ]` for future review.
 
 ### Example files — `config/*.example`, `candidate_context/*`
 

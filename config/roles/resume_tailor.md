@@ -22,9 +22,9 @@ City, State | Start – End
 ```
 
 **NEVER do any of the following; these are hard errors:**
-- No bold thematic group labels inside a role (`**Data Center Builds**`, `**Program Leadership**`, etc.)
+- No bold thematic group labels inside a role (`**Key Projects**`, `**Program Leadership**`, etc.)
 - No prose paragraph between the role header and the first bullet
-- No bold or italic subtitle line under the role header (`**Infrastructure NPI Operations**`)
+- No bold or italic subtitle line under the role header (`**Strategic Initiatives**`)
 - No italic context sentences introducing a role (`*Created and led [Team Name]...*`)
 - No nested sub-sections or indented bullet groups within a role
 - No narrative text inside the Experience section that is not a `-` bullet
