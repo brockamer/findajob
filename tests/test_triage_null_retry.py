@@ -82,7 +82,6 @@ def _insert_job(conn, job_id, stage, relevance_score=None, days_old=0):
 
 
 def _load_triage():
-    import findajob.paths as p
 
     spec = importlib.util.spec_from_file_location("triage", SCRIPTS_DIR / "triage.py")
     mod = importlib.util.module_from_spec(spec)
@@ -104,7 +103,6 @@ def test_null_score_row_rescored_to_scored(db):
     fake_score = {**GOOD_SCORE}
     fake_latency = 500
 
-    from findajob.utils import write_audit
 
     # Import the function under test (extracted from triage.py)
     from triage import score_null_manual_review_rows  # noqa: PLC0415

@@ -5,12 +5,8 @@ notify.py cmd_health_check must distinguish:
   - real-flag manual_review: relevance_score IS NOT NULL (LLM flagged for human review)
 """
 
-import importlib.util
 import sqlite3
-import sys
-import types
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
