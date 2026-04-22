@@ -18,6 +18,7 @@ from findajob.utils import (
     build_prep_filenames,
     load_env,
     log_event,
+    quarantine_stale_prep_folders,
     read_file_prefix,
     reset_prep_to_scored,
     write_audit,
@@ -155,7 +156,18 @@ def main():
     safe_company = re.sub(r"[^\w\s\-&.,]", "_", company).strip()
     date = datetime.now().strftime("%Y-%m-%d")
     time_str = datetime.now().strftime("%H%M%S")
-    outdir = f"{BASE}/companies/{safe_company}_{abbrev_title(title)}_{date}_{time_str}"
+    companies_dir = f"{BASE}/companies"
+    folder_prefix = f"{safe_company}_{abbrev_title(title)}_"
+    outdir = f"{companies_dir}/{folder_prefix}{date}_{time_str}"
+
+    # Quarantine any prior prep folders for this {company, title} that aren't
+    # tracked by the DB — Regenerate and prep races otherwise leave orphans (#174).
+    cleanup_conn = sqlite3.connect(DB_PATH, timeout=30)
+    try:
+        quarantine_stale_prep_folders(cleanup_conn, companies_dir, folder_prefix, os.path.basename(outdir))
+    finally:
+        cleanup_conn.close()
+
     os.makedirs(outdir, exist_ok=True)
 
     # Build per-file output paths using the candidate's file prefix (from profile.md).

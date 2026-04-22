@@ -508,3 +508,197 @@ class TestResetPrepToScored:
         assert row["stage"] == "applied"
         audit = db.execute("SELECT 1 FROM audit_log WHERE job_id=?", (job_id,)).fetchall()
         assert len(audit) == 0
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# quarantine_stale_prep_folders — duplicate-folder cleanup (issue #174)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class TestQuarantineStalePrepFolders:
+    """Observed 2026-04-22: 4 prep folders for one UN/P4 job in ~50 min.
+    Each prep run mints a fresh {company}_{title}_{date}_{HHMMSS} folder, but
+    only the latest is written to DB.prep_folder_path — prior folders sit on
+    disk with no DB reference, accumulating across Regenerate clicks and any
+    prep race.
+
+    quarantine_stale_prep_folders() scans companies/ at prep start, moves any
+    matching-prefix siblings not tracked in DB to companies/.stale/. Quarantine
+    rather than delete so a racing prep's files are recoverable."""
+
+    def _redirect_log(self, monkeypatch, tmp_path):
+        from findajob import utils as _utils
+
+        monkeypatch.setattr(_utils, "LOG_PATH", str(tmp_path / "events.jsonl"))
+
+    def test_no_matching_folders_returns_empty(self, db, tmp_path, monkeypatch):
+        from findajob.utils import quarantine_stale_prep_folders
+
+        self._redirect_log(monkeypatch, tmp_path)
+        companies = tmp_path / "companies"
+        companies.mkdir()
+
+        moved = quarantine_stale_prep_folders(
+            db,
+            str(companies),
+            folder_prefix="Acme_Ops_Manager_",
+            current_folder_name="Acme_Ops_Manager_2026-04-22_120000",
+        )
+        assert moved == []
+
+    def test_untracked_sibling_moved_to_stale(self, db, tmp_path, monkeypatch):
+        from findajob.utils import quarantine_stale_prep_folders
+
+        self._redirect_log(monkeypatch, tmp_path)
+        companies = tmp_path / "companies"
+        companies.mkdir()
+        (companies / "Acme_Ops_Manager_2026-04-22_110000").mkdir()
+        (companies / "Acme_Ops_Manager_2026-04-22_120000").mkdir()  # the current run
+
+        moved = quarantine_stale_prep_folders(
+            db,
+            str(companies),
+            folder_prefix="Acme_Ops_Manager_",
+            current_folder_name="Acme_Ops_Manager_2026-04-22_120000",
+        )
+        assert moved == ["Acme_Ops_Manager_2026-04-22_110000"]
+        assert not (companies / "Acme_Ops_Manager_2026-04-22_110000").exists()
+        assert (companies / ".stale" / "Acme_Ops_Manager_2026-04-22_110000").is_dir()
+        # Current folder untouched.
+        assert (companies / "Acme_Ops_Manager_2026-04-22_120000").is_dir()
+
+    def test_current_folder_never_moved(self, db, tmp_path, monkeypatch):
+        """The folder being used by THIS prep run must not be moved."""
+        from findajob.utils import quarantine_stale_prep_folders
+
+        self._redirect_log(monkeypatch, tmp_path)
+        companies = tmp_path / "companies"
+        companies.mkdir()
+        (companies / "Acme_Ops_Manager_2026-04-22_120000").mkdir()
+
+        moved = quarantine_stale_prep_folders(
+            db,
+            str(companies),
+            folder_prefix="Acme_Ops_Manager_",
+            current_folder_name="Acme_Ops_Manager_2026-04-22_120000",
+        )
+        assert moved == []
+        assert (companies / "Acme_Ops_Manager_2026-04-22_120000").is_dir()
+
+    def test_db_tracked_folder_never_moved(self, db, tmp_path, monkeypatch):
+        """Defensive: if another job's prep_folder_path points here, don't clobber it
+        even if the name accidentally matches our prefix."""
+        from findajob.utils import quarantine_stale_prep_folders
+
+        self._redirect_log(monkeypatch, tmp_path)
+        companies = tmp_path / "companies"
+        companies.mkdir()
+        tracked_folder = companies / "Acme_Ops_Manager_2026-04-22_110000"
+        tracked_folder.mkdir()
+        insert_job(db, stage="materials_drafted", folder=str(tracked_folder))
+
+        moved = quarantine_stale_prep_folders(
+            db,
+            str(companies),
+            folder_prefix="Acme_Ops_Manager_",
+            current_folder_name="Acme_Ops_Manager_2026-04-22_120000",
+        )
+        assert moved == []
+        assert tracked_folder.is_dir()
+
+    def test_different_prefix_left_alone(self, db, tmp_path, monkeypatch):
+        from findajob.utils import quarantine_stale_prep_folders
+
+        self._redirect_log(monkeypatch, tmp_path)
+        companies = tmp_path / "companies"
+        companies.mkdir()
+        (companies / "OtherCo_Different_Role_2026-04-22_110000").mkdir()
+        (companies / "Acme_Ops_Manager_2026-04-22_120000").mkdir()
+
+        moved = quarantine_stale_prep_folders(
+            db,
+            str(companies),
+            folder_prefix="Acme_Ops_Manager_",
+            current_folder_name="Acme_Ops_Manager_2026-04-22_120000",
+        )
+        assert moved == []
+        assert (companies / "OtherCo_Different_Role_2026-04-22_110000").is_dir()
+
+    def test_underscore_prefix_subdirs_skipped(self, db, tmp_path, monkeypatch):
+        """_applied, _rejected, _waitlisted are poll_flags' holding areas
+        — they must never be quarantined even if prefix would match."""
+        from findajob.utils import quarantine_stale_prep_folders
+
+        self._redirect_log(monkeypatch, tmp_path)
+        companies = tmp_path / "companies"
+        companies.mkdir()
+        (companies / "_applied").mkdir()
+        (companies / "_rejected").mkdir()
+        (companies / "_waitlisted").mkdir()
+
+        moved = quarantine_stale_prep_folders(
+            db,
+            str(companies),
+            folder_prefix="_",  # deliberately adversarial
+            current_folder_name="Acme_Ops_Manager_2026-04-22_120000",
+        )
+        assert moved == []
+        assert (companies / "_applied").is_dir()
+        assert (companies / "_rejected").is_dir()
+        assert (companies / "_waitlisted").is_dir()
+
+    def test_four_stale_siblings_all_quarantined(self, db, tmp_path, monkeypatch):
+        """The exact 2026-04-22 incident: 4 folders for same job, cleanup leaves current + stale/."""
+        from findajob.utils import quarantine_stale_prep_folders
+
+        self._redirect_log(monkeypatch, tmp_path)
+        companies = tmp_path / "companies"
+        companies.mkdir()
+        for ts in ("055002", "062632", "062904", "063003"):
+            (companies / f"United Nations_Evaluation_Officer_P4_2026-04-22_{ts}").mkdir()
+        (companies / "United Nations_Evaluation_Officer_P4_2026-04-22_130000").mkdir()  # current
+
+        moved = quarantine_stale_prep_folders(
+            db,
+            str(companies),
+            folder_prefix="United Nations_Evaluation_Officer_P4_",
+            current_folder_name="United Nations_Evaluation_Officer_P4_2026-04-22_130000",
+        )
+        assert sorted(moved) == [
+            "United Nations_Evaluation_Officer_P4_2026-04-22_055002",
+            "United Nations_Evaluation_Officer_P4_2026-04-22_062632",
+            "United Nations_Evaluation_Officer_P4_2026-04-22_062904",
+            "United Nations_Evaluation_Officer_P4_2026-04-22_063003",
+        ]
+        assert (companies / "United Nations_Evaluation_Officer_P4_2026-04-22_130000").is_dir()
+        assert len(list((companies / ".stale").iterdir())) == 4
+
+    def test_nonexistent_companies_dir_no_crash(self, db, tmp_path, monkeypatch):
+        from findajob.utils import quarantine_stale_prep_folders
+
+        self._redirect_log(monkeypatch, tmp_path)
+        moved = quarantine_stale_prep_folders(
+            db,
+            str(tmp_path / "does-not-exist"),
+            folder_prefix="Acme_",
+            current_folder_name="Acme_2026-04-22_120000",
+        )
+        assert moved == []
+
+    def test_regular_files_not_moved(self, db, tmp_path, monkeypatch):
+        from findajob.utils import quarantine_stale_prep_folders
+
+        self._redirect_log(monkeypatch, tmp_path)
+        companies = tmp_path / "companies"
+        companies.mkdir()
+        # A regular file matching the prefix — must be left alone (defensive).
+        (companies / "Acme_Ops_Manager_readme.txt").write_text("hi")
+
+        moved = quarantine_stale_prep_folders(
+            db,
+            str(companies),
+            folder_prefix="Acme_Ops_Manager_",
+            current_folder_name="Acme_Ops_Manager_2026-04-22_120000",
+        )
+        assert moved == []
+        assert (companies / "Acme_Ops_Manager_readme.txt").is_file()
