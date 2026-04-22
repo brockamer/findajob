@@ -106,15 +106,17 @@ install procedure end-to-end, triggers `triage.py`, and asserts:
 
 Run locally on a docker-equipped host before proposing the tag. From the
 maintainer's dev laptop, the workflow is: build the image on `docker.lan` (or
-any docker-equipped host), then run the smoke script against it. Set
-`FINDAJOB_SMOKE_SHEET_ID` to the sheet ID the service account can write to
-(either the operator's existing test sheet or a dedicated smoke sheet):
+any docker-equipped host), then run the smoke script against it. Two env vars
+are required — the Google Sheet ID and the path to the service-account creds
+JSON (both from the operator's existing stack):
 
 ```bash
 # On docker.lan (or any host with docker + this repo checked out)
 cd /path/to/findajob
 docker build -t findajob:local .
-FINDAJOB_SMOKE_SHEET_ID=<sheet-id> FINDAJOB_TEST_IMAGE=findajob:local \
+FINDAJOB_SMOKE_SHEET_ID=<sheet-id> \
+FINDAJOB_SMOKE_SA_CREDS=/opt/stacks/findajob-<tag>/state/config/gsheets_creds.json \
+FINDAJOB_TEST_IMAGE=findajob:local \
   scripts/test_container_integration.sh
 ```
 

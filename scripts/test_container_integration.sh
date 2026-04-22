@@ -53,17 +53,24 @@ done
 
 IMAGE="${FINDAJOB_TEST_IMAGE:-findajob:local}"
 
-if [ -z "${FINDAJOB_SMOKE_SHEET_ID:-}" ]; then
+if [ -z "${FINDAJOB_SMOKE_SHEET_ID:-}" ] || [ -z "${FINDAJOB_SMOKE_SA_CREDS:-}" ]; then
     cat >&2 <<EOF
-ERROR: FINDAJOB_SMOKE_SHEET_ID env var is required.
+ERROR: two env vars are required:
 
-Set it to the Google Sheet ID the service account can write to — either
-the operator's existing test sheet or a dedicated smoke-test sheet.
+  FINDAJOB_SMOKE_SHEET_ID  — Google Sheet ID the service account can write to.
+  FINDAJOB_SMOKE_SA_CREDS  — Path to the gsheets service-account JSON file.
+
 Example:
 
   export FINDAJOB_SMOKE_SHEET_ID=1AbCdEfGhIjKlMnOpQrStUvWxYz
+  export FINDAJOB_SMOKE_SA_CREDS=/opt/stacks/findajob-<tag>/state/config/gsheets_creds.json
   scripts/test_container_integration.sh
 EOF
+    exit 2
+fi
+
+if [ ! -f "$FINDAJOB_SMOKE_SA_CREDS" ]; then
+    echo "ERROR: FINDAJOB_SMOKE_SA_CREDS file not found: $FINDAJOB_SMOKE_SA_CREDS" >&2
     exit 2
 fi
 
@@ -109,6 +116,10 @@ chmod 600 "$SCRATCH/state/data/.env"
 
 # Google Sheet ID → state/config/sheet_id.txt
 echo "$FINDAJOB_SMOKE_SHEET_ID" > "$SCRATCH/state/config/sheet_id.txt"
+
+# Service-account creds → state/config/gsheets_creds.json (needed by sync_sheet.py)
+cp "$FINDAJOB_SMOKE_SA_CREDS" "$SCRATCH/state/config/gsheets_creds.json"
+chmod 600 "$SCRATCH/state/config/gsheets_creds.json"
 
 # Candidate profile → state/candidate_context/profile.md
 cp "$FIXTURES/smoke_profile.md" "$SCRATCH/state/candidate_context/profile.md"
@@ -226,7 +237,38 @@ fi
 echo "  pipeline_complete.scored = $JSONL_SCORED"
 
 # ────────────────────────────────────────────────────────────────────────────
-# 9. Assert jobs table has rows in stage scored or manual_review
+# 9. Assert sync_sheet ran and wrote at least one row to the smoke sheet
+# ────────────────────────────────────────────────────────────────────────────
+
+echo "[assert] sync_complete event with sheet1 >= 1 or dashboard >= 1"
+SYNC_ROWS=$($EXEC python3 -c "
+import json, sys
+sheet1 = dashboard = 0
+try:
+    with open('/app/logs/pipeline.jsonl') as fh:
+        for line in fh:
+            try:
+                ev = json.loads(line)
+            except Exception:
+                continue
+            if ev.get('event') == 'sync_complete':
+                sheet1 = max(sheet1, int(ev.get('sheet1', 0) or 0))
+                dashboard = max(dashboard, int(ev.get('dashboard', 0) or 0))
+except FileNotFoundError:
+    print('ERROR: /app/logs/pipeline.jsonl not found', file=sys.stderr)
+    sys.exit(1)
+print(max(sheet1, dashboard))
+") || { echo "ERROR: sync_complete check failed" >&2; exit 1; }
+
+if [ -z "$SYNC_ROWS" ] || [ "$SYNC_ROWS" -lt 1 ]; then
+    echo "ERROR: sync_complete event missing or sheet1/dashboard = 0 (expected >= 1)" >&2
+    echo "  sync_sheet.py may have crashed — check /app/logs/pipeline.jsonl for sync_failed events" >&2
+    exit 1
+fi
+echo "  sync_complete: max(sheet1, dashboard) = $SYNC_ROWS"
+
+# ────────────────────────────────────────────────────────────────────────────
+# 11. Assert jobs table has rows in stage scored or manual_review
 # ────────────────────────────────────────────────────────────────────────────
 
 echo "[assert] jobs table has scored/manual_review rows"
@@ -240,7 +282,7 @@ fi
 echo "  jobs(scored|manual_review) = $JOB_COUNT"
 
 # ────────────────────────────────────────────────────────────────────────────
-# 10. Assert cost_log has rows (confirms #117 schema fold)
+# 12. Assert cost_log has rows (confirms #117 schema fold)
 # ────────────────────────────────────────────────────────────────────────────
 
 echo "[assert] cost_log has rows (schema fold)"
@@ -254,7 +296,7 @@ fi
 echo "  cost_log rows = $COST_COUNT"
 
 # ────────────────────────────────────────────────────────────────────────────
-# 11. Assert aichat-ng config.yaml present (confirms #118 seed)
+# 13. Assert aichat-ng config.yaml present (confirms #118 seed)
 # ────────────────────────────────────────────────────────────────────────────
 
 echo "[assert] /app/.config/aichat_ng/config.yaml present (aichat seed)"
@@ -265,7 +307,7 @@ fi
 echo "  aichat-ng config.yaml: OK"
 
 # ────────────────────────────────────────────────────────────────────────────
-# 12. Materials viewer smoke
+# 14. Materials viewer smoke
 # ────────────────────────────────────────────────────────────────────────────
 
 echo "[assert] materials viewer smoke"
@@ -292,7 +334,7 @@ fi
 echo "  rclone absent from image"
 
 # ────────────────────────────────────────────────────────────────────────────
-# 13. Done — cleanup runs on EXIT
+# 15. Done — cleanup runs on EXIT
 # ────────────────────────────────────────────────────────────────────────────
 
 echo
