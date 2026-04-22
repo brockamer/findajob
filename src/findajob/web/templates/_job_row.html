@@ -28,5 +28,6 @@
   {% endfor %}
   {% if tab in ('dashboard', 'applied', 'review', 'waitlist') %}
     {% include "board/_status_cell.html" %}
+    {% include "board/_reject_cell.html" %}
   {% endif %}
 </tr>

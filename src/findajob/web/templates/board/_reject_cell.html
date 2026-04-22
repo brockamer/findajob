@@ -1,0 +1,37 @@
+{#
+  Reject reason dropdown for Dashboard / Applied / Review / Waitlist tabs.
+  Inputs:
+    row — a sqlite3.Row (or dict)
+    tab — "dashboard" | "applied" | "review" | "waitlist"
+
+  On change, dispatches a POST with the selected reason as form data. Routes
+  to /reject by default; if the status cell flagged the row for Not Selected
+  (applied tab only), routes to /not-selected instead. The flag is carried on
+  tr.dataset.pendingAction to avoid an Alpine dependency.
+#}
+{% set fp = row.fingerprint %}
+<td class="px-3 py-1 align-top text-sm whitespace-nowrap">
+  <select
+    class="block rounded border-slate-300 bg-white px-2 py-1 text-xs"
+    data-fp="{{ fp }}"
+    onchange="if(this.value){
+      const tr=this.closest('tr');
+      const action=tr.dataset.pendingAction==='not-selected'?'not-selected':'reject';
+      htmx.ajax('POST',`/board/jobs/{{ fp }}/${action}`,{target:tr,swap:'outerHTML',values:{reason:this.value}});
+      this.value='';
+      delete tr.dataset.pendingAction;
+    }">
+    <option value="">— No reason —</option>
+    <option value="Too Senior">Too Senior</option>
+    <option value="Too Junior">Too Junior</option>
+    <option value="Skills Mismatch">Skills Mismatch</option>
+    <option value="Too TPM-Heavy">Too TPM-Heavy</option>
+    <option value="Geography/Onsite">Geography/Onsite</option>
+    <option value="Company Not a Fit">Company Not a Fit</option>
+    <option value="Comp Too Low">Comp Too Low</option>
+    <option value="Low Fit Score">Low Fit Score</option>
+    <option value="Stale/Closed">Stale/Closed</option>
+    <option value="Already Applied">Already Applied</option>
+    <option value="Other">Other</option>
+  </select>
+</td>

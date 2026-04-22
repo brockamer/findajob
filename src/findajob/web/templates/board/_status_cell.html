@@ -31,16 +31,29 @@
       {% endif %}
     </select>
   {% elif tab == 'applied' %}
+    {% if stage == 'not_selected' %}
+      <span class="text-xs text-slate-500">Not Selected</span>
+    {% else %}
     <select
       class="block rounded border-slate-300 bg-white px-2 py-1 text-xs"
       data-fp="{{ fp }}"
-      onchange="if(this.value){htmx.ajax('POST', `/board/jobs/{{ fp }}/${this.value}`, {target: this.closest('tr'), swap: 'outerHTML'});this.value='';}">
+      onchange="if(!this.value)return;
+        const tr=this.closest('tr');
+        if(this.value==='not-selected'){
+          tr.dataset.pendingAction='not-selected';
+          this.nextElementSibling && (this.nextElementSibling.textContent='Pick a reason in the Reject cell');
+        } else {
+          htmx.ajax('POST',`/board/jobs/{{ fp }}/${this.value}`,{target:tr,swap:'outerHTML'});
+        }
+        this.value='';">
       <option value="">— Change status —</option>
       {% if stage != 'interview' %}<option value="interview">Interviewing</option>{% endif %}
       {% if stage != 'offer' %}<option value="offer">Offer</option>{% endif %}
       <option value="withdraw">Withdrew</option>
       <option value="not-selected">Not Selected</option>
     </select>
+    <span class="ml-2 text-xs text-slate-500"></span>
+    {% endif %}
   {% elif tab == 'review' %}
     <button type="button"
             class="rounded bg-indigo-600 px-2 py-1 text-xs font-medium text-white hover:bg-indigo-500"

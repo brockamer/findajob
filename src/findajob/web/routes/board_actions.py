@@ -17,11 +17,13 @@ import subprocess
 import sys
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
 from findajob.actions import (
+    handle_not_selected,
     handle_reactivate,
+    handle_rejection,
     handle_waitlist,
     notify_waitlist_resurface,
     promote_to_scored,
@@ -307,4 +309,60 @@ def promote(
     if job["stage"] != "manual_review":
         raise HTTPException(status_code=409, detail="Job is not in manual_review")
     promote_to_scored(db, job, reason="Promoted from web UI")
+    return HTMLResponse("")
+
+
+_POST_APPLICATION_STAGES = ("applied", "interview", "offer")
+
+
+def _fetch_rejection_job(db: sqlite3.Connection, fingerprint: str) -> sqlite3.Row | None:
+    """handle_rejection needs relevance_score + prep_folder_path from the row."""
+    return db.execute(
+        "SELECT id, fingerprint, title, company, url, stage, relevance_score, prep_folder_path "
+        "FROM jobs WHERE fingerprint=?",
+        (fingerprint,),
+    ).fetchone()
+
+
+@router.post("/board/jobs/{fingerprint}/reject", response_class=HTMLResponse)
+def reject(
+    fingerprint: str,
+    request: Request,  # noqa: ARG001
+    reason: str = Form(""),
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> HTMLResponse:
+    """Reject a job. Writes feedback_log, moves prep folder to _rejected/, fires
+    notify_waitlist_resurface. Returns empty — row drops off its source tab."""
+    job = _fetch_rejection_job(db, fingerprint)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job["stage"] == "rejected":
+        return HTMLResponse("")
+    handle_rejection(db, job, (reason or "").strip() or "Other")
+    notify_waitlist_resurface(db, job["company"])
+    return HTMLResponse("")
+
+
+@router.post("/board/jobs/{fingerprint}/not-selected", response_class=HTMLResponse)
+def not_selected(
+    fingerprint: str,
+    request: Request,  # noqa: ARG001
+    reason: str = Form(""),
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> HTMLResponse:
+    """Mark that the company rejected the application. Drops a marker file in
+    the existing _applied/ folder. Does NOT write feedback_log — company
+    rejections must not contaminate the scorer. Fires notify_waitlist_resurface."""
+    job = _fetch_rejection_job(db, fingerprint)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job["stage"] == "not_selected":
+        return HTMLResponse("")
+    if job["stage"] not in _POST_APPLICATION_STAGES:
+        raise HTTPException(
+            status_code=409,
+            detail="Not Selected only valid for applied/interview/offer stages",
+        )
+    handle_not_selected(db, job, (reason or "").strip() or "Company passed")
+    notify_waitlist_resurface(db, job["company"])
     return HTMLResponse("")

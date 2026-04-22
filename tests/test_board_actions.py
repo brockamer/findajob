@@ -8,6 +8,7 @@ board_actions module so tests don't actually fork prep_application.py.
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from pathlib import Path
 
@@ -38,6 +39,7 @@ CREATE TABLE jobs (
     stage_updated TEXT,
     apply_flag INTEGER DEFAULT 0,
     prep_folder_path TEXT,
+    raw_jd_text TEXT,
     reject_reason TEXT DEFAULT '',
     user_notes TEXT DEFAULT '',
     gdrive_folder_url TEXT,
@@ -54,6 +56,17 @@ CREATE TABLE audit_log (
     new_value TEXT,
     changed_at TEXT DEFAULT (datetime('now')),
     changed_by TEXT DEFAULT 'system'
+);
+
+CREATE TABLE feedback_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    company TEXT NOT NULL,
+    relevance_score INTEGER,
+    reject_reason TEXT NOT NULL,
+    jd_excerpt TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now'))
 );
 """
 
@@ -226,8 +239,238 @@ def test_router_registered_on_app(client: TestClient):
     # Smoke-check the aggregated router has the new path registered.
     paths = {route.path for route in _web_routes.router.routes}
     assert "/board/jobs/{fingerprint}/prep" in paths
-    for endpoint in ("apply", "interview", "offer", "withdraw", "waitlist", "reactivate", "promote"):
+    for endpoint in (
+        "apply",
+        "interview",
+        "offer",
+        "withdraw",
+        "waitlist",
+        "reactivate",
+        "promote",
+        "reject",
+        "not-selected",
+    ):
         assert f"/board/jobs/{{fingerprint}}/{endpoint}" in paths
+
+
+def _fetch_feedback(client: TestClient, fingerprint: str) -> list[tuple[str, str]]:
+    conn = sqlite3.connect(client._db_path)
+    rows = conn.execute(
+        "SELECT fb.reject_reason, fb.title FROM feedback_log fb "
+        "JOIN jobs j ON j.id = fb.job_id WHERE j.fingerprint=?",
+        (fingerprint,),
+    ).fetchall()
+    conn.close()
+    return [tuple(r) for r in rows]
+
+
+# ── /reject handler ───────────────────────────────────────────────────────
+
+
+class TestReject:
+    def _seed_prep_folder(self, client: TestClient, fingerprint: str, parent: str = "") -> Path:
+        parent_path = client._tmp_path / "companies" / parent if parent else client._tmp_path / "companies"
+        parent_path.mkdir(parents=True, exist_ok=True)
+        folder = parent_path / f"Acme_Ops_reject_{fingerprint}"
+        folder.mkdir()
+        (folder / "resume.pdf").touch()
+        conn = sqlite3.connect(client._db_path)
+        conn.execute("UPDATE jobs SET prep_folder_path=? WHERE fingerprint=?", (str(folder), fingerprint))
+        conn.commit()
+        conn.close()
+        return folder
+
+    def test_happy_path_from_dashboard(self, client: TestClient):
+        folder = self._seed_prep_folder(client, "fp_drafted")
+
+        response = client.post("/board/jobs/fp_drafted/reject", data={"reason": "Low Fit Score"})
+
+        assert response.status_code == 200
+        assert response.text == ""
+        assert _fetch_stage(client, "fp_drafted") == "rejected"
+
+        # feedback_log written with the reason + title
+        fb = _fetch_feedback(client, "fp_drafted")
+        assert fb == [("Low Fit Score", "Senior Ops")]
+
+        # Folder moved to _rejected/ with a REJECTED_ marker
+        conn = sqlite3.connect(client._db_path)
+        new_path = conn.execute(
+            "SELECT prep_folder_path FROM jobs WHERE fingerprint='fp_drafted'"
+        ).fetchone()[0]
+        conn.close()
+        assert "_rejected" in new_path
+        assert not folder.exists()
+        markers = [f for f in os.listdir(new_path) if f.startswith("REJECTED_")]
+        assert len(markers) == 1
+        assert "Low_Fit_Score" in markers[0]
+
+    def test_happy_path_without_folder(self, client: TestClient):
+        response = client.post("/board/jobs/fp_scored/reject", data={"reason": "Wrong Level"})
+
+        assert response.status_code == 200
+        assert _fetch_stage(client, "fp_scored") == "rejected"
+        fb = _fetch_feedback(client, "fp_scored")
+        assert fb == [("Wrong Level", "Senior Ops")]
+
+    def test_empty_reason_defaults_to_other(self, client: TestClient):
+        response = client.post("/board/jobs/fp_scored/reject", data={"reason": ""})
+
+        assert response.status_code == 200
+        fb = _fetch_feedback(client, "fp_scored")
+        assert fb == [("Other", "Senior Ops")]
+
+    def test_fires_waitlist_resurface(self, client: TestClient, popen_calls):
+        """A waitlisted sibling at the same company triggers a notification."""
+        conn = sqlite3.connect(client._db_path)
+        conn.execute(
+            "INSERT INTO jobs (id, fingerprint, url, title, company, stage) "
+            "VALUES ('sib','fp_sib','u','Other','Acme Corp','waitlisted')"
+        )
+        conn.commit()
+        conn.close()
+
+        client.post("/board/jobs/fp_scored/reject", data={"reason": "Low Fit Score"})
+
+        notify_calls = [c for c in popen_calls if any("notify.py" in arg for arg in c)]
+        assert len(notify_calls) == 1
+
+    def test_idempotent_on_already_rejected(self, client: TestClient):
+        conn = sqlite3.connect(client._db_path)
+        conn.execute("UPDATE jobs SET stage='rejected' WHERE fingerprint='fp_scored'")
+        conn.commit()
+        conn.close()
+
+        response = client.post("/board/jobs/fp_scored/reject", data={"reason": "Other"})
+
+        assert response.status_code == 200
+        assert _fetch_feedback(client, "fp_scored") == []
+
+    def test_404_on_unknown_fingerprint(self, client: TestClient):
+        response = client.post("/board/jobs/fp_nonexistent/reject", data={"reason": "Other"})
+        assert response.status_code == 404
+
+
+# ── /not-selected handler ────────────────────────────────────────────────
+
+
+class TestNotSelected:
+    def _seed_applied_folder(self, client: TestClient, fingerprint: str) -> Path:
+        applied_dir = client._tmp_path / "companies" / "_applied"
+        applied_dir.mkdir(parents=True, exist_ok=True)
+        folder = applied_dir / f"Acme_Ops_notsel_{fingerprint}"
+        folder.mkdir()
+        conn = sqlite3.connect(client._db_path)
+        conn.execute("UPDATE jobs SET prep_folder_path=? WHERE fingerprint=?", (str(folder), fingerprint))
+        conn.commit()
+        conn.close()
+        return folder
+
+    def test_happy_path_from_applied(self, client: TestClient):
+        folder = self._seed_applied_folder(client, "fp_applied")
+
+        response = client.post(
+            "/board/jobs/fp_applied/not-selected",
+            data={"reason": "Too Senior"},
+        )
+
+        assert response.status_code == 200
+        assert response.text == ""
+        assert _fetch_stage(client, "fp_applied") == "not_selected"
+
+        # Folder stays in _applied/ with a NOT_SELECTED_ marker
+        assert folder.exists()
+        markers = [f for f in os.listdir(folder) if f.startswith("NOT_SELECTED_")]
+        assert len(markers) == 1
+        assert "Too_Senior" in markers[0]
+
+    def test_does_not_write_feedback_log(self, client: TestClient):
+        """Company rejections must not contaminate the scorer feedback loop."""
+        self._seed_applied_folder(client, "fp_applied")
+        client.post("/board/jobs/fp_applied/not-selected", data={"reason": "Too Senior"})
+
+        assert _fetch_feedback(client, "fp_applied") == []
+
+    def test_happy_path_from_interview(self, client: TestClient):
+        response = client.post(
+            "/board/jobs/fp_interview/not-selected",
+            data={"reason": "Skills Mismatch"},
+        )
+
+        assert response.status_code == 200
+        assert _fetch_stage(client, "fp_interview") == "not_selected"
+
+    def test_happy_path_from_offer(self, client: TestClient):
+        response = client.post(
+            "/board/jobs/fp_offer/not-selected",
+            data={"reason": "Company Not a Fit"},
+        )
+
+        assert response.status_code == 200
+        assert _fetch_stage(client, "fp_offer") == "not_selected"
+
+    def test_409_on_pre_application_stage(self, client: TestClient):
+        """Not Selected only valid for applied/interview/offer."""
+        response = client.post(
+            "/board/jobs/fp_scored/not-selected",
+            data={"reason": "Too Senior"},
+        )
+
+        assert response.status_code == 409
+        assert _fetch_stage(client, "fp_scored") == "scored"
+
+    def test_409_on_waitlisted(self, client: TestClient):
+        response = client.post(
+            "/board/jobs/fp_waitlisted/not-selected",
+            data={"reason": "Too Senior"},
+        )
+        assert response.status_code == 409
+
+    def test_empty_reason_defaults_to_company_passed(self, client: TestClient):
+        self._seed_applied_folder(client, "fp_applied")
+        client.post("/board/jobs/fp_applied/not-selected", data={"reason": ""})
+
+        conn = sqlite3.connect(client._db_path)
+        reject_reason = conn.execute(
+            "SELECT reject_reason FROM jobs WHERE fingerprint='fp_applied'"
+        ).fetchone()[0]
+        conn.close()
+        assert reject_reason == "Company passed"
+
+    def test_fires_waitlist_resurface(self, client: TestClient, popen_calls):
+        conn = sqlite3.connect(client._db_path)
+        conn.execute(
+            "INSERT INTO jobs (id, fingerprint, url, title, company, stage) "
+            "VALUES ('sib','fp_sib','u','Other','Acme Corp','waitlisted')"
+        )
+        conn.commit()
+        conn.close()
+
+        client.post(
+            "/board/jobs/fp_applied/not-selected",
+            data={"reason": "Too Senior"},
+        )
+
+        notify_calls = [c for c in popen_calls if any("notify.py" in arg for arg in c)]
+        assert len(notify_calls) == 1
+
+    def test_idempotent_on_already_not_selected(self, client: TestClient):
+        conn = sqlite3.connect(client._db_path)
+        conn.execute("UPDATE jobs SET stage='not_selected' WHERE fingerprint='fp_applied'")
+        conn.commit()
+        conn.close()
+
+        response = client.post("/board/jobs/fp_applied/not-selected", data={"reason": "Other"})
+
+        assert response.status_code == 200
+        assert _fetch_feedback(client, "fp_applied") == []
+
+    def test_404_on_unknown_fingerprint(self, client: TestClient):
+        response = client.post(
+            "/board/jobs/fp_nonexistent/not-selected",
+            data={"reason": "Other"},
+        )
+        assert response.status_code == 404
 
 
 # ── /waitlist handler ─────────────────────────────────────────────────────

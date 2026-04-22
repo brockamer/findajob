@@ -33,5 +33,8 @@ def test_review_shows_manual_review_only(client: TestClient) -> None:
     r = client.get("/board/review")
     assert r.status_code == 200
     assert "Ambiguous Title" in r.text
-    assert "Other" not in r.text
+    # fp-scored isn't in manual_review, so its row should not render.
+    # Match the fingerprint attribute — "Other" as a bare word now appears in
+    # the reject-reason dropdown for every rendered row.
+    assert 'data-fingerprint="fp-scored"' not in r.text
     assert "target company bump" in r.text

@@ -43,4 +43,7 @@ def test_dashboard_shows_in_scope_jobs(client: TestClient) -> None:
     assert r.status_code == 200
     assert "Senior DC Ops" in r.text
     assert "NPI PM" in r.text
-    assert "Junior" not in r.text  # filtered out by score<7
+    # fp3 (score=3) is filtered out by score<7. Check by fingerprint — the
+    # reject-reason dropdown now contains substrings like "Too Junior" for
+    # every rendered row, so bare-word "Junior" is a false-positive signal.
+    assert 'data-fingerprint="fp3"' not in r.text
