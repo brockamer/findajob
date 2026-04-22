@@ -20,7 +20,12 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
-from findajob.actions import notify_waitlist_resurface
+from findajob.actions import (
+    handle_reactivate,
+    handle_waitlist,
+    notify_waitlist_resurface,
+    promote_to_scored,
+)
 from findajob.paths import BASE
 from findajob.utils import log_event, write_audit
 from findajob.web.routes.board import _APPLIED_COLS, _DASHBOARD_COLS
@@ -254,4 +259,52 @@ def withdraw(
         return HTMLResponse("")
     _transition_stage(db, job, "withdrawn", event_name="web_withdrawn")
     notify_waitlist_resurface(db, job["company"])
+    return HTMLResponse("")
+
+
+@router.post("/board/jobs/{fingerprint}/waitlist", response_class=HTMLResponse)
+def waitlist(
+    fingerprint: str,
+    request: Request,  # noqa: ARG001
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> HTMLResponse:
+    """Defer a job to the Waitlist tab. Returns empty — row leaves the source tab."""
+    job = _fetch_job(db, fingerprint)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job["stage"] == "waitlisted":
+        return HTMLResponse("")
+    handle_waitlist(db, job)
+    return HTMLResponse("")
+
+
+@router.post("/board/jobs/{fingerprint}/reactivate", response_class=HTMLResponse)
+def reactivate(
+    fingerprint: str,
+    request: Request,  # noqa: ARG001
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> HTMLResponse:
+    """Restore a waitlisted job to scored or materials_drafted."""
+    job = _fetch_job(db, fingerprint)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job["stage"] != "waitlisted":
+        raise HTTPException(status_code=409, detail="Job is not waitlisted")
+    handle_reactivate(db, job)
+    return HTMLResponse("")
+
+
+@router.post("/board/jobs/{fingerprint}/promote", response_class=HTMLResponse)
+def promote(
+    fingerprint: str,
+    request: Request,  # noqa: ARG001
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> HTMLResponse:
+    """Promote a manual_review job onto the Dashboard."""
+    job = _fetch_job(db, fingerprint)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job["stage"] != "manual_review":
+        raise HTTPException(status_code=409, detail="Job is not in manual_review")
+    promote_to_scored(db, job, reason="Promoted from web UI")
     return HTMLResponse("")

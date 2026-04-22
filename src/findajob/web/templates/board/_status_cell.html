@@ -41,5 +41,17 @@
       <option value="withdraw">Withdrew</option>
       <option value="not-selected">Not Selected</option>
     </select>
+  {% elif tab == 'review' %}
+    <button type="button"
+            class="rounded bg-indigo-600 px-2 py-1 text-xs font-medium text-white hover:bg-indigo-500"
+            hx-post="/board/jobs/{{ fp }}/promote"
+            hx-target="closest tr"
+            hx-swap="outerHTML">Promote</button>
+  {% elif tab == 'waitlist' %}
+    <button type="button"
+            class="rounded bg-indigo-600 px-2 py-1 text-xs font-medium text-white hover:bg-indigo-500"
+            hx-post="/board/jobs/{{ fp }}/reactivate"
+            hx-target="closest tr"
+            hx-swap="outerHTML">Reactivate</button>
   {% endif %}
 </td>

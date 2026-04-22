@@ -32,6 +32,8 @@ CREATE TABLE jobs (
     ai_notes TEXT,
     relevance_score INTEGER,
     interview_likelihood INTEGER,
+    score_status TEXT,
+    score_flag_reason TEXT,
     stage TEXT,
     stage_updated TEXT,
     apply_flag INTEGER DEFAULT 0,
@@ -97,12 +99,15 @@ def popen_calls(monkeypatch) -> list[list[str]]:
 
 @pytest.fixture()
 def client(tmp_path: Path, monkeypatch, popen_calls) -> TestClient:
+    from findajob import actions
     from findajob.web.routes import board_actions
 
     monkeypatch.setattr(utils, "LOG_PATH", str(tmp_path / "events.jsonl"))
-    # /apply resolves its destination folder via board_actions.BASE; point at the
-    # test's tmp_path so folder moves don't reach into the real repo.
+    # /apply resolves its destination folder via board_actions.BASE; actions.BASE
+    # drives handle_waitlist / handle_reactivate folder moves. Point both at the
+    # test's tmp_path so folder ops don't reach into the real repo.
     monkeypatch.setattr(board_actions, "BASE", str(tmp_path))
+    monkeypatch.setattr(actions, "BASE", str(tmp_path))
 
     db_path = tmp_path / "pipeline.db"
     conn = sqlite3.connect(db_path)
@@ -114,6 +119,8 @@ def client(tmp_path: Path, monkeypatch, popen_calls) -> TestClient:
     _insert_job(conn, fingerprint="fp_applied", stage="applied")
     _insert_job(conn, fingerprint="fp_interview", stage="interview")
     _insert_job(conn, fingerprint="fp_offer", stage="offer")
+    # Different company so waitlist-resurface tests don't see fp_applied as a sibling
+    _insert_job(conn, fingerprint="fp_waitlisted", stage="waitlisted", company="Waitlist Co")
     conn.close()
 
     companies = tmp_path / "companies"
@@ -219,8 +226,137 @@ def test_router_registered_on_app(client: TestClient):
     # Smoke-check the aggregated router has the new path registered.
     paths = {route.path for route in _web_routes.router.routes}
     assert "/board/jobs/{fingerprint}/prep" in paths
-    for endpoint in ("apply", "interview", "offer", "withdraw"):
+    for endpoint in ("apply", "interview", "offer", "withdraw", "waitlist", "reactivate", "promote"):
         assert f"/board/jobs/{{fingerprint}}/{endpoint}" in paths
+
+
+# ── /waitlist handler ─────────────────────────────────────────────────────
+
+
+class TestWaitlist:
+    def test_happy_path_from_dashboard_stage(self, client: TestClient):
+        response = client.post("/board/jobs/fp_drafted/waitlist")
+
+        assert response.status_code == 200
+        assert response.text == ""
+        assert _fetch_stage(client, "fp_drafted") == "waitlisted"
+
+        audit = _fetch_audit(client, "fp_drafted")
+        assert any(a == ("stage", "materials_drafted", "waitlisted") for a in audit)
+
+    def test_happy_path_moves_folder(self, client: TestClient):
+        folder = client._tmp_path / "companies" / "Acme_Ops_waitlist_test"
+        folder.mkdir(parents=True)
+        (folder / "resume.pdf").touch()
+        conn = sqlite3.connect(client._db_path)
+        conn.execute("UPDATE jobs SET prep_folder_path=? WHERE fingerprint='fp_drafted'", (str(folder),))
+        conn.commit()
+        conn.close()
+
+        client.post("/board/jobs/fp_drafted/waitlist")
+
+        assert not folder.exists()
+        conn = sqlite3.connect(client._db_path)
+        new_path = conn.execute(
+            "SELECT prep_folder_path FROM jobs WHERE fingerprint='fp_drafted'"
+        ).fetchone()[0]
+        conn.close()
+        assert "_waitlisted" in new_path
+        assert Path(new_path).is_dir()
+
+    def test_idempotent_on_already_waitlisted(self, client: TestClient):
+        response = client.post("/board/jobs/fp_waitlisted/waitlist")
+
+        assert response.status_code == 200
+        assert _fetch_stage(client, "fp_waitlisted") == "waitlisted"
+        assert _fetch_audit(client, "fp_waitlisted") == []
+
+    def test_404_on_unknown_fingerprint(self, client: TestClient):
+        response = client.post("/board/jobs/fp_nonexistent/waitlist")
+        assert response.status_code == 404
+
+
+# ── /reactivate handler ───────────────────────────────────────────────────
+
+
+class TestReactivate:
+    def test_happy_path_without_folder(self, client: TestClient):
+        response = client.post("/board/jobs/fp_waitlisted/reactivate")
+
+        assert response.status_code == 200
+        assert response.text == ""
+        assert _fetch_stage(client, "fp_waitlisted") == "scored"
+
+        audit = _fetch_audit(client, "fp_waitlisted")
+        assert any(a == ("stage", "waitlisted", "scored") for a in audit)
+
+    def test_happy_path_restores_folder(self, client: TestClient):
+        """With a folder in _waitlisted/, reactivate moves it back and sets stage=materials_drafted."""
+        folder = client._tmp_path / "companies" / "_waitlisted" / "Acme_Ops_reactivate"
+        folder.mkdir(parents=True)
+        (folder / "resume.pdf").touch()
+        conn = sqlite3.connect(client._db_path)
+        conn.execute(
+            "UPDATE jobs SET prep_folder_path=? WHERE fingerprint='fp_waitlisted'",
+            (str(folder),),
+        )
+        conn.commit()
+        conn.close()
+
+        client.post("/board/jobs/fp_waitlisted/reactivate")
+
+        assert _fetch_stage(client, "fp_waitlisted") == "materials_drafted"
+        conn = sqlite3.connect(client._db_path)
+        new_path = conn.execute(
+            "SELECT prep_folder_path FROM jobs WHERE fingerprint='fp_waitlisted'"
+        ).fetchone()[0]
+        conn.close()
+        assert "_waitlisted" not in new_path
+        assert Path(new_path).is_dir()
+        assert not folder.exists()
+
+    def test_409_on_non_waitlisted_job(self, client: TestClient):
+        response = client.post("/board/jobs/fp_scored/reactivate")
+
+        assert response.status_code == 409
+        # Stage unchanged
+        assert _fetch_stage(client, "fp_scored") == "scored"
+
+    def test_404_on_unknown_fingerprint(self, client: TestClient):
+        response = client.post("/board/jobs/fp_nonexistent/reactivate")
+        assert response.status_code == 404
+
+
+# ── /promote handler ──────────────────────────────────────────────────────
+
+
+class TestPromote:
+    def test_happy_path_from_manual_review(self, client: TestClient):
+        response = client.post("/board/jobs/fp_manual/promote")
+
+        assert response.status_code == 200
+        assert response.text == ""
+
+        conn = sqlite3.connect(client._db_path)
+        row = conn.execute(
+            "SELECT stage, relevance_score FROM jobs WHERE fingerprint='fp_manual'"
+        ).fetchone()
+        conn.close()
+        assert row[0] == "scored"
+        assert row[1] == 7
+
+        audit = _fetch_audit(client, "fp_manual")
+        assert any(a == ("stage", "manual_review", "scored") for a in audit)
+
+    def test_409_on_non_manual_review_job(self, client: TestClient):
+        response = client.post("/board/jobs/fp_scored/promote")
+
+        assert response.status_code == 409
+        assert _fetch_stage(client, "fp_scored") == "scored"
+
+    def test_404_on_unknown_fingerprint(self, client: TestClient):
+        response = client.post("/board/jobs/fp_nonexistent/promote")
+        assert response.status_code == 404
 
 
 # ── /apply handler ─────────────────────────────────────────────────────────

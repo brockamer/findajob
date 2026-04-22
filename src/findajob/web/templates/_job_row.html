@@ -26,7 +26,7 @@
       {% endif %}
     </td>
   {% endfor %}
-  {% if tab in ('dashboard', 'applied') %}
+  {% if tab in ('dashboard', 'applied', 'review', 'waitlist') %}
     {% include "board/_status_cell.html" %}
   {% endif %}
 </tr>
