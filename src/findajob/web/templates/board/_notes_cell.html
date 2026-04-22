@@ -1,0 +1,18 @@
+{#
+  Editable user_notes cell for the Applied tab. Inputs:
+    row — a sqlite3.Row (or dict) with .fingerprint and .user_notes
+  Auto-saves on blur + 800ms after last keystroke. Server responds with a
+  re-rendered <td> (this template) swapped via hx-swap="outerHTML".
+  No audit log entry — notes are free-text and versioned elsewhere.
+#}
+<td class="px-3 py-1 align-top text-sm">
+  <input
+    type="text"
+    class="w-full rounded border-slate-300 bg-white px-2 py-1 text-sm"
+    name="notes"
+    value="{{ row.user_notes or '' }}"
+    hx-post="/board/jobs/{{ row.fingerprint }}/notes"
+    hx-trigger="blur, keyup changed delay:800ms"
+    hx-target="closest td"
+    hx-swap="outerHTML">
+</td>

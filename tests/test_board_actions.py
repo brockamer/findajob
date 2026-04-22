@@ -250,6 +250,7 @@ def test_router_registered_on_app(client: TestClient):
         "reject",
         "not-selected",
         "regenerate",
+        "notes",
     ):
         assert f"/board/jobs/{{fingerprint}}/{endpoint}" in paths
 
@@ -611,6 +612,67 @@ class TestPrepConcurrencyCap:
         assert response.text.strip().startswith("<tr")
         prep_calls = [c for c in popen_calls if "prep_application.py" in c[1]]
         assert prep_calls == []
+
+
+# ── /notes handler ───────────────────────────────────────────────────────
+
+
+def _fetch_user_notes(client: TestClient, fingerprint: str) -> str | None:
+    conn = sqlite3.connect(client._db_path)
+    row = conn.execute(
+        "SELECT user_notes FROM jobs WHERE fingerprint=?", (fingerprint,)
+    ).fetchone()
+    conn.close()
+    return row[0] if row else None
+
+
+class TestNotes:
+    def test_happy_path_saves_note(self, client: TestClient):
+        response = client.post(
+            "/board/jobs/fp_applied/notes",
+            data={"notes": "Follow up in two weeks"},
+        )
+
+        assert response.status_code == 200
+        assert _fetch_user_notes(client, "fp_applied") == "Follow up in two weeks"
+
+    def test_response_is_rerendered_td_with_input(self, client: TestClient):
+        response = client.post(
+            "/board/jobs/fp_applied/notes",
+            data={"notes": "Recruiter call Wed"},
+        )
+        # Response is a <td> containing the input with the saved value
+        assert response.text.strip().startswith("<td")
+        assert 'value="Recruiter call Wed"' in response.text
+        assert 'name="notes"' in response.text
+        assert 'hx-post="/board/jobs/fp_applied/notes"' in response.text
+
+    def test_empty_note_clears_db_column(self, client: TestClient):
+        # First set some text
+        client.post("/board/jobs/fp_applied/notes", data={"notes": "original"})
+        assert _fetch_user_notes(client, "fp_applied") == "original"
+
+        # Then clear it
+        response = client.post("/board/jobs/fp_applied/notes", data={"notes": ""})
+
+        assert response.status_code == 200
+        assert _fetch_user_notes(client, "fp_applied") == ""
+
+    def test_no_audit_log_entry(self, client: TestClient):
+        """Notes are free-text, rewritten on every keystroke debounce — no audit noise."""
+        client.post("/board/jobs/fp_applied/notes", data={"notes": "anything"})
+        assert _fetch_audit(client, "fp_applied") == []
+
+    def test_does_not_affect_stage(self, client: TestClient):
+        client.post("/board/jobs/fp_applied/notes", data={"notes": "leave stage alone"})
+        assert _fetch_stage(client, "fp_applied") == "applied"
+
+    def test_404_on_unknown_fingerprint(self, client: TestClient):
+        response = client.post(
+            "/board/jobs/fp_nonexistent/notes",
+            data={"notes": "anything"},
+        )
+        assert response.status_code == 404
 
 
 # ── /waitlist handler ─────────────────────────────────────────────────────

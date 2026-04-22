@@ -445,3 +445,36 @@ def not_selected(
     handle_not_selected(db, job, (reason or "").strip() or "Company passed")
     notify_waitlist_resurface(db, job["company"])
     return HTMLResponse("")
+
+
+@router.post("/board/jobs/{fingerprint}/notes", response_class=HTMLResponse)
+def notes(
+    fingerprint: str,
+    request: Request,
+    notes: str = Form(""),
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> HTMLResponse:
+    """Write free-text user notes for the Applied tab. No audit log entry —
+    notes are rewritten on every keystroke-debounce; audit is noise."""
+    row = db.execute(
+        "SELECT fingerprint, user_notes FROM jobs WHERE fingerprint=?",
+        (fingerprint,),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    db.execute(
+        "UPDATE jobs SET user_notes=?, updated_at=datetime('now') WHERE fingerprint=?",
+        (notes, fingerprint),
+    )
+    db.commit()
+    updated = db.execute(
+        "SELECT fingerprint, user_notes FROM jobs WHERE fingerprint=?",
+        (fingerprint,),
+    ).fetchone()
+    assert updated is not None
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request=request,
+        name="board/_notes_cell.html",
+        context={"row": updated},
+    )

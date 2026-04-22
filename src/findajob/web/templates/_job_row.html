@@ -16,6 +16,9 @@
 {% endif %}
 <tr class="{{ row_classes | join(' ') }}" data-fingerprint="{{ row.fingerprint }}">
   {% for display, field in columns %}
+    {% if tab == 'applied' and field == 'user_notes' %}
+      {% include "board/_notes_cell.html" %}
+    {% else %}
     <td class="px-3 py-1 align-top text-sm
                {% if field == 'known_contacts' and row[field] %}cell-contact-amber{% endif %}
                {% if field == 'remote_status' %}{{ remote_cell_class(row[field]) }}{% endif %}">
@@ -25,6 +28,7 @@
         {{ row[field] }}
       {% endif %}
     </td>
+    {% endif %}
   {% endfor %}
   {% if tab in ('dashboard', 'applied', 'review', 'waitlist') %}
     {% include "board/_status_cell.html" %}
