@@ -10,6 +10,10 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Fixed
+
+- `triage.py` now captures the exit code of the `sync_sheet.py` subprocess and emits a `triage_sync_failed` event with the return code when sync crashes non-zero. Previously `check=False` swallowed the failure, leaving only a `sync_complete not seen in 25h` warning as the eventual signal. The new event is picked up by `notify.py health-check`'s generic error matcher immediately (#145).
+
 ## [0.1.4] — 2026-04-22
 
 Bugfix patch: reliability and diagnostics fixes surfaced during the generalization beta (Alice Doe / #20). Fixes silent triage crashes, stuck prep cycles, a bad Gmail OAuth client type, and several web and sheet inconsistencies. Operators with a "TVs and Limited Input devices" OAuth client must rotate to a Desktop-type client before pulling (see Migration required below).

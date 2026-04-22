@@ -530,8 +530,30 @@ def main():
         noise_skipped=noise_count,
     )
 
-    subprocess.run([sys.executable, f"{BASE}/scripts/sync_sheet.py"], check=False)
+    _run_sync_sheet()
     notify(f"Triage done: {new_count} new, {dupe_count} dupes, {scored_count} scored ({SCORE_WORKERS} workers)")
+
+
+def _run_sync_sheet():
+    """Run sync_sheet.py as a subprocess and surface a non-zero exit.
+
+    sync_sheet.py logs its own ``sync_failed`` event for exceptions raised
+    inside its main ``try:`` block, but pre-try failures (missing creds
+    file, sqlite3 connect failure, import-time crash) bypass that log.
+    Capturing the return code here guarantees an observable signal in
+    ``pipeline.jsonl`` regardless of where sync_sheet died.
+
+    Returns the exit code. Does not raise — triage's DB work is already
+    complete by the time this runs, and we still want the final notify()
+    ntfy ping to fire so the operator sees the run finished.
+    """
+    result = subprocess.run(
+        [sys.executable, f"{BASE}/scripts/sync_sheet.py"],
+        check=False,
+    )
+    if result.returncode != 0:
+        log_event("triage_sync_failed", returncode=result.returncode)
+    return result.returncode
 
 
 def notify(message):
