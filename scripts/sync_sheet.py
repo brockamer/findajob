@@ -34,6 +34,34 @@ MATERIALS_BASE_URL = os.getenv("FINDAJOB_MATERIALS_BASE_URL", "").strip()
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
+
+def _assert_full_write(result: dict, expected_rows: int, tab_name: str) -> None:
+    """Verify Sheets `values().update()` actually wrote every row we sent.
+
+    The API call returns HTTP 200 with a dict that includes ``updatedRows``;
+    nothing in the success path cross-references it against the body. A
+    server-side partial write — observed 2026-04-22 with Applied reporting
+    31 rows synced locally but 0 on the sheet — looks identical to success
+    until someone opens the tab. Raise on mismatch so triage.py picks up the
+    non-zero exit via its ``triage_sync_failed`` handler (#145) and the
+    notify.py health-check fires (#171).
+    """
+    actual = result.get("updatedRows") or 0
+    if actual != expected_rows:
+        log_event(
+            "sync_partial_write",
+            tab=tab_name,
+            expected_rows=expected_rows,
+            actual_rows=actual,
+            updated_range=result.get("updatedRange", ""),
+        )
+        raise RuntimeError(
+            f"Sheets partial write on {tab_name}: expected {expected_rows} rows "
+            f"(header+data), Google reported {actual} "
+            f"(range={result.get('updatedRange')})"
+        )
+
+
 # ── Sheet1: full archive ──────────────────────────────────────────────────────
 # Col A: fingerprint (hidden), Col B: APPLY_FLAG, then data columns.
 S1_HEADERS = [
@@ -232,9 +260,13 @@ def sync_sheet1(svc, conn):
     sheet_rows = [S1_HEADERS] + [build_row(r, S1_HEADERS, S1_LOOKUP) for r in combined]
 
     svc.spreadsheets().values().clear(spreadsheetId=SHEET_ID, range="Sheet1!A2:N10000").execute()
-    svc.spreadsheets().values().update(
-        spreadsheetId=SHEET_ID, range="Sheet1!A1", valueInputOption="USER_ENTERED", body={"values": sheet_rows}
-    ).execute()
+    result = (
+        svc.spreadsheets()
+        .values()
+        .update(spreadsheetId=SHEET_ID, range="Sheet1!A1", valueInputOption="USER_ENTERED", body={"values": sheet_rows})
+        .execute()
+    )
+    _assert_full_write(result, len(sheet_rows), "Sheet1")
     total_db = conn.execute('SELECT count(*) FROM jobs WHERE dupe_of = "" OR dupe_of IS NULL').fetchone()[0]
     n_synced = len(sheet_rows) - 1
     print(f"Sheet1: {n_synced} rows synced ({total_db - n_synced} archived from view)")
@@ -321,9 +353,15 @@ def sync_dashboard(svc, conn):
         sheet_rows.append(sheet_row)
 
     svc.spreadsheets().values().clear(spreadsheetId=SHEET_ID, range="Dashboard!A2:N10000").execute()
-    svc.spreadsheets().values().update(
-        spreadsheetId=SHEET_ID, range="Dashboard!A1", valueInputOption="USER_ENTERED", body={"values": sheet_rows}
-    ).execute()
+    result = (
+        svc.spreadsheets()
+        .values()
+        .update(
+            spreadsheetId=SHEET_ID, range="Dashboard!A1", valueInputOption="USER_ENTERED", body={"values": sheet_rows}
+        )
+        .execute()
+    )
+    _assert_full_write(result, len(sheet_rows), "Dashboard")
     n_prepped = sum(1 for r in rows if r["stage"] == "materials_drafted")
     n_queued = len(rows) - n_prepped
     n_dash = len(sheet_rows) - 1
@@ -428,9 +466,13 @@ def sync_review(svc, conn):
         sheet_rows.append(sheet_row)
 
     svc.spreadsheets().values().clear(spreadsheetId=SHEET_ID, range="Review!A2:H10000").execute()
-    svc.spreadsheets().values().update(
-        spreadsheetId=SHEET_ID, range="Review!A1", valueInputOption="USER_ENTERED", body={"values": sheet_rows}
-    ).execute()
+    result = (
+        svc.spreadsheets()
+        .values()
+        .update(spreadsheetId=SHEET_ID, range="Review!A1", valueInputOption="USER_ENTERED", body={"values": sheet_rows})
+        .execute()
+    )
+    _assert_full_write(result, len(sheet_rows), "Review")
     n_review = len(sheet_rows) - 1
     print(f"Review: {n_review} manual_review jobs synced")
     return n_review
@@ -498,9 +540,15 @@ def sync_waitlist(svc, conn):
         sheet_rows.append(sheet_row)
 
     svc.spreadsheets().values().clear(spreadsheetId=SHEET_ID, range="Waitlist!A2:K10000").execute()
-    svc.spreadsheets().values().update(
-        spreadsheetId=SHEET_ID, range="Waitlist!A1", valueInputOption="USER_ENTERED", body={"values": sheet_rows}
-    ).execute()
+    result = (
+        svc.spreadsheets()
+        .values()
+        .update(
+            spreadsheetId=SHEET_ID, range="Waitlist!A1", valueInputOption="USER_ENTERED", body={"values": sheet_rows}
+        )
+        .execute()
+    )
+    _assert_full_write(result, len(sheet_rows), "Waitlist")
     n_waitlist = len(sheet_rows) - 1
     print(f"Waitlist: {n_waitlist} waitlisted jobs synced")
     return n_waitlist
@@ -629,12 +677,18 @@ def sync_applied(svc, conn):
         )
 
     svc.spreadsheets().values().clear(spreadsheetId=SHEET_ID, range="Applied!A2:N10000").execute()
-    svc.spreadsheets().values().update(
-        spreadsheetId=SHEET_ID,
-        range="Applied!A1",
-        valueInputOption="USER_ENTERED",
-        body={"values": sheet_rows},
-    ).execute()
+    result = (
+        svc.spreadsheets()
+        .values()
+        .update(
+            spreadsheetId=SHEET_ID,
+            range="Applied!A1",
+            valueInputOption="USER_ENTERED",
+            body={"values": sheet_rows},
+        )
+        .execute()
+    )
+    _assert_full_write(result, len(sheet_rows), "Applied")
     n = len(sheet_rows) - 1
     print(f"Applied: {n} post-application jobs synced")
     return n
@@ -692,12 +746,18 @@ def sync_rejected_apps(svc, conn):
         sheet_rows.append(sheet_row)
 
     svc.spreadsheets().values().clear(spreadsheetId=SHEET_ID, range="Rejected Applications!A2:H10000").execute()
-    svc.spreadsheets().values().update(
-        spreadsheetId=SHEET_ID,
-        range="Rejected Applications!A1",
-        valueInputOption="USER_ENTERED",
-        body={"values": sheet_rows},
-    ).execute()
+    result = (
+        svc.spreadsheets()
+        .values()
+        .update(
+            spreadsheetId=SHEET_ID,
+            range="Rejected Applications!A1",
+            valueInputOption="USER_ENTERED",
+            body={"values": sheet_rows},
+        )
+        .execute()
+    )
+    _assert_full_write(result, len(sheet_rows), "Rejected Applications")
     n = len(sheet_rows) - 1
     print(f"Rejected Applications: {n} rejected-after-apply jobs synced")
     return n

@@ -3,6 +3,8 @@
 import sys
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 # Mock Google API modules before importing sync_sheet (module-level side effects)
 sys.modules["google.oauth2"] = MagicMock()
 sys.modules["google.oauth2.service_account"] = MagicMock()
@@ -387,3 +389,70 @@ class TestPendingStatusPreservation:
 
     def test_waitlist_status_preserved(self):
         assert _resolve_pending("Waitlist", "scored") == "Waitlist"
+
+
+# ---------------------------------------------------------------------------
+# _assert_full_write — partial-write detection (#171)
+# ---------------------------------------------------------------------------
+
+
+class TestAssertFullWrite:
+    """The Sheets `values().update()` response includes `updatedRows`, but
+    sync_sheet previously trusted the local row count instead. A server-side
+    partial write looked identical to success until the user refreshed and
+    saw 0 rows on Applied when the log claimed 31."""
+
+    @pytest.fixture(autouse=True)
+    def _redirect_log(self, tmp_path, monkeypatch):
+        """log_event() appends to a real file; redirect so tests don't need a logs/ dir."""
+        from findajob import utils as _utils
+
+        self.log_path = tmp_path / "events.jsonl"
+        monkeypatch.setattr(_utils, "LOG_PATH", str(self.log_path))
+
+    def test_passes_when_actual_matches_expected(self):
+        from scripts.sync_sheet import _assert_full_write
+
+        result = {"updatedRows": 100, "updatedRange": "Applied!A1:N100"}
+        _assert_full_write(result, 100, "Applied")  # must not raise
+
+    def test_raises_when_actual_less_than_expected(self):
+        from scripts.sync_sheet import _assert_full_write
+
+        result = {"updatedRows": 56, "updatedRange": "Sheet1!A1:N56"}
+        with pytest.raises(RuntimeError, match="partial write"):
+            _assert_full_write(result, 9919, "Sheet1")
+
+    def test_raises_when_updated_rows_missing(self):
+        """Defensive: a contract change that drops updatedRows must not silently pass."""
+        from scripts.sync_sheet import _assert_full_write
+
+        result = {"updatedRange": "Applied!A1:N1"}
+        with pytest.raises(RuntimeError):
+            _assert_full_write(result, 50, "Applied")
+
+    def test_raises_when_zero_rows_written(self):
+        """Today's Applied/Waitlist/Rejected scenario: 0 rows written despite 50 sent."""
+        from scripts.sync_sheet import _assert_full_write
+
+        result = {"updatedRows": 0}
+        with pytest.raises(RuntimeError):
+            _assert_full_write(result, 50, "Applied")
+
+    def test_emits_sync_partial_write_event(self):
+        """Operators need a jsonl signal — notify.py health-check alerts on unknown event patterns."""
+        import json
+
+        from scripts.sync_sheet import _assert_full_write
+
+        result = {"updatedRows": 2, "updatedRange": "Dashboard!A1:N2"}
+        with pytest.raises(RuntimeError):
+            _assert_full_write(result, 9, "Dashboard")
+
+        entries = [json.loads(line) for line in self.log_path.read_text().splitlines()]
+        partial = [e for e in entries if e["event"] == "sync_partial_write"]
+        assert len(partial) == 1
+        assert partial[0]["tab"] == "Dashboard"
+        assert partial[0]["expected_rows"] == 9
+        assert partial[0]["actual_rows"] == 2
+        assert partial[0]["updated_range"] == "Dashboard!A1:N2"
