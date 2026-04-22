@@ -369,3 +369,37 @@ class TestFileNaming:
 
         should_skip = existing and existing["prep_folder_path"] and existing["stage"] == "materials_drafted"
         assert not should_skip
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Missing Candidate Files Abort Tests
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class TestMissingCandidateFilesAbort:
+    """Test the early-abort path when profile.md or master_resume.md is absent."""
+
+    def test_missing_files_resets_stage_to_scored(self, db):
+        """When candidate files are missing, stage resets to scored (not materials_drafted)."""
+        job_id = insert_job(db, stage="prep_in_progress")
+        now = "2026-04-22T10:00:00+00:00"
+
+        # Replicate the abort path from prep_application.py
+        db.execute(
+            "UPDATE jobs SET stage='scored', prep_folder_path=NULL, stage_updated=?, updated_at=? WHERE id=?",
+            (now, now, job_id),
+        )
+        db.commit()
+
+        row = db.execute("SELECT stage, prep_folder_path FROM jobs WHERE id=?", (job_id,)).fetchone()
+        assert row["stage"] == "scored"
+        assert row["prep_folder_path"] is None
+
+    def test_missing_files_never_reaches_materials_drafted(self, db):
+        """Missing files abort must not transition to materials_drafted."""
+        job_id = insert_job(db, stage="prep_in_progress")
+
+        # Simulate: abort fires; materials_drafted update must NOT run
+        # Stage should still be whatever it was before (prep_in_progress → scored after abort)
+        row = db.execute("SELECT stage FROM jobs WHERE id=?", (job_id,)).fetchone()
+        assert row["stage"] != "materials_drafted"

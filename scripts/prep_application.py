@@ -188,19 +188,32 @@ def main():
         f.write(jd_text)
 
     # ── Load profile and master resume — injected directly, never via RAG ──
+    missing_files = []
     try:
         with open(PROFILE_PATH) as f:
             profile_text = f.read()
     except FileNotFoundError:
-        profile_text = "[Profile not found]"
-        log_event("prep_warning", msg="profile.md not found", job_id=job_id)
+        missing_files.append(f"profile.md ({PROFILE_PATH})")
+        profile_text = ""
 
     try:
         with open(MASTER_RESUME_PATH) as f:
             master_text = f.read()
     except FileNotFoundError:
-        master_text = "[Master resume not found]"
-        log_event("prep_warning", msg="master_resume.md not found", job_id=job_id)
+        missing_files.append(f"master_resume.md ({MASTER_RESUME_PATH})")
+        master_text = ""
+
+    if missing_files:
+        log_event("prep_missing_candidate_files", job_id=job_id, company=company, missing="; ".join(missing_files))
+        shutil.rmtree(outdir, ignore_errors=True)
+        now = datetime.now(UTC).isoformat()
+        conn.execute(
+            "UPDATE jobs SET stage='scored', prep_folder_path=NULL, stage_updated=?, updated_at=? WHERE id=?",
+            (now, now, job_id),
+        )
+        conn.commit()
+        notify(f"PREP ABORTED (missing candidate files): {company} — {title}\n{'; '.join(missing_files)}")
+        return
 
     # ── Step 2: Company briefing FIRST — gives all downstream steps rich context ──
     brief_prompt = f"Research {company} thoroughly.\nJob title: {title}\nJD excerpt:\n{jd_text[:2000]}"

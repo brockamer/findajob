@@ -53,7 +53,7 @@ exactly as written. Never duplicate or alter the name.
       immediately reframe it in terms of what the target company needs.
       Example pattern: '[Quote about being the glue]. That connective role is
       precisely what [company]'s [site/team] needs as you [scale/launch/build].'
-    - Attribute by role only (e.g., "a director in site operations"), not by name.
+    - Attribute by role only (e.g., "a former manager", "a colleague she'd worked with for years"), not by name.
     - Paraphrase or lightly edit rather than quoting verbatim.
     - Maximum one quote per letter.
 
