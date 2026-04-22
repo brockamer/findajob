@@ -13,6 +13,7 @@ import sqlite3
 import subprocess
 import sys
 import time
+import traceback
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
@@ -560,4 +561,8 @@ def notify(message):
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        log_event("pipeline_crash", error=str(e), traceback=traceback.format_exc())
+        raise
