@@ -473,11 +473,6 @@ def main():
     if flagged_jobs:
         need_sync = True
 
-    children = []  # Popen handles to wait on before exit
-
-    if need_sync:
-        children.append(subprocess.Popen([sys.executable, f"{BASE}/scripts/sync_sheet.py"]))
-
     if folders_moved:
         log_event("folder_moves_completed", count=folders_moved)
 
@@ -492,7 +487,8 @@ def main():
             review_promoted=review_promoted,
             review_rejected=review_rejected,
         )
-        for proc in children:
+        if need_sync:
+            proc = subprocess.Popen([sys.executable, f"{BASE}/scripts/sync_sheet.py"])
             try:
                 proc.wait(timeout=120)
             except subprocess.TimeoutExpired:
@@ -514,7 +510,9 @@ def main():
 
     # Launch prep for each flagged job in parallel, then wait for all to finish.
     # Cap at 3 per cycle to avoid exhausting API rate limits / quotas.
+    # --no-sync suppresses per-prep sync_sheet calls; one consolidated sync runs below.
     MAX_CONCURRENT_PREPS = 3
+    children = []  # Popen handles for prep children
     for job in flagged_jobs[:MAX_CONCURRENT_PREPS]:
         children.append(
             subprocess.Popen(
@@ -525,6 +523,7 @@ def main():
                     job["title"],
                     job["url"],
                     job["id"],
+                    "--no-sync",
                 ],
             )
         )
@@ -546,14 +545,30 @@ def main():
             jobs=[f"{j['company']} - {j['title']}" for j in deferred],
         )
 
-    # Wait for all child processes (sync_sheet + preps) so systemd tracks them
-    # properly and no orphaned processes accumulate.
+    # Wait for all prep children before syncing, so the sheet sees all stage updates.
     for proc in children:
         try:
             proc.wait(timeout=600)
         except subprocess.TimeoutExpired:
             log_event("child_timeout", pid=proc.pid)
             proc.kill()
+
+    # Single consolidated sync after all preps finish — eliminates last-write-wins race.
+    sync_proc = subprocess.Popen([sys.executable, f"{BASE}/scripts/sync_sheet.py"])
+    try:
+        sync_proc.wait(timeout=120)
+    except subprocess.TimeoutExpired:
+        log_event("child_timeout", pid=sync_proc.pid)
+        sync_proc.kill()
+
+    db_count_conn = sqlite3.connect(DB_PATH, timeout=10)
+    dashboard_rows = db_count_conn.execute(
+        "SELECT COUNT(*) FROM jobs WHERE "
+        "(relevance_score >= 7 AND stage IN ('scored','manual_review')) "
+        "OR stage IN ('prep_in_progress','materials_drafted')"
+    ).fetchone()[0]
+    db_count_conn.close()
+    log_event("sync_complete", dashboard_db_rows=dashboard_rows)
 
 
 if __name__ == "__main__":

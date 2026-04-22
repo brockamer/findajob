@@ -484,8 +484,9 @@ Generated: {date}
 
     conn.close()
 
-    # ── Step 9: Sync sheets (single call, after everything is ready) ──
-    subprocess.run([sys.executable, f"{BASE}/scripts/sync_sheet.py"], check=False)
+    # ── Step 9: Sync sheets — skipped when poll_flags orchestrates a post-prep sync ──
+    if "--no-sync" not in sys.argv:
+        subprocess.run([sys.executable, f"{BASE}/scripts/sync_sheet.py"], check=False)
 
     print(f"PREP_COMPLETE:{outdir}")
 
