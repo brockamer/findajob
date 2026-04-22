@@ -2,10 +2,10 @@
 # is absent. Re-pulling :v0.1.x will NOT overwrite your local edits; delete
 # the file first if you want to re-seed from this template.
 #
-# API keys come from state/data/.env via ${VAR} substitution that
-# aichat-ng performs at load time. Customize this file for operator-
-# specific settings (default model, keybindings, REPL prefs, custom
-# clients); never paste keys directly into the YAML.
+# API key placeholders (${VAR}) are substituted by ops/entrypoint.sh at
+# seed time from the container environment. Do not paste keys directly
+# into this template — they are injected once when config.yaml is first
+# created and live only in the gitignored state/aichat_ng/config.yaml.
 #
 # See https://github.com/sigoden/aichat/blob/main/config.example.yaml
 # for the full set of supported options.
