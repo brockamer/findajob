@@ -249,6 +249,7 @@ def test_router_registered_on_app(client: TestClient):
         "promote",
         "reject",
         "not-selected",
+        "regenerate",
     ):
         assert f"/board/jobs/{{fingerprint}}/{endpoint}" in paths
 
@@ -471,6 +472,145 @@ class TestNotSelected:
             data={"reason": "Other"},
         )
         assert response.status_code == 404
+
+
+# ── /regenerate handler ───────────────────────────────────────────────────
+
+
+class TestRegenerate:
+    def _seed_prep_folder(self, client: TestClient, fingerprint: str) -> Path:
+        folder = client._tmp_path / "companies" / f"Acme_regen_{fingerprint}"
+        folder.mkdir(parents=True)
+        (folder / "resume.pdf").touch()
+        conn = sqlite3.connect(client._db_path)
+        conn.execute(
+            "UPDATE jobs SET prep_folder_path=?, gdrive_folder_url='https://drive/abc' WHERE fingerprint=?",
+            (str(folder), fingerprint),
+        )
+        conn.commit()
+        conn.close()
+        return folder
+
+    def test_happy_path_deletes_folder_and_dispatches(self, client: TestClient, popen_calls):
+        folder = self._seed_prep_folder(client, "fp_drafted")
+
+        response = client.post("/board/jobs/fp_drafted/regenerate")
+
+        assert response.status_code == 200
+        assert not folder.exists()
+
+        conn = sqlite3.connect(client._db_path)
+        row = conn.execute(
+            "SELECT stage, prep_folder_path, gdrive_folder_url, apply_flag "
+            "FROM jobs WHERE fingerprint='fp_drafted'"
+        ).fetchone()
+        conn.close()
+        assert row[0] == "prep_in_progress"
+        assert row[1] is None
+        assert row[2] is None
+        assert row[3] == 1
+
+        assert len(popen_calls) == 1
+        assert "prep_application.py" in popen_calls[0][1]
+
+    def test_no_op_on_prep_in_progress(self, client: TestClient, popen_calls):
+        """Double-click during regen: second POST returns current row, no new subprocess."""
+        response = client.post("/board/jobs/fp_prep/regenerate")
+
+        assert response.status_code == 200
+        assert response.text.strip().startswith("<tr")
+        assert _fetch_stage(client, "fp_prep") == "prep_in_progress"
+        assert popen_calls == []
+        assert _fetch_audit(client, "fp_prep") == []
+
+    def test_without_folder_still_dispatches(self, client: TestClient, popen_calls):
+        """Regenerate is valid even if no prep_folder_path is recorded."""
+        response = client.post("/board/jobs/fp_drafted/regenerate")
+
+        assert response.status_code == 200
+        assert _fetch_stage(client, "fp_drafted") == "prep_in_progress"
+        assert len(popen_calls) == 1
+
+    def test_404_on_unknown_fingerprint(self, client: TestClient, popen_calls):
+        response = client.post("/board/jobs/fp_nonexistent/regenerate")
+        assert response.status_code == 404
+        assert popen_calls == []
+
+
+# ── Concurrency cap ──────────────────────────────────────────────────────
+
+
+class TestPrepConcurrencyCap:
+    def _set_three_in_flight(self, client: TestClient) -> None:
+        """Three jobs already in prep_in_progress (fp_prep + 2 new)."""
+        conn = sqlite3.connect(client._db_path)
+        conn.execute(
+            "INSERT INTO jobs (id, fingerprint, url, title, company, stage) "
+            "VALUES ('inflight1','fp_inflight1','u','T','C','prep_in_progress')"
+        )
+        conn.execute(
+            "INSERT INTO jobs (id, fingerprint, url, title, company, stage) "
+            "VALUES ('inflight2','fp_inflight2','u','T','C','prep_in_progress')"
+        )
+        # fp_prep is already prep_in_progress → 3 in flight total
+        conn.commit()
+        conn.close()
+
+    def test_prep_returns_429_when_cap_reached(self, client: TestClient, popen_calls):
+        self._set_three_in_flight(client)
+
+        response = client.post("/board/jobs/fp_scored/prep")
+
+        assert response.status_code == 429
+        assert "queue full" in response.text.lower()
+        # DB unchanged
+        assert _fetch_stage(client, "fp_scored") == "scored"
+        assert _fetch_audit(client, "fp_scored") == []
+        # No new subprocess
+        prep_calls = [c for c in popen_calls if "prep_application.py" in c[1]]
+        assert prep_calls == []
+
+    def test_regenerate_returns_429_when_cap_reached(self, client: TestClient, popen_calls):
+        self._set_three_in_flight(client)
+
+        # fp_drafted is at materials_drafted — regen would push to 4 in flight
+        response = client.post("/board/jobs/fp_drafted/regenerate")
+
+        assert response.status_code == 429
+        # Stage unchanged
+        assert _fetch_stage(client, "fp_drafted") == "materials_drafted"
+        prep_calls = [c for c in popen_calls if "prep_application.py" in c[1]]
+        assert prep_calls == []
+
+    def test_prep_allowed_at_cap_minus_one(self, client: TestClient, popen_calls):
+        """With 2 in flight, a 3rd prep is allowed."""
+        conn = sqlite3.connect(client._db_path)
+        conn.execute(
+            "INSERT INTO jobs (id, fingerprint, url, title, company, stage) "
+            "VALUES ('inflight1','fp_inflight1','u','T','C','prep_in_progress')"
+        )
+        # fp_prep is the 2nd in flight
+        conn.commit()
+        conn.close()
+
+        response = client.post("/board/jobs/fp_scored/prep")
+
+        assert response.status_code == 200
+        assert _fetch_stage(client, "fp_scored") == "prep_in_progress"
+        prep_calls = [c for c in popen_calls if "prep_application.py" in c[1]]
+        assert len(prep_calls) == 1
+
+    def test_idempotent_prep_bypasses_cap(self, client: TestClient, popen_calls):
+        """A re-click on an in-flight or drafted job returns the row even if cap is reached."""
+        self._set_three_in_flight(client)
+
+        # fp_drafted is at materials_drafted, so /prep returns idempotent row before cap check
+        response = client.post("/board/jobs/fp_drafted/prep")
+
+        assert response.status_code == 200
+        assert response.text.strip().startswith("<tr")
+        prep_calls = [c for c in popen_calls if "prep_application.py" in c[1]]
+        assert prep_calls == []
 
 
 # ── /waitlist handler ─────────────────────────────────────────────────────

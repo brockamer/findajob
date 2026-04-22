@@ -35,6 +35,42 @@ from findajob.web.routes.materials import get_db
 
 router = APIRouter()
 
+MAX_CONCURRENT_PREPS = 3
+"""Upper bound on simultaneously-running prep subprocesses.
+
+Mirrors scripts/poll_flags.py's cap. Keeps LLM-API spending bounded when the
+operator mass-flags a morning's worth of jobs. When the cap is reached,
+/prep and /regenerate return 429; the dashboard row stays actionable so the
+operator can retry in a few minutes.
+"""
+
+
+def _prep_in_flight(db: sqlite3.Connection) -> int:
+    return db.execute("SELECT COUNT(*) FROM jobs WHERE stage='prep_in_progress'").fetchone()[0]
+
+
+def _prep_queue_full_response() -> HTMLResponse:
+    return HTMLResponse(
+        f"Prep queue full ({MAX_CONCURRENT_PREPS} in flight). Try again in a few minutes.",
+        status_code=429,
+    )
+
+
+def _launch_prep_subprocess(job: sqlite3.Row) -> None:
+    subprocess.Popen(
+        [
+            sys.executable,
+            f"{BASE}/scripts/prep_application.py",
+            job["company"],
+            job["title"],
+            job["url"],
+            job["id"],
+            "--no-sync",
+        ],
+        start_new_session=True,
+    )
+
+
 _DASHBOARD_ROW_SQL = (
     "SELECT fingerprint, title, company, location, remote_status, known_contacts, "
     "comp_estimate, ai_notes, relevance_score, interview_likelihood, "
@@ -160,6 +196,9 @@ def prep(
     if row["stage"] in ("prep_in_progress", "materials_drafted"):
         return _render_dashboard_row(request, row)
 
+    if _prep_in_flight(db) >= MAX_CONCURRENT_PREPS:
+        return _prep_queue_full_response()
+
     job = db.execute(
         "SELECT id, title, company, url, stage FROM jobs WHERE fingerprint=?",
         (fingerprint,),
@@ -180,21 +219,61 @@ def prep(
         title=job["title"],
     )
 
-    subprocess.Popen(
-        [
-            sys.executable,
-            f"{BASE}/scripts/prep_application.py",
-            job["company"],
-            job["title"],
-            job["url"],
-            job["id"],
-            "--no-sync",
-        ],
-        start_new_session=True,
-    )
+    _launch_prep_subprocess(job)
 
     updated = _fetch_dashboard_row(db, fingerprint)
     assert updated is not None  # we just updated this row
+    return _render_dashboard_row(request, updated)
+
+
+@router.post("/board/jobs/{fingerprint}/regenerate", response_class=HTMLResponse)
+def regenerate(
+    fingerprint: str,
+    request: Request,
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> HTMLResponse:
+    """Delete the existing prep folder and re-run prep from scratch."""
+    row = _fetch_dashboard_row(db, fingerprint)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    # Idempotency: already running — don't clobber a live prep subprocess.
+    if row["stage"] == "prep_in_progress":
+        return _render_dashboard_row(request, row)
+
+    if _prep_in_flight(db) >= MAX_CONCURRENT_PREPS:
+        return _prep_queue_full_response()
+
+    job = db.execute(
+        "SELECT id, title, company, url, stage, prep_folder_path FROM jobs WHERE fingerprint=?",
+        (fingerprint,),
+    ).fetchone()
+
+    folder = job["prep_folder_path"]
+    if folder and os.path.isdir(folder):
+        shutil.rmtree(folder)
+        log_event("folder_removed_for_regen", job_id=job["id"], folder=os.path.basename(folder))
+
+    now = datetime.now(UTC).isoformat()
+    db.execute(
+        "UPDATE jobs SET stage='prep_in_progress', prep_folder_path=NULL, "
+        "gdrive_folder_url=NULL, apply_flag=1, stage_updated=?, updated_at=? "
+        "WHERE id=?",
+        (now, now, job["id"]),
+    )
+    db.commit()
+    write_audit(db, job["id"], "stage", job["stage"], "prep_in_progress")
+    log_event(
+        "web_regen_dispatched",
+        job_id=job["id"],
+        company=job["company"],
+        title=job["title"],
+    )
+
+    _launch_prep_subprocess(job)
+
+    updated = _fetch_dashboard_row(db, fingerprint)
+    assert updated is not None
     return _render_dashboard_row(request, updated)
 
 
