@@ -184,6 +184,35 @@ def main():
     conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
 
+    # ── Stale-prep cleanup ────────────────────────────────────────────────────
+    # If a job has been stuck in prep_in_progress for more than STALE_PREP_MINUTES,
+    # the prep subprocess was killed (container restart, OOM, timeout) without being
+    # able to reset the stage itself. Reset it to scored so the user can re-flag.
+    STALE_PREP_MINUTES = 60
+    stale_jobs = conn.execute(
+        """
+        SELECT id, title, company FROM jobs
+        WHERE stage = 'prep_in_progress'
+          AND stage_updated < datetime('now', ?)
+        """,
+        (f"-{STALE_PREP_MINUTES} minutes",),
+    ).fetchall()
+    for stale in stale_jobs:
+        now = datetime.now(UTC).isoformat()
+        conn.execute(
+            "UPDATE jobs SET stage='scored', stage_updated=?, updated_at=? WHERE id=?",
+            (now, now, stale["id"]),
+        )
+        conn.commit()
+        write_audit(conn, stale["id"], "stage", "prep_in_progress", "scored")
+        log_event(
+            "prep_stale_reset",
+            job_id=stale["id"],
+            company=stale["company"],
+            title=stale["title"],
+            stale_minutes=STALE_PREP_MINUTES,
+        )
+
     flagged_jobs = []
     rejected_count = 0
     not_selected_count = 0
