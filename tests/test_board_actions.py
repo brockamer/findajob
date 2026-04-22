@@ -179,7 +179,7 @@ class TestPrep:
         assert len(popen_calls) == 1
         args = popen_calls[0]
         assert "prep_application.py" in args[1]
-        assert args[-1] == "--no-sync"
+        assert "--no-sync" not in args
 
     def test_happy_path_flags_manual_review_job(self, client: TestClient, popen_calls):
         response = client.post("/board/jobs/fp_manual/prep")

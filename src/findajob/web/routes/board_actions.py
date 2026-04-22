@@ -65,7 +65,6 @@ def _launch_prep_subprocess(job: sqlite3.Row) -> None:
             job["title"],
             job["url"],
             job["id"],
-            "--no-sync",
         ],
         start_new_session=True,
     )

@@ -10,7 +10,7 @@ PYTHONUNBUFFERED=1
 
 # ── Ingest + scoring ─────────────────────────────────────────────────────────
 0    0   *  *  *   timeout ${FINDAJOB_TRIAGE_TIMEOUT:-7200} python3 /app/scripts/triage.py
-*/10 *   *  *  *   timeout 900 python3 /app/scripts/poll_flags.py
+*/10 *   *  *  *   timeout 900 python3 /app/scripts/watchdog.py
 */30 *   *  *  *   python3 /app/scripts/ingest_form.py
 
 # ── Notifications ────────────────────────────────────────────────────────────
