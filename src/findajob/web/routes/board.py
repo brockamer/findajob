@@ -27,9 +27,8 @@ def _filter_clause(q: str) -> tuple[str, list[str]]:
 
 
 _DASHBOARD_COLS = [
-    ("Score", "fit_score"),
-    ("Prob", "probability_score"),
     ("Rel", "relevance_score"),
+    ("Likelihood", "interview_likelihood"),
     ("Title", "title"),
     ("Company", "company"),
     ("Location", "location"),
@@ -41,10 +40,10 @@ _DASHBOARD_COLS = [
 ]
 
 _DASHBOARD_SORTABLE = {c for _, c in _DASHBOARD_COLS}
-_DASHBOARD_DEFAULT_SORT = "fit_score"
+_DASHBOARD_DEFAULT_SORT = "relevance_score"
 
 _DASHBOARD_WHERE = (
-    "(fit_score >= 7 AND stage IN ('scored','manual_review')) OR stage IN ('prep_in_progress','materials_drafted')"
+    "(relevance_score >= 7 AND stage IN ('scored','manual_review')) OR stage IN ('prep_in_progress','materials_drafted')"
 )
 
 
@@ -59,7 +58,7 @@ def dashboard(
     order = "DESC" if desc else "ASC"
     rows = db.execute(
         f"SELECT fingerprint, title, company, location, remote_status, known_contacts, "
-        f"comp_estimate, ai_notes, fit_score, probability_score, relevance_score, "
+        f"comp_estimate, ai_notes, relevance_score, interview_likelihood, "
         f"stage, created_at, stage_updated FROM jobs WHERE {_DASHBOARD_WHERE} "
         f"ORDER BY {sort_col} {order}"
     ).fetchall()
@@ -335,7 +334,7 @@ def dashboard_rows(
     filter_sql, params = _filter_clause(q)
     rows = db.execute(
         f"SELECT fingerprint, title, company, location, remote_status, known_contacts, "
-        f"comp_estimate, ai_notes, fit_score, probability_score, relevance_score, "
+        f"comp_estimate, ai_notes, relevance_score, interview_likelihood, "
         f"stage, created_at, stage_updated FROM jobs WHERE ({_DASHBOARD_WHERE}) {filter_sql} "
         f"ORDER BY {sort_col} {order}",
         params,

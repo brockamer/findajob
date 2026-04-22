@@ -15,9 +15,8 @@ def client(tmp_path: Path) -> TestClient:
     conn = sqlite3.connect(db)
     conn.execute(
         "CREATE TABLE jobs (fingerprint TEXT, title TEXT, company TEXT, stage TEXT, "
-        "fit_score REAL, location TEXT, remote_status TEXT, known_contacts TEXT, "
-        "comp_estimate TEXT, ai_notes TEXT, created_at TEXT, stage_updated TEXT, "
-        "probability_score REAL, relevance_score INTEGER)"
+        "relevance_score INTEGER, interview_likelihood INTEGER, location TEXT, remote_status TEXT, "
+        "known_contacts TEXT, comp_estimate TEXT, ai_notes TEXT, created_at TEXT, stage_updated TEXT)"
     )
     for fp, title, company in [
         ("fp1", "NPI PM", "Meta"),
@@ -25,7 +24,7 @@ def client(tmp_path: Path) -> TestClient:
         ("fp3", "TPM", "Meta"),
     ]:
         conn.execute(
-            "INSERT INTO jobs (fingerprint, title, company, stage, fit_score) VALUES (?, ?, ?, 'scored', 8.0)",
+            "INSERT INTO jobs (fingerprint, title, company, stage, relevance_score) VALUES (?, ?, ?, 'scored', 8)",
             (fp, title, company),
         )
     conn.commit()

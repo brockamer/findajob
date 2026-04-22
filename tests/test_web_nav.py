@@ -15,7 +15,7 @@ def client(tmp_path: Path) -> TestClient:
     conn = sqlite3.connect(db)
     conn.execute(
         "CREATE TABLE jobs (fingerprint TEXT, title TEXT, company TEXT, stage TEXT, "
-        "fit_score REAL, probability_score REAL, relevance_score INTEGER, "
+        "fit_score REAL, probability_score REAL, relevance_score INTEGER, interview_likelihood INTEGER, "
         "location TEXT, remote_status TEXT, known_contacts TEXT, comp_estimate TEXT, "
         "ai_notes TEXT, user_notes TEXT, score_flag_reason TEXT, source TEXT, url TEXT, "
         "created_at TEXT, stage_updated TEXT)"

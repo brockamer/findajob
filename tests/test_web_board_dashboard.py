@@ -15,20 +15,20 @@ def client(tmp_path: Path) -> TestClient:
     conn = sqlite3.connect(db)
     conn.execute(
         "CREATE TABLE jobs (fingerprint TEXT, title TEXT, company TEXT, stage TEXT, "
-        "fit_score REAL, probability_score REAL, relevance_score INTEGER, "
+        "relevance_score INTEGER, interview_likelihood INTEGER, "
         "location TEXT, remote_status TEXT, known_contacts TEXT, comp_estimate TEXT, "
         "ai_notes TEXT, created_at TEXT, stage_updated TEXT)"
     )
     conn.execute(
-        "INSERT INTO jobs (fingerprint, title, company, stage, fit_score) "
-        "VALUES ('fp1','Senior DC Ops','Meta','scored',7.5)"
+        "INSERT INTO jobs (fingerprint, title, company, stage, relevance_score) "
+        "VALUES ('fp1','Senior DC Ops','Meta','scored',8)"
     )
     conn.execute(
-        "INSERT INTO jobs (fingerprint, title, company, stage, fit_score) "
-        "VALUES ('fp2','NPI PM','Google','materials_drafted',8.0)"
+        "INSERT INTO jobs (fingerprint, title, company, stage, relevance_score) "
+        "VALUES ('fp2','NPI PM','Google','materials_drafted',9)"
     )
     conn.execute(
-        "INSERT INTO jobs (fingerprint, title, company, stage, fit_score) VALUES ('fp3','Junior','Acme','scored',3.0)"
+        "INSERT INTO jobs (fingerprint, title, company, stage, relevance_score) VALUES ('fp3','Junior','Acme','scored',3)"
     )
     conn.commit()
     conn.close()
