@@ -3,7 +3,6 @@
 """Poll Google Sheet for APPLY_FLAG + REJECT_REASON changes. Mirror to SQLite. Trigger prep."""
 
 import os
-import re
 import shutil
 import sqlite3
 import subprocess
@@ -14,8 +13,17 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
+from findajob.actions import (
+    handle_not_selected,
+    handle_reactivate,
+    handle_rejection,
+    handle_waitlist,
+    notify_waitlist_resurface,
+    promote_to_scored,
+    reset_prep_to_scored,
+)
 from findajob.paths import BASE
-from findajob.utils import is_valid_company, log_event, reset_prep_to_scored, write_audit
+from findajob.utils import is_valid_company, log_event, write_audit
 
 DB_PATH = f"{BASE}/data/pipeline.db"
 SA_FILE = f"{BASE}/config/gsheets_creds.json"
@@ -23,140 +31,6 @@ with open(f"{BASE}/config/sheet_id.txt") as f:
     SHEET_ID = f.read().strip()
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
-
-
-def handle_rejection(conn, job, reason):
-    """Store rejection in DB, write to feedback_log, and move company folder to _rejected.
-    Drops a marker file named {reason}_{date}.txt inside the moved folder.
-    Returns True if a folder was moved."""
-    now = datetime.now(UTC).isoformat()
-    old_stage = job["stage"]
-    conn.execute(
-        "UPDATE jobs SET stage=?, reject_reason=?, updated_at=? WHERE id=?", ("rejected", reason, now, job["id"])
-    )
-    # jd_excerpt: first 500 chars of raw_jd_text for post-hoc analysis
-    jd = conn.execute("SELECT raw_jd_text, prep_folder_path FROM jobs WHERE id=?", (job["id"],)).fetchone()
-    jd_excerpt = (jd["raw_jd_text"] or "")[:500] if jd and jd["raw_jd_text"] else ""
-    conn.execute(
-        """INSERT INTO feedback_log (job_id, title, company, relevance_score, reject_reason, jd_excerpt)
-           VALUES (?, ?, ?, ?, ?, ?)""",
-        (job["id"], job["title"], job["company"], job["relevance_score"], reason, jd_excerpt),
-    )
-
-    # Move company folder to _rejected if it exists
-    folder_moved = False
-    folder = jd["prep_folder_path"] if jd else None
-    if folder and os.path.isdir(folder):
-        rejected_dir = os.path.join(BASE, "companies", "_rejected")
-        os.makedirs(rejected_dir, exist_ok=True)
-        dest = os.path.join(rejected_dir, os.path.basename(folder))
-        shutil.move(folder, dest)
-        # Drop a marker file: filesystem-safe reason + date
-        safe_reason = re.sub(r"[^\w\s-]", "", reason).strip().replace(" ", "_")[:60]
-        date_str = datetime.now().strftime("%Y-%m-%d")
-        open(os.path.join(dest, f"REJECTED_{safe_reason}_{date_str}.txt"), "w").close()
-        conn.execute("UPDATE jobs SET prep_folder_path=? WHERE id=?", (dest, job["id"]))
-        log_event("folder_moved_to_rejected", job_id=job["id"], folder=os.path.basename(folder), reason=reason)
-        folder_moved = True
-
-    conn.commit()
-    write_audit(conn, job["id"], "stage", old_stage, "rejected")
-    write_audit(conn, job["id"], "reject_reason", "", reason)
-    log_event("job_rejected", job_id=job["id"], company=job["company"], title=job["title"], reason=reason)
-    return folder_moved
-
-
-def handle_not_selected(conn, job, reason):
-    """Company rejected the application. Sets stage=not_selected, drops a marker file.
-    Does NOT write to feedback_log — company rejections should not feed the scorer.
-    Folder stays in _applied/ (no move). Returns False (no folder moved)."""
-    now = datetime.now(UTC).isoformat()
-    old_stage = job["stage"]
-    conn.execute(
-        "UPDATE jobs SET stage=?, reject_reason=?, updated_at=? WHERE id=?",
-        ("not_selected", reason, now, job["id"]),
-    )
-
-    # Drop marker file in existing folder (stays in _applied/)
-    jd = conn.execute("SELECT prep_folder_path FROM jobs WHERE id=?", (job["id"],)).fetchone()
-    folder = jd["prep_folder_path"] if jd else None
-    if folder and os.path.isdir(folder):
-        safe_reason = re.sub(r"[^\w\s-]", "", reason).strip().replace(" ", "_")[:60]
-        date_str = datetime.now().strftime("%Y-%m-%d")
-        open(os.path.join(folder, f"NOT_SELECTED_{safe_reason}_{date_str}.txt"), "w").close()
-        log_event("marker_added_not_selected", job_id=job["id"], folder=os.path.basename(folder), reason=reason)
-
-    conn.commit()
-    write_audit(conn, job["id"], "stage", old_stage, "not_selected")
-    write_audit(conn, job["id"], "reject_reason", "", reason)
-    log_event("job_not_selected", job_id=job["id"], company=job["company"], title=job["title"], reason=reason)
-    return False
-
-
-def handle_waitlist(conn, job):
-    """Move job to waitlisted stage and folder to _waitlisted/.
-    Returns True if a folder was moved, False otherwise.
-    Does NOT write to feedback_log — waitlisting is not rejection."""
-    now = datetime.now(UTC).isoformat()
-    old_stage = job["stage"]
-    conn.execute("UPDATE jobs SET stage=?, updated_at=? WHERE id=?", ("waitlisted", now, job["id"]))
-
-    folder_moved = False
-    jd = conn.execute("SELECT prep_folder_path FROM jobs WHERE id=?", (job["id"],)).fetchone()
-    folder = jd["prep_folder_path"] if jd else None
-    if folder and os.path.isdir(folder):
-        waitlisted_dir = os.path.join(BASE, "companies", "_waitlisted")
-        os.makedirs(waitlisted_dir, exist_ok=True)
-        dest = os.path.join(waitlisted_dir, os.path.basename(folder))
-        shutil.move(folder, dest)
-        conn.execute("UPDATE jobs SET prep_folder_path=? WHERE id=?", (dest, job["id"]))
-        log_event("folder_moved_to_waitlisted", job_id=job["id"], folder=os.path.basename(folder))
-        folder_moved = True
-
-    conn.commit()
-    write_audit(conn, job["id"], "stage", old_stage, "waitlisted")
-    log_event("job_waitlisted", job_id=job["id"], company=job["company"], title=job["title"])
-    return folder_moved
-
-
-def handle_reactivate(conn, job):
-    """Restore a waitlisted job to scored or materials_drafted.
-    Returns True if a folder was moved back."""
-    now = datetime.now(UTC).isoformat()
-    jd = conn.execute("SELECT prep_folder_path FROM jobs WHERE id=?", (job["id"],)).fetchone()
-    folder = jd["prep_folder_path"] if jd else None
-    folder_moved = False
-
-    if folder and os.path.isdir(folder):
-        # Move folder back from _waitlisted/ to companies/
-        dest = os.path.join(BASE, "companies", os.path.basename(folder))
-        shutil.move(folder, dest)
-        conn.execute(
-            "UPDATE jobs SET stage=?, prep_folder_path=?, updated_at=? WHERE id=?",
-            ("materials_drafted", dest, now, job["id"]),
-        )
-        new_stage = "materials_drafted"
-        folder_moved = True
-    else:
-        conn.execute("UPDATE jobs SET stage=?, updated_at=? WHERE id=?", ("scored", now, job["id"]))
-        new_stage = "scored"
-
-    conn.commit()
-    write_audit(conn, job["id"], "stage", "waitlisted", new_stage)
-    log_event("job_reactivated", job_id=job["id"], company=job["company"], title=job["title"], stage=new_stage)
-    return folder_moved
-
-
-def notify_waitlist_resurface(conn, company):
-    """If there are waitlisted jobs at this company, send a notification."""
-    rows = conn.execute("SELECT title FROM jobs WHERE company = ? AND stage = 'waitlisted'", (company,)).fetchall()
-    if not rows:
-        return
-    titles = [r["title"] for r in rows]
-    title = f"Waitlisted jobs at {company}"
-    body = "You just rejected/withdrew from this company. Waitlisted roles:\n" + "\n".join(f"• {t}" for t in titles)
-    subprocess.Popen([sys.executable, f"{BASE}/scripts/notify.py", "send-raw", title, body], start_new_session=True)
-    log_event("waitlist_resurface", company=company, count=len(titles))
 
 
 def main():
@@ -404,8 +278,6 @@ def main():
         if not job or job["stage"] != "manual_review":
             continue
 
-        now = datetime.now(UTC).isoformat()
-
         # Rejection takes priority
         if reject_val:
             if handle_rejection(conn, job, reject_val):
@@ -416,18 +288,7 @@ def main():
 
         # Promote: set score=7, stage=scored → lands on Dashboard for Flag for Prep
         if status_val == "Promote":
-            conn.execute(
-                """
-                UPDATE jobs SET relevance_score=7, stage='scored',
-                       score_status='scored', score_flag_reason='Promoted from Review tab',
-                       stage_updated=?, updated_at=?
-                WHERE id=?
-            """,
-                (now, now, job["id"]),
-            )
-            conn.commit()
-            write_audit(conn, job["id"], "stage", "manual_review", "scored")
-            log_event("review_promoted", job_id=job["id"], company=job["company"], title=job["title"])
+            promote_to_scored(conn, job, reason="Promoted from Review tab")
             review_promoted += 1
 
     if review_promoted or review_rejected:

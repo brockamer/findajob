@@ -12,6 +12,7 @@ import subprocess
 import sys
 from datetime import UTC, datetime
 
+from findajob.actions import reset_prep_to_scored
 from findajob.paths import AICHAT, BASE, PANDOC
 from findajob.utils import (
     JD_MAX_CHARS,
@@ -20,7 +21,6 @@ from findajob.utils import (
     log_event,
     quarantine_stale_prep_folders,
     read_file_prefix,
-    reset_prep_to_scored,
     write_audit,
 )
 

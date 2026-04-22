@@ -38,35 +38,6 @@ def write_audit(
     conn.commit()
 
 
-def reset_prep_to_scored(
-    conn: sqlite3.Connection,
-    job_id: str,
-    reason: str,
-) -> bool:
-    """Roll a failed prep attempt back from prep_in_progress to scored.
-
-    Guards on stage='prep_in_progress' so a job that raced ahead to
-    materials_drafted or was moved to applied isn't clobbered. Writes both an
-    audit_log entry and a prep_failed_reset event — without the audit entry,
-    the 60-min stale-prep reset can't distinguish real hangs from silent
-    error-path resets (see #172).
-
-    Returns True if the reset actually happened.
-    """
-    now = datetime.now(UTC).isoformat()
-    cur = conn.execute(
-        "UPDATE jobs SET stage='scored', prep_folder_path=NULL, "
-        "stage_updated=?, updated_at=? WHERE id=? AND stage='prep_in_progress'",
-        (now, now, job_id),
-    )
-    conn.commit()
-    if cur.rowcount == 0:
-        return False
-    write_audit(conn, job_id, "stage", "prep_in_progress", "scored")
-    log_event("prep_failed_reset", job_id=job_id, reason=reason)
-    return True
-
-
 def quarantine_stale_prep_folders(
     conn: sqlite3.Connection,
     companies_dir: str,

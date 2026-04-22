@@ -426,7 +426,7 @@ class TestResetPrepToScored:
         monkeypatch.setattr(utils, "LOG_PATH", str(tmp_path / "events.jsonl"))
 
     def test_resets_stage_and_clears_folder(self, db, tmp_path, monkeypatch):
-        from findajob.utils import reset_prep_to_scored
+        from findajob.actions import reset_prep_to_scored
 
         self._redirect_log(monkeypatch, tmp_path)
         job_id = insert_job(db, stage="prep_in_progress", folder="/tmp/some/path")
@@ -444,7 +444,7 @@ class TestResetPrepToScored:
 
     def test_writes_audit_entry(self, db, tmp_path, monkeypatch):
         """CORE invariant of #172: every stage transition auditable."""
-        from findajob.utils import reset_prep_to_scored
+        from findajob.actions import reset_prep_to_scored
 
         self._redirect_log(monkeypatch, tmp_path)
         job_id = insert_job(db, stage="prep_in_progress")
@@ -464,7 +464,7 @@ class TestResetPrepToScored:
         """Operator monitoring: failure resets must be visible in pipeline.jsonl."""
         import json
 
-        from findajob.utils import reset_prep_to_scored
+        from findajob.actions import reset_prep_to_scored
 
         log_path = tmp_path / "events.jsonl"
         self._redirect_log(monkeypatch, tmp_path)
@@ -480,7 +480,7 @@ class TestResetPrepToScored:
 
     def test_guards_materials_drafted(self, db, tmp_path, monkeypatch):
         """Don't clobber a successful prep that raced in before the error path."""
-        from findajob.utils import reset_prep_to_scored
+        from findajob.actions import reset_prep_to_scored
 
         self._redirect_log(monkeypatch, tmp_path)
         job_id = insert_job(db, stage="materials_drafted", folder="/keep/me")
@@ -496,7 +496,7 @@ class TestResetPrepToScored:
 
     def test_guards_applied(self, db, tmp_path, monkeypatch):
         """Don't roll back a job the user already submitted."""
-        from findajob.utils import reset_prep_to_scored
+        from findajob.actions import reset_prep_to_scored
 
         self._redirect_log(monkeypatch, tmp_path)
         job_id = insert_job(db, stage="applied")

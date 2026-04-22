@@ -174,8 +174,15 @@ def companies_dir(tmp_path):
 @pytest.fixture(autouse=True)
 def _patch_poll_flags(poll_flags_mod, tmp_path, monkeypatch):
     """Patch poll_flags module globals for every test."""
+    from findajob import actions
+
     monkeypatch.setattr(poll_flags_mod, "BASE", str(tmp_path))
     monkeypatch.setattr(poll_flags_mod, "log_event", lambda *a, **kw: None)
+    # Action helpers were extracted to findajob.actions in 14c PR-A (#61);
+    # tests that invoke handle_rejection/handle_reactivate via poll_flags_mod
+    # now reach into that module, so BASE + log_event need silencing there too.
+    monkeypatch.setattr(actions, "BASE", str(tmp_path))
+    monkeypatch.setattr(actions, "log_event", lambda *a, **kw: None)
     # Ensure companies subdirectories exist under tmp_path
     os.makedirs(os.path.join(str(tmp_path), "companies", "_applied"), exist_ok=True)
     os.makedirs(os.path.join(str(tmp_path), "companies", "_rejected"), exist_ok=True)
@@ -220,235 +227,6 @@ def insert_job(
     )
     conn.commit()
     return conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
-
-
-# ── handle_rejection ────────────────────────────────────────────────────────
-
-
-class TestHandleRejection:
-    def test_rejection_with_folder(self, poll_flags_mod, db, tmp_path):
-        """Rejection moves folder to _rejected, updates DB, writes feedback_log + marker."""
-        folder = tmp_path / "companies" / "Acme_Ops_2026-04-13_120000"
-        folder.mkdir(parents=True, exist_ok=True)
-        (folder / "resume.pdf").touch()
-
-        job = insert_job(db, stage="materials_drafted", folder=str(folder), score=8)
-        result = poll_flags_mod.handle_rejection(db, job, "Low Fit Score")
-
-        assert result is True
-
-        row = db.execute("SELECT stage, reject_reason, prep_folder_path FROM jobs WHERE id=?", (job["id"],)).fetchone()
-        assert row["stage"] == "rejected"
-        assert row["reject_reason"] == "Low Fit Score"
-        # Folder moved to _rejected
-        assert "_rejected" in row["prep_folder_path"]
-        assert os.path.isdir(row["prep_folder_path"])
-
-        # Marker file created
-        marker_files = [f for f in os.listdir(row["prep_folder_path"]) if f.startswith("REJECTED_")]
-        assert len(marker_files) == 1
-        assert "Low_Fit_Score" in marker_files[0]
-
-        # feedback_log entry
-        fb = db.execute("SELECT * FROM feedback_log WHERE job_id=?", (job["id"],)).fetchone()
-        assert fb is not None
-        assert fb["reject_reason"] == "Low Fit Score"
-        assert fb["title"] == "Operations Manager"
-
-        # audit_log entries
-        audits = db.execute("SELECT * FROM audit_log WHERE job_id=? ORDER BY id", (job["id"],)).fetchall()
-        fields = [a["field_changed"] for a in audits]
-        assert "stage" in fields
-        assert "reject_reason" in fields
-
-    def test_rejection_without_folder(self, poll_flags_mod, db):
-        """Rejection without folder: DB updated, no folder operations."""
-        job = insert_job(db, stage="scored", folder=None, score=6)
-        result = poll_flags_mod.handle_rejection(db, job, "Wrong Level")
-
-        assert result is False
-
-        row = db.execute("SELECT stage, reject_reason FROM jobs WHERE id=?", (job["id"],)).fetchone()
-        assert row["stage"] == "rejected"
-        assert row["reject_reason"] == "Wrong Level"
-
-        fb = db.execute("SELECT * FROM feedback_log WHERE job_id=?", (job["id"],)).fetchone()
-        assert fb is not None
-
-    def test_rejection_writes_jd_excerpt(self, poll_flags_mod, db):
-        """If job has raw_jd_text, feedback_log gets first 500 chars."""
-        long_jd = "A" * 1000
-        job = insert_job(db, stage="scored", raw_jd_text=long_jd)
-        poll_flags_mod.handle_rejection(db, job, "Not Relevant")
-
-        fb = db.execute("SELECT jd_excerpt FROM feedback_log WHERE job_id=?", (job["id"],)).fetchone()
-        assert len(fb["jd_excerpt"]) == 500
-
-    def test_rejection_no_jd_gives_empty_excerpt(self, poll_flags_mod, db):
-        """No raw_jd_text means empty jd_excerpt."""
-        job = insert_job(db, stage="scored", raw_jd_text=None)
-        poll_flags_mod.handle_rejection(db, job, "Not Relevant")
-
-        fb = db.execute("SELECT jd_excerpt FROM feedback_log WHERE job_id=?", (job["id"],)).fetchone()
-        assert fb["jd_excerpt"] == ""
-
-
-# ── handle_not_selected ────────────────────────────────────────────────────
-
-
-class TestHandleNotSelected:
-    def test_not_selected_with_folder(self, poll_flags_mod, db, tmp_path):
-        """Not Selected: stage=not_selected, folder stays in _applied/, marker file added, NO feedback_log."""
-        folder = tmp_path / "companies" / "_applied" / "Acme_Ops_2026-04-13_120000"
-        folder.mkdir(parents=True, exist_ok=True)
-        (folder / "resume.pdf").touch()
-
-        job = insert_job(db, stage="applied", folder=str(folder), score=8)
-        result = poll_flags_mod.handle_not_selected(db, job, "Too Senior")
-
-        assert result is False  # no folder moved
-
-        row = db.execute("SELECT stage, reject_reason, prep_folder_path FROM jobs WHERE id=?", (job["id"],)).fetchone()
-        assert row["stage"] == "not_selected"
-        assert row["reject_reason"] == "Too Senior"
-        # Folder stays in _applied/ (not moved)
-        assert "_applied" in row["prep_folder_path"]
-        assert os.path.isdir(row["prep_folder_path"])
-
-        # Marker file created
-        marker_files = [f for f in os.listdir(row["prep_folder_path"]) if f.startswith("NOT_SELECTED_")]
-        assert len(marker_files) == 1
-        assert "Too_Senior" in marker_files[0]
-
-        # NO feedback_log entry (critical: company rejections don't contaminate scorer)
-        fb = db.execute("SELECT * FROM feedback_log WHERE job_id=?", (job["id"],)).fetchone()
-        assert fb is None
-
-        # audit_log entries written
-        audits = db.execute("SELECT * FROM audit_log WHERE job_id=? ORDER BY id", (job["id"],)).fetchall()
-        fields = [a["field_changed"] for a in audits]
-        assert "stage" in fields
-        assert "reject_reason" in fields
-        stage_audit = [a for a in audits if a["field_changed"] == "stage"][0]
-        assert stage_audit["new_value"] == "not_selected"
-
-    def test_not_selected_without_folder(self, poll_flags_mod, db):
-        """Not Selected without folder: DB updated, no marker file, no feedback_log."""
-        job = insert_job(db, stage="applied", folder=None, score=7)
-        result = poll_flags_mod.handle_not_selected(db, job, "Skills Mismatch")
-
-        assert result is False
-
-        row = db.execute("SELECT stage, reject_reason FROM jobs WHERE id=?", (job["id"],)).fetchone()
-        assert row["stage"] == "not_selected"
-        assert row["reject_reason"] == "Skills Mismatch"
-
-        fb = db.execute("SELECT * FROM feedback_log WHERE job_id=?", (job["id"],)).fetchone()
-        assert fb is None
-
-    def test_not_selected_only_valid_for_post_apply_stages(self, db):
-        """Not Selected on scored job should be guarded — stage stays unchanged."""
-        job = insert_job(db, stage="scored")
-
-        # The guard in main() checks: job["stage"] in ("applied", "interview", "offer")
-        assert job["stage"] not in ("applied", "interview", "offer")
-
-    def test_not_selected_routes_before_rejection(self, poll_flags_mod, db):
-        """When STATUS='Not Selected' + REJECT_REASON set, handle_not_selected is used, not handle_rejection."""
-        job = insert_job(db, stage="applied", score=8)
-        poll_flags_mod.handle_not_selected(db, job, "Company Not a Fit")
-
-        row = db.execute("SELECT stage FROM jobs WHERE id=?", (job["id"],)).fetchone()
-        assert row["stage"] == "not_selected"  # not "rejected"
-
-        fb = db.execute("SELECT * FROM feedback_log WHERE job_id=?", (job["id"],)).fetchone()
-        assert fb is None  # not written
-
-
-# ── handle_waitlist ─────────────────────────────────────────────────────────
-
-
-class TestHandleWaitlist:
-    def test_waitlist_with_folder(self, poll_flags_mod, db, tmp_path):
-        """Folder moves to _waitlisted/, stage updated."""
-        folder = tmp_path / "companies" / "Acme_Ops_2026-04-13_140000"
-        folder.mkdir(parents=True, exist_ok=True)
-        (folder / "cover_letter.docx").touch()
-
-        job = insert_job(db, stage="materials_drafted", folder=str(folder))
-        result = poll_flags_mod.handle_waitlist(db, job)
-
-        assert result is True
-
-        row = db.execute("SELECT stage, prep_folder_path FROM jobs WHERE id=?", (job["id"],)).fetchone()
-        assert row["stage"] == "waitlisted"
-        assert "_waitlisted" in row["prep_folder_path"]
-        assert os.path.isdir(row["prep_folder_path"])
-
-    def test_waitlist_without_folder(self, poll_flags_mod, db):
-        """No folder: stage updated, no folder operations, returns False."""
-        job = insert_job(db, stage="scored", folder=None)
-        result = poll_flags_mod.handle_waitlist(db, job)
-
-        assert result is False
-
-        row = db.execute("SELECT stage FROM jobs WHERE id=?", (job["id"],)).fetchone()
-        assert row["stage"] == "waitlisted"
-
-    def test_waitlist_writes_audit_log(self, poll_flags_mod, db):
-        """Audit log entry for stage change."""
-        job = insert_job(db, stage="scored")
-        poll_flags_mod.handle_waitlist(db, job)
-
-        audit = db.execute("SELECT * FROM audit_log WHERE job_id=? AND field_changed='stage'", (job["id"],)).fetchone()
-        assert audit is not None
-        assert audit["old_value"] == "scored"
-        assert audit["new_value"] == "waitlisted"
-
-
-# ── handle_reactivate ──────────────────────────────────────────────────────
-
-
-class TestHandleReactivate:
-    def test_reactivate_with_folder(self, poll_flags_mod, db, tmp_path):
-        """Folder moves back from _waitlisted/, stage→materials_drafted."""
-        folder = tmp_path / "companies" / "_waitlisted" / "Acme_Ops_2026-04-13_150000"
-        folder.mkdir(parents=True, exist_ok=True)
-        (folder / "resume.pdf").touch()
-
-        job = insert_job(db, stage="waitlisted", folder=str(folder))
-        result = poll_flags_mod.handle_reactivate(db, job)
-
-        assert result is True
-
-        row = db.execute("SELECT stage, prep_folder_path FROM jobs WHERE id=?", (job["id"],)).fetchone()
-        assert row["stage"] == "materials_drafted"
-        assert "_waitlisted" not in row["prep_folder_path"]
-        assert os.path.isdir(row["prep_folder_path"])
-        assert os.path.isfile(os.path.join(row["prep_folder_path"], "resume.pdf"))
-
-    def test_reactivate_without_folder(self, poll_flags_mod, db):
-        """No folder: stage→scored."""
-        job = insert_job(db, stage="waitlisted", folder=None)
-        result = poll_flags_mod.handle_reactivate(db, job)
-
-        assert result is False
-
-        row = db.execute("SELECT stage FROM jobs WHERE id=?", (job["id"],)).fetchone()
-        assert row["stage"] == "scored"
-
-    def test_reactivate_missing_folder_path_falls_back_to_scored(self, poll_flags_mod, db):
-        """Folder path in DB but dir doesn't exist → scored."""
-        job = insert_job(db, stage="waitlisted", folder="/nonexistent/Acme_Ops")
-        result = poll_flags_mod.handle_reactivate(db, job)
-
-        assert result is False
-
-        row = db.execute("SELECT stage FROM jobs WHERE id=?", (job["id"],)).fetchone()
-        assert row["stage"] == "scored"
-
-        audit = db.execute("SELECT * FROM audit_log WHERE job_id=? AND field_changed='stage'", (job["id"],)).fetchone()
-        assert audit["new_value"] == "scored"
 
 
 # ── Dashboard flag processing (main() logic patterns) ──────────────────────
@@ -698,36 +476,6 @@ class TestDashboardRejectionPriority:
 
 
 class TestReviewTab:
-    def test_promote_sets_score_and_stage(self, poll_flags_mod, db):
-        """Promote: score=7, stage=scored, score_status=scored."""
-        from datetime import UTC, datetime
-
-        job = insert_job(db, stage="manual_review", score=5, score_status="manual_review")
-
-        # Replicate Review promote logic
-        now = datetime.now(UTC).isoformat()
-        db.execute(
-            """UPDATE jobs SET relevance_score=7, stage='scored',
-                   score_status='scored', score_flag_reason='Promoted from Review tab',
-                   stage_updated=?, updated_at=?
-               WHERE id=?""",
-            (now, now, job["id"]),
-        )
-        db.commit()
-        poll_flags_mod.write_audit(db, job["id"], "stage", "manual_review", "scored")
-
-        row = db.execute(
-            "SELECT relevance_score, stage, score_status, score_flag_reason FROM jobs WHERE id=?", (job["id"],)
-        ).fetchone()
-        assert row["relevance_score"] == 7
-        assert row["stage"] == "scored"
-        assert row["score_status"] == "scored"
-        assert row["score_flag_reason"] == "Promoted from Review tab"
-
-        audit = db.execute("SELECT * FROM audit_log WHERE job_id=? AND field_changed='stage'", (job["id"],)).fetchone()
-        assert audit["old_value"] == "manual_review"
-        assert audit["new_value"] == "scored"
-
     def test_review_reject(self, poll_flags_mod, db):
         """Reject from Review tab → handle_rejection called."""
         job = insert_job(db, stage="manual_review", score=4)
@@ -770,33 +518,3 @@ class TestWaitlistTab:
         assert row["stage"] == "rejected"
 
 
-# ── notify_waitlist_resurface ───────────────────────────────────────────────
-
-
-class TestNotifyWaitlistResurface:
-    def test_resurface_sends_notification(self, poll_flags_mod, db, monkeypatch):
-        """When waitlisted jobs exist at company, Popen is called."""
-        import subprocess as sp
-
-        insert_job(db, stage="waitlisted", company="Acme Corp", title="Site Lead")
-
-        popen_calls = []
-        monkeypatch.setattr(sp, "Popen", lambda args, **kw: popen_calls.append(args))
-        # Also patch subprocess in poll_flags module namespace
-        monkeypatch.setattr(poll_flags_mod.subprocess, "Popen", lambda args, **kw: popen_calls.append(args))
-
-        poll_flags_mod.notify_waitlist_resurface(db, "Acme Corp")
-        assert len(popen_calls) >= 1
-
-    def test_resurface_no_waitlisted_no_notification(self, poll_flags_mod, db, monkeypatch):
-        """No waitlisted jobs → no notification sent."""
-        import subprocess as sp
-
-        insert_job(db, stage="scored", company="Acme Corp")
-
-        popen_calls = []
-        monkeypatch.setattr(sp, "Popen", lambda args, **kw: popen_calls.append(args))
-        monkeypatch.setattr(poll_flags_mod.subprocess, "Popen", lambda args, **kw: popen_calls.append(args))
-
-        poll_flags_mod.notify_waitlist_resurface(db, "Acme Corp")
-        assert len(popen_calls) == 0
