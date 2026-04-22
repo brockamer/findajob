@@ -43,7 +43,8 @@ _DASHBOARD_SORTABLE = {c for _, c in _DASHBOARD_COLS}
 _DASHBOARD_DEFAULT_SORT = "relevance_score"
 
 _DASHBOARD_WHERE = (
-    "(relevance_score >= 7 AND stage IN ('scored','manual_review')) OR stage IN ('prep_in_progress','materials_drafted')"
+    "(relevance_score >= 7 AND stage IN ('scored','manual_review'))"
+    " OR stage IN ('prep_in_progress','materials_drafted')"
 )
 
 
