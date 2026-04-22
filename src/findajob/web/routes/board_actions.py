@@ -206,8 +206,7 @@ def prep(
 
     now = datetime.now(UTC).isoformat()
     db.execute(
-        "UPDATE jobs SET stage='prep_in_progress', apply_flag=1, "
-        "stage_updated=?, updated_at=? WHERE id=?",
+        "UPDATE jobs SET stage='prep_in_progress', apply_flag=1, stage_updated=?, updated_at=? WHERE id=?",
         (now, now, job["id"]),
     )
     db.commit()

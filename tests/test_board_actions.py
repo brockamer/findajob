@@ -84,8 +84,7 @@ def _insert_job(
 ) -> str:
     job_id = job_id or fingerprint.replace("fp", "id")
     conn.execute(
-        "INSERT INTO jobs (id, fingerprint, url, title, company, stage, relevance_score) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO jobs (id, fingerprint, url, title, company, stage, relevance_score) VALUES (?, ?, ?, ?, ?, ?, ?)",
         (job_id, fingerprint, url, title, company, stage, score),
     )
     conn.commit()
@@ -258,8 +257,7 @@ def test_router_registered_on_app(client: TestClient):
 def _fetch_feedback(client: TestClient, fingerprint: str) -> list[tuple[str, str]]:
     conn = sqlite3.connect(client._db_path)
     rows = conn.execute(
-        "SELECT fb.reject_reason, fb.title FROM feedback_log fb "
-        "JOIN jobs j ON j.id = fb.job_id WHERE j.fingerprint=?",
+        "SELECT fb.reject_reason, fb.title FROM feedback_log fb JOIN jobs j ON j.id = fb.job_id WHERE j.fingerprint=?",
         (fingerprint,),
     ).fetchall()
     conn.close()
@@ -297,9 +295,7 @@ class TestReject:
 
         # Folder moved to _rejected/ with a REJECTED_ marker
         conn = sqlite3.connect(client._db_path)
-        new_path = conn.execute(
-            "SELECT prep_folder_path FROM jobs WHERE fingerprint='fp_drafted'"
-        ).fetchone()[0]
+        new_path = conn.execute("SELECT prep_folder_path FROM jobs WHERE fingerprint='fp_drafted'").fetchone()[0]
         conn.close()
         assert "_rejected" in new_path
         assert not folder.exists()
@@ -433,9 +429,7 @@ class TestNotSelected:
         client.post("/board/jobs/fp_applied/not-selected", data={"reason": ""})
 
         conn = sqlite3.connect(client._db_path)
-        reject_reason = conn.execute(
-            "SELECT reject_reason FROM jobs WHERE fingerprint='fp_applied'"
-        ).fetchone()[0]
+        reject_reason = conn.execute("SELECT reject_reason FROM jobs WHERE fingerprint='fp_applied'").fetchone()[0]
         conn.close()
         assert reject_reason == "Company passed"
 
@@ -502,8 +496,7 @@ class TestRegenerate:
 
         conn = sqlite3.connect(client._db_path)
         row = conn.execute(
-            "SELECT stage, prep_folder_path, gdrive_folder_url, apply_flag "
-            "FROM jobs WHERE fingerprint='fp_drafted'"
+            "SELECT stage, prep_folder_path, gdrive_folder_url, apply_flag FROM jobs WHERE fingerprint='fp_drafted'"
         ).fetchone()
         conn.close()
         assert row[0] == "prep_in_progress"
@@ -619,9 +612,7 @@ class TestPrepConcurrencyCap:
 
 def _fetch_user_notes(client: TestClient, fingerprint: str) -> str | None:
     conn = sqlite3.connect(client._db_path)
-    row = conn.execute(
-        "SELECT user_notes FROM jobs WHERE fingerprint=?", (fingerprint,)
-    ).fetchone()
+    row = conn.execute("SELECT user_notes FROM jobs WHERE fingerprint=?", (fingerprint,)).fetchone()
     conn.close()
     return row[0] if row else None
 
@@ -702,9 +693,7 @@ class TestWaitlist:
 
         assert not folder.exists()
         conn = sqlite3.connect(client._db_path)
-        new_path = conn.execute(
-            "SELECT prep_folder_path FROM jobs WHERE fingerprint='fp_drafted'"
-        ).fetchone()[0]
+        new_path = conn.execute("SELECT prep_folder_path FROM jobs WHERE fingerprint='fp_drafted'").fetchone()[0]
         conn.close()
         assert "_waitlisted" in new_path
         assert Path(new_path).is_dir()
@@ -752,9 +741,7 @@ class TestReactivate:
 
         assert _fetch_stage(client, "fp_waitlisted") == "materials_drafted"
         conn = sqlite3.connect(client._db_path)
-        new_path = conn.execute(
-            "SELECT prep_folder_path FROM jobs WHERE fingerprint='fp_waitlisted'"
-        ).fetchone()[0]
+        new_path = conn.execute("SELECT prep_folder_path FROM jobs WHERE fingerprint='fp_waitlisted'").fetchone()[0]
         conn.close()
         assert "_waitlisted" not in new_path
         assert Path(new_path).is_dir()
@@ -783,9 +770,7 @@ class TestPromote:
         assert response.text == ""
 
         conn = sqlite3.connect(client._db_path)
-        row = conn.execute(
-            "SELECT stage, relevance_score FROM jobs WHERE fingerprint='fp_manual'"
-        ).fetchone()
+        row = conn.execute("SELECT stage, relevance_score FROM jobs WHERE fingerprint='fp_manual'").fetchone()
         conn.close()
         assert row[0] == "scored"
         assert row[1] == 7
@@ -828,9 +813,7 @@ class TestApply:
         assert _fetch_stage(client, "fp_drafted") == "applied"
         # Folder moved into _applied/
         conn = sqlite3.connect(client._db_path)
-        new_path = conn.execute(
-            "SELECT prep_folder_path FROM jobs WHERE fingerprint='fp_drafted'"
-        ).fetchone()[0]
+        new_path = conn.execute("SELECT prep_folder_path FROM jobs WHERE fingerprint='fp_drafted'").fetchone()[0]
         conn.close()
         assert "_applied" in new_path
         assert not folder.exists()

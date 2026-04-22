@@ -403,9 +403,7 @@ class TestResetPrepToScored:
 
         assert actions.reset_prep_to_scored(db, job["id"], reason="test_reason") is True
 
-        row = db.execute(
-            "SELECT stage, prep_folder_path, stage_updated FROM jobs WHERE id=?", (job["id"],)
-        ).fetchone()
+        row = db.execute("SELECT stage, prep_folder_path, stage_updated FROM jobs WHERE id=?", (job["id"],)).fetchone()
         assert row["stage"] == "scored"
         assert row["prep_folder_path"] is None
         assert row["stage_updated"] is not None

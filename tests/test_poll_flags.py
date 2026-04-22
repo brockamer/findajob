@@ -516,5 +516,3 @@ class TestWaitlistTab:
 
         row = db.execute("SELECT stage FROM jobs WHERE id=?", (job["id"],)).fetchone()
         assert row["stage"] == "rejected"
-
-
