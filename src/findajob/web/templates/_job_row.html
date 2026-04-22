@@ -26,19 +26,7 @@
       {% endif %}
     </td>
   {% endfor %}
-  {% if tab == 'dashboard' %}
-    <td class="px-3 py-1 align-top text-sm">
-      {% if row.stage in ('scored', 'manual_review') %}
-        <button type="button"
-                class="rounded bg-indigo-600 px-2 py-1 text-xs font-medium text-white hover:bg-indigo-500"
-                hx-post="/board/jobs/{{ row.fingerprint }}/prep"
-                hx-target="closest tr"
-                hx-swap="outerHTML">Flag for Prep</button>
-      {% elif row.stage == 'prep_in_progress' %}
-        <span class="text-xs text-slate-500">Prep in progress…</span>
-      {% elif row.stage == 'materials_drafted' %}
-        <span class="text-xs font-medium text-emerald-700">Ready to Apply</span>
-      {% endif %}
-    </td>
+  {% if tab in ('dashboard', 'applied') %}
+    {% include "board/_status_cell.html" %}
   {% endif %}
 </tr>

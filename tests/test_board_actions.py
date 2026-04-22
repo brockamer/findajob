@@ -79,21 +79,30 @@ def _insert_job(
 
 @pytest.fixture()
 def popen_calls(monkeypatch) -> list[list[str]]:
+    """Capture subprocess.Popen invocations from both the web layer and
+    findajob.actions (notify_waitlist_resurface launches notify.py via Popen)."""
     calls: list[list[str]] = []
 
     class _FakePopen:
         def __init__(self, args, **_kw):
             calls.append(args)
 
+    from findajob import actions
     from findajob.web.routes import board_actions
 
     monkeypatch.setattr(board_actions.subprocess, "Popen", _FakePopen)
+    monkeypatch.setattr(actions.subprocess, "Popen", _FakePopen)
     return calls
 
 
 @pytest.fixture()
 def client(tmp_path: Path, monkeypatch, popen_calls) -> TestClient:
+    from findajob.web.routes import board_actions
+
     monkeypatch.setattr(utils, "LOG_PATH", str(tmp_path / "events.jsonl"))
+    # /apply resolves its destination folder via board_actions.BASE; point at the
+    # test's tmp_path so folder moves don't reach into the real repo.
+    monkeypatch.setattr(board_actions, "BASE", str(tmp_path))
 
     db_path = tmp_path / "pipeline.db"
     conn = sqlite3.connect(db_path)
@@ -103,6 +112,8 @@ def client(tmp_path: Path, monkeypatch, popen_calls) -> TestClient:
     _insert_job(conn, fingerprint="fp_prep", stage="prep_in_progress")
     _insert_job(conn, fingerprint="fp_drafted", stage="materials_drafted")
     _insert_job(conn, fingerprint="fp_applied", stage="applied")
+    _insert_job(conn, fingerprint="fp_interview", stage="interview")
+    _insert_job(conn, fingerprint="fp_offer", stage="offer")
     conn.close()
 
     companies = tmp_path / "companies"
@@ -110,6 +121,7 @@ def client(tmp_path: Path, monkeypatch, popen_calls) -> TestClient:
     app = create_app(companies_root=companies, db_path=db_path)
     client = TestClient(app)
     client._db_path = db_path  # expose for assertions
+    client._tmp_path = tmp_path
     return client
 
 
@@ -207,3 +219,182 @@ def test_router_registered_on_app(client: TestClient):
     # Smoke-check the aggregated router has the new path registered.
     paths = {route.path for route in _web_routes.router.routes}
     assert "/board/jobs/{fingerprint}/prep" in paths
+    for endpoint in ("apply", "interview", "offer", "withdraw"):
+        assert f"/board/jobs/{{fingerprint}}/{endpoint}" in paths
+
+
+# ── /apply handler ─────────────────────────────────────────────────────────
+
+
+class TestApply:
+    def _seed_prep_folder(self, client: TestClient, fingerprint: str) -> Path:
+        folder = client._tmp_path / "companies" / f"Acme_Ops_{fingerprint}"
+        folder.mkdir(parents=True)
+        (folder / "resume.pdf").touch()
+        conn = sqlite3.connect(client._db_path)
+        conn.execute("UPDATE jobs SET prep_folder_path=? WHERE fingerprint=?", (str(folder), fingerprint))
+        conn.commit()
+        conn.close()
+        return folder
+
+    def test_happy_path_from_materials_drafted(self, client: TestClient):
+        folder = self._seed_prep_folder(client, "fp_drafted")
+
+        response = client.post("/board/jobs/fp_drafted/apply")
+
+        assert response.status_code == 200
+        assert response.text == ""  # empty body = HTMX removes the row
+        assert _fetch_stage(client, "fp_drafted") == "applied"
+        # Folder moved into _applied/
+        conn = sqlite3.connect(client._db_path)
+        new_path = conn.execute(
+            "SELECT prep_folder_path FROM jobs WHERE fingerprint='fp_drafted'"
+        ).fetchone()[0]
+        conn.close()
+        assert "_applied" in new_path
+        assert not folder.exists()
+        assert Path(new_path).is_dir()
+
+        audit = _fetch_audit(client, "fp_drafted")
+        assert any(a == ("stage", "materials_drafted", "applied") for a in audit)
+
+    def test_happy_path_without_folder(self, client: TestClient):
+        """Apply without a prep folder still transitions DB state."""
+        response = client.post("/board/jobs/fp_drafted/apply")
+
+        assert response.status_code == 200
+        assert _fetch_stage(client, "fp_drafted") == "applied"
+
+    def test_idempotent_on_already_applied(self, client: TestClient):
+        response = client.post("/board/jobs/fp_applied/apply")
+
+        assert response.status_code == 200
+        assert response.text == ""
+        assert _fetch_stage(client, "fp_applied") == "applied"
+        # No audit written — idempotency short-circuit
+        assert _fetch_audit(client, "fp_applied") == []
+
+    def test_404_on_unknown_fingerprint(self, client: TestClient):
+        response = client.post("/board/jobs/fp_nonexistent/apply")
+        assert response.status_code == 404
+
+
+# ── /interview handler ────────────────────────────────────────────────────
+
+
+class TestInterview:
+    def test_happy_path_from_applied(self, client: TestClient):
+        response = client.post("/board/jobs/fp_applied/interview")
+
+        assert response.status_code == 200
+        assert response.text.strip().startswith("<tr")
+        assert 'data-fingerprint="fp_applied"' in response.text
+        assert _fetch_stage(client, "fp_applied") == "interview"
+
+        audit = _fetch_audit(client, "fp_applied")
+        assert any(a == ("stage", "applied", "interview") for a in audit)
+
+    def test_idempotent_on_already_interview(self, client: TestClient):
+        response = client.post("/board/jobs/fp_interview/interview")
+
+        assert response.status_code == 200
+        assert _fetch_stage(client, "fp_interview") == "interview"
+        assert _fetch_audit(client, "fp_interview") == []
+
+    def test_404_on_unknown_fingerprint(self, client: TestClient):
+        response = client.post("/board/jobs/fp_nonexistent/interview")
+        assert response.status_code == 404
+
+
+# ── /offer handler ────────────────────────────────────────────────────────
+
+
+class TestOffer:
+    def test_happy_path_from_interview(self, client: TestClient):
+        response = client.post("/board/jobs/fp_interview/offer")
+
+        assert response.status_code == 200
+        assert response.text.strip().startswith("<tr")
+        assert _fetch_stage(client, "fp_interview") == "offer"
+
+        audit = _fetch_audit(client, "fp_interview")
+        assert any(a == ("stage", "interview", "offer") for a in audit)
+
+    def test_happy_path_from_applied(self, client: TestClient):
+        """Recruiter-straight-to-offer flow."""
+        response = client.post("/board/jobs/fp_applied/offer")
+
+        assert response.status_code == 200
+        assert _fetch_stage(client, "fp_applied") == "offer"
+
+    def test_idempotent_on_already_offer(self, client: TestClient):
+        response = client.post("/board/jobs/fp_offer/offer")
+
+        assert response.status_code == 200
+        assert _fetch_stage(client, "fp_offer") == "offer"
+        assert _fetch_audit(client, "fp_offer") == []
+
+    def test_404_on_unknown_fingerprint(self, client: TestClient):
+        response = client.post("/board/jobs/fp_nonexistent/offer")
+        assert response.status_code == 404
+
+
+# ── /withdraw handler ─────────────────────────────────────────────────────
+
+
+class TestWithdraw:
+    def _seed_waitlisted_sibling(self, client: TestClient, company: str) -> None:
+        conn = sqlite3.connect(client._db_path)
+        conn.execute(
+            "INSERT INTO jobs (id, fingerprint, url, title, company, stage) "
+            "VALUES ('sib', 'fp_sibling', 'u', 'Other role', ?, 'waitlisted')",
+            (company,),
+        )
+        conn.commit()
+        conn.close()
+
+    def test_happy_path_empties_response(self, client: TestClient):
+        response = client.post("/board/jobs/fp_applied/withdraw")
+
+        assert response.status_code == 200
+        assert response.text == ""
+        assert _fetch_stage(client, "fp_applied") == "withdrawn"
+
+        audit = _fetch_audit(client, "fp_applied")
+        assert any(a == ("stage", "applied", "withdrawn") for a in audit)
+
+    def test_fires_waitlist_resurface_notification(self, client: TestClient, popen_calls):
+        """A waitlisted sibling at the same company triggers a notification."""
+        self._seed_waitlisted_sibling(client, "Acme Corp")
+
+        client.post("/board/jobs/fp_applied/withdraw")
+
+        notify_calls = [c for c in popen_calls if any("notify.py" in arg for arg in c)]
+        assert len(notify_calls) == 1
+        assert "send-raw" in notify_calls[0]
+
+    def test_no_resurface_when_no_waitlisted(self, client: TestClient, popen_calls):
+        """No waitlisted jobs at that company → no notification fires."""
+        client.post("/board/jobs/fp_applied/withdraw")
+
+        notify_calls = [c for c in popen_calls if any("notify.py" in arg for arg in c)]
+        assert notify_calls == []
+
+    def test_idempotent_on_already_withdrawn(self, client: TestClient, popen_calls):
+        conn = sqlite3.connect(client._db_path)
+        conn.execute("UPDATE jobs SET stage='withdrawn' WHERE fingerprint='fp_applied'")
+        conn.commit()
+        conn.close()
+
+        self._seed_waitlisted_sibling(client, "Acme Corp")
+        response = client.post("/board/jobs/fp_applied/withdraw")
+
+        assert response.status_code == 200
+        assert _fetch_stage(client, "fp_applied") == "withdrawn"
+        # No notify fires on a no-op withdrawal
+        notify_calls = [c for c in popen_calls if any("notify.py" in arg for arg in c)]
+        assert notify_calls == []
+
+    def test_404_on_unknown_fingerprint(self, client: TestClient):
+        response = client.post("/board/jobs/fp_nonexistent/withdraw")
+        assert response.status_code == 404

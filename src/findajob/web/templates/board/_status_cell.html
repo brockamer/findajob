@@ -1,0 +1,45 @@
+{#
+  Status dropdown for the Dashboard and Applied tabs. Inputs:
+    row — a sqlite3.Row (or dict) for the current job
+    tab — "dashboard" | "applied"
+  On selection, dispatches an HTMX POST to /board/jobs/{fp}/{action} where
+  {action} matches the <option value>. Response body replaces the <tr>.
+#}
+{% set fp = row.fingerprint %}
+{% set stage = row.stage %}
+<td class="px-3 py-1 align-top text-sm whitespace-nowrap">
+  {% if tab == 'dashboard' %}
+    {% if stage == 'prep_in_progress' %}
+      <div class="mb-1 text-xs text-slate-500">Prep in progress…</div>
+    {% elif stage == 'materials_drafted' %}
+      <div class="mb-1 text-xs font-medium text-emerald-700">Ready to Apply</div>
+    {% endif %}
+    <select
+      class="block rounded border-slate-300 bg-white px-2 py-1 text-xs"
+      data-fp="{{ fp }}"
+      onchange="if(this.value){htmx.ajax('POST', `/board/jobs/{{ fp }}/${this.value}`, {target: this.closest('tr'), swap: 'outerHTML'});this.value='';}">
+      <option value="">— Change status —</option>
+      {% if stage in ('scored', 'manual_review') %}
+        <option value="prep">Flag for Prep</option>
+      {% endif %}
+      {% if stage in ('prep_in_progress', 'materials_drafted') %}
+        <option value="regenerate">Regenerate</option>
+      {% endif %}
+      <option value="waitlist">Waitlist</option>
+      {% if stage == 'materials_drafted' %}
+        <option value="apply">Applied</option>
+      {% endif %}
+    </select>
+  {% elif tab == 'applied' %}
+    <select
+      class="block rounded border-slate-300 bg-white px-2 py-1 text-xs"
+      data-fp="{{ fp }}"
+      onchange="if(this.value){htmx.ajax('POST', `/board/jobs/{{ fp }}/${this.value}`, {target: this.closest('tr'), swap: 'outerHTML'});this.value='';}">
+      <option value="">— Change status —</option>
+      {% if stage != 'interview' %}<option value="interview">Interviewing</option>{% endif %}
+      {% if stage != 'offer' %}<option value="offer">Offer</option>{% endif %}
+      <option value="withdraw">Withdrew</option>
+      <option value="not-selected">Not Selected</option>
+    </select>
+  {% endif %}
+</td>
