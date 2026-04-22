@@ -13,6 +13,8 @@
 #      bundled-config.
 #   3. Chown bind-mounted writable dirs to findajob:findajob if they're
 #      not already owned correctly.
+#   3b. Assert aichat-ng config.yaml is readable by the runtime user — exits
+#      with a clear diagnostic if missing (e.g., HOME not set in compose.yaml).
 #   4. Drop privileges and exec the CMD (default: supercronic /app/crontab).
 #
 # Env:
@@ -88,7 +90,20 @@ for dir in /app/data /app/logs /app/companies /app/config /app/candidate_context
     fi
 done
 
-# --- 3b. Initialize DB schema (idempotent) --------------------------------
+# --- 3b. Assert aichat-ng config is readable before scheduler starts ------
+# Fails fast if config.yaml is missing or unreadable by the runtime user.
+# Most common cause: HOME not set to /app in compose.yaml, so the seeding
+# in step 2b wrote to /root/.config/aichat_ng/ instead of the bind-mount.
+if ! gosu "$PUID:$PGID" test -r "$AICHAT_CFG_DIR/config.yaml" 2>/dev/null; then
+    echo "FATAL: aichat-ng config not found or not readable at $AICHAT_CFG_DIR/config.yaml (UID $PUID)" >&2
+    echo "  HOME=$HOME  AICHAT_CFG_DIR=$AICHAT_CFG_DIR" >&2
+    echo "  Ensure HOME: /app is set in compose.yaml environment:" >&2
+    echo "    environment:" >&2
+    echo "      HOME: /app" >&2
+    exit 1
+fi
+
+# --- 3c. Initialize DB schema (idempotent) --------------------------------
 # CREATE TABLE IF NOT EXISTS so re-runs on populated DBs are no-ops.
 # Runs as $PUID:$PGID so the resulting pipeline.db is owned correctly.
 if [ -w /app/data ]; then
