@@ -81,7 +81,7 @@ _FEEDBACK_BLOCK = _build_feedback_block()
 
 
 NULL_SCORE_RETRY_LIMIT = 50  # max null-score rows retried per triage run
-NULL_SCORE_RETRY_DAYS = 7   # rows older than this are skipped (genuinely broken JD)
+NULL_SCORE_RETRY_DAYS = 7  # rows older than this are skipped (genuinely broken JD)
 
 
 def score_null_manual_review_rows(

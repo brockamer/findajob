@@ -103,7 +103,6 @@ def test_null_score_row_rescored_to_scored(db):
     fake_score = {**GOOD_SCORE}
     fake_latency = 500
 
-
     # Import the function under test (extracted from triage.py)
     from triage import score_null_manual_review_rows  # noqa: PLC0415
 

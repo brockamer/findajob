@@ -308,9 +308,7 @@ def cmd_health_check():
         "SELECT COUNT(*) FROM jobs WHERE stage = 'manual_review' AND relevance_score IS NOT NULL"
     ).fetchone()[0]
     if null_score_count > 0:
-        issues.append(
-            f"WARN: {null_score_count} null-score jobs in manual_review (scorer failure — check aichat-ng)"
-        )
+        issues.append(f"WARN: {null_score_count} null-score jobs in manual_review (scorer failure — check aichat-ng)")
     if real_review_count > REVIEW_BACKLOG_WARN:
         issues.append(
             f"WARN: {real_review_count} real-flag jobs in manual_review backlog (threshold: {REVIEW_BACKLOG_WARN})"
