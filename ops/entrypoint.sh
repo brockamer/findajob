@@ -69,11 +69,13 @@ if [ ! -e "$AICHAT_CFG_DIR/roles" ]; then
     ln -s /app/config/roles "$AICHAT_CFG_DIR/roles"
 fi
 
-# --- 3. Chown writable dirs if ownership doesn't already match -----------
+# --- 3. Chown writable dirs if any content doesn't match PUID:PGID --------
+# Uses find to detect mismatched files/subdirs inside each dir, not just the
+# top-level inode — prevents a root-owned file created by `docker exec` (as
+# root) from surviving container restarts uncorrected.
 for dir in /app/data /app/logs /app/companies /app/config /app/candidate_context "$AICHAT_CFG_DIR"; do
     if [ -d "$dir" ]; then
-        current_owner="$(stat -c %u "$dir" 2>/dev/null || echo 0)"
-        if [ "$current_owner" != "$PUID" ]; then
+        if find "$dir" ! -user "$PUID" -print -quit 2>/dev/null | grep -q .; then
             chown -R "$PUID:$PGID" "$dir" || true
         fi
     fi

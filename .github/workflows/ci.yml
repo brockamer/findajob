@@ -70,3 +70,14 @@ jobs:
             -e PUID=1001 -e PGID=1001 \
             findajob:ci-smoke \
             id findajob
+
+      - name: Smoke — entrypoint reconciles root-owned file inside managed dir
+        run: |
+          mkdir -p /tmp/test-entrypoint-logs
+          sudo touch /tmp/test-entrypoint-logs/pipeline.jsonl
+          owner=$(docker run --rm \
+            -e PUID=1001 -e PGID=1001 \
+            -v /tmp/test-entrypoint-logs:/app/logs \
+            findajob:ci-smoke \
+            stat -c '%u' /app/logs/pipeline.jsonl)
+          [ "$owner" = "1001" ] || { echo "FAIL: expected owner 1001, got $owner"; exit 1; }

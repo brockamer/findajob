@@ -15,6 +15,9 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 - Web viewer now has a top nav and landing page. Materials folder index moved from `/` to `/materials/`; deep links `/materials/{fingerprint}` and `/materials/{fingerprint}/{filename}` unchanged. Placeholder pages for board, ingest, tools, config, docs fill in as features land (#60).
 - `/board/dashboard`, `/board/applied`, `/board/review`, `/board/waitlist`, `/board/archive` render the same content as the corresponding Google Sheet tabs, reading directly from the database. Archive covers all jobs (10k+) with HTMX infinite-scroll pagination, obsoleting Sheet1's archival filter. Per-tab text filter via HTMX, URL-param sort, Sheet-matching conditional formatting (Applied row-age buckets, Offer gold, Interviewing purple, known-contacts amber), and Applied's company cell hyperlinks into the materials viewer when `FINDAJOB_MATERIALS_BASE_URL` is set. `sync_sheet.py` continues to update Sheets in parallel during the 14b → 14c → 14d migration (#60).
 
+### Fixed
+- Container entrypoint now reconciles file and subdirectory ownership inside each writable dir (data, logs, companies, config, candidate\_context, aichat config), not just the top-level inode. A root-owned file created by `docker exec` (default user: root) is now corrected on the next container restart, preventing `PermissionError` crash-loops in supercronic jobs (#139).
+
 ### Migration required
 
 Operators whose deployed `compose.yaml` was copied from `ops/compose.yaml.example` on v0.1.2 or earlier need two edits to opt into the company-cell hyperlinks (#133). Fresh installs from the current template are unaffected.
