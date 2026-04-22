@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """One-time migration: add user_notes column to jobs.
 
-Free-text field the user edits on the Applied tab; poll_flags.py syncs
-Applied sheet edits back to this column. Idempotent — ALTER TABLE ADD
-COLUMN IF NOT EXISTS via column-presence check.
+Free-text field the user edits on the Applied tab (web UI /board/applied
+→ POST /board/jobs/{fp}/notes). Idempotent — ALTER TABLE ADD COLUMN
+IF NOT EXISTS via column-presence check.
 
 As of v0.1.1 this migration's column is folded into scripts/init_db.py.
 Fresh deploys get the column from init_db on first container start;

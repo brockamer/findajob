@@ -580,6 +580,11 @@ docs (remains in archived 14b spec, as expected).
 
 ---
 
+## PR-C — UX polish (Tasks 20–22)
+
+Ships as a separate follow-on PR after PR-B merges — keeps PR-B focused on the
+Sheets-retirement pivot. Label: `enhancement`, no `migration-required`.
+
 ### Task 20 — Company cell links to materials folder when it exists
 
 **Context.** Added 2026-04-22 after operator feedback during PR-B execution: the Sheet's `materials_company_cell` wraps the company name in a hyperlink to the materials viewer when `prep_folder_path` exists and is on disk. The web UI currently renders company as plain text.

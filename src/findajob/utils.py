@@ -55,7 +55,7 @@ def quarantine_stale_prep_folders(
     name starts with ``folder_prefix`` are considered. A folder is **kept** if:
       * its basename equals ``current_folder_name`` (this run's folder), or
       * its absolute path appears as ``prep_folder_path`` on any jobs row, or
-      * its name starts with ``_`` (poll_flags' holding directories:
+      * its name starts with ``_`` (stage holding directories:
         ``_applied``, ``_rejected``, ``_waitlisted``), or
       * its name equals ``.stale``, or
       * it is a regular file, not a directory.
@@ -296,7 +296,7 @@ def build_prep_filenames(company: str, title: str, timestamp_fn: str, file_prefi
 # or the recruiter, not the actual employer. Jobs from these sources are
 # effectively useless without knowing the real hiring company — the candidate
 # cannot research culture, target specific contacts, or tailor outreach.
-# Filtered at both ingest time (triage.py) and prep-trigger time (poll_flags.py).
+# Filtered at both ingest time (triage.py) and prep-trigger time (board_actions.py).
 AGGREGATOR_PREFIXES: tuple[str, ...] = (
     "jobs via ",
     "job via ",

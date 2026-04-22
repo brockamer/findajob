@@ -158,8 +158,7 @@ def _transition_stage(
 def _move_folder_to_applied(db: sqlite3.Connection, job: sqlite3.Row) -> bool:
     """Move a prep folder from companies/ to companies/_applied/.
 
-    Mirrors poll_flags.py's Applied-branch behavior. Returns True if a folder
-    was actually moved.
+    Returns True if a folder was actually moved.
     """
     jd = db.execute("SELECT prep_folder_path FROM jobs WHERE id=?", (job["id"],)).fetchone()
     folder = jd["prep_folder_path"] if jd else None

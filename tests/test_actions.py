@@ -1,5 +1,5 @@
-"""Unit tests for findajob.actions — stage-transition helpers called from poll_flags
-and the web POST handlers.
+"""Unit tests for findajob.actions — stage-transition helpers called from the
+web POST handlers and the stale-prep watchdog.
 
 Every test uses an in-memory SQLite DB and tmp_path for folder operations. The
 module-level BASE reference in findajob.actions is monkeypatched so folder

@@ -5,7 +5,7 @@ One-time setup: formats Sheet1, Dashboard, Review, and Waitlist tabs.
 Run after any sheet restructure. Safe to re-run — idempotent.
 
 Sheet1 layout (A–N):
-  A: fingerprint  (hidden — used by poll_flags.py)
+  A: fingerprint  (hidden — matches board_actions.py POST targets)
   B: APPLY_FLAG   (checkbox)
   C: relevance_score
   D: title
@@ -23,7 +23,7 @@ Sheet1 layout (A–N):
 Dashboard layout (A–N):
   A: STATUS          (dropdown: Flag for Prep / Applied / Interviewing / Offer / Withdrew)
   B: REJECT_REASON   (dropdown: 11 options)
-  C: fingerprint     (hidden — used by poll_flags.py)
+  C: fingerprint     (hidden — matches board_actions.py POST targets)
   D: fit_score       (0-100%, conditional color)
   E: probability_score (0-100%, conditional color)
   F: relevance_score
@@ -39,7 +39,7 @@ Dashboard layout (A–N):
 Review layout (A–H):
   A: STATUS          (dropdown: Promote)
   B: REJECT_REASON   (dropdown: same as Dashboard)
-  C: fingerprint     (hidden — used by poll_flags.py)
+  C: fingerprint     (hidden — matches board_actions.py POST targets)
   D: title           (HYPERLINK formula — clickable)
   E: company
   F: score_flag_reason
@@ -65,7 +65,7 @@ Applied layout (A–N):
 Waitlist layout (A–K):
   A: STATUS          (dropdown: Reactivate)
   B: REJECT_REASON   (dropdown: same as Dashboard)
-  C: fingerprint     (hidden — used by poll_flags.py)
+  C: fingerprint     (hidden — matches board_actions.py POST targets)
   D: title           (HYPERLINK formula — clickable)
   E: company
   F: score

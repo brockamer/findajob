@@ -625,7 +625,7 @@ class TestQuarantineStalePrepFolders:
         assert (companies / "OtherCo_Different_Role_2026-04-22_110000").is_dir()
 
     def test_underscore_prefix_subdirs_skipped(self, db, tmp_path, monkeypatch):
-        """_applied, _rejected, _waitlisted are poll_flags' holding areas
+        """_applied, _rejected, _waitlisted are stage holding areas
         — they must never be quarantined even if prefix would match."""
         from findajob.utils import quarantine_stale_prep_folders
 

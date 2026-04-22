@@ -189,8 +189,8 @@ def cmd_health_check():
     # Check if triage was terminated (SIGTERM from systemd timeout or manual stop)
     triage_terminated = [e for e in events if e.get("event") == "pipeline_terminated"]
 
-    # Check poller ran
-    poll_events = [e for e in events if e.get("event") == "poll_flags"]
+    # Check watchdog ran
+    poll_events = [e for e in events if e.get("event") == "watchdog_run"]
     poll_ok = bool(poll_events)
 
     # Check sync_sheet ran
@@ -217,7 +217,7 @@ def cmd_health_check():
     elif not triage_ok:
         issues.append("WARN: pipeline_complete not seen in last 25h")
     if not poll_ok:
-        issues.append("WARN: poll_flags not seen in last 25h")
+        issues.append("WARN: watchdog_run not seen in last 25h")
     if not sync_ok:
         issues.append("WARN: sync_complete not seen in last 25h")
     if sync_failures:

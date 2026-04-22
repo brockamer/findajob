@@ -341,12 +341,11 @@ install_systemd_units() {
   echo "TimeoutStartSec=3600" >> "${SYSTEMD_DIR}/findajob-triage.service"
   write_timer_unit    "triage"          "findajob daily triage" "*-*-* 00:00:00 America/Los_Angeles"
 
-  # Poller — every 30 min.  poll_flags.py waits for child processes
-  # (sync_sheet + prep_application), so it can run for several minutes.
-  # TimeoutStartSec=900 gives 15 min before systemd sends SIGTERM.
-  write_interval_service "poller"       "poll_flags.py"     "sheet flag poller"
-  echo "TimeoutStartSec=900" >> "${SYSTEMD_DIR}/findajob-poller.service"
-  write_interval_timer   "poller"       "findajob flag poller"  "10min"
+  # Watchdog — every 10 min. Single responsibility: reset jobs stuck in
+  # prep_in_progress for > 60 min. Fast, no network calls, short timeout.
+  write_interval_service "watchdog"     "watchdog.py"       "stale-prep watchdog"
+  echo "TimeoutStartSec=300" >> "${SYSTEMD_DIR}/findajob-watchdog.service"
+  write_interval_timer   "watchdog"     "findajob stale-prep watchdog"  "10min"
 
   # Form ingest — every 30 min
   write_interval_service "form-ingest"  "ingest_form.py"    "Google Form ingestion"

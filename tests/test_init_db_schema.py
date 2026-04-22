@@ -1,7 +1,7 @@
 """Tests that init_db.py is the single source of truth for the SQLite schema.
 
 Each test creates a fresh DB via init_db.py, then asserts that every column
-written by production code (cost_tracking.log_call, poll_flags user_notes
+written by production code (cost_tracking.log_call, board_actions user_notes
 writes, etc.) exists on the freshly-initialized DB.
 
 When a one-shot migration is introduced (scripts/migrate_*.py), add a new
@@ -63,6 +63,6 @@ def test_cost_log_has_token_and_cost_columns(fresh_db):
 
 
 def test_jobs_has_user_notes_column(fresh_db):
-    """poll_flags.py writes to jobs.user_notes from Applied-tab sheet edits."""
+    """board_actions /notes handler writes to jobs.user_notes from the Applied tab."""
     cols = _columns(fresh_db, "jobs")
     assert "user_notes" in cols
