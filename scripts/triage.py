@@ -80,6 +80,83 @@ load_env()
 _FEEDBACK_BLOCK = _build_feedback_block()
 
 
+NULL_SCORE_RETRY_LIMIT = 50  # max null-score rows retried per triage run
+NULL_SCORE_RETRY_DAYS = 7   # rows older than this are skipped (genuinely broken JD)
+
+
+def score_null_manual_review_rows(
+    conn: sqlite3.Connection,
+    candidate_profile: str,
+    feedback_block: str,
+    limit: int = NULL_SCORE_RETRY_LIMIT,
+) -> int:
+    """Re-score manual_review rows that have relevance_score=NULL (prior scorer failure).
+
+    Only considers rows updated within NULL_SCORE_RETRY_DAYS to avoid retrying
+    genuinely unparseable JDs forever. Returns the count of successfully rescored rows.
+    """
+    rows = conn.execute(
+        """
+        SELECT id, title, company, location, raw_jd_text FROM jobs
+        WHERE stage = 'manual_review'
+          AND relevance_score IS NULL
+          AND stage_updated > datetime('now', ?)
+          AND (dupe_of = '' OR dupe_of IS NULL)
+        LIMIT ?
+        """,
+        (f"-{NULL_SCORE_RETRY_DAYS} days", limit),
+    ).fetchall()
+
+    rescored = 0
+    for row in rows:
+        job_id = row["id"]
+        try:
+            scored, _ = score_job(
+                row["title"],
+                row["company"] or "",
+                row["location"] or "",
+                row["raw_jd_text"] or "",
+                candidate_profile,
+                feedback_block=feedback_block,
+            )
+        except Exception as e:
+            log_event("null_score_retry_error", job_id=job_id, error=str(e))
+            continue
+
+        now = datetime.now(UTC).isoformat()
+        stage = "manual_review" if scored.get("score_status") == "manual_review" else "scored"
+        conn.execute(
+            """
+            UPDATE jobs SET
+                relevance_score=?, interview_likelihood=?, strengths_alignment=?,
+                industry_sector=?, comp_estimate=?, ai_notes=?,
+                score_status=?, score_flag_reason=?, remote_status=?,
+                stage=?, stage_updated=?, updated_at=?
+            WHERE id=?
+            """,
+            (
+                scored.get("relevance_score"),
+                scored.get("interview_likelihood"),
+                scored.get("strengths_alignment"),
+                scored.get("industry_sector", ""),
+                scored.get("comp_estimate", ""),
+                scored.get("ai_notes", ""),
+                scored.get("score_status", "manual_review"),
+                scored.get("score_flag_reason", ""),
+                scored.get("remote_status", "Unknown"),
+                stage,
+                now,
+                now,
+                job_id,
+            ),
+        )
+        conn.commit()
+        write_audit(conn, job_id, "stage", "manual_review", stage)
+        rescored += 1
+
+    return rescored
+
+
 # ── Contact Lookup ──
 def find_contacts(company):
     contacts = []
@@ -438,6 +515,10 @@ def main():
                 )
 
         log_event("scoring_complete", total=score_total, scored=scored_count, errors=score_errors)
+
+    rescored = score_null_manual_review_rows(conn, candidate_profile, _FEEDBACK_BLOCK)
+    if rescored:
+        log_event("null_score_retry_complete", rescored=rescored)
 
     conn.close()
     log_event(

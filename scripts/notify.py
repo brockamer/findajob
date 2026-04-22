@@ -300,10 +300,21 @@ def cmd_health_check():
     if sheet1_count > SHEET1_ROW_WARN:
         issues.append(f"WARN: Sheet1 has ~{sheet1_count} rows (threshold: {SHEET1_ROW_WARN})")
 
-    # Manual review backlog
-    review_count = conn.execute("SELECT COUNT(*) FROM jobs WHERE stage = 'manual_review'").fetchone()[0]
-    if review_count > REVIEW_BACKLOG_WARN:
-        issues.append(f"WARN: {review_count} jobs in manual_review backlog (threshold: {REVIEW_BACKLOG_WARN})")
+    # Manual review backlog — split by cause for operator clarity
+    null_score_count = conn.execute(
+        "SELECT COUNT(*) FROM jobs WHERE stage = 'manual_review' AND relevance_score IS NULL"
+    ).fetchone()[0]
+    real_review_count = conn.execute(
+        "SELECT COUNT(*) FROM jobs WHERE stage = 'manual_review' AND relevance_score IS NOT NULL"
+    ).fetchone()[0]
+    if null_score_count > 0:
+        issues.append(
+            f"WARN: {null_score_count} null-score jobs in manual_review (scorer failure — check aichat-ng)"
+        )
+    if real_review_count > REVIEW_BACKLOG_WARN:
+        issues.append(
+            f"WARN: {real_review_count} real-flag jobs in manual_review backlog (threshold: {REVIEW_BACKLOG_WARN})"
+        )
 
     # Target company jobs scored 3-6 in the last N days (potential mis-scores worth reviewing).
     # Score 1-2 are excluded — prefilter hard rejects or clear mismatches, not actionable.
