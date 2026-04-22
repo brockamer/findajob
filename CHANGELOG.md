@@ -12,6 +12,7 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ### Fixed
 
+- `prep_application.py` failure paths (missing candidate files, empty-output validation, unhandled exception) now share a `reset_prep_to_scored()` helper that writes an `audit_log` entry and emits a `prep_failed_reset` event before rolling stage back to `scored`. Without the audit entry the 60-min stale-prep reset couldn't distinguish real hangs from silent error-path resets, and a transient upstream outage (e.g. today's 15-min Anthropic/Gemini auth blip) could loop forever with only the forward half of each transition visible in the audit trail. `poll_flags.py`'s deferred-over-concurrency-cap reset uses the same helper (#172).
 - `triage.py` now captures the exit code of the `sync_sheet.py` subprocess and emits a `triage_sync_failed` event with the return code when sync crashes non-zero. Previously `check=False` swallowed the failure, leaving only a `sync_complete not seen in 25h` warning as the eventual signal. The new event is picked up by `notify.py health-check`'s generic error matcher immediately (#145).
 
 ## [0.1.4] — 2026-04-22

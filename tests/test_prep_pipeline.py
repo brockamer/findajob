@@ -403,3 +403,110 @@ class TestMissingCandidateFilesAbort:
         # Stage should still be whatever it was before (prep_in_progress → scored after abort)
         row = db.execute("SELECT stage FROM jobs WHERE id=?", (job_id,)).fetchone()
         assert row["stage"] != "materials_drafted"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# reset_prep_to_scored — shared failure-rollback helper (issue #172)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class TestResetPrepToScored:
+    """Every prep_application.py failure path (missing files, validation, unhandled
+    exception) used to bounce stage back to 'scored' without write_audit, hiding
+    the reverse half of each transition and defeating the 60-min stale-reset.
+
+    The shared helper reset_prep_to_scored() exists to make that invariant
+    enforceable in one place."""
+
+    def _redirect_log(self, monkeypatch, tmp_path):
+        # log_event writes to findajob.paths.BASE/logs/pipeline.jsonl — redirect
+        # so tests don't append to the real log.
+        from findajob import utils
+
+        monkeypatch.setattr(utils, "LOG_PATH", str(tmp_path / "events.jsonl"))
+
+    def test_resets_stage_and_clears_folder(self, db, tmp_path, monkeypatch):
+        from findajob.utils import reset_prep_to_scored
+
+        self._redirect_log(monkeypatch, tmp_path)
+        job_id = insert_job(db, stage="prep_in_progress", folder="/tmp/some/path")
+
+        did_reset = reset_prep_to_scored(db, job_id, reason="test_reason")
+
+        assert did_reset is True
+        row = db.execute(
+            "SELECT stage, prep_folder_path, stage_updated FROM jobs WHERE id=?",
+            (job_id,),
+        ).fetchone()
+        assert row["stage"] == "scored"
+        assert row["prep_folder_path"] is None
+        assert row["stage_updated"] is not None
+
+    def test_writes_audit_entry(self, db, tmp_path, monkeypatch):
+        """CORE invariant of #172: every stage transition auditable."""
+        from findajob.utils import reset_prep_to_scored
+
+        self._redirect_log(monkeypatch, tmp_path)
+        job_id = insert_job(db, stage="prep_in_progress")
+
+        reset_prep_to_scored(db, job_id, reason="unit_test")
+
+        audit = db.execute(
+            "SELECT field_changed, old_value, new_value FROM audit_log WHERE job_id=?",
+            (job_id,),
+        ).fetchall()
+        assert len(audit) == 1
+        assert audit[0]["field_changed"] == "stage"
+        assert audit[0]["old_value"] == "prep_in_progress"
+        assert audit[0]["new_value"] == "scored"
+
+    def test_emits_prep_failed_reset_event(self, db, tmp_path, monkeypatch):
+        """Operator monitoring: failure resets must be visible in pipeline.jsonl."""
+        import json
+
+        from findajob.utils import reset_prep_to_scored
+
+        log_path = tmp_path / "events.jsonl"
+        self._redirect_log(monkeypatch, tmp_path)
+        job_id = insert_job(db, stage="prep_in_progress")
+
+        reset_prep_to_scored(db, job_id, reason="validation_failed")
+
+        entries = [json.loads(line) for line in log_path.read_text().splitlines()]
+        resets = [e for e in entries if e["event"] == "prep_failed_reset"]
+        assert len(resets) == 1
+        assert resets[0]["job_id"] == job_id
+        assert resets[0]["reason"] == "validation_failed"
+
+    def test_guards_materials_drafted(self, db, tmp_path, monkeypatch):
+        """Don't clobber a successful prep that raced in before the error path."""
+        from findajob.utils import reset_prep_to_scored
+
+        self._redirect_log(monkeypatch, tmp_path)
+        job_id = insert_job(db, stage="materials_drafted", folder="/keep/me")
+
+        did_reset = reset_prep_to_scored(db, job_id, reason="test_reason")
+
+        assert did_reset is False
+        row = db.execute(
+            "SELECT stage, prep_folder_path FROM jobs WHERE id=?", (job_id,)
+        ).fetchone()
+        assert row["stage"] == "materials_drafted"
+        assert row["prep_folder_path"] == "/keep/me"
+        audit = db.execute("SELECT 1 FROM audit_log WHERE job_id=?", (job_id,)).fetchall()
+        assert len(audit) == 0
+
+    def test_guards_applied(self, db, tmp_path, monkeypatch):
+        """Don't roll back a job the user already submitted."""
+        from findajob.utils import reset_prep_to_scored
+
+        self._redirect_log(monkeypatch, tmp_path)
+        job_id = insert_job(db, stage="applied")
+
+        did_reset = reset_prep_to_scored(db, job_id, reason="test_reason")
+
+        assert did_reset is False
+        row = db.execute("SELECT stage FROM jobs WHERE id=?", (job_id,)).fetchone()
+        assert row["stage"] == "applied"
+        audit = db.execute("SELECT 1 FROM audit_log WHERE job_id=?", (job_id,)).fetchall()
+        assert len(audit) == 0

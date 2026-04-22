@@ -15,7 +15,7 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 from findajob.paths import BASE
-from findajob.utils import is_valid_company, log_event, write_audit
+from findajob.utils import is_valid_company, log_event, reset_prep_to_scored, write_audit
 
 DB_PATH = f"{BASE}/data/pipeline.db"
 SA_FILE = f"{BASE}/config/gsheets_creds.json"
@@ -562,13 +562,8 @@ def main():
         # Reset deferred jobs back to scored so next poll cycle picks them up
         deferred = flagged_jobs[MAX_CONCURRENT_PREPS:]
         deferred_conn = sqlite3.connect(DB_PATH, timeout=30)
-        now = datetime.now(UTC).isoformat()
         for job in deferred:
-            deferred_conn.execute(
-                "UPDATE jobs SET stage='scored', stage_updated=?, updated_at=? WHERE id=?",
-                (now, now, job["id"]),
-            )
-        deferred_conn.commit()
+            reset_prep_to_scored(deferred_conn, job["id"], reason="deferred_over_concurrency_cap")
         deferred_conn.close()
         log_event(
             "prep_deferred",

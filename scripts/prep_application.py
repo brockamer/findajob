@@ -19,6 +19,7 @@ from findajob.utils import (
     load_env,
     log_event,
     read_file_prefix,
+    reset_prep_to_scored,
     write_audit,
 )
 
@@ -206,12 +207,7 @@ def main():
     if missing_files:
         log_event("prep_missing_candidate_files", job_id=job_id, company=company, missing="; ".join(missing_files))
         shutil.rmtree(outdir, ignore_errors=True)
-        now = datetime.now(UTC).isoformat()
-        conn.execute(
-            "UPDATE jobs SET stage='scored', prep_folder_path=NULL, stage_updated=?, updated_at=? WHERE id=?",
-            (now, now, job_id),
-        )
-        conn.commit()
+        reset_prep_to_scored(conn, job_id, reason="missing_candidate_files")
         notify(f"PREP ABORTED (missing candidate files): {company} — {title}\n{'; '.join(missing_files)}")
         return
 
@@ -468,12 +464,7 @@ Generated: {date}
             failures="; ".join(validation_failures),
         )
         shutil.rmtree(outdir, ignore_errors=True)
-        now = datetime.now(UTC).isoformat()
-        conn.execute(
-            "UPDATE jobs SET stage='scored', prep_folder_path=NULL, stage_updated=?, updated_at=? WHERE id=?",
-            (now, now, job_id),
-        )
-        conn.commit()
+        reset_prep_to_scored(conn, job_id, reason="validation_failed")
         notify(f"PREP FAILED (empty files): {company} — {title}\n{'; '.join(validation_failures)}")
         return
 
@@ -522,11 +513,7 @@ if __name__ == "__main__":
         )
         try:
             conn = sqlite3.connect(DB_PATH, timeout=30)
-            conn.execute(
-                "UPDATE jobs SET stage='scored', updated_at=? WHERE id=? AND stage='prep_in_progress'",
-                (datetime.now(UTC).isoformat(), job_id),
-            )
-            conn.commit()
+            reset_prep_to_scored(conn, job_id, reason=f"exception:{type(exc).__name__}")
             conn.close()
         except Exception:
             pass  # DB recovery is best-effort
