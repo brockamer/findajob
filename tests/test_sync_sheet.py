@@ -337,61 +337,6 @@ class TestMaterialsCompanyCell:
 
 
 # ---------------------------------------------------------------------------
-# Pending status preservation logic (replicating sync_dashboard)
-# ---------------------------------------------------------------------------
-
-
-def _resolve_pending(pending_status, stage):
-    """Replicate the sync_dashboard pending-status override logic.
-
-    Returns the status_override to pass to build_row (None means let build_row derive).
-    """
-    if not pending_status:
-        return None
-    # Clear "Flag for Prep" once prep is complete or in-flight.
-    if pending_status == "Flag for Prep" and stage in ("materials_drafted", "prep_in_progress"):
-        return None
-    # Clear "Regenerate" only once the poller has launched prep (stage=prep_in_progress).
-    # Preserve it while stage=materials_drafted so the user sees it until poller runs.
-    if pending_status == "Regenerate" and stage == "prep_in_progress":
-        return None
-    return pending_status
-
-
-class TestPendingStatusPreservation:
-    def test_flag_for_prep_scored_preserved(self):
-        assert _resolve_pending("Flag for Prep", "scored") == "Flag for Prep"
-
-    def test_flag_for_prep_materials_drafted_not_preserved(self):
-        assert _resolve_pending("Flag for Prep", "materials_drafted") is None
-
-    def test_flag_for_prep_prep_in_progress_not_preserved(self):
-        assert _resolve_pending("Flag for Prep", "prep_in_progress") is None
-
-    def test_regenerate_scored_preserved(self):
-        """Regenerate on a scored job (edge case) — preserve it for poller."""
-        assert _resolve_pending("Regenerate", "scored") == "Regenerate"
-
-    def test_regenerate_materials_drafted_preserved(self):
-        """Regenerate on materials_drafted — preserve until poller processes it."""
-        assert _resolve_pending("Regenerate", "materials_drafted") == "Regenerate"
-
-    def test_regenerate_prep_in_progress_not_preserved(self):
-        """After poller processes Regenerate → stage=prep_in_progress, clear it."""
-        assert _resolve_pending("Regenerate", "prep_in_progress") is None
-
-    def test_applied_preserved_regardless_of_stage(self):
-        assert _resolve_pending("Applied", "scored") == "Applied"
-        assert _resolve_pending("Applied", "materials_drafted") == "Applied"
-
-    def test_empty_status_returns_none(self):
-        assert _resolve_pending("", "scored") is None
-
-    def test_waitlist_status_preserved(self):
-        assert _resolve_pending("Waitlist", "scored") == "Waitlist"
-
-
-# ---------------------------------------------------------------------------
 # _assert_full_write — partial-write detection (#171)
 # ---------------------------------------------------------------------------
 
@@ -456,3 +401,90 @@ class TestAssertFullWrite:
         assert partial[0]["expected_rows"] == 9
         assert partial[0]["actual_rows"] == 2
         assert partial[0]["updated_range"] == "Dashboard!A1:N2"
+
+
+# ---------------------------------------------------------------------------
+# Regression: sync is one-way (no values().get() reads from Sheets)
+# ---------------------------------------------------------------------------
+
+
+class TestNoSheetsReads:
+    """After #61 PR-B, sync_sheet.py is DB → Sheet only. The four tab sync
+    functions must never call svc.spreadsheets().values().get() — all write
+    surfaces live in the web UI (findajob.web.routes.board_actions)."""
+
+    @pytest.fixture(autouse=True)
+    def _redirect_log(self, tmp_path, monkeypatch):
+        from findajob import utils as _utils
+
+        monkeypatch.setattr(_utils, "LOG_PATH", str(tmp_path / "events.jsonl"))
+
+    @pytest.fixture()
+    def svc(self, monkeypatch):
+        """Mock svc whose values().get() raises if anyone calls it.
+        _assert_full_write is stubbed since the mocked update() return shape
+        can't satisfy it; this test only cares about whether .get() is called.
+        """
+        import scripts.sync_sheet as ss
+
+        monkeypatch.setattr(ss, "_assert_full_write", lambda *a, **kw: None)
+        svc = MagicMock()
+        svc.spreadsheets.return_value.values.return_value.get.side_effect = AssertionError(
+            "sync_sheet.py must not read from Sheets"
+        )
+        return svc
+
+    @pytest.fixture()
+    def conn(self):
+        import sqlite3
+
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.executescript("""
+            CREATE TABLE jobs (
+                id TEXT PRIMARY KEY, fingerprint TEXT, url TEXT, title TEXT,
+                company TEXT, location TEXT DEFAULT '', source TEXT,
+                relevance_score INTEGER, fit_score REAL, probability_score REAL,
+                interview_likelihood REAL, stage TEXT, stage_updated TEXT,
+                apply_flag INTEGER DEFAULT 0, prep_folder_path TEXT,
+                reject_reason TEXT DEFAULT '', ai_notes TEXT,
+                remote_status TEXT DEFAULT '', comp_estimate TEXT DEFAULT '',
+                known_contacts TEXT DEFAULT '', user_notes TEXT DEFAULT '',
+                created_at TEXT DEFAULT (datetime('now')),
+                updated_at TEXT DEFAULT (datetime('now')),
+                dupe_of TEXT DEFAULT '', raw_jd_text TEXT,
+                score_status TEXT DEFAULT 'scored', score_flag_reason TEXT
+            );
+            CREATE TABLE audit_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_id TEXT NOT NULL, field_changed TEXT NOT NULL,
+                old_value TEXT, new_value TEXT,
+                changed_at TEXT DEFAULT (datetime('now'))
+            );
+        """)
+        yield conn
+        conn.close()
+
+    def test_sync_dashboard_no_reads(self, svc, conn):
+        from scripts.sync_sheet import sync_dashboard
+
+        sync_dashboard(svc, conn)
+        svc.spreadsheets.return_value.values.return_value.get.assert_not_called()
+
+    def test_sync_review_no_reads(self, svc, conn):
+        from scripts.sync_sheet import sync_review
+
+        sync_review(svc, conn)
+        svc.spreadsheets.return_value.values.return_value.get.assert_not_called()
+
+    def test_sync_waitlist_no_reads(self, svc, conn):
+        from scripts.sync_sheet import sync_waitlist
+
+        sync_waitlist(svc, conn)
+        svc.spreadsheets.return_value.values.return_value.get.assert_not_called()
+
+    def test_sync_applied_no_reads(self, svc, conn):
+        from scripts.sync_sheet import sync_applied
+
+        sync_applied(svc, conn)
+        svc.spreadsheets.return_value.values.return_value.get.assert_not_called()

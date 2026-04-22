@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 # ~/JobSearchPipeline/scripts/sync_sheet.py
 """
-Sync SQLite → Google Sheets.
+Sync SQLite → Google Sheets. One-way after #61 PR-B — no reads from Sheets.
   Sheet1:    Filtered job archive (score>=5, lifecycle stages, <14d old, or target company).
   Dashboard: Actionable queue (score>=7 scored/manual_review, or materials_drafted).
   Review:    Manual review triage queue (stage=manual_review, null-score scorer failures).
-             poll_flags.py reads STATUS + REJECT_REASON from Dashboard and Review tabs.
+  Waitlist:  Deferred jobs (stage=waitlisted).
+  Applied:   Post-application queue (stage in applied/interview/offer).
+STATUS + REJECT_REASON writes live in findajob.web.routes.board_actions.
 """
 
 import os
@@ -274,27 +276,6 @@ def sync_sheet1(svc, conn):
 
 
 def sync_dashboard(svc, conn):
-    # Read current Dashboard state so we don't clobber user-set values since last poll.
-    # Dashboard: col A = APPLY_FLAG, col B = REJECT_REASON, col C = fingerprint
-    try:
-        current = (
-            svc.spreadsheets()
-            .values()
-            .get(spreadsheetId=SHEET_ID, range="Dashboard!A2:C10000")
-            .execute()
-            .get("values", [])
-        )
-        # Preserve user-set status strings (non-empty, valid values only) not yet polled
-        # Only preserve user-driven statuses not yet polled.
-        # 'Ready to Apply' is system-derived (from stage=materials_drafted) — don't preserve.
-        # 'Flag for Prep' is preserved so user actions survive the next sync before poll runs.
-        VALID_STATUSES = {"Flag for Prep", "Regenerate", "Applied", "Interviewing", "Offer", "Withdrew", "Waitlist"}
-        pending_statuses = {r[2]: r[0] for r in current if len(r) >= 3 and r[0] in VALID_STATUSES}
-        pending_rejects = {r[2]: r[1] for r in current if len(r) >= 3 and r[1]}
-    except Exception:
-        pending_statuses = {}
-        pending_rejects = {}
-
     rows = conn.execute("""
         SELECT * FROM jobs
         WHERE (dupe_of = '' OR dupe_of IS NULL)
@@ -312,35 +293,13 @@ def sync_dashboard(svc, conn):
 
     sheet_rows = [DASH_HEADERS]
     for row in rows:
-        fp = row["fingerprint"]
         # Skip materials_drafted jobs whose folder no longer exists on disk
         # (moved to _applied/_rejected without DB update, or manually deleted)
         if row["stage"] == "materials_drafted":
             folder = row["prep_folder_path"]
             if not folder or not Path(folder).is_dir():
                 continue
-        # Prefer the value the user set in the sheet (not yet polled) over the DB state.
-        # Exception: once stage=materials_drafted, system-derived "Ready to Apply" wins
-        # over stale "Flag for Prep" (prep has completed, user needs to review materials).
-        # Pass None (not '') so build_row falls through to stage-derived logic.
-        pending = pending_statuses.get(fp)
-        if pending and not (
-            (pending == "Flag for Prep" and row["stage"] in ("materials_drafted", "prep_in_progress"))
-            or (pending == "Regenerate" and row["stage"] == "prep_in_progress")
-        ):
-            status_override = pending
-        else:
-            status_override = None
-        # Prefer pending (user-set) reject reason; fall back to DB value
-        reject_override = pending_rejects.get(fp, row["reject_reason"] or "")
-        sheet_row = build_row(
-            row,
-            DASH_HEADERS,
-            DASH_LOOKUP,
-            status_override=status_override,
-            reject_override=reject_override,
-            use_status=True,
-        )
+        sheet_row = build_row(row, DASH_HEADERS, DASH_LOOKUP, use_status=True)
         # Replace plain title with a HYPERLINK formula pointing to the JD URL
         title_idx = DASH_HEADERS.index("title")
         sheet_row[title_idx] = hyperlink(row["url"], row["title"])
@@ -424,21 +383,6 @@ WAITLIST_LOOKUP = {
 
 def sync_review(svc, conn):
     """Sync stage=manual_review jobs to the Review tab for human triage."""
-    # Read current Review tab state to preserve user-set values not yet polled
-    try:
-        current = (
-            svc.spreadsheets()
-            .values()
-            .get(spreadsheetId=SHEET_ID, range="Review!A2:C10000")
-            .execute()
-            .get("values", [])
-        )
-        pending_statuses = {r[2]: r[0] for r in current if len(r) >= 3 and r[0].strip()}
-        pending_rejects = {r[2]: r[1] for r in current if len(r) >= 3 and r[1].strip()}
-    except Exception:
-        pending_statuses = {}
-        pending_rejects = {}
-
     rows = conn.execute("""
         SELECT * FROM jobs
         WHERE (dupe_of = '' OR dupe_of IS NULL)
@@ -450,14 +394,13 @@ def sync_review(svc, conn):
 
     sheet_rows = [REVIEW_HEADERS]
     for row in rows:
-        fp = row["fingerprint"]
         sheet_row = []
         for header in REVIEW_HEADERS:
             sqlite_col = REVIEW_LOOKUP.get(header)
             if header == "STATUS":
-                sheet_row.append(pending_statuses.get(fp, ""))
+                sheet_row.append("")
             elif header == "REJECT_REASON":
-                sheet_row.append(safe_str(pending_rejects.get(fp, row["reject_reason"] or "")))
+                sheet_row.append(safe_str(row["reject_reason"] or ""))
             elif header == "title":
                 sheet_row.append(hyperlink(row["url"], row["title"]))
             else:
@@ -480,21 +423,6 @@ def sync_review(svc, conn):
 
 def sync_waitlist(svc, conn):
     """Sync stage=waitlisted jobs to the Waitlist tab."""
-    # Read current Waitlist tab state to preserve user-set values not yet polled
-    try:
-        current = (
-            svc.spreadsheets()
-            .values()
-            .get(spreadsheetId=SHEET_ID, range="Waitlist!A2:C10000")
-            .execute()
-            .get("values", [])
-        )
-        pending_statuses = {r[2]: r[0] for r in current if len(r) >= 3 and r[0].strip()}
-        pending_rejects = {r[2]: r[1] for r in current if len(r) >= 3 and r[1].strip()}
-    except Exception:
-        pending_statuses = {}
-        pending_rejects = {}
-
     rows = conn.execute("""
         SELECT * FROM jobs
         WHERE (dupe_of = '' OR dupe_of IS NULL)
@@ -517,14 +445,13 @@ def sync_waitlist(svc, conn):
 
     sheet_rows = [WAITLIST_HEADERS]
     for row in rows:
-        fp = row["fingerprint"]
         sheet_row = []
         for header in WAITLIST_HEADERS:
             sqlite_col = WAITLIST_LOOKUP.get(header)
             if header == "STATUS":
-                sheet_row.append(pending_statuses.get(fp, ""))
+                sheet_row.append("")
             elif header == "REJECT_REASON":
-                sheet_row.append(safe_str(pending_rejects.get(fp, row["reject_reason"] or "")))
+                sheet_row.append(safe_str(row["reject_reason"] or ""))
             elif header == "title":
                 sheet_row.append(hyperlink(row["url"], row["title"]))
             elif header == "company":
@@ -577,36 +504,14 @@ APPLIED_HEADERS = [
     "ai_notes",
 ]
 
-# STATUS values the user can set on the Applied tab. Preserved across syncs
-# until poll_flags.py observes them and transitions the DB stage.
-APPLIED_VALID_STATUSES = {"Interviewing", "Offer", "Ghosted", "Not Selected", "Withdrew"}
-
-
 def sync_applied(svc, conn):
     """Sync post-application jobs (stage in applied/interview/offer) to Applied tab.
 
-    The Applied tab is the user's UI for managing jobs they've submitted and
-    are waiting to hear back on. STATUS dropdown lets them mark Interviewing,
-    Offer, Ghosted, Not Selected, or Withdrew; poll_flags.py handles the DB
-    transitions. USER_NOTES is a free-text column that syncs back to DB.
+    Read-only view of DB state. STATUS dropdown (Interviewing/Offer/Not
+    Selected/Withdrew) and user_notes are edited via the web UI at
+    /board/applied; transitions happen in findajob.actions, not via Sheet
+    readback.
     """
-    try:
-        current = (
-            svc.spreadsheets()
-            .values()
-            .get(spreadsheetId=SHEET_ID, range="Applied!A2:I10000")
-            .execute()
-            .get("values", [])
-        )
-        # Col A=STATUS, B=REJECT_REASON, C=fingerprint, I=user_notes.
-        pending_statuses = {r[2]: r[0] for r in current if len(r) >= 3 and r[0] in APPLIED_VALID_STATUSES}
-        pending_rejects = {r[2]: r[1] for r in current if len(r) >= 3 and len(r) > 1 and r[1]}
-        pending_notes = {r[2]: r[8] for r in current if len(r) >= 9 and r[8]}
-    except Exception:
-        pending_statuses = {}
-        pending_rejects = {}
-        pending_notes = {}
-
     rows = conn.execute("""
         SELECT * FROM jobs
         WHERE (dupe_of = '' OR dupe_of IS NULL)
@@ -615,13 +520,6 @@ def sync_applied(svc, conn):
             CASE stage WHEN 'offer' THEN 0 WHEN 'interview' THEN 1 ELSE 2 END,
             updated_at DESC
     """).fetchall()
-
-    # Write back any user-edited notes that differ from DB.
-    for fp, note in pending_notes.items():
-        db_note = conn.execute("SELECT user_notes FROM jobs WHERE fingerprint=?", (fp,)).fetchone()
-        if db_note and (db_note[0] or "") != note:
-            conn.execute("UPDATE jobs SET user_notes=?, updated_at=datetime('now') WHERE fingerprint=?", (note, fp))
-    conn.commit()
 
     # applied_date from audit log — earliest transition INTO a post-application
     # stage. Some jobs skip 'applied' (e.g., recruiter contacts user first and
@@ -640,18 +538,15 @@ def sync_applied(svc, conn):
     sheet_rows = [APPLIED_HEADERS]
     for i, row in enumerate(rows, start=2):  # row index on sheet (row 1 = header)
         fp = row["fingerprint"]
-        # STATUS: prefer user-set pending over derived stage.
-        if fp in pending_statuses:
-            status = pending_statuses[fp]
-        elif row["stage"] == "offer":
+        # STATUS derived purely from DB stage (web UI is the write surface).
+        if row["stage"] == "offer":
             status = "Offer"
         elif row["stage"] == "interview":
             status = "Interviewing"
         else:
             status = ""  # stage=applied — user hasn't changed it yet
-        reject = pending_rejects.get(fp, row["reject_reason"] or "")
-        # Refresh user_notes from DB (post-writeback).
-        user_notes = conn.execute("SELECT user_notes FROM jobs WHERE id=?", (row["id"],)).fetchone()[0] or ""
+        reject = row["reject_reason"] or ""
+        user_notes = row["user_notes"] or ""
         applied_date = applied_dates.get(row["id"], "")
         # Live formula so "days_since_applied" updates without re-sync.
         days_formula = f'=IF(F{i}="","",TODAY()-F{i})' if applied_date else ""

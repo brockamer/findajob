@@ -580,6 +580,91 @@ docs (remains in archived 14b spec, as expected).
 
 ---
 
+### Task 20 — Company cell links to materials folder when it exists
+
+**Context.** Added 2026-04-22 after operator feedback during PR-B execution: the Sheet's `materials_company_cell` wraps the company name in a hyperlink to the materials viewer when `prep_folder_path` exists and is on disk. The web UI currently renders company as plain text.
+
+**Files**
+- Modify `src/findajob/web/templates/_job_row.html` (or the per-tab templates if cells are specialized)
+- Possibly modify `src/findajob/web/routes/board.py` to pass `MATERIALS_BASE_URL` / folder existence into the row context
+
+**Steps**
+- [ ] Identify the materials-viewer URL pattern the web UI already serves (`/materials/...`) and decide whether to link there or to the existing `MATERIALS_BASE_URL`-based external URL.
+- [ ] In `_job_row.html`, render company as `<a href="...">{{ row.company }}</a>` when the row has a live prep folder; plain text otherwise.
+- [ ] Apply to Dashboard, Applied, Waitlist (all tabs that currently show company for jobs that may have folders).
+- [ ] Manual check in browser on dev server.
+
+**Verification** — visual; no unit test.
+
+**Commit message**
+```
+feat(web): company cell links to materials folder when present
+
+Mirrors the Sheet's materials_company_cell behavior. Operator feedback
+during 14c PR-B — the web UI was plain text where the Sheet offered a
+one-click drill-in to resume/cover drafts.
+```
+
+---
+
+### Task 21 — STATUS + REJECT_REASON as the first two columns
+
+**Context.** Added 2026-04-22 after operator feedback. In the Sheet, STATUS is col A and REJECT_REASON is col B. The web UI currently puts these later in the row, which breaks muscle memory. Move them to cols 1–2 on Dashboard, Applied, Review, Waitlist.
+
+**Files**
+- Modify `src/findajob/web/routes/board.py` (the `_COLS` lists for each tab)
+- Modify `src/findajob/web/templates/_job_row.html` (column ordering)
+- Modify `src/findajob/web/templates/board/_status_cell.html`, `_reject_cell.html` (if they hardcode column position)
+
+**Steps**
+- [ ] Pull STATUS and REJECT_REASON to the front of each tab's `_COLS` list.
+- [ ] Update `_job_row.html` rendering to match the new order.
+- [ ] Update any per-tab header templates.
+- [ ] Verify existing HTMX targets (`closest tr`) still work (they should — row-level targets aren't column-position-sensitive).
+
+**Verification**
+- `uv run pytest tests/test_board_actions.py -v` → green (row re-render assertions match).
+- Manual: open each tab in browser; confirm col 1 = STATUS, col 2 = REJECT_REASON.
+
+**Commit message**
+```
+feat(web): STATUS + REJECT_REASON as cols 1–2 on every board tab
+
+Matches the Sheet's column layout; preserves operator muscle memory
+after the Sheets-to-web pivot. Dashboard, Applied, Review, Waitlist
+all now lead with the two action controls.
+```
+
+---
+
+### Task 22 — Board table fits standard browser width; no left-margin gutter
+
+**Context.** Added 2026-04-22 after operator feedback. Board rows overflow a standard browser window (~1440px), forcing horizontal scroll. Content below the nav bar starts ~2 inches inset from the left edge — wasted real estate.
+
+**Files**
+- Modify `src/findajob/web/templates/_nav.html` or the layout template (container/padding classes)
+- Modify `src/findajob/web/static/app.css` (design tokens, column-width rules)
+- Possibly modify per-tab templates if columns need truncation/hiding at narrow widths
+
+**Steps**
+- [ ] Remove or reduce the left gutter below the nav bar. Likely a Tailwind container class (`max-w-*`, `mx-auto`, `px-*`) — either drop to full-bleed (`w-full`) or keep container but remove `mx-auto` inset.
+- [ ] Audit column widths: give STATUS + REJECT_REASON enough room for the dropdowns; compress ancillary columns (location, remote, source) with truncation + tooltip if needed.
+- [ ] Consider hiding low-priority columns below ~1280px (responsive `hidden lg:table-cell` pattern).
+- [ ] Verify on Chromebook-typical 1366×768 and a standard 1440×900.
+
+**Verification** — visual on dev server. Take before/after screenshots.
+
+**Commit message**
+```
+fix(web): board rows fit standard browser width; drop left gutter
+
+Operator feedback — rows overflowed viewport and content started ~2in
+right of the left edge. Full-bleed layout below the nav, column-width
+audit, responsive hiding for ancillary columns.
+```
+
+---
+
 ## 3. Documentation Impact
 
 Every doc surface the plan touches. (Enumerated in §2 per task — consolidated here for review.)
