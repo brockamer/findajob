@@ -488,9 +488,7 @@ class TestResetPrepToScored:
         did_reset = reset_prep_to_scored(db, job_id, reason="test_reason")
 
         assert did_reset is False
-        row = db.execute(
-            "SELECT stage, prep_folder_path FROM jobs WHERE id=?", (job_id,)
-        ).fetchone()
+        row = db.execute("SELECT stage, prep_folder_path FROM jobs WHERE id=?", (job_id,)).fetchone()
         assert row["stage"] == "materials_drafted"
         assert row["prep_folder_path"] == "/keep/me"
         audit = db.execute("SELECT 1 FROM audit_log WHERE job_id=?", (job_id,)).fetchall()
