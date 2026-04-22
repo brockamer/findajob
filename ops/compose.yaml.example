@@ -41,7 +41,7 @@ services:
       JSP_BASE: /app
     volumes:
       - ./state/config:/app/config
-    command: python3 scripts/gmail_auth.py --mode=device
+    command: python3 scripts/gmail_auth.py
     networks:
       - findajob-network
 

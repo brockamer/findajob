@@ -118,13 +118,29 @@ Then `docker compose up -d` to restart with the new env. Full migration writeup 
 
 ## 4. Initial auth: Gmail (optional)
 
+Gmail ingestion uses a loopback OAuth flow that requires an SSH tunnel — Google's device flow (`google.com/device`) does not support Gmail scopes. If you skip this step, Gmail ingestion is automatically disabled and the pipeline falls back to Greenhouse/Ashby/Lever feeds and RapidAPI.
+
+### Prerequisites
+
+- In [Google Cloud Console](https://console.cloud.google.com/), create an OAuth 2.0 client of type **Desktop app** (not "TVs and Limited Input devices" — that type rejects Gmail scopes). Download the JSON and save it as `state/config/gmail_oauth_client.json`.
+
+### One-time token flow
+
+**Step 1 — open an SSH tunnel** (keep this terminal open):
+
 ```bash
-docker compose --profile setup run --rm gmail-auth
+ssh -L 8080:localhost:8080 <your-docker-host>
 ```
 
-You'll see `Open this URL on any browser: https://www.google.com/device`. Enter the code, sign in, grant Gmail.readonly. Token is saved to `state/config/gmail_token.json`.
+**Step 2 — in another terminal, run the auth container**:
 
-If you skip this step, Gmail ingestion is automatically disabled — the pipeline falls back to Greenhouse/Ashby/Lever feeds and RapidAPI.
+```bash
+docker compose --profile setup run --rm -p 8080:8080 gmail-auth
+```
+
+**Step 3** — copy the URL printed by the container, open it in your browser, sign in, and grant Gmail.readonly access. The container exits automatically when consent is granted.
+
+Token is saved to `state/config/gmail_token.json` (chmod 600). Close the SSH tunnel once the container exits.
 
 ## 5. Deploy
 
@@ -229,5 +245,5 @@ A local rollback via `.env` pin doesn't affect other users on `:v0.1`.
 
 - Container fails to start: `docker compose logs scheduler` usually points at the issue.
 - Supercronic prints "schedule invalid": a crontab syntax error. Check `ops/crontab` for recent changes.
-- Gmail ingestion silently disabled: re-run `docker compose --profile setup run --rm gmail-auth` to refresh the token.
+- Gmail ingestion silently disabled: re-run the token flow from step 4 (`ssh -L 8080:localhost:8080 <host>` + `docker compose --profile setup run --rm -p 8080:8080 gmail-auth`).
 - For anything else, open an issue at https://github.com/brockamer/findajob/issues.

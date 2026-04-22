@@ -197,7 +197,7 @@ Two modes:
 Writes token to `/app/config/gmail_token.json` (bind-mounted, chmod 600). Existing scripts (`triage.py`, `notify.py`, `backfill_jd.py`) check for token file presence and skip Gmail work gracefully when absent — no hard failure. This makes Gmail opt-in: the credential file IS the enable flag.
 
 One-time Google Cloud setup (Daniel's task, documented):
-1. Create OAuth client of type "TVs and Limited Input devices"
+1. Create OAuth client of type "TVs and Limited Input devices" _(historically incorrect — this type rejects Gmail scopes with `invalid_scope`; use Desktop app. Fixed in #115.)_
 2. Add dogfooders as test users (100-user limit is far beyond need)
 3. Download client JSON to each user's `state/config/gmail_oauth_client.json`
 
