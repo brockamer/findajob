@@ -215,7 +215,7 @@ poll_flags.py reads this tab every 10 min. Once the user marks STATUS=Applied, t
 | M | ai_notes | |
 | N | date_found | |
 
-**STATUS dropdown options (Dashboard — pre-application):** `Flag for Prep` → `Prep in Progress` *(system)* → `Ready to Apply` *(system)* → `Applied` *(user)*. Also: `Regenerate` (re-runs prep), `Waitlist` (defers the job). Once marked `Applied`, the poller sets stage=applied and the row moves to the Applied tab where `Interviewing` / `Offer` / `Ghosted` / `Not Selected` / `Withdrew` are set.
+**STATUS dropdown options (Dashboard — pre-application):** `Flag for Prep` → `Prep in Progress` *(system)* → `Ready to Apply` *(system)* → `Applied` *(user)*. Also: `Regenerate` (re-runs prep), `Waitlist` (defers the job). Once marked `Applied`, the row moves to the Applied tab where `Interviewing` / `Offer` / `Not Selected` / `Withdrew` are set.
 
 **REJECT_REASON:** behavior depends on STATUS. If STATUS = `Not Selected`: company rejection → `stage=not_selected`, no feedback_log, folder stays in `_applied/`. Otherwise: user rejection → `stage=rejected`, feedback_log entry, folder moved to `_rejected/`.
 
@@ -224,7 +224,7 @@ Filter: `stage IN (applied, interview, offer)`. UI for managing jobs that have b
 
 | Col | Field | Notes |
 |---|---|---|
-| A | STATUS | Dropdown: `Interviewing` / `Offer` / `Ghosted` / `Not Selected` / `Withdrew` |
+| A | STATUS | Dropdown: `Interviewing` / `Offer` / `Not Selected` / `Withdrew` |
 | B | REJECT_REASON | Dropdown — same 11 options as Dashboard |
 | C | fingerprint | Hidden |
 | D | title | Hyperlink to job URL |
@@ -239,7 +239,7 @@ Filter: `stage IN (applied, interview, offer)`. UI for managing jobs that have b
 | M | comp_estimate | |
 | N | ai_notes | Read-only (scorer output) |
 
-Row-color priority (first match wins): Offer→gold, Interviewing→purple, `Ghosted` or `>=21 days`→gray, 14–20d→red, 7–13d→yellow, 0–6d→green. `Ghosted` is visual-only — stage stays `applied` so the row doesn't leave the tab; flip to `Not Selected` when giving up.
+Row-color priority (first match wins): Offer→gold, Interviewing→purple, `>=21 days`→gray (silent = likely ghosted), 14–20d→red, 7–13d→yellow, 0–6d→green. Flip to `Not Selected` when giving up on a silent row.
 
 ### Review — Manual Review Triage (A–H)
 Filter: `stage = manual_review` (scorer flagged for human review, e.g., null scores or schema failures).

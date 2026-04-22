@@ -482,7 +482,7 @@ def sync_waitlist(svc, conn):
 
 
 # ── Applied: post-application queue (stage in applied/interview/offer) ───────
-# Col A: STATUS (Interviewing/Offer/Ghosted/Not Selected/Withdrew),
+# Col A: STATUS (Interviewing/Offer/Not Selected/Withdrew),
 # Col B: REJECT_REASON, Col C: fingerprint (hidden).
 # Title → hyperlink to JD; Company → hyperlink to materials viewer folder
 # (when FINDAJOB_MATERIALS_BASE_URL is set and the row's stage has a folder).
