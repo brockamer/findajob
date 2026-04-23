@@ -130,10 +130,12 @@ When the pipeline runs inside the `ghcr.io/brockamer/findajob` image, paths shif
 <repo>/src/findajob/paths.py                # central path resolver — from findajob.paths import BASE, AICHAT, PANDOC
 <repo>/src/findajob/utils.py                # shared utilities: log_event(), write_audit(), load_env()
 <repo>/src/findajob/cleaning.py             # normalize, fingerprint, clean_title, clean_company
+<repo>/src/findajob/ingest.py               # ingest_manual_job() — shared entry point for the /ingest/ web form (#62)
 <repo>/src/findajob/fetchers.py             # Greenhouse, RapidAPI, Gmail job fetching
 <repo>/src/findajob/scoring.py              # score_job(), _build_feedback_block()
 <repo>/src/findajob/scorer_prefilter.py     # deterministic pre-filter (Stage 1 + 2)
 <repo>/src/findajob/web/app.py               # FastAPI app factory (create_app)
+<repo>/src/findajob/web/routes/ingest.py     # GET /ingest/ form + POST /ingest/manual handler
 <repo>/src/findajob/web/routes.py            # /healthz, /folders/<stage>/<name>/*, /files/* routes
 <repo>/src/findajob/web/folder_resolver.py   # resolves stage→filesystem path, path-traversal guards
 <repo>/src/findajob/web/templates/           # Jinja2 templates (index.html, folder.html, viewer.html)
@@ -145,7 +147,7 @@ When the pipeline runs inside the `ghcr.io/brockamer/findajob` image, paths shif
 <repo>/scripts/setup_sheets.py             # one-time sheet formatting (idempotent)
 <repo>/scripts/prep_application.py          # on-demand LLM material generation
 <repo>/scripts/find_contacts.py             # LinkedIn contact matching + outreach drafts
-<repo>/scripts/ingest_form.py               # Google Form → DB ingestion
+<repo>/scripts/ingest_form.py               # Google Form → DB ingestion (retired: timer disabled in #62; kept for manual runs)
 <repo>/scripts/notify.py                    # ntfy push notifications (8 subcommands incl. send-raw, scoreboard)
 <repo>/scripts/rename_folders.py            # rename company folders to new format (idempotent)
 
@@ -268,9 +270,11 @@ return zero LinkedIn results. Validate each query manually before committing.
 
 > **Web UI is the write surface.** As of #61 PR-B, `sync_sheet.py` writes DB
 > state to the Sheet one-way and never reads from it. Operators drive every
-> STATUS + REJECT_REASON transition through `/board/*`. The Sheet remains as
-> a read-only synced view for mobile/glance use; `sync_sheet.py` retires in
-> 14d (#14). Sheet1 is already superseded by `/board/archive` (#60).
+> STATUS + REJECT_REASON transition through `/board/*`. As of #62 (14d), the
+> `/ingest/` web form replaces the Google Form + `ingest_form.py` poll loop.
+> The Sheet remains a read-only synced view for mobile/glance use until
+> `sync_sheet.py` itself is retired — the remaining step under the parent
+> #14. Sheet1 is already superseded by `/board/archive` (#60).
 
 **Sheet1** — filtered archive (A–N), archival filter:
 Jobs appear if: `score>=5` OR `stage in lifecycle stages` OR `age < 14 days` OR `target company`.

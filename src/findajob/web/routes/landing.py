@@ -43,7 +43,7 @@ def landing(
 
 
 _PLACEHOLDERS = [
-    ("/ingest/", "Ingest", "Manual job form and synthetic JD submission.", "#79"),
+    # /ingest/ promoted to a real route in src/findajob/web/routes/ingest.py (#62).
     ("/tools/", "Tools", "Doctor, stats, scoreboard.", ""),
     ("/config/", "Config", "Roles, prefilter rules, feedback tuning.", ""),
     ("/docs/", "Docs", "User-facing documentation.", ""),

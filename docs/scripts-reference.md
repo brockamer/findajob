@@ -121,17 +121,13 @@ Reads `data/connections.csv`, finds LinkedIn connections at the target company, 
 
 ---
 
-### `ingest_form.py`
-**Run by:** scheduler (every 30 min)
+### `ingest_form.py` (retired)
+**Run by:** manually, only. Scheduled timer removed in #62.
 **No arguments.**
 
-Polls the Google Form responses sheet for new rows. For each unprocessed row:
-1. Creates a fingerprint from `url|company|title`
-2. Deduplicates against existing DB jobs
-3. Inserts as `source='manual_form'`, `stage='scored'`, `relevance_score=8`
-4. Writes 'Processed: {timestamp}' to col J in the responses sheet
-5. If "Generate folder" column = yes/y/true → calls `prep_application.py`
-6. Calls `sync_sheet.py` after all ingestions
+Superseded by the `/ingest/` web form (`src/findajob/web/routes/ingest.py`), which is now the operator write surface for manual job submissions. New submissions use `source='web_manual'`.
+
+The script is kept in place as a manual-run fallback in case any Google Form responses need to be drained after the web form ships; it still polls the Form responses sheet and writes rows with `source='manual_form'`. It can be removed once the Google Form is fully decommissioned.
 
 ---
 

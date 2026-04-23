@@ -13,16 +13,19 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 ### Added
 
 - **Web UI is now the primary write surface for the board.** Every STATUS and REJECT_REASON action that previously required editing the Google Sheet — Flag for Prep, Applied, Interviewing, Offer, Withdrew, Not Selected, Waitlist, Reactivate, Promote, Regenerate, Reject — now has a POST handler at `/board/jobs/{fingerprint}/{action}`, wired up to Alpine-flavored HTMX dropdowns on each board tab. The Applied tab's `user_notes` column edits through `POST /board/jobs/{fingerprint}/notes` with an 800ms debounce (#61 PR-A).
+- **Manual JD ingest moved from Google Form to web UI.** The new `/ingest/` page replaces the Google Form + `scripts/ingest_form.py` polling loop — paste company / title / URL / full JD text and the row lands on the Dashboard at `stage=scored`, `relevance_score=8`, `source='web_manual'`. The full-JD-text field is required, which covers JS-rendered SPAs and auth-walled postings that scrape poorly (absorbs #79); `prep_application.py` uses the pasted JD directly and skips URL refetch. A "Generate prep folder immediately" checkbox dispatches `prep_application.py` subject to the same 3-job concurrency cap as the Dashboard's Flag-for-Prep button. The form template includes a disabled Speculative-mode tab linking to #131 for the follow-up cold-outreach flow (#62).
 
 ### Changed
 
 - **Google Sheet is now one-way (DB → Sheet).** `sync_sheet.py` no longer reads user edits back from any tab; the four `values().get()` calls (Dashboard, Applied, Review, Waitlist) are deleted, along with the `pending_statuses` / `pending_rejects` / `pending_notes` preservation logic. The Sheet remains available as a read-only synced view; operators drive the pipeline from `/board/*` in the web UI (#61 PR-B).
 - **`poll_flags.py` removed; replaced by `scripts/watchdog.py`.** The 10-minute cron's only remaining responsibility is to roll stuck `prep_in_progress` jobs back to `scored` after 60 min. Every transition handler (handle_rejection, handle_not_selected, handle_waitlist, handle_reactivate, promote_to_scored, notify_waitlist_resurface, reset_prep_to_scored) now lives in `src/findajob/actions.py` and is called from `findajob.web.routes.board_actions` (#61 PR-B).
 - **Applied tab drops the `Ghosted` status option.** With the Sheet no longer preserving user-only flags across syncs, the existing 21-day row-age gray-coloring rule replaces it. Operators who want to act on a quiet row flip to `Not Selected` (#61 PR-B).
+- **`scripts/ingest_form.py` timer retired.** The `*/30` crontab entry is commented out; the script is kept in place as a manual-run fallback for draining any leftover Google Form responses until the Form itself is decommissioned. New submissions should use the `/ingest/` web form (#62).
 
 ### Migration required
 
 - Crontab entry changes from `scripts/poll_flags.py` to `scripts/watchdog.py`. Operators pulling `:latest` pick up the swap automatically at container restart — no manual action needed. Sheet edits made during the pull window (if any) are ignored; operators should use the web UI for any queued transitions.
+- `*/30 ingest_form.py` entry in `ops/crontab` is commented out; operators pulling `:latest` stop seeing the 30-min Google Form poll at container restart. The `/ingest/` web form replaces it. No state migration required — existing `manual_form`-source rows keep their semantics, new rows land as `web_manual` (#62).
 - `jobs` gains a nullable `loose_fingerprint TEXT` column and `idx_jobs_loose_fingerprint` index for Tier 2 dedup (#182). Fresh deploys get the column from `scripts/init_db.py` on first container start. Existing stacks must run `python3 scripts/migrate_add_loose_fingerprint.py` once after pulling `:latest` — the script is idempotent, backfills existing rows by recomputing `loose_fingerprint(title, company)`, and preserves all other state.
 
 ### Fixed

@@ -173,7 +173,7 @@ Once the validation triage passes:
 # Enable all systemd timers
 systemctl --user enable --now findajob-triage.timer
 systemctl --user enable --now findajob-poller.timer
-systemctl --user enable --now findajob-form-ingest.timer
+# findajob-form-ingest.timer retired in #62 — the /ingest/ web UI replaces it.
 systemctl --user enable --now findajob-notify-stats.timer
 systemctl --user enable --now findajob-notify-health.timer
 systemctl --user enable --now findajob-notify-issues.timer

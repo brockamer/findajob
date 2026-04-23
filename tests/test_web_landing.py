@@ -49,7 +49,7 @@ def test_landing_nav_home_active(client: TestClient) -> None:
 @pytest.mark.parametrize(
     "path,label,issue",
     [
-        ("/ingest/", "Ingest", "#79"),
+        # /ingest/ promoted from placeholder to a real route in #62 — covered by tests/test_web_ingest.py.
         ("/tools/", "Tools", ""),
         ("/config/", "Config", ""),
         ("/docs/", "Docs", ""),

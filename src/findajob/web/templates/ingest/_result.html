@@ -1,0 +1,15 @@
+{# Ingest submit result partial — swapped into #ingest-result by HTMX. #}
+{% set styles = {
+  "success": "border-emerald-300 bg-emerald-50 text-emerald-900",
+  "duplicate": "border-amber-300 bg-amber-50 text-amber-900",
+  "error": "border-red-300 bg-red-50 text-red-900",
+} %}
+<div data-outcome="{{ outcome }}"
+     class="border rounded p-3 text-sm {{ styles.get(outcome, 'border-slate-300 bg-slate-50 text-slate-900') }}">
+  <p>{{ message }}</p>
+  {% if outcome == "success" %}
+    <p class="mt-2">
+      <a href="/board/dashboard" class="underline font-medium">View on Dashboard</a>
+    </p>
+  {% endif %}
+</div>
