@@ -153,3 +153,11 @@ def test_inject_populates_companies_of_interest_from_tier1(client: TestClient, t
     assert "Community First Coalition" in coi
     # Tier 2 NOT included
     assert "Regional Care Network" not in coi
+
+
+def test_tools_page_links_to_onboarding_rerun(client: TestClient) -> None:
+    resp = client.get("/tools/")
+    assert resp.status_code == 200
+    body = resp.text
+    assert "/onboarding/?mode=rerun" in body
+    assert "Run onboarding interview" in body
