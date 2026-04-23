@@ -22,9 +22,7 @@ The script writes 'Processed: <timestamp>' to col J (column 10) of each handled 
 Run manually or add to the poller systemd unit.
 """
 
-import hashlib
 import os
-import re
 import sqlite3
 import subprocess
 import sys
@@ -33,6 +31,7 @@ from datetime import UTC, datetime
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
+from findajob.cleaning import fingerprint, is_coarse_location, loose_fingerprint
 from findajob.paths import BASE
 from findajob.utils import load_env, log_event
 
@@ -59,39 +58,8 @@ def clean(s):
     return (s or "").strip()
 
 
-# Fingerprint — must match triage.py exactly so form-submitted jobs
-# deduplicate against API-ingested jobs.
-_ABBREVIATIONS = {
-    r"\bsr\.?\b": "senior",
-    r"\bjr\.?\b": "junior",
-    r"\bmgr\.?\b": "manager",
-    r"\bdir\.?\b": "director",
-    r"\beng\.?\b": "engineer",
-    r"\bengr\.?\b": "engineer",
-    r"\bops\.?\b": "operations",
-    r"\binfra\.?\b": "infrastructure",
-    r"\bvp\b": "vice president",
-    r"\bsvp\b": "senior vice president",
-    r"\bhw\b": "hardware",
-    r"\bsw\b": "software",
-    r"\bdc\b": "data center",
-    r"\bmfg\b": "manufacturing",
-    r"\bpgm\b": "program",
-    r"\btpm\b": "technical program manager",
-}
-
-
-def _normalize(text):
-    text = (text or "").lower().strip()
-    for pattern, replacement in _ABBREVIATIONS.items():
-        text = re.sub(pattern, replacement, text)
-    text = re.sub(r"[^a-z0-9 ]", " ", text)
-    return re.sub(r"\s+", " ", text).strip()
-
-
-def fingerprint(title, company, location=""):
-    key = _normalize(title) + "|" + _normalize(company) + "|" + _normalize(location)
-    return hashlib.sha256(key.encode()).hexdigest()[:16]
+# Fingerprint + normalize live in findajob.cleaning — single source of truth
+# shared with triage.py. Previously duplicated here and drifted.
 
 
 def main():
@@ -152,12 +120,20 @@ def main():
             continue
 
         fp = fingerprint(title, company, location)
+        lfp = loose_fingerprint(title, company)
         now = datetime.now(UTC).isoformat()
 
-        # Check for duplicate (fingerprint match, then URL fallback)
+        # Check for duplicate (fingerprint match, then URL fallback, then
+        # Tier 2 loose match when either side has a coarse location — #182).
         existing = conn.execute("SELECT id FROM jobs WHERE fingerprint=?", (fp,)).fetchone()
         if not existing and url:
             existing = conn.execute("SELECT id FROM jobs WHERE url=?", (url,)).fetchone()
+        if not existing:
+            incoming_coarse = is_coarse_location(location)
+            for row in conn.execute("SELECT id, location FROM jobs WHERE loose_fingerprint=?", (lfp,)).fetchall():
+                if incoming_coarse or is_coarse_location(row["location"] or ""):
+                    existing = row
+                    break
         if existing:
             print(f"Row {i + 2}: duplicate — {company} / {title} already in DB")
             updates.append((i + 2, f"Duplicate: already in DB as {existing['id']}"))
@@ -167,13 +143,13 @@ def main():
         conn.execute(
             """
             INSERT INTO jobs (
-                id, fingerprint, url, title, company, location, source,
+                id, fingerprint, loose_fingerprint, url, title, company, location, source,
                 remote_status, known_contacts, ai_notes,
                 relevance_score, stage, apply_flag,
                 created_at, updated_at, dupe_of
-            ) VALUES (?, ?, ?, ?, ?, ?, 'manual_form', ?, ?, ?, 8, 'scored', 0, ?, ?, '')
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 'manual_form', ?, ?, ?, 8, 'scored', 0, ?, ?, '')
         """,
-            (job_id, fp, url, title, company, location, remote or "Unknown", contacts, notes, now, now),
+            (job_id, fp, lfp, url, title, company, location, remote or "Unknown", contacts, notes, now, now),
         )
         conn.commit()
 

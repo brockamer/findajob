@@ -11,6 +11,7 @@ conn.executescript("""
 CREATE TABLE IF NOT EXISTS jobs (
     id TEXT PRIMARY KEY,
     fingerprint TEXT UNIQUE NOT NULL,
+    loose_fingerprint TEXT,
     url TEXT NOT NULL,
     title TEXT NOT NULL,
     company TEXT NOT NULL,
@@ -54,6 +55,7 @@ CREATE TABLE IF NOT EXISTS jobs (
 );
 
 CREATE INDEX IF NOT EXISTS idx_jobs_fingerprint ON jobs(fingerprint);
+CREATE INDEX IF NOT EXISTS idx_jobs_loose_fingerprint ON jobs(loose_fingerprint);
 CREATE INDEX IF NOT EXISTS idx_jobs_stage ON jobs(stage);
 CREATE INDEX IF NOT EXISTS idx_jobs_apply_flag ON jobs(apply_flag);
 CREATE INDEX IF NOT EXISTS idx_jobs_updated ON jobs(updated_at);

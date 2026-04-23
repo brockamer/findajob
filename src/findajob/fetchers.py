@@ -188,7 +188,7 @@ def fetch_greenhouse_jobs(feed_urls_path):
             for j in gh_jobs:
                 jobs.append(
                     {
-                        "title": j.get("title", ""),
+                        "title": clean_title(j.get("title", "")),
                         "company": clean_company(j.get("company_name", "") or slug),
                         "url": j.get("absolute_url", ""),
                         "location": (j.get("location") or {}).get("name", ""),
@@ -283,7 +283,7 @@ def fetch_ashby_jobs(feed_urls_path):
                     loc = loc.get("name", "")
                 jobs.append(
                     {
-                        "title": j.get("title", ""),
+                        "title": clean_title(j.get("title", "")),
                         "company": clean_company(display_name),
                         "url": j.get("jobUrl", ""),
                         "location": loc,
@@ -331,7 +331,7 @@ def fetch_lever_jobs(feed_urls_path):
                 cats = j.get("categories", {})
                 jobs.append(
                     {
-                        "title": j.get("text", ""),
+                        "title": clean_title(j.get("text", "")),
                         "company": clean_company(display_name),
                         "url": j.get("hostedUrl", ""),
                         "location": cats.get("location", ""),

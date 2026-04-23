@@ -18,7 +18,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 
-from findajob.cleaning import fingerprint, normalize
+from findajob.cleaning import fingerprint, is_coarse_location, loose_fingerprint, normalize
 from findajob.cost_tracking import log_call
 from findajob.fetchers import (
     fetch_ashby_jobs,
@@ -280,6 +280,7 @@ def main():
             continue
 
         fp = fingerprint(job["title"], job.get("company", ""), job.get("location", ""))
+        lfp = loose_fingerprint(job["title"], job.get("company", ""))
 
         existing = conn.execute("SELECT id FROM jobs WHERE fingerprint = ?", (fp,)).fetchone()
 
@@ -287,6 +288,27 @@ def main():
         # due to cleaning rule updates (same URL, different fingerprint).
         if not existing and job.get("url"):
             existing = conn.execute("SELECT id FROM jobs WHERE url = ?", (job["url"],)).fetchone()
+
+        # Tier 2 (#182 Bug C): cross-source syndication. When incoming OR any
+        # existing same-(company,title) row has a coarse location, treat as
+        # duplicate so the same req posted to Greenhouse ("US") and LinkedIn
+        # ("Barstow, TX") dedupes. Distinct-city reqs (site managers in
+        # different cities) still produce distinct strict fingerprints and
+        # never reach this branch.
+        if not existing:
+            incoming_coarse = is_coarse_location(job.get("location", ""))
+            loose_matches = conn.execute("SELECT id, location FROM jobs WHERE loose_fingerprint = ?", (lfp,)).fetchall()
+            for row in loose_matches:
+                if incoming_coarse or is_coarse_location(row["location"] or ""):
+                    existing = row
+                    log_event(
+                        "dedupe_loose_match",
+                        title=job["title"][:80],
+                        company=job.get("company", "")[:80],
+                        incoming_location=job.get("location", "")[:80],
+                        existing_location=(row["location"] or "")[:80],
+                    )
+                    break
 
         if existing:
             conn.execute(
@@ -301,12 +323,16 @@ def main():
 
         conn.execute(
             """
-            INSERT INTO jobs (id, fingerprint, url, title, company, location, source, stage, stage_updated, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'discovered', ?, ?)
+            INSERT INTO jobs (
+                id, fingerprint, loose_fingerprint, url, title, company,
+                location, source, stage, stage_updated, created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'discovered', ?, ?)
         """,
             (
                 job_id,
                 fp,
+                lfp,
                 job["url"],
                 job["title"],
                 job.get("company", ""),
@@ -330,9 +356,19 @@ def main():
                 job["company"] = resolved
                 # Recompute fingerprint with resolved company and check for dupes
                 new_fp = fingerprint(job["title"], job["company"], job.get("location", ""))
+                new_lfp = loose_fingerprint(job["title"], job["company"])
                 existing_resolved = conn.execute(
                     "SELECT id FROM jobs WHERE fingerprint = ? AND id != ?", (new_fp, job_id)
                 ).fetchone()
+                if not existing_resolved:
+                    incoming_coarse = is_coarse_location(job.get("location", ""))
+                    loose_matches = conn.execute(
+                        "SELECT id, location FROM jobs WHERE loose_fingerprint = ? AND id != ?", (new_lfp, job_id)
+                    ).fetchall()
+                    for row in loose_matches:
+                        if incoming_coarse or is_coarse_location(row["location"] or ""):
+                            existing_resolved = row
+                            break
                 if existing_resolved:
                     # A copy with the resolved company already exists — mark this one as dupe
                     conn.execute(
@@ -351,7 +387,10 @@ def main():
                     dupe_count += 1
                     continue
                 # No dupe — update company and fingerprint on the inserted row
-                conn.execute("UPDATE jobs SET company=?, fingerprint=? WHERE id=?", (job["company"], new_fp, job_id))
+                conn.execute(
+                    "UPDATE jobs SET company=?, fingerprint=?, loose_fingerprint=? WHERE id=?",
+                    (job["company"], new_fp, new_lfp, job_id),
+                )
                 conn.commit()
             else:
                 # Company unresolvable — reject immediately, don't waste a scorer call

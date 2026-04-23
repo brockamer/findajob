@@ -245,6 +245,17 @@ Every `company_match()` function must guard: `if not s or not c: return False`
 API title and company fields contain appended metadata (location, salary, recency flags).
 `clean_title()` and `clean_company()` must be applied at every ingest path before storing.
 
+### Two-Tier Dedup
+Ingest runs two tiers. **Tier 1** is the strict `fingerprint(title, company, location)` hash;
+**Tier 2** is `loose_fingerprint(title, company)`, checked only when the incoming row OR any
+existing same-(company, title) row has a coarse location (empty, country-only, or bare
+"Remote"). This dedupes cross-source syndication (Greenhouse "US" vs LinkedIn "Barstow, TX")
+while keeping genuinely distinct-city reqs (site managers in different cities) as separate
+rows. All location comparisons route through `normalize_location()`, which strips
+`(On-site)`/`(Remote)`/`(Hybrid)` suffixes and trailing country codes. Both `scripts/triage.py`
+and `scripts/ingest_form.py` use the centralized helpers from `findajob.cleaning` — do not
+reintroduce drifted local `_normalize`/`fingerprint` copies.
+
 ### LinkedIn JD Fetch
 Direct curl to LinkedIn always returns auth wall. Always use RapidAPI `/v2/linkedin/get?id=`.
 This applies to both `linkedin_jobsapi` and `gmail_linkedin` sources.

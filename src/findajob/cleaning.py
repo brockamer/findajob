@@ -32,8 +32,63 @@ def normalize(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+# Parenthetical work-mode tags LinkedIn appends to location: "(On-site)",
+# "(Remote)", "(Hybrid)". Strip before normalizing so re-ingests with/without
+# the tag produce stable fingerprints (#182 Bug B).
+_LOC_WORK_MODE_RE: re.Pattern[str] = re.compile(r"\s*\((?:on[- ]?site|remote|hybrid)\)\s*", re.IGNORECASE)
+
+# Trailing country suffixes: ", United States" / ", US" / ", Canada" / ", UK".
+# LinkedIn appends these inconsistently — strip so fingerprints stay stable.
+_LOC_TRAILING_COUNTRY_RE: re.Pattern[str] = re.compile(
+    r",\s*(?:united\s+states|usa?|canada|uk|united\s+kingdom)\s*$", re.IGNORECASE
+)
+
+# Tokens that by themselves indicate a coarse (country-level or unknown)
+# location — used by is_coarse_location().
+#
+# Known trade-off: "Remote, US" and "Remote, Canada" both normalize to
+# "remote" and produce identical fingerprints, so cross-border remote
+# postings of the same (company, title) collapse into one row. Acceptable
+# for a US-based candidate; cross-border work-authorization cases would
+# need a richer location model to preserve distinctness.
+_COARSE_LOCATION_TOKENS: frozenset[str] = frozenset(
+    {"", "us", "usa", "united states", "canada", "uk", "united kingdom", "eu", "europe", "remote"}
+)
+
+
+def normalize_location(location: str) -> str:
+    """Canonicalize a location string for fingerprinting.
+
+    Strips LinkedIn work-mode parentheticals and trailing country suffixes
+    that vary across ingest runs. Returns the lowercase normalized form.
+    """
+    if not location:
+        return ""
+    s = _LOC_WORK_MODE_RE.sub(" ", location)
+    s = _LOC_TRAILING_COUNTRY_RE.sub("", s)
+    return normalize(s)
+
+
+def is_coarse_location(location: str) -> bool:
+    """True if location is country-level or empty — triggers Tier 2 loose dedup.
+
+    Specific city-level locations ("Barstow, TX", "Menlo Park, CA") are NOT
+    coarse, so distinct-location reqs (e.g., site managers in different cities)
+    still produce distinct fingerprints.
+    """
+    return normalize_location(location) in _COARSE_LOCATION_TOKENS
+
+
 def fingerprint(title: str, company: str, location: str = "") -> str:
-    key = normalize(title) + "|" + normalize(company) + "|" + normalize(location)
+    """Tier 1 strict fingerprint — exact location match required."""
+    key = normalize(title) + "|" + normalize(company) + "|" + normalize_location(location)
+    return hashlib.sha256(key.encode()).hexdigest()[:16]
+
+
+def loose_fingerprint(title: str, company: str) -> str:
+    """Tier 2 loose fingerprint — (title, company) only, for cross-source
+    syndication where one side has a coarse location (#182 Bug C)."""
+    key = normalize(title) + "|" + normalize(company)
     return hashlib.sha256(key.encode()).hexdigest()[:16]
 
 
@@ -57,11 +112,19 @@ _TITLE_SPLIT_PATTERNS: re.Pattern[str] = re.compile(
 
 
 def clean_title(raw_title: str) -> str:
-    """Strip job board metadata appended to title field by Indeed/Jobs API."""
+    """Strip job board metadata appended to title field by Indeed/Jobs API.
+
+    Also collapses all whitespace runs (including NBSP U+00A0) to single
+    spaces and strips leading/trailing whitespace — str.strip() with no
+    args misses NBSP (#182 Bug A).
+    """
     m = _TITLE_SPLIT_PATTERNS.search(raw_title)
     if m:
         raw_title = raw_title[: m.start()]
-    return raw_title.strip(" ·-–")
+    # Collapse any-whitespace runs (incl. NBSP) to a single space, then strip
+    # both whitespace and the board-separator chars that may remain at edges.
+    collapsed = re.sub(r"\s+", " ", raw_title, flags=re.UNICODE)
+    return collapsed.strip(" ·-–\t\xa0")
 
 
 # Company field from LinkedIn API often has location/metadata appended:
