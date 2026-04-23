@@ -81,3 +81,75 @@ def test_onboarding_prompt_endpoint_returns_role_text(client: TestClient) -> Non
     assert resp.headers["content-type"].startswith("text/plain")
     # The interview role begins with this heading line
     assert "Onboarding Interviewer v2" in resp.text
+
+
+# ---------------------------------------------------------------------------
+# POST /onboarding/inject
+# ---------------------------------------------------------------------------
+
+from pathlib import Path as _Path  # noqa: E402
+
+_FIXTURE_DIR = _Path(__file__).parent / "fixtures" / "onboarding"
+
+
+def _read_fixture(name: str) -> str:
+    return (_FIXTURE_DIR / name).read_text(encoding="utf-8")
+
+
+def test_inject_clean_emission_redirects_to_board(client: TestClient, tmp_path: _Path) -> None:
+    blob = _read_fixture("alice-doe-clean-emission.txt")
+    resp = client.post("/onboarding/inject", data={"emission": blob})
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/board/dashboard"
+    # Files on disk under the TestClient's base_root (tmp_path)
+    assert (tmp_path / "candidate_context" / "profile.md").is_file()
+    assert (tmp_path / "config" / "target_companies.md").is_file()
+    assert (tmp_path / "config" / "companies_of_interest.txt").is_file()
+    assert (tmp_path / "data" / ".onboarding-complete").is_file()
+
+
+def test_inject_missing_block_rerenders_with_error(client: TestClient, tmp_path: _Path) -> None:
+    blob = _read_fixture("alice-doe-clean-emission.txt")
+    # Strip one block
+    lines = blob.splitlines(keepends=True)
+    stripped = []
+    skip = False
+    for line in lines:
+        if "<<<FILE: in_domain_patterns.yaml>>>" in line:
+            skip = True
+        if not skip:
+            stripped.append(line)
+        if "<<<END FILE: in_domain_patterns.yaml>>>" in line:
+            skip = False
+    broken = "".join(stripped)
+
+    resp = client.post("/onboarding/inject", data={"emission": broken})
+    assert resp.status_code == 400
+    body = resp.text
+    assert "in_domain_patterns.yaml" in body
+    # Textarea content preserved
+    assert "Metro Continuum of Care" in body
+    # No sentinel written
+    assert not (tmp_path / "data" / ".onboarding-complete").exists()
+    # No files written
+    assert not (tmp_path / "candidate_context" / "profile.md").exists()
+
+
+def test_inject_empty_paste_rerenders_with_error(client: TestClient, tmp_path: _Path) -> None:
+    resp = client.post("/onboarding/inject", data={"emission": ""})
+    assert resp.status_code == 400
+    body = resp.text
+    assert "missing" in body.lower()
+    assert not (tmp_path / "data" / ".onboarding-complete").exists()
+
+
+def test_inject_populates_companies_of_interest_from_tier1(client: TestClient, tmp_path: _Path) -> None:
+    blob = _read_fixture("alice-doe-clean-emission.txt")
+    resp = client.post("/onboarding/inject", data={"emission": blob})
+    assert resp.status_code == 303
+    coi = (tmp_path / "config" / "companies_of_interest.txt").read_text()
+    assert "Metro Health Authority" in coi
+    assert "Sample Benefit Corporation" in coi
+    assert "Community First Coalition" in coi
+    # Tier 2 NOT included
+    assert "Regional Care Network" not in coi

@@ -1,14 +1,13 @@
-"""Onboarding NUX: landing page + prompt endpoint + paste-back inject (#148).
-
-Two GET routes land in this task; POST /onboarding/inject is added in Task 7.
-"""
+"""Onboarding NUX: landing page + prompt endpoint + paste-back inject (#148)."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi import APIRouter, Form, Request
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
+
+from findajob.onboarding import inject, parse_emission
 
 router = APIRouter()
 
@@ -43,3 +42,33 @@ def onboarding_prompt(request: Request) -> PlainTextResponse:
     prompt_path = _interview_prompt_path(base_root)
     text = prompt_path.read_text(encoding="utf-8")
     return PlainTextResponse(content=text, media_type="text/plain; charset=utf-8")
+
+
+@router.post("/onboarding/inject", response_model=None)
+def onboarding_inject(
+    request: Request,
+    emission: str = Form(default=""),
+) -> HTMLResponse | RedirectResponse:
+    """Parse and inject an interview emission; redirect to /board/ on success."""
+    result = parse_emission(emission)
+    if result.missing:
+        templates = request.app.state.templates
+        return templates.TemplateResponse(
+            request=request,
+            name="onboarding/index.html",
+            context={
+                "is_rerun": False,
+                "paste_content": emission,
+                "paste_error": (
+                    f"Your paste is missing: {', '.join(result.missing)}. "
+                    "Scroll through your chat for any <<<FILE: name>>> block "
+                    "that's not in your paste and include it."
+                ),
+            },
+            status_code=400,
+        )
+    base_root: Path = request.app.state.base_root
+    inject(base_root, result.found)
+    # Clear cached guard state so the next /board/ request passes through
+    request.app.state.onboarding_complete = True
+    return RedirectResponse(url="/board/dashboard", status_code=303)
