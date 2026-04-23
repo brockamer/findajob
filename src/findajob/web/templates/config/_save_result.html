@@ -1,0 +1,6 @@
+<span
+  data-outcome="{{ outcome }}"
+  class="text-sm {% if outcome == 'success' %}text-green-700{% else %}text-red-700{% endif %}"
+>
+  {% if outcome == 'success' %}✓ {% else %}✗ {% endif %}{{ message }}
+</span>

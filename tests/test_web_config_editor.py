@@ -115,3 +115,66 @@ def test_editor_rejects_absolute_path_segment(client: TestClient) -> None:
     # effective relpath is "etc/passwd" — still not in allowlist → 403.
     resp = client.get("/config/files//etc/passwd")
     assert resp.status_code in (403, 404)
+
+
+def test_save_writes_content_to_disk(client: TestClient, base_root: Path) -> None:
+    new_content = "# Profile\nUpdated from the editor.\n"
+    resp = client.post(
+        "/config/files/candidate_context/profile.md",
+        data={"content": new_content},
+    )
+    assert resp.status_code == 200
+    assert 'data-outcome="success"' in resp.text
+    on_disk = (base_root / "candidate_context" / "profile.md").read_text(encoding="utf-8")
+    assert on_disk == new_content
+
+
+def test_save_creates_missing_file(client: TestClient, base_root: Path) -> None:
+    target = base_root / "candidate_context" / "master_resume.md"
+    assert not target.exists()
+    resp = client.post(
+        "/config/files/candidate_context/master_resume.md",
+        data={"content": "# Master resume\n"},
+    )
+    assert resp.status_code == 200
+    assert 'data-outcome="success"' in resp.text
+    assert target.read_text(encoding="utf-8") == "# Master resume\n"
+
+
+def test_save_preserves_utf8_and_newlines(client: TestClient, base_root: Path) -> None:
+    content = "Line 1\nLine 2\n— em-dash — α β γ\n"
+    resp = client.post(
+        "/config/files/config/jsearch_queries.txt",
+        data={"content": content},
+    )
+    assert resp.status_code == 200
+    assert 'data-outcome="success"' in resp.text
+    on_disk = (base_root / "config" / "jsearch_queries.txt").read_bytes()
+    assert on_disk.decode("utf-8") == content
+    assert b"\r\n" not in on_disk
+
+
+def test_save_rejects_unlisted_file(client: TestClient) -> None:
+    resp = client.post(
+        "/config/files/data/pipeline.db",
+        data={"content": "anything"},
+    )
+    assert resp.status_code == 403
+
+
+def test_save_rejects_traversal(client: TestClient) -> None:
+    resp = client.post(
+        "/config/files/config/../../etc/passwd",
+        data={"content": "oops"},
+    )
+    assert resp.status_code in (403, 404)
+
+
+def test_save_result_partial_has_expected_attrs(client: TestClient) -> None:
+    resp = client.post(
+        "/config/files/candidate_context/profile.md",
+        data={"content": "# Profile\n"},
+    )
+    assert resp.status_code == 200
+    assert 'data-outcome="success"' in resp.text
+    assert "Saved" in resp.text
