@@ -16,6 +16,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from findajob import utils
+from findajob.onboarding import mark_complete
 from findajob.web import routes as _web_routes
 from findajob.web.app import create_app
 
@@ -139,7 +140,8 @@ def client(tmp_path: Path, monkeypatch, popen_calls) -> TestClient:
 
     companies = tmp_path / "companies"
     companies.mkdir()
-    app = create_app(companies_root=companies, db_path=db_path)
+    mark_complete(tmp_path)
+    app = create_app(companies_root=companies, db_path=db_path, base_root=tmp_path)
     client = TestClient(app)
     client._db_path = db_path  # expose for assertions
     client._tmp_path = tmp_path

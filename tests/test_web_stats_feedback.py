@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from findajob.onboarding import mark_complete
 from findajob.web.app import create_app
 
 
@@ -69,7 +70,8 @@ def client(tmp_path: Path) -> TestClient:
     conn.close()
     companies = tmp_path / "companies"
     companies.mkdir()
-    return TestClient(create_app(companies_root=companies, db_path=db))
+    mark_complete(tmp_path)
+    return TestClient(create_app(companies_root=companies, db_path=db, base_root=tmp_path))
 
 
 def test_feedback_renders(client: TestClient) -> None:
@@ -133,7 +135,8 @@ def test_empty_feedback_log_renders_zero_state(tmp_path: Path) -> None:
     conn.close()
     companies = tmp_path / "companies"
     companies.mkdir()
-    client = TestClient(create_app(companies_root=companies, db_path=db))
+    mark_complete(tmp_path)
+    client = TestClient(create_app(companies_root=companies, db_path=db, base_root=tmp_path))
     r = client.get("/stats/feedback")
     assert r.status_code == 200
     assert "No rejections logged" in r.text

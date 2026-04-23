@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from findajob.onboarding import mark_complete
 from findajob.web.app import create_app
 
 
@@ -28,7 +29,8 @@ def client(tmp_path: Path) -> TestClient:
     conn.close()
     companies = tmp_path / "companies"
     companies.mkdir()
-    app = create_app(companies_root=companies, db_path=db)
+    mark_complete(tmp_path)
+    app = create_app(companies_root=companies, db_path=db, base_root=tmp_path)
     return TestClient(app)
 
 

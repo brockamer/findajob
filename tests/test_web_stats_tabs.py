@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from findajob.onboarding import mark_complete
 from findajob.web.app import create_app
 
 ENABLED = {"/stats/funnel", "/stats/feedback"}
@@ -36,7 +37,8 @@ def client(tmp_path: Path) -> TestClient:
     conn.close()
     companies = tmp_path / "companies"
     companies.mkdir()
-    return TestClient(create_app(companies_root=companies, db_path=db))
+    mark_complete(tmp_path)
+    return TestClient(create_app(companies_root=companies, db_path=db, base_root=tmp_path))
 
 
 def test_funnel_tab_active_marker(client: TestClient) -> None:
