@@ -2,7 +2,16 @@
 
 from fastapi import APIRouter
 
-from findajob.web.routes import board, board_actions, healthz, ingest, landing, materials, stats
+from findajob.web.routes import (
+    board,
+    board_actions,
+    config,
+    healthz,
+    ingest,
+    landing,
+    materials,
+    stats,
+)
 
 router = APIRouter()
 router.include_router(materials.router)
@@ -12,3 +21,4 @@ router.include_router(board.router)
 router.include_router(board_actions.router)
 router.include_router(ingest.router)
 router.include_router(stats.router)
+router.include_router(config.router)

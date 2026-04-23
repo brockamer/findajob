@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block title %}Config — findajob{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto p-6">
+  <h1 class="text-2xl font-semibold mb-2">Config editor</h1>
+  <p class="text-sm text-gray-600 mb-6">
+    Edit the files that shape scoring, resume tailoring, and search — all without SSH.
+    Saved files are written straight to disk on the pipeline host.
+  </p>
+
+  {% for cat in categories %}
+    <section class="mb-6">
+      <h2 class="text-lg font-medium mb-2">{{ cat.name }}</h2>
+      <ul class="divide-y border rounded bg-white">
+        {% for file in cat.files %}
+          <li class="flex items-center justify-between px-4 py-2">
+            <a
+              href="/config/files/{{ file.relpath }}"
+              class="text-blue-600 hover:underline font-mono text-sm"
+            >{{ file.relpath }}</a>
+            {% if not file.exists %}
+              <span class="text-xs text-gray-500 italic">missing — will be created on save</span>
+            {% endif %}
+          </li>
+        {% else %}
+          <li class="px-4 py-2 text-sm text-gray-500 italic">No files in this category yet.</li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endfor %}
+</div>
+{% endblock %}

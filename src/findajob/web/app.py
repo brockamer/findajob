@@ -17,7 +17,12 @@ from findajob.web.routes import materials as _materials_routes
 from findajob.web.routes import router as _aggregated_router
 
 
-def create_app(*, companies_root: Path, db_path: Path) -> FastAPI:
+def create_app(
+    *,
+    companies_root: Path,
+    db_path: Path,
+    base_root: Path | None = None,
+) -> FastAPI:
     app = FastAPI(title="findajob materials viewer", docs_url=None, redoc_url=None)
 
     templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -31,6 +36,9 @@ def create_app(*, companies_root: Path, db_path: Path) -> FastAPI:
 
     app.state.companies_root = companies_root
     app.state.db_path = db_path
+    app.state.base_root = base_root if base_root is not None else Path(
+        os.environ.get("JSP_BASE", "/app")
+    )
     app.state.templates = templates
 
     def get_db() -> Generator[sqlite3.Connection, None, None]:
@@ -54,4 +62,5 @@ def default_app() -> FastAPI:
     """
     companies_root = Path(os.environ.get("COMPANIES_ROOT", "/app/companies"))
     db_path = Path(os.environ.get("DB_PATH", "/app/data/pipeline.db"))
-    return create_app(companies_root=companies_root, db_path=db_path)
+    base_root = Path(os.environ.get("JSP_BASE", "/app"))
+    return create_app(companies_root=companies_root, db_path=db_path, base_root=base_root)
