@@ -136,6 +136,9 @@ When the pipeline runs inside the `ghcr.io/brockamer/findajob` image, paths shif
 <repo>/src/findajob/scorer_prefilter.py     # deterministic pre-filter (Stage 1 + 2)
 <repo>/src/findajob/web/app.py               # FastAPI app factory (create_app)
 <repo>/src/findajob/web/routes/ingest.py     # GET /ingest/ form + POST /ingest/manual handler
+<repo>/src/findajob/web/routes/config.py     # GET /config/, GET/POST /config/files/{path} — in-browser config editor (#149)
+<repo>/src/findajob/web/routes/tools.py      # GET /tools/ — stub linking to /config/ (#149)
+<repo>/src/findajob/web/config_files.py      # allowlist + resolve_editable() for /config/ editor (#149)
 <repo>/src/findajob/web/routes.py            # /healthz, /folders/<stage>/<name>/*, /files/* routes
 <repo>/src/findajob/web/folder_resolver.py   # resolves stage→filesystem path, path-traversal guards
 <repo>/src/findajob/web/templates/           # Jinja2 templates (index.html, folder.html, viewer.html)
@@ -195,6 +198,11 @@ Foundational decisions (from `docs/superpowers/specs/2026-04-21-web-frontend-14b
 - Tailwind via CDN + `static/app.css` design tokens
 - URL query params for UI state (not cookies/localStorage)
 - Alpine.js added only when ephemeral client state is needed
+
+`/config/` is the in-browser editor for the pipeline's editable config files (profile,
+master resume, prefilter rules, search queries, feed URLs, role prompts) with an
+explicit allowlist; no auth, consistent with the Wireguard perimeter model. See
+`findajob.web.config_files` for the allowlist definition (#149).
 
 ---
 
