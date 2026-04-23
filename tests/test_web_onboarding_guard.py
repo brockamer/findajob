@@ -13,12 +13,24 @@ from findajob.web.app import create_app
 
 _MINIMAL_SCHEMA = """
 CREATE TABLE jobs (
-    id TEXT PRIMARY KEY,
-    fingerprint TEXT UNIQUE NOT NULL,
-    title TEXT NOT NULL,
-    company TEXT NOT NULL,
-    stage TEXT DEFAULT 'discovered',
-    created_at TEXT DEFAULT (datetime('now'))
+    id TEXT,
+    fingerprint TEXT,
+    title TEXT,
+    company TEXT,
+    stage TEXT,
+    relevance_score INTEGER,
+    fit_score REAL,
+    probability_score REAL,
+    interview_likelihood INTEGER,
+    location TEXT,
+    remote_status TEXT,
+    known_contacts TEXT,
+    comp_estimate TEXT,
+    ai_notes TEXT,
+    created_at TEXT,
+    stage_updated TEXT,
+    url TEXT,
+    prep_folder_path TEXT
 );
 CREATE TABLE audit_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
