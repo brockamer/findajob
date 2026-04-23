@@ -33,6 +33,13 @@ _env = load_env()
 NTFY_TOPIC = _env.get("NTFY_TOPIC") or os.environ.get("NTFY_TOPIC", "jobsearch-pipeline")
 NTFY_URL = f"https://ntfy.sh/{NTFY_TOPIC}"
 
+# Base URL for links into the web UI (ntfy bodies). Operator-specific; defaults
+# to the docker.lan deployment port. Override via FINDAJOB_WEB_URL in data/.env
+# or the process env.
+WEB_BASE_URL = (_env.get("FINDAJOB_WEB_URL") or os.environ.get("FINDAJOB_WEB_URL", "http://docker.lan:8090")).rstrip(
+    "/"
+)
+
 
 def send(title, body, priority="default", tags=None):
     """Send a push notification via ntfy.sh."""
@@ -526,10 +533,15 @@ def cmd_feedback_review():
             f"Top reason: {top_reason[0]} ({top_reason[1]})\n"
             f"Top FP company: {top_company[0]} ({top_company[1]} rejections)\n"
             + (f"Prefilter candidates: {', '.join(bad_kws)}\n" if bad_kws else "")
+            + f"Trends: {WEB_BASE_URL}/stats/feedback\n"
             + "Run: python3 scripts/analyze_feedback.py"
         )
     else:
-        body = f"feedback_log has {count} rejection entries.\nRun: python3 scripts/analyze_feedback.py"
+        body = (
+            f"feedback_log has {count} rejection entries.\n"
+            f"Trends: {WEB_BASE_URL}/stats/feedback\n"
+            f"Run: python3 scripts/analyze_feedback.py"
+        )
 
     send("JSP Feedback Analysis", body, priority="default", tags="magnifying")
 

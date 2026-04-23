@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}Feedback — findajob stats{% endblock %}
+{% block main_classes %}w-full px-4 py-6{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-semibold mb-4">Rejection feedback — last {{ window_days }} days</h1>
+{% include "stats/_tabs.html" %}
+
+<p class="mb-4 text-sm text-slate-600">
+  Counts <em>user-side rejections</em> logged to <code>feedback_log</code> —
+  the signal that tunes the scorer's feedback block (#47, #52, #54). Company-side
+  "Not Selected" events do not appear here; see <code>/board/rejected</code> for those.
+  Window: {{ start_day }} → {{ end_day }}.
+</p>
+
+<section class="mb-6">
+  <h2 class="text-lg font-semibold mb-2">
+    This week — last {{ week_days }} days
+    <span class="ml-2 text-sm text-slate-500">{{ this_week_total }} total</span>
+  </h2>
+  {% if this_week_total == 0 %}
+    <p class="text-sm text-slate-500">No rejections logged since {{ week_start_day }}.</p>
+  {% else %}
+    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+      {% for reason in reasons %}
+        {% if week_totals[reason] > 0 %}
+          <div class="bg-white rounded border border-slate-200 px-3 py-2">
+            <div class="text-xs uppercase text-slate-500 tracking-wide">{{ reason }}</div>
+            <div class="text-xl font-semibold">{{ week_totals[reason] }}</div>
+          </div>
+        {% endif %}
+      {% endfor %}
+    </div>
+  {% endif %}
+</section>
+
+<section class="mb-6">
+  <h2 class="text-lg font-semibold mb-2">
+    {{ window_days }}-day totals
+    <span class="ml-2 text-sm text-slate-500">{{ window_total }} total</span>
+  </h2>
+  <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+    {% for reason in reasons %}
+      <div class="bg-white rounded border border-slate-200 px-3 py-2 {% if window_totals[reason] == 0 %}opacity-50{% endif %}">
+        <div class="text-xs uppercase text-slate-500 tracking-wide">{{ reason }}</div>
+        <div class="text-xl font-semibold">{{ window_totals[reason] }}</div>
+      </div>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="mb-6">
+  <h2 class="text-lg font-semibold mb-2">Daily trend, per reason</h2>
+  <div class="bg-white rounded border border-slate-200 p-3">
+    <canvas id="feedback-chart" role="img" aria-label="Daily rejection counts per reason" height="110"></canvas>
+    <noscript>
+      <p class="text-sm text-slate-600">Chart requires JavaScript. The table below has the same data.</p>
+    </noscript>
+  </div>
+</section>
+
+<section>
+  <h2 class="text-lg font-semibold mb-2">Data table</h2>
+  <div class="overflow-x-auto">
+    <table class="min-w-full bg-white shadow-sm rounded-sm text-sm">
+      <thead class="bg-slate-100 text-left text-xs uppercase tracking-wide text-slate-600">
+        <tr>
+          <th class="px-3 py-2">Day</th>
+          {% for reason in reasons %}
+            <th class="px-3 py-2">{{ reason }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in daily_table %}
+          <tr class="{% if loop.index0 % 2 %}bg-slate-50{% endif %}">
+            <td class="px-3 py-1 align-top">{{ row.day }}</td>
+            {% for reason in reasons %}
+              <td class="px-3 py-1 align-top {% if row[reason] == 0 %}text-slate-300{% endif %}">{{ row[reason] }}</td>
+            {% endfor %}
+          </tr>
+        {% else %}
+          <tr><td colspan="{{ reasons|length + 1 }}" class="px-3 py-4 text-slate-500">No feedback_log entries in this window.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script id="feedback-chart-data" type="application/json">{{ chart_data_json | safe }}</script>
+<script>
+  (function () {
+    const payload = JSON.parse(document.getElementById('feedback-chart-data').textContent);
+    // 11 canonical reasons + optional extras — distinct hues around the wheel.
+    const palette = [
+      '#1d4ed8', '#2563eb', '#0891b2', '#0d9488', '#059669',
+      '#65a30d', '#ca8a04', '#ea580c', '#dc2626', '#be185d', '#7c3aed',
+    ];
+    const datasets = payload.datasets.map((ds, i) => ({
+      label: ds.label,
+      data: ds.data,
+      borderColor: palette[i % palette.length],
+      backgroundColor: 'transparent',
+      borderWidth: 1.5,
+      pointRadius: 2,
+      tension: 0.2,
+    }));
+    new Chart(document.getElementById('feedback-chart'), {
+      type: 'line',
+      data: { labels: payload.labels, datasets: datasets },
+      options: {
+        responsive: true,
+        interaction: { mode: 'nearest', axis: 'x', intersect: false },
+        scales: {
+          y: { beginAtZero: true, ticks: { precision: 0 } },
+          x: { ticks: { maxRotation: 0, autoSkipPadding: 12 } },
+        },
+        plugins: {
+          legend: { position: 'bottom', labels: { boxWidth: 16 } },
+          tooltip: { callbacks: { title: (items) => items[0].label } },
+        },
+      },
+    });
+  })();
+</script>
+{% endblock %}
