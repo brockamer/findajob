@@ -1,15 +1,33 @@
 {# Ingest submit result partial — swapped into #ingest-result by HTMX. #}
 {% set styles = {
-  "success": "border-emerald-300 bg-emerald-50 text-emerald-900",
-  "duplicate": "border-amber-300 bg-amber-50 text-amber-900",
-  "error": "border-red-300 bg-red-50 text-red-900",
+  "success":        "border-emerald-300 bg-emerald-50 text-emerald-900",
+  "resurfaced":     "border-emerald-300 bg-emerald-50 text-emerald-900",
+  "duplicate":      "border-amber-300 bg-amber-50 text-amber-900",
+  "already_applied":"border-blue-300 bg-blue-50 text-blue-900",
+  "not_selected":   "border-slate-300 bg-slate-50 text-slate-700",
+  "error":          "border-red-300 bg-red-50 text-red-900",
 } %}
 <div data-outcome="{{ outcome }}"
      class="border rounded p-3 text-sm {{ styles.get(outcome, 'border-slate-300 bg-slate-50 text-slate-900') }}">
   <p>{{ message }}</p>
   {% if outcome == "success" %}
     <p class="mt-2">
-      <a href="/board/dashboard" class="underline font-medium">View on Dashboard</a>
+      <a href="/board/dashboard" class="underline font-medium">View on Dashboard →</a>
+    </p>
+  {% elif outcome == "resurfaced" %}
+    <p class="mt-2">
+      <a href="/board/dashboard" class="underline font-medium">View on Dashboard →</a>
+    </p>
+  {% elif outcome == "already_applied" %}
+    <p class="mt-2">
+      <a href="/board/applied" class="underline font-medium">View on Applied board →</a>
+    </p>
+  {% elif outcome == "not_selected" %}
+    <p class="mt-2 flex gap-4 flex-wrap">
+      <a href="/board/rejected" class="underline font-medium">Rejected Applications →</a>
+      {% if result and result.fingerprint %}
+      <a href="/materials/{{ result.fingerprint }}" class="underline font-medium">Materials folder →</a>
+      {% endif %}
     </p>
   {% endif %}
 </div>

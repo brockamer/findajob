@@ -95,6 +95,31 @@ def submit_manual(
         source="web_manual",
     )
 
+    if result.status == "already_applied":
+        return _render_result(
+            request,
+            outcome="already_applied",
+            message=f"Already applied — {result.company} / {result.title}.",
+            result=result,
+        )
+
+    if result.status == "not_selected":
+        return _render_result(
+            request,
+            outcome="not_selected",
+            message=(f"You were not selected for {result.company} / {result.title}. Here's where you left it:"),
+            result=result,
+        )
+
+    if result.status == "resurfaced":
+        stage_label = result.existing_stage or "unknown"
+        return _render_result(
+            request,
+            outcome="resurfaced",
+            message=(f"Re-surfaced to Dashboard — {result.company} / {result.title} (was {stage_label})."),
+            result=result,
+        )
+
     if result.status == "duplicate":
         return _render_result(
             request,
