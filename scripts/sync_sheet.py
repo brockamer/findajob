@@ -504,6 +504,7 @@ APPLIED_HEADERS = [
     "ai_notes",
 ]
 
+
 def sync_applied(svc, conn):
     """Sync post-application jobs (stage in applied/interview/offer) to Applied tab.
 
