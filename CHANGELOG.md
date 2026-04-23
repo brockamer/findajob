@@ -10,6 +10,10 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-04-23
+
+Minor bump. Web UI becomes the primary write surface for the board, replacing Google Sheet edits and the Google Form JD-ingest loop. Adds a `/config/` in-browser editor, the first two `/stats/` dashboards, and the `/board/*` read/write views. Introduces two-tier dedup and a new nullable `loose_fingerprint` column on `jobs` — **operators upgrading from v0.1.4 must run `scripts/migrate_add_loose_fingerprint.py` once after pulling** (see Migration required below). Several prep/sync reliability fixes surfaced during the #61 PR-B smoke are also included.
+
 ### Added
 
 - **`/config/` in-browser editor — edit pipeline config files without SSH.** New top-nav page `/config/` lists the editable config files by category (candidate context, search config, role prompts) and opens each in a plain `<textarea>` with a save button. An allowlist module (`src/findajob/web/config_files.py`) enumerates the editable paths (`candidate_context/profile.md`, `candidate_context/master_resume.md`, `config/prefilter_rules.yaml`, `config/in_domain_patterns.yaml`, `config/jsearch_queries.txt`, `config/feed_urls.txt`, `config/roles/*.md`) — every other path returns 403. Writes are atomic (tmpfile + `os.replace`). Missing files render as an empty textarea and are created on save, so the editor works on a fresh stack before the onboarding flow (#148) has run. `/tools/` bumped from placeholder to a real page linking to the editor. Closes #149; unblocks the tuning section of #11 (user-facing docs).
@@ -173,7 +177,8 @@ from GHCR and deployed via Docker Compose on a shared Docker host.
 - Documentation cleanup — removing `sigoden/aichat` references in favor of
   `blob42/aichat-ng` — is tracked in #70
 
-[Unreleased]: https://github.com/brockamer/findajob/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/brockamer/findajob/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/brockamer/findajob/releases/tag/v0.2.0
 [0.1.4]: https://github.com/brockamer/findajob/releases/tag/v0.1.4
 [0.1.3]: https://github.com/brockamer/findajob/releases/tag/v0.1.3
 [0.1.2]: https://github.com/brockamer/findajob/releases/tag/v0.1.2
