@@ -9,27 +9,29 @@
 {% set stage = row.stage %}
 <td class="px-3 py-1 align-top text-sm whitespace-nowrap">
   {% if tab == 'dashboard' %}
-    {% if stage == 'prep_in_progress' %}
-      <div class="mb-1 text-xs text-slate-500">Prep in progress…</div>
-    {% elif stage == 'materials_drafted' %}
-      <div class="mb-1 text-xs font-medium text-emerald-700">Ready to Apply</div>
-    {% endif %}
-    <select
-      class="block rounded border-slate-300 bg-white px-2 py-1 text-xs"
-      data-fp="{{ fp }}"
-      onchange="if(this.value){htmx.ajax('POST', `/board/jobs/{{ fp }}/${this.value}`, {target: this.closest('tr'), swap: 'outerHTML'});this.value='';}">
-      <option value="">— Change status —</option>
-      {% if stage in ('scored', 'manual_review') %}
-        <option value="prep">Flag for Prep</option>
+    <div class="flex items-center gap-2">
+      {% if stage == 'prep_in_progress' %}
+        <span class="text-xs text-slate-500" title="Prep subprocess running">Prep…</span>
+      {% elif stage == 'materials_drafted' %}
+        <span class="text-xs font-medium text-emerald-700" title="Materials drafted — ready to apply">Ready</span>
       {% endif %}
-      {% if stage in ('prep_in_progress', 'materials_drafted') %}
-        <option value="regenerate">Regenerate</option>
-      {% endif %}
-      <option value="waitlist">Waitlist</option>
-      {% if stage == 'materials_drafted' %}
-        <option value="apply">Applied</option>
-      {% endif %}
-    </select>
+      <select
+        class="block rounded border-slate-300 bg-white px-2 py-1 text-xs"
+        data-fp="{{ fp }}"
+        onchange="if(this.value){htmx.ajax('POST', `/board/jobs/{{ fp }}/${this.value}`, {target: this.closest('tr'), swap: 'outerHTML'});this.value='';}">
+        <option value="">— Change status —</option>
+        {% if stage in ('scored', 'manual_review') %}
+          <option value="prep">Flag for Prep</option>
+        {% endif %}
+        {% if stage in ('prep_in_progress', 'materials_drafted') %}
+          <option value="regenerate">Regenerate</option>
+        {% endif %}
+        <option value="waitlist">Waitlist</option>
+        {% if stage == 'materials_drafted' %}
+          <option value="apply">Applied</option>
+        {% endif %}
+      </select>
+    </div>
   {% elif tab == 'applied' %}
     {% if stage == 'not_selected' %}
       <span class="text-xs text-slate-500">Not Selected</span>

@@ -14,10 +14,10 @@ def client(tmp_path: Path) -> TestClient:
     db = tmp_path / "pipeline.db"
     conn = sqlite3.connect(db)
     conn.execute(
-        "CREATE TABLE jobs (fingerprint TEXT, title TEXT, company TEXT, stage TEXT, "
-        "relevance_score INTEGER, interview_likelihood INTEGER, "
+        "CREATE TABLE jobs (id TEXT, fingerprint TEXT, title TEXT, company TEXT, stage TEXT, "
+        "relevance_score INTEGER, fit_score REAL, probability_score REAL, interview_likelihood INTEGER, "
         "location TEXT, remote_status TEXT, known_contacts TEXT, comp_estimate TEXT, "
-        "ai_notes TEXT, created_at TEXT, stage_updated TEXT, url TEXT)"
+        "ai_notes TEXT, created_at TEXT, stage_updated TEXT, url TEXT, prep_folder_path TEXT)"
     )
     conn.execute(
         "INSERT INTO jobs (fingerprint, title, company, stage, relevance_score, url) "

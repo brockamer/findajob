@@ -10,7 +10,7 @@
 </head>
 <body class="bg-slate-50 text-slate-900" hx-boost="true">
   {% block nav %}{% include "_nav.html" %}{% endblock %}
-  <main class="max-w-6xl mx-auto px-4 py-6">
+  <main class="{% block main_classes %}max-w-6xl mx-auto px-4 py-6{% endblock %}">
     {% if _rendered_md is defined and _rendered_md %}<div class="prose prose-slate max-w-none">{{ _rendered_md | safe }}</div>{% endif %}
     {% block content %}{% endblock %}
     {% block body %}{% endblock %}

@@ -32,6 +32,8 @@ CREATE TABLE jobs (
     comp_estimate TEXT DEFAULT '',
     ai_notes TEXT,
     relevance_score INTEGER,
+    fit_score REAL,
+    probability_score REAL,
     interview_likelihood INTEGER,
     score_status TEXT,
     score_flag_reason TEXT,
@@ -195,8 +197,8 @@ class TestPrep:
         # HTMX swaps a <tr> — the response should be a table row, not the full page
         assert response.text.strip().startswith("<tr")
         assert 'data-fingerprint="fp_scored"' in response.text
-        # After the transition the row shows the Prep in progress indicator
-        assert "Prep in progress" in response.text
+        # After the transition the row shows the Prep indicator badge
+        assert 'title="Prep subprocess running"' in response.text
 
     def test_404_on_unknown_fingerprint(self, client: TestClient, popen_calls):
         response = client.post("/board/jobs/fp_nonexistent/prep")

@@ -28,6 +28,8 @@ def _filter_clause(q: str) -> tuple[str, list[str]]:
 
 _DASHBOARD_COLS = [
     ("Rel", "relevance_score"),
+    ("Fit", "fit_score"),
+    ("Prob", "probability_score"),
     ("Likelihood", "interview_likelihood"),
     ("Title", "title"),
     ("Company", "company"),
@@ -50,9 +52,19 @@ def _normalize_density(raw: str) -> str:
     return raw if raw in _VALID_DENSITIES else _DEFAULT_DENSITY
 
 
+# Exclude rows whose (company, title) already has a sibling in a post-application
+# stage — dedup failures (see #13/#16/#17) otherwise surface already-applied jobs.
+# LOWER+TRIM guards against whitespace/casing differences in title ingestion.
 _DASHBOARD_WHERE = (
-    "(relevance_score >= 7 AND stage IN ('scored','manual_review'))"
-    " OR stage IN ('prep_in_progress','materials_drafted')"
+    "((relevance_score >= 7 AND stage IN ('scored','manual_review'))"
+    " OR stage IN ('prep_in_progress','materials_drafted'))"
+    " AND NOT EXISTS ("
+    "  SELECT 1 FROM jobs sib"
+    "  WHERE sib.id != jobs.id"
+    "    AND LOWER(TRIM(sib.company)) = LOWER(TRIM(jobs.company))"
+    "    AND LOWER(TRIM(sib.title)) = LOWER(TRIM(jobs.title))"
+    "    AND sib.stage IN ('applied','interview','offer','not_selected')"
+    " )"
 )
 
 
@@ -68,8 +80,9 @@ def dashboard(
     order = "DESC" if desc else "ASC"
     rows = db.execute(
         f"SELECT fingerprint, title, company, location, remote_status, known_contacts, "
-        f"comp_estimate, ai_notes, relevance_score, interview_likelihood, "
-        f"stage, created_at, stage_updated, url FROM jobs WHERE {_DASHBOARD_WHERE} "
+        f"comp_estimate, ai_notes, relevance_score, fit_score, probability_score, "
+        f"interview_likelihood, stage, created_at, stage_updated, url, prep_folder_path "
+        f"FROM jobs WHERE {_DASHBOARD_WHERE} "
         f"ORDER BY {sort_col} {order}"
     ).fetchall()
     materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
@@ -354,8 +367,9 @@ def dashboard_rows(
     filter_sql, params = _filter_clause(q)
     rows = db.execute(
         f"SELECT fingerprint, title, company, location, remote_status, known_contacts, "
-        f"comp_estimate, ai_notes, relevance_score, interview_likelihood, "
-        f"stage, created_at, stage_updated, url FROM jobs WHERE ({_DASHBOARD_WHERE}) {filter_sql} "
+        f"comp_estimate, ai_notes, relevance_score, fit_score, probability_score, "
+        f"interview_likelihood, stage, created_at, stage_updated, url, prep_folder_path "
+        f"FROM jobs WHERE ({_DASHBOARD_WHERE}) {filter_sql} "
         f"ORDER BY {sort_col} {order}",
         params,
     ).fetchall()

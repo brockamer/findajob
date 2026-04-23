@@ -72,8 +72,9 @@ def _launch_prep_subprocess(job: sqlite3.Row) -> None:
 
 _DASHBOARD_ROW_SQL = (
     "SELECT fingerprint, title, company, location, remote_status, known_contacts, "
-    "comp_estimate, ai_notes, relevance_score, interview_likelihood, "
-    "stage, created_at, stage_updated, url FROM jobs WHERE fingerprint=?"
+    "comp_estimate, ai_notes, relevance_score, fit_score, probability_score, "
+    "interview_likelihood, stage, created_at, stage_updated, url, prep_folder_path "
+    "FROM jobs WHERE fingerprint=?"
 )
 
 

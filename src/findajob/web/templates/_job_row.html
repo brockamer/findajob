@@ -15,6 +15,10 @@
   {% if stage_class %}{% set _ = row_classes.append(stage_class) %}{% endif %}
 {% endif %}
 <tr class="{{ row_classes | join(' ') }}" data-fingerprint="{{ row.fingerprint }}">
+  {% if tab in ('dashboard', 'applied', 'review', 'waitlist') %}
+    {% include "board/_status_cell.html" %}
+    {% include "board/_reject_cell.html" %}
+  {% endif %}
   {% for display, field in columns %}
     {% if tab == 'applied' and field == 'user_notes' %}
       {% include "board/_notes_cell.html" %}
@@ -25,8 +29,10 @@
       <div class="cell-text-wrap" title="{{ row[field] if row[field] is not none else '' }}">
       {% if field == 'title' and row.url %}
         <a class="underline" href="{{ row.url }}" target="_blank" rel="noopener noreferrer">{{ row[field] }}</a>
-      {% elif field == 'company' and tab == 'applied' and row.fingerprint and row.stage in folder_stages and materials_base_url %}
+      {% elif field == 'company' and row.fingerprint and row.stage in folder_stages and materials_base_url %}
         <a class="underline" href="{{ materials_base_url }}/materials/{{ row.fingerprint }}">{{ row[field] }}</a>
+      {% elif field in ('fit_score', 'probability_score') and row[field] is not none %}
+        {{ row[field] | round | int }}
       {% else %}
         {{ row[field] }}
       {% endif %}
@@ -34,8 +40,4 @@
     </td>
     {% endif %}
   {% endfor %}
-  {% if tab in ('dashboard', 'applied', 'review', 'waitlist') %}
-    {% include "board/_status_cell.html" %}
-    {% include "board/_reject_cell.html" %}
-  {% endif %}
 </tr>
