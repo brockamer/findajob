@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block title %}{{ relpath }} — findajob config{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto p-6">
+  <p class="text-sm mb-2">
+    <a href="/config/" class="text-blue-600 hover:underline">← all config files</a>
+  </p>
+  <h1 class="text-xl font-semibold font-mono mb-1">{{ relpath }}</h1>
+
+  {% if not exists %}
+    <p class="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2 mb-4">
+      File does not exist yet — it will be created on save.
+    </p>
+  {% endif %}
+
+  <form
+    hx-post="/config/files/{{ relpath }}"
+    hx-target="#save-result"
+    hx-swap="innerHTML"
+  >
+    <textarea
+      name="content"
+      class="w-full h-[32rem] border rounded p-3 font-mono text-sm bg-white"
+      spellcheck="false"
+    >{{ content }}</textarea>
+    <div class="mt-3 flex items-center gap-3">
+      <button
+        type="submit"
+        class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+      >Save</button>
+      <span id="save-result" class="text-sm" aria-live="polite"></span>
+    </div>
+  </form>
+</div>
+{% endblock %}

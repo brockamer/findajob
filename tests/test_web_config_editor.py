@@ -80,3 +80,38 @@ def test_index_lists_files_by_category(client: TestClient) -> None:
     assert "config/roles/cover_letter_writer.md" in html
     assert 'href="/config/files/candidate_context/profile.md"' in html
     assert "missing" in html.lower() or "not yet" in html.lower()
+
+
+def test_editor_shows_existing_content(client: TestClient) -> None:
+    resp = client.get("/config/files/candidate_context/profile.md")
+    assert resp.status_code == 200
+    html = resp.text
+    assert "<textarea" in html
+    assert "# Profile\nHello." in html
+    assert 'hx-post="/config/files/candidate_context/profile.md"' in html
+    assert "candidate_context/profile.md" in html
+
+
+def test_editor_shows_empty_textarea_for_missing_file(client: TestClient) -> None:
+    resp = client.get("/config/files/candidate_context/master_resume.md")
+    assert resp.status_code == 200
+    html = resp.text
+    assert "<textarea" in html
+    assert "does not exist" in html.lower() or "will be created" in html.lower()
+
+
+def test_editor_rejects_unlisted_file(client: TestClient) -> None:
+    resp = client.get("/config/files/data/pipeline.db")
+    assert resp.status_code == 403
+
+
+def test_editor_rejects_path_traversal(client: TestClient) -> None:
+    resp = client.get("/config/files/config/../../etc/passwd")
+    assert resp.status_code in (403, 404)
+
+
+def test_editor_rejects_absolute_path_segment(client: TestClient) -> None:
+    # FastAPI's `{path:path}` strips a leading slash off the arg, so the
+    # effective relpath is "etc/passwd" — still not in allowlist → 403.
+    resp = client.get("/config/files//etc/passwd")
+    assert resp.status_code in (403, 404)
