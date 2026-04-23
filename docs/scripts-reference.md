@@ -30,7 +30,7 @@ Fetches jobs from all sources, deduplicates, enriches with JD text, then scores 
 ---
 
 ### `prep_application.py`
-**Run by:** `poll_flags.py` (when user flags a job); also callable manually
+**Run by:** `POST /board/jobs/{fp}/prep` or `/regenerate` (detached subprocess); also callable manually
 **Args:** `company title url job_id`
 
 Generates a full application package for one job. LLM calls run sequentially.
@@ -48,23 +48,13 @@ Generates a full application package for one job. LLM calls run sequentially.
 
 ---
 
-### `poll_flags.py`
+### `watchdog.py`
 **Run by:** scheduler (every 10 min)
 **No arguments.**
 
-Reads STATUS, REJECT_REASON, and fingerprint from four tabs: `Dashboard!A2:C10000`, `Applied!A2:C10000`, `Review!A2:C10000`, and `Waitlist!A2:C10000`. All share the col A/B/C layout so one processing loop handles them.
+Single responsibility: resets any job stuck in `stage='prep_in_progress'` for more than 60 minutes back to `scored`. Calls `findajob.actions.reset_prep_to_scored()` which writes an `audit_log` row and emits `prep_failed_reset`. Emits a `watchdog_run` summary event at the end of each run.
 
-**STATUS logic (Dashboard + Applied, in priority order):**
-1. If `STATUS` is `Not Selected` and job is in `applied/interview/offer` → calls `handle_not_selected()`: sets `stage=not_selected`, drops marker file in `_applied/`, NO `feedback_log` write
-2. If `REJECT_REASON` is set and job not already rejected → calls `handle_rejection()`: updates DB, writes `feedback_log`, moves prep folder to `_rejected/`
-3. If `STATUS` is `Regenerate` → deletes existing prep folder, re-runs prep
-4. If `STATUS` is `Applied/Interviewing/Offer/Withdrew` → updates DB stage; `Applied` moves folder to `_applied/`
-5. If `STATUS` is `Waitlist` → sets stage=waitlisted, moves folder to `_waitlisted/`
-6. If `STATUS` is `Flag for Prep` and job is in `scored/manual_review/enriched` stage → sets stage=prep_in_progress, validates company (not an aggregator) → calls `prep_application.py`
-7. If `STATUS` is `Ghosted` (Applied tab only) → no DB change; preserved across syncs for row coloring
-
-**Review logic:** `Promote` sets score=7 + stage=scored. REJECT_REASON rejects.
-**Waitlist logic:** `Reactivate` restores to scored/materials_drafted. REJECT_REASON rejects from waitlist.
+Replaced `poll_flags.py` in #61 PR-B — transition logic now lives in `findajob.actions` and is called from the web POST handlers in `findajob.web.routes.board_actions`. No Sheet reads.
 
 ---
 
@@ -72,15 +62,15 @@ Reads STATUS, REJECT_REASON, and fingerprint from four tabs: `Dashboard!A2:C1000
 **Run by:** end of triage, end of prep; also callable manually
 **No arguments.**
 
-Reads SQLite, writes Sheet1 (full archive), Dashboard (pre-application queue), Applied (post-application), Review (manual triage), Waitlist (deferred), and Rejected Applications.
+One-way DB → Sheet. Reads SQLite, writes Sheet1 (full archive), Dashboard (pre-application queue), Applied (post-application), Review (manual triage), Waitlist (deferred), and Rejected Applications. As of #61 PR-B, no reads from Sheets — the Sheet is a synced view, not a write surface.
 
 **Dashboard filter:** `(relevance_score >= 7 AND stage IN ('scored', 'manual_review'))` OR `stage IN ('prep_in_progress', 'materials_drafted')`. Materials_drafted jobs float to the top (sorted first).
 
-**Applied filter:** `stage IN ('applied', 'interview', 'offer')`. Sort: offer → interview → applied, most recently updated first. `sync_applied()` reads the current Applied tab before clearing so (a) user-set STATUS/REJECT_REASON/user_notes survive the rewrite and (b) any edited `user_notes` is written back to the DB.
+**Applied filter:** `stage IN ('applied', 'interview', 'offer')`. Sort: offer → interview → applied, most recently updated first.
 
-**STATUS value in Dashboard:** derived from DB — `Ready to Apply` if `stage=materials_drafted`, `Flag for Prep` if `apply_flag=1 AND stage≠materials_drafted`, else empty.
+**STATUS value in Dashboard:** derived from DB — `Ready to Apply` if `stage=materials_drafted`, `Prep in Progress` if `stage=prep_in_progress`, `Applied/Interviewing/Offer` for post-application stages, else empty.
 
-**STATUS value in Applied:** derived from stage — `Offer` for `offer`, `Interviewing` for `interview`, empty for `applied` (user hasn't changed it yet). User-set values (`Ghosted`, `Not Selected`, `Withdrew`) override via pending_statuses preservation.
+**STATUS value in Applied:** derived from stage — `Offer` for `offer`, `Interviewing` for `interview`, empty for `applied` (user hasn't picked a sub-status yet). The web UI is where operators change status; the Sheet just reflects the current DB stage.
 
 ---
 

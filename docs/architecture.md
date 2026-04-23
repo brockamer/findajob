@@ -78,17 +78,16 @@ Everything between them is mediated by SQLite. The Google Sheet is a synced view
 ## Prep Workflow
 
 ```
-User sets STATUS = "Flag for Prep" in Dashboard
+User clicks "Flag for Prep" in /board/dashboard
           │
           ▼
-poll_flags.py (runs every 10 min)
-  reads Dashboard!A2:C10000 AND Applied!A2:C10000
-  (and Review/Waitlist for their own STATUS transitions)
-  matches fingerprint → DB job
-  validates company (not an aggregator)
+POST /board/jobs/{fp}/prep  (findajob.web.routes.board_actions)
+  idempotency guard: no-op if stage in (prep_in_progress, materials_drafted)
+  concurrency cap: 429 if 3 preps already in flight
+  stage → prep_in_progress; spawns prep_application.py via Popen
           │
           ▼
-prep_application.py (runs in foreground)
+prep_application.py (detached subprocess, start_new_session=True)
   Loads JD from DB (never re-curls)
   Loads profile.md + master_resume.md (direct injection, no RAG)
           │
@@ -105,9 +104,12 @@ prep_application.py (runs in foreground)
     pandoc converts .md → .docx for each document
           │
     DB updated: stage = materials_drafted
-    sync_sheet.py: Dashboard STATUS → "Ready to Apply"
+    sync_sheet.py runs at prep end (one-way DB → Sheet)
     ntfy notification sent
     Materials viewer reflects new folder immediately (no sync required)
+
+scripts/watchdog.py (runs every 10 min): resets any job stuck in
+  prep_in_progress > 60 min back to scored so the operator can re-flag.
 ```
 
 ---
@@ -174,12 +176,17 @@ logged_at TEXT DEFAULT (datetime('now'))
 
 ## Google Sheet Layout
 
+> **One-way synced view.** As of #61 PR-B, `sync_sheet.py` writes DB state to
+> the Sheet but never reads from it. Operators drive every STATUS and
+> REJECT_REASON transition through the web UI at `/board/*`; edits made
+> directly in the Sheet are overwritten on the next sync cycle.
+
 ### Sheet1 — Full Archive (A–N)
 All jobs that passed dedup. Read-only reference view.
 
 | Col | Field | Notes |
 |---|---|---|
-| A | fingerprint | Hidden — used by poll_flags.py |
+| A | fingerprint | Hidden — matches board_actions.py POST targets |
 | B | APPLY_FLAG | Checkbox (TRUE/FALSE) |
 | C | relevance_score | |
 | D | title | |
@@ -196,7 +203,7 @@ All jobs that passed dedup. Read-only reference view.
 
 ### Dashboard — Pre-Application Queue (A–N)
 Filter: `(score >= 7 AND stage IN (scored, manual_review))` OR `stage IN (prep_in_progress, materials_drafted)`.
-poll_flags.py reads this tab every 10 min. Once the user marks STATUS=Applied, the poller sets `stage=applied` and the row moves to the Applied tab on the next sync.
+The web UI at `/board/dashboard` renders the same rows live from the DB. `POST /board/jobs/{fp}/apply` transitions stage to `applied`; the row disappears from Dashboard and appears on `/board/applied` on the next render.
 
 | Col | Field | Notes |
 |---|---|---|
@@ -301,5 +308,5 @@ Jobs that were rejected after reaching `applied` stage. Read-only reference view
 | Two-stage prefilter before LLM | Hard rejects (wrong domain, title-deterministic) don't need LLM calls. Saves ~$0.10/day and speeds triage. |
 | JSON output validation | `jsonschema` validates every LLM scoring response. Malformed output → manual_review, not a crash. |
 | Web materials viewer (not Drive) | Prep folders are served locally via uvicorn/FastAPI — no cloud sync dependency. Markdown rendered inline; `.docx` offered as download. Eliminates rclone auth complexity and Drive quota issues. |
-| Rejection before prep in poll_flags | Prevents a race condition where a job gets prepped and then rejected in the same poll cycle. |
+| Web POST handlers are the sole write surface | Operators used to edit the Google Sheet and wait up to 10 min for poll_flags.py to mirror it to the DB. Every handler in `findajob.web.routes.board_actions` calls straight into `findajob.actions` and responds in the same request, eliminating the poll-cycle race window. |
 | `abbrev_title()` in folder names | Same-day preps for the same company would overwrite each other without title disambiguation. HHMMSS suffix prevents same-title same-day overwrites. |

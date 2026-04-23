@@ -90,6 +90,8 @@ file. If you're refactoring an old hardcoded section, add a note to `docs/GENERA
 | Profile | `candidate_context/profile.md` |
 | DB | `data/pipeline.db` |
 | Pre-filter | `src/findajob/scorer_prefilter.py` — Stage 1 regex hard reject, Stage 2 no-JD default |
+| Board writes | `src/findajob/web/routes/board_actions.py` — every STATUS / REJECT_REASON transition is a POST handler calling `findajob.actions`. Sheet is read-only. |
+| Watchdog | `scripts/watchdog.py` every 10 min — resets jobs stuck in `prep_in_progress` > 60 min. No Sheet reads. |
 | RAG index | `job_search_rag` — never passed to scorer/CL/outreach |
 | Scheduler | systemd user services (see docs/setup/install-linux.md) |
 | ntfy topic | in `data/.env` as `NTFY_TOPIC`; also in `CLAUDE.local.md` |
@@ -138,7 +140,7 @@ When the pipeline runs inside the `ghcr.io/brockamer/findajob` image, paths shif
 
 # ── Entry point scripts (called by systemd / CLI) ──────────────────────────
 <repo>/scripts/triage.py                    # daily ingest → score → DB
-<repo>/scripts/poll_flags.py                # reads Dashboard + Applied + Review + Waitlist tabs (STATUS, REJECT_REASON, fingerprint)
+<repo>/scripts/watchdog.py                  # resets stuck prep_in_progress jobs > 60 min (every 10 min cron)
 <repo>/scripts/sync_sheet.py                # SQLite → Sheet1 + Dashboard + Applied + Review + Waitlist + Rejected Applications tabs
 <repo>/scripts/setup_sheets.py             # one-time sheet formatting (idempotent)
 <repo>/scripts/prep_application.py          # on-demand LLM material generation
@@ -196,6 +198,14 @@ Foundational decisions (from `docs/superpowers/specs/2026-04-21-web-frontend-14b
 
 ## Critical Architecture Rules
 
+### Web is the Write Surface
+Every STATUS and REJECT_REASON transition runs through a POST handler in
+`findajob.web.routes.board_actions` that calls straight into
+`findajob.actions`. The Google Sheet is a one-way synced view (DB → Sheet);
+`sync_sheet.py` never reads from Sheets. Do not add new transition logic to
+`watchdog.py` or to any Sheet-reading path — every new action is a new web
+handler + a new `findajob.actions` helper.
+
 ### Path Resolution
 All binary paths (AICHAT, PANDOC) come from `findajob.paths` (`src/findajob/paths.py`), which reads `config/paths.env`.
 Never hardcode platform paths in scripts. `BASE` is derived from `__file__` — the repo can live anywhere.
@@ -245,63 +255,66 @@ return zero LinkedIn results. Validate each query manually before committing.
 
 ### Google Sheet Architecture
 
-> The web UI at `/board/*` renders the same column sets directly from the database.
-> `sync_sheet.py` and the web UI both read `state/data/pipeline.db`. Sheet1 will
-> be retired after PR 2 of 14b (#60) ships — the web `/board/archive` page
-> supersedes it. `sync_sheet.py` itself retires in 14d (#14).
+> **Web UI is the write surface.** As of #61 PR-B, `sync_sheet.py` writes DB
+> state to the Sheet one-way and never reads from it. Operators drive every
+> STATUS + REJECT_REASON transition through `/board/*`. The Sheet remains as
+> a read-only synced view for mobile/glance use; `sync_sheet.py` retires in
+> 14d (#14). Sheet1 is already superseded by `/board/archive` (#60).
 
 **Sheet1** — filtered archive (A–N), archival filter:
 Jobs appear if: `score>=5` OR `stage in lifecycle stages` OR `age < 14 days` OR `target company`.
 Low-score old jobs from non-target companies stay in DB only.
 `fingerprint(hidden) | APPLY_FLAG(checkbox) | score | title | company | location | remote | stage | contacts | comp | notes | date | source | url`
 
-**Dashboard** — pre-application queue (A–N), filter: `(score>=7 AND stage IN (scored,manual_review))` OR `stage IN (prep_in_progress, materials_drafted)`. Once user marks STATUS=Applied the poller sets stage=applied and the row moves off Dashboard to the Applied tab:
+**Dashboard** — pre-application queue (A–N), filter: `(score>=7 AND stage IN (scored,manual_review))` OR `stage IN (prep_in_progress, materials_drafted)`. Row columns:
 `STATUS(dropdown) | REJECT_REASON(dropdown) | fingerprint(hidden) | fit_score | probability_score | relevance_score | title(hyperlink) | company | location | remote | contacts | comp | notes | date`
 
-**Applied** — post-application queue (A–N), filter: `stage IN (applied, interview, offer)`. This is the UI for managing jobs you've submitted and are waiting to hear back on:
+**Applied** — post-application queue (A–N), filter: `stage IN (applied, interview, offer)`.
 `STATUS(dropdown) | REJECT_REASON(dropdown) | fingerprint(hidden) | title(hyperlink) | company(viewer hyperlink) | applied_date | days_since_applied(formula) | stage | user_notes | known_contacts | location | remote | comp | ai_notes`
 - `STATUS` options (col A): `Interviewing` / `Offer` / `Not Selected` / `Withdrew`
 - `days_since_applied` = live `=IF(F2="","",TODAY()-F2)` formula — no re-sync needed
 - Row color by priority: Offer→gold, Interviewing→purple, >=21d→gray (silent = likely ghosted), 14–20d→red, 7–13d→yellow, 0–6d→green
-- `user_notes` (col I) is free-text; edited via web UI, one-way synced to Sheet by `sync_sheet.py`
+- `user_notes` (col I) is free-text; edited via the web `/board/applied` notes input, one-way synced to Sheet on the next `sync_sheet.py` pass
 - `applied_date` sourced from `audit_log` where `new_value='applied'` (first transition)
 
 **Review** — manual review triage (A–H), filter: `stage=manual_review`:
 `STATUS(dropdown:Promote) | REJECT_REASON(dropdown) | fingerprint(hidden) | title(hyperlink) | company | score_flag_reason | source | date`
-- `Promote` = `poll_flags.py` sets `score=7, stage=scored` → job appears on Dashboard
-- `REJECT_REASON` = same as Dashboard → `poll_flags.py` rejects the job
 
 **Waitlist** — deferred jobs (A–K), filter: `stage=waitlisted`:
 `STATUS(dropdown:Reactivate) | REJECT_REASON(dropdown) | fingerprint(hidden) | title(hyperlink) | company | relevance_score | location | remote | ai_notes | date | blocking_app`
-- `Reactivate` = `poll_flags.py` restores to `scored` (no folder) or `materials_drafted` (has folder), moves folder back from `_waitlisted/`
-- `REJECT_REASON` = same as Dashboard → `poll_flags.py` rejects the job from waitlist
 - `blocking_app` = computed at sync time: title + stage of active application at same company
 
-**STATUS dropdown options** differ by tab:
+**Write surface — `findajob.web.routes.board_actions`:**
 
-- **Dashboard col A** (pre-application): `Flag for Prep` → `Prep in Progress` *(system)* → `Ready to Apply` *(system)* → `Regenerate` → `Waitlist` → `Applied`
-- **Applied col A** (post-application): `Interviewing` → `Offer` → `Not Selected` → `Withdrew`
+Every transition is a POST handler that calls straight into `findajob.actions`
+(handle_rejection, handle_not_selected, handle_waitlist, handle_reactivate,
+promote_to_scored, notify_waitlist_resurface, reset_prep_to_scored) and
+responds in the same request. No poll cycle, no Sheet readback.
 
-Actions:
-- `Flag for Prep` (Dashboard) = user action → triggers `prep_application.py` via `poll_flags.py`
-- `Ready to Apply` (Dashboard, system) = set when `stage=materials_drafted` (prep done, folder exists)
-- `Regenerate` (Dashboard) = user action → deletes prep folder, re-runs prep
-- `Waitlist` (Dashboard) = user action → `poll_flags.py` sets `stage=waitlisted`, moves folder to `_waitlisted/`
-- `Applied` (Dashboard) = user action → `poll_flags.py` sets `stage=applied`, moves folder to `_applied/`, row moves off Dashboard to Applied tab on next sync
-- `Interviewing/Offer/Withdrew` (Applied) = user action → `poll_flags.py` updates DB stage
-- `Not Selected` (Applied) = user action (company rejected) → `poll_flags.py` sets `stage=not_selected`, folder stays in `_applied/`, no `feedback_log` write
+| Action | Endpoint | Where it lives |
+|---|---|---|
+| Flag for Prep | `POST /board/jobs/{fp}/prep` | Dashboard dropdown |
+| Regenerate | `POST /board/jobs/{fp}/regenerate` | Dashboard dropdown |
+| Applied | `POST /board/jobs/{fp}/apply` | Dashboard dropdown |
+| Waitlist | `POST /board/jobs/{fp}/waitlist` | Dashboard dropdown |
+| Reject (w/ reason) | `POST /board/jobs/{fp}/reject` | Dashboard / Review / Waitlist reject cell |
+| Interviewing | `POST /board/jobs/{fp}/interview` | Applied dropdown |
+| Offer | `POST /board/jobs/{fp}/offer` | Applied dropdown |
+| Withdrew | `POST /board/jobs/{fp}/withdraw` | Applied dropdown |
+| Not Selected (w/ reason) | `POST /board/jobs/{fp}/not-selected` | Applied dropdown + reject cell |
+| Promote | `POST /board/jobs/{fp}/promote` | Review button |
+| Reactivate | `POST /board/jobs/{fp}/reactivate` | Waitlist button |
+| Edit user_notes | `POST /board/jobs/{fp}/notes` | Applied notes input (800ms debounce) |
 
-**REJECT_REASON dropdown** (col B): 11 options (includes "Low Fit Score"). Behavior depends on STATUS:
+**REJECT_REASON dropdown**: 11 options (includes "Low Fit Score"). Behavior depends on STATUS:
 - If STATUS = `Not Selected`: company rejection → `stage=not_selected`, NO `feedback_log`, folder stays in `_applied/` with `NOT_SELECTED_` marker file
 - Otherwise: user rejection → `stage=rejected`, writes `feedback_log`, moves folder to `_rejected/`
 
-**poll_flags.py** reads `Dashboard!A2:C10000`, `Applied!A2:C10000`, `Review!A2:C10000`, and `Waitlist!A2:C10000`. "Not Selected" is checked before generic rejection to prevent routing errors.
+**Stage `waitlisted`:** Set by `POST /board/jobs/{fp}/waitlist`. Folder moves to `companies/_waitlisted/`. Not a rejection — does not write to feedback_log or contaminate scorer feedback loop. When an active application at the same company is rejected/withdrawn, ntfy notification surfaces waitlisted jobs.
 
-**Stage `waitlisted`:** Set by `poll_flags.py` when user selects "Waitlist" on Dashboard. Folder moves to `companies/_waitlisted/`. Job disappears from Dashboard, appears on Waitlist tab. Not a rejection — does not write to feedback_log or contaminate scorer feedback loop. When active application at same company is rejected/withdrawn, ntfy notification surfaces waitlisted jobs.
+**Stage `not_selected`:** Set by `POST /board/jobs/{fp}/not-selected`. Only valid for post-application stages (`applied`, `interview`, `offer`); 409 otherwise. Folder stays in `companies/_applied/` with a `NOT_SELECTED_{reason}_{date}.txt` marker file. Does NOT write to `feedback_log` — company rejections must not contaminate the scorer's feedback loop. `notify_waitlist_resurface()` still fires. Appears on the Rejected Applications tab alongside user rejections.
 
-**Stage `not_selected`:** Set by `poll_flags.py` when user selects "Not Selected" on the Applied tab. Only valid for post-application stages (`applied`, `interview`, `offer`). Folder stays in `companies/_applied/` with a `NOT_SELECTED_{reason}_{date}.txt` marker file. Does NOT write to `feedback_log` — company rejections must not contaminate the scorer's feedback loop. `notify_waitlist_resurface()` still fires (company rejection is a trigger to surface waitlisted jobs at that company). Appears on the Rejected Applications tab alongside user rejections.
-
-**Stage `prep_in_progress`:** Set by `poll_flags.py` immediately before launching `prep_application.py` as a subprocess. Prevents duplicate prep runs across poll cycles. Cleared to `materials_drafted` on success. Health check warns if any job is stuck in this stage >1h.
+**Stage `prep_in_progress`:** Set by `POST /board/jobs/{fp}/prep` immediately before launching `prep_application.py` as a subprocess. Prevents duplicate prep runs (handler idempotency guard + 3-job concurrency cap). Cleared to `materials_drafted` on success. `scripts/watchdog.py` rolls any job stuck > 60 min back to `scored` so the operator can re-flag.
 
 **Health checks** (`notify.py health-check`): warns if Sheet1 > 1000 rows, manual_review backlog > 100, or any target-company job scored 3–6 in last 7 days (potential mis-scores).
 

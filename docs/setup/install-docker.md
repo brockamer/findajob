@@ -156,6 +156,27 @@ docker compose exec scheduler python3 /app/scripts/notify.py health-check
 # Sanity check: ntfy notification should land on your phone.
 ```
 
+## Driving the pipeline
+
+Once the scheduler is running, your daily workflow happens in two places:
+
+1. **`/board/*` in the web UI** — the primary interface. Open
+   `http://<host>:<FINDAJOB_MATERIALS_PORT>/board/dashboard` in a browser.
+   The Dashboard tab lists high-scoring jobs; click **Flag for Prep** on
+   the ones you want materials for. When prep completes, switch the status
+   to **Applied** to move the job to the Applied tab, then track it through
+   **Interviewing / Offer / Withdrew / Not Selected**. Review and Waitlist
+   tabs handle triage and deferred jobs respectively. Every click writes
+   to the DB in the same request — no polling delay.
+
+2. **The Google Sheet** — a read-only synced view. Useful for phone-glance
+   status checks or sharing a read-only link. Edits made directly in the
+   Sheet are **ignored by the pipeline** and overwritten on the next
+   `sync_sheet.py` run; always drive state changes from the web UI.
+
+`scripts/watchdog.py` runs every 10 min and resets any job stuck in
+`prep_in_progress` for more than 60 min back to `scored` so you can re-flag it.
+
 ## Tag pinning strategy
 
 `FINDAJOB_IMAGE_TAG` in your `.env` controls which image Docker Compose pulls. Pick based on how much change tolerance you want.

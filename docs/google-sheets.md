@@ -1,6 +1,13 @@
 # Google Sheets
 
-The Google Sheet is the primary human interface for the pipeline. SQLite is the source of truth — the sheet is a synced view.
+> **One-way synced view as of #61 PR-B.** The Google Sheet mirrors DB state
+> but is no longer read by the pipeline. The primary human interface is the
+> web UI at `/board/*` — see `docs/architecture.md` for the handler matrix.
+> Edits made directly in the Sheet are ignored and overwritten on the next
+> `sync_sheet.py` cycle. The Sheet stays useful for phone-glance views and
+> for sharing read-only status with collaborators.
+
+SQLite is the source of truth.
 
 ---
 
@@ -35,7 +42,7 @@ Rejected rows are greyed out (conditional formatting on `stage="rejected"`).
 ### Dashboard — Pre-Application Queue
 
 Jobs the user can still act on before applying. Updated by `sync_sheet.py` (after triage and after every prep).
-`poll_flags.py` reads this tab every 10 minutes and acts on STATUS and REJECT_REASON.
+`board_actions` (web handler) reads this tab every 10 minutes and acts on STATUS and REJECT_REASON.
 
 **Filter:** `(relevance_score >= 7 AND stage IN (scored, manual_review))` OR `stage IN (prep_in_progress, materials_drafted)`.
 
@@ -70,16 +77,16 @@ The STATUS dropdown drives the entire application workflow.
 | Value | Set by | What happens |
 |---|---|---|
 | *(empty)* | System (default) | No action |
-| `Flag for Prep` | You | `poll_flags.py` triggers `prep_application.py` within 10 min |
+| `Flag for Prep` | You | `board_actions` (web handler) triggers `prep_application.py` within 10 min |
 | `Prep in Progress` | System | Set when prep is actively running (prevents duplicate triggers) |
 | `Regenerate` | You | Deletes existing prep folder and re-runs prep from scratch |
 | `Ready to Apply` | System | Set automatically when `stage=materials_drafted` (prep done) |
 | `Waitlist` | You | Defers the job — folder moves to `_waitlisted/`, appears on Waitlist tab |
-| `Applied` | You | `poll_flags.py` updates DB `stage=applied`, moves folder to `_applied/` |
-| `Interviewing` | You | `poll_flags.py` updates DB `stage=interview` |
-| `Offer` | You | `poll_flags.py` updates DB `stage=offer` |
+| `Applied` | You | `board_actions` (web handler) updates DB `stage=applied`, moves folder to `_applied/` |
+| `Interviewing` | You | `board_actions` (web handler) updates DB `stage=interview` |
+| `Offer` | You | `board_actions` (web handler) updates DB `stage=offer` |
 | `Not Selected` | You | Company rejected — `stage=not_selected`, folder stays in `_applied/`, no feedback_log |
-| `Withdrew` | You | `poll_flags.py` updates DB `stage=withdrawn` |
+| `Withdrew` | You | `board_actions` (web handler) updates DB `stage=withdrawn` |
 
 **Important:** `Ready to Apply` and `Prep in Progress` are system-set. Setting them manually has no effect on the DB — the poller ignores them.
 
@@ -90,14 +97,14 @@ The STATUS dropdown drives the entire application workflow.
 Behavior depends on the STATUS column:
 
 **If STATUS = `Not Selected` (company rejection):**
-1. `poll_flags.py` (within 10 min) detects the value
+1. `board_actions` (web handler) (within 10 min) detects the value
 2. DB updated: `stage=not_selected`, `reject_reason=<value>`
 3. No `feedback_log` write (company rejections don't contaminate the scorer)
 4. Folder stays in `companies/_applied/` with a `NOT_SELECTED_{reason}_{date}.txt` marker file
 5. Waitlisted jobs at the same company are surfaced via ntfy notification
 
 **Otherwise (user rejection):**
-1. `poll_flags.py` (within 10 min) detects the value
+1. `board_actions` (web handler) (within 10 min) detects the value
 2. DB updated: `stage=rejected`, `reject_reason=<value>`
 3. Row written to `feedback_log` table (for pattern analysis)
 4. If a prep folder exists for this job: it is moved to `companies/_rejected/`
@@ -139,8 +146,8 @@ Columns A–N:
 
 | Value | What happens |
 |---|---|
-| `Interviewing` | `poll_flags.py` sets `stage=interview`, row stays on Applied tab |
-| `Offer` | `poll_flags.py` sets `stage=offer`, row stays on Applied tab |
+| `Interviewing` | `board_actions` (web handler) sets `stage=interview`, row stays on Applied tab |
+| `Offer` | `board_actions` (web handler) sets `stage=offer`, row stays on Applied tab |
 | `Ghosted` | Visual-only — stage stays `applied`, row stays on tab, whole row turns gray |
 | `Not Selected` | Company rejection — `stage=not_selected`, marker file in `_applied/`, row moves to Rejected Applications tab |
 | `Withdrew` | `stage=withdrawn`, row leaves Applied tab |
@@ -181,7 +188,7 @@ Columns A–H:
 | G | source | System |
 | H | date_found | System |
 
-**Promote:** `poll_flags.py` sets `score=7, stage=scored` → job appears on Dashboard.
+**Promote:** `board_actions` (web handler) sets `score=7, stage=scored` → job appears on Dashboard.
 **REJECT_REASON:** same rejection workflow as Dashboard.
 
 ---
@@ -291,7 +298,7 @@ Google Sheets has race conditions when multiple concurrent writes happen. The AP
 The sheet is re-written from scratch on each sync. Row positions are unstable. The fingerprint identifies a job uniquely across both the sheet and the DB.
 
 **Why does the poller run every 10 min instead of instantly?**
-systemd timer granularity. 10 min is the default cadence; if you need faster response, run `python3 scripts/poll_flags.py` manually immediately after flagging.
+systemd timer granularity. 10 min is the default cadence; if you need faster response, run `python3 scripts/board_actions (web handler)` manually immediately after flagging.
 
-**Where does `poll_flags.py` read from?**
+**Where does `board_actions` (web handler) read from?**
 Four tabs per cycle: `Dashboard!A2:C10000`, `Applied!A2:C10000`, `Review!A2:C10000`, `Waitlist!A2:C10000`. All use the same col A=STATUS, B=REJECT_REASON, C=fingerprint layout so one loop handles them.

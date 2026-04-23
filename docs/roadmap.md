@@ -44,7 +44,7 @@ Append-only. Numbers are stable references. Amend an entry in place only for fac
 1. **rclone replacement — tabled.** Accepted pending the Phase 3 materials viewer, which retires the rclone layer entirely. No tactical hardening pass in the interim.
 2. **Beta-tester deployment workflow — image-pull cycle.** Bind-mounted `state/` subtree for data, image pulls for code. Operator's Claude Code session (on his laptop, SSHed into `docker.lan`) runs `docker compose pull && docker compose up -d` for each stack. Tester data never at risk from updates.
 3. **Auth — Wireguard perimeter only.** No session auth in the app, no TLS code, no public exposure. See [`deployment-model.md`](deployment-model.md) for topology.
-4. **Timeline — 3–5 weeks full arc.** Contingent on: scope holds, apply-gate stays met daily, no surprise complexity in the `poll_flags.py` pivot (the cross-cutting sub-phase of Phase 5).
+4. **Timeline — 3–5 weeks full arc.** Contingent on: scope holds, apply-gate stays met daily, no surprise complexity in the board-write pivot (14c / #61 — `poll_flags.py` replaced by web handlers + `watchdog.py` 2026-04-22).
 5. **Phase 1 parallelizes** via `superpowers:dispatching-parallel-agents` + ralph-loop (mechanical config-externalization work) + `frontend-design` (Phase 5 viewer).
 6. **Registry + image-tagging:** GHCR. `:main-<sha>` on merge, `:latest` floating, `:v<x.y.z>` on git tag, plus moving alias `:v0.1` repointed on each patch. Testers pin to the minor alias, auto-accept patches; operator dogfoods `:latest`.
 7. **Release ownership:** Claude orchestrates releases (tagging, CHANGELOG, notes, migration markers, dogfood verification); user reviews and approves. See [`release-process.md`](release-process.md).

@@ -453,6 +453,13 @@ test_watchdog.py.
 
 ---
 
+## PR-D — Playwright E2E coverage (Task 16)
+
+Deferred from PR-B 2026-04-22 — scope-discipline call. PR-B ships without
+browser-level tests; `test_board_actions.py` covers every handler at the
+HTTP layer and the plan's CI job was already marked non-blocking, so
+landing E2E later loses nothing. Label: `enhancement`.
+
 ### Task 16 — Playwright E2E suite
 
 **Files**
@@ -696,7 +703,7 @@ Distinct from per-task verification — this is the gate for "14c is done."
   2. `grep -c "values().get" scripts/poll_flags.py` → file doesn't exist (deleted).
   3. Manual: edit a cell in the Google Sheet, wait one watchdog cycle, confirm DB unchanged.
   4. Walk the prep → applied → not_selected → rejected transition on a real job; verify folder moves and `feedback_log` behavior.
-- [ ] `uv run pytest tests/ -v` (incl. `tests/e2e/`) — all green.
+- [ ] `uv run pytest tests/ -v` — all green. (E2E suite deferred to PR-D.)
 - [ ] Container restart on `docker.lan` without manual migration steps (operator just pulls + restarts).
 - [ ] Operator's next-day driven workflow: open `/board/dashboard`, complete one full apply cycle (Flag for Prep → prep completes → Applied → row moves to `/board/applied`).
 - [ ] No `poll_flags_*` or `pending_statuses` mentions in the live codebase (`grep -rn "poll_flags\|pending_statuses" src/ scripts/ tests/ ops/` → empty).

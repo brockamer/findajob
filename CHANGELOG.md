@@ -10,6 +10,20 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Added
+
+- **Web UI is now the primary write surface for the board.** Every STATUS and REJECT_REASON action that previously required editing the Google Sheet — Flag for Prep, Applied, Interviewing, Offer, Withdrew, Not Selected, Waitlist, Reactivate, Promote, Regenerate, Reject — now has a POST handler at `/board/jobs/{fingerprint}/{action}`, wired up to Alpine-flavored HTMX dropdowns on each board tab. The Applied tab's `user_notes` column edits through `POST /board/jobs/{fingerprint}/notes` with an 800ms debounce (#61 PR-A).
+
+### Changed
+
+- **Google Sheet is now one-way (DB → Sheet).** `sync_sheet.py` no longer reads user edits back from any tab; the four `values().get()` calls (Dashboard, Applied, Review, Waitlist) are deleted, along with the `pending_statuses` / `pending_rejects` / `pending_notes` preservation logic. The Sheet remains available as a read-only synced view; operators drive the pipeline from `/board/*` in the web UI (#61 PR-B).
+- **`poll_flags.py` removed; replaced by `scripts/watchdog.py`.** The 10-minute cron's only remaining responsibility is to roll stuck `prep_in_progress` jobs back to `scored` after 60 min. Every transition handler (handle_rejection, handle_not_selected, handle_waitlist, handle_reactivate, promote_to_scored, notify_waitlist_resurface, reset_prep_to_scored) now lives in `src/findajob/actions.py` and is called from `findajob.web.routes.board_actions` (#61 PR-B).
+- **Applied tab drops the `Ghosted` status option.** With the Sheet no longer preserving user-only flags across syncs, the existing 21-day row-age gray-coloring rule replaces it. Operators who want to act on a quiet row flip to `Not Selected` (#61 PR-B).
+
+### Migration required
+
+- Crontab entry changes from `scripts/poll_flags.py` to `scripts/watchdog.py`. Operators pulling `:latest` pick up the swap automatically at container restart — no manual action needed. Sheet edits made during the pull window (if any) are ignored; operators should use the web UI for any queued transitions.
+
 ### Fixed
 
 - `sync_sheet.py` now verifies each tab's `values().update()` response against the expected row count. The Sheets API can return HTTP 200 with `updatedRows` far below the request size — observed 2026-04-22 where both tenants' syncs logged `sync_complete applied=31 waitlist=36` etc. but the actual sheets had 0 rows on most tabs. The old code trusted `len(sheet_rows) - 1` for its `sync_complete` counts; the new `_assert_full_write()` raises `RuntimeError` on mismatch (propagating to `triage.py`'s `triage_sync_failed` event from #145) and emits a `sync_partial_write` event with the server-reported counts for post-mortem. All six tabs (Sheet1, Dashboard, Review, Waitlist, Applied, Rejected Applications) are covered (#171).

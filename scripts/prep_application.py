@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
-# ~/JobSearchPipeline/scripts/prep_application.py
+# scripts/prep_application.py
 # Args: company, title, url, job_id
-"""Generate draft application materials for a flagged job."""
+"""Generate draft application materials for a flagged job.
+
+Launched as a detached subprocess from POST /board/jobs/{fp}/prep (see
+findajob.web.routes.board_actions). On success runs sync_sheet.py at
+the end to refresh the Sheet view.
+"""
 
 import json
 import os
