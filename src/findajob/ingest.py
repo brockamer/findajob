@@ -50,16 +50,24 @@ class IngestResult:
     """Outcome of a single ``ingest_manual_job`` call.
 
     - ``status="ingested"``: new row inserted; ``job_id`` is the new id.
-    - ``status="duplicate"``: existing row matched; ``job_id`` is the
-      pre-existing id, ``existing_match`` names the tier that matched
-      ("strict" / "url" / "loose").
+    - ``status="duplicate"``: existing row matched by an unhandled state
+      (should not occur in practice after _handle_duplicate is wired up).
+    - ``status="resurfaced"``: existing row was un-rejected / reactivated /
+      refreshed; job is now on the Dashboard.
+    - ``status="already_applied"``: existing row is post-application; no
+      mutation. Link to /board/applied.
+    - ``status="not_selected"``: company rejected the application; no
+      mutation. Link to /board/rejected and materials folder.
     """
 
-    status: Literal["ingested", "duplicate"]
+    status: Literal["ingested", "duplicate", "resurfaced", "already_applied", "not_selected"]
     job_id: str
     company: str
     title: str
-    existing_match: str | None = None
+    fingerprint: str | None = None
+    existing_match: str | None = None   # "strict" / "url" / "loose"
+    existing_stage: str | None = None   # stage of the row at submission time
+    prep_folder_path: str | None = None # for not_selected materials link
     prep_launched: bool = False
 
 

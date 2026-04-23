@@ -40,6 +40,25 @@ CREATE TABLE jobs (
     updated_at TEXT DEFAULT (datetime('now')),
     dupe_of TEXT DEFAULT ''
 );
+CREATE TABLE audit_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id TEXT NOT NULL,
+    field_changed TEXT NOT NULL,
+    old_value TEXT,
+    new_value TEXT,
+    changed_at TEXT DEFAULT (datetime('now')),
+    changed_by TEXT DEFAULT 'system'
+);
+CREATE TABLE feedback_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    company TEXT NOT NULL,
+    relevance_score INTEGER,
+    reject_reason TEXT NOT NULL,
+    jd_excerpt TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now'))
+);
 """
 
 _VALID_FORM: dict[str, str] = {
