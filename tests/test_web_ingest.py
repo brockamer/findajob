@@ -162,14 +162,15 @@ def test_post_missing_required_formkey_returns_422(client: TestClient) -> None:
     assert resp.status_code == 422
 
 
-def test_post_duplicate_returns_duplicate_partial(client: TestClient) -> None:
+def test_post_duplicate_returns_resurfaced_partial(client: TestClient) -> None:
+    """A second identical submission strict-matches the first, which is at
+    stage=scored — so the result is resurfaced, not duplicate."""
     first = client.post("/ingest/manual", data=_VALID_FORM)
     assert 'data-outcome="success"' in first.text
 
     second = client.post("/ingest/manual", data=_VALID_FORM)
     assert second.status_code == 200
-    assert 'data-outcome="duplicate"' in second.text
-    assert "strict" in second.text  # reports the match tier
+    assert 'data-outcome="resurfaced"' in second.text
     assert _job_count(client) == 1
 
 
@@ -206,3 +207,98 @@ def test_generate_folder_deferred_when_prep_queue_full(client: TestClient, popen
     assert popen_calls == []
     # Row created (4 total now: 3 seed + 1 new).
     assert _job_count(client) == 4
+
+
+def _insert_existing_job(db_path: str, *, stage: str, score: int = 8, folder: str | None = None) -> None:
+    """Seed a pre-existing job in the given stage directly into the DB."""
+    from findajob.cleaning import clean_company, clean_title, fingerprint, loose_fingerprint
+
+    co = clean_company("Acme Data Centers")
+    ti = clean_title("Senior Operations Engineer")
+    # location must be coarse so the loose-dedup tier fires
+    loc = "United States"
+    fp = fingerprint(ti, co, loc)
+    lfp = loose_fingerprint(ti, co)
+    job_id = f"triage-{fp}"
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """INSERT INTO jobs
+           (id, fingerprint, loose_fingerprint, url, title, company, location,
+            source, relevance_score, stage, apply_flag, prep_folder_path)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'triage', ?, ?, 0, ?)""",
+        (job_id, fp, lfp, "https://example.com/original", ti, co, loc, score, stage, folder),
+    )
+    conn.commit()
+    conn.close()
+
+
+def test_duplicate_applied_returns_already_applied_partial(client: TestClient) -> None:
+    # The existing row has a coarse location so the loose dedup tier fires.
+    _insert_existing_job(client._db_path, stage="applied")  # type: ignore[attr-defined]
+    # Submit with a specific city — will match via loose tier.
+    data = dict(_VALID_FORM)
+    data["location"] = "San Francisco, CA"
+    resp = client.post("/ingest/manual", data=data)
+    assert resp.status_code == 200
+    assert 'data-outcome="already_applied"' in resp.text
+    assert "Already applied" in resp.text
+    assert "/board/applied" in resp.text
+    # DB row count unchanged (1 pre-existing row, no new insert)
+    assert _job_count(client) == 1
+
+
+def test_duplicate_not_selected_returns_not_selected_partial(client: TestClient) -> None:
+    _insert_existing_job(client._db_path, stage="not_selected", folder="/tmp/fake_folder")  # type: ignore[attr-defined]
+    data = dict(_VALID_FORM)
+    data["location"] = "San Francisco, CA"
+    resp = client.post("/ingest/manual", data=data)
+    assert resp.status_code == 200
+    assert 'data-outcome="not_selected"' in resp.text
+    assert "not selected" in resp.text.lower()
+    assert "/board/rejected" in resp.text
+    assert _job_count(client) == 1
+
+
+def test_duplicate_rejected_returns_resurfaced_and_updates_db(client: TestClient) -> None:
+    _insert_existing_job(client._db_path, stage="rejected", score=4)  # type: ignore[attr-defined]
+    data = dict(_VALID_FORM)
+    data["location"] = "San Francisco, CA"
+    resp = client.post("/ingest/manual", data=data)
+    assert resp.status_code == 200
+    assert 'data-outcome="resurfaced"' in resp.text
+    assert "/board/dashboard" in resp.text
+    # Stage must be updated in DB
+    conn = sqlite3.connect(client._db_path)  # type: ignore[attr-defined]
+    conn.row_factory = sqlite3.Row
+    row = conn.execute("SELECT stage, relevance_score FROM jobs").fetchone()
+    conn.close()
+    assert row["stage"] == "scored"
+    assert row["relevance_score"] == 8
+
+
+def test_duplicate_waitlisted_returns_resurfaced(client: TestClient) -> None:
+    _insert_existing_job(client._db_path, stage="waitlisted", score=7)  # type: ignore[attr-defined]
+    data = dict(_VALID_FORM)
+    data["location"] = "San Francisco, CA"
+    resp = client.post("/ingest/manual", data=data)
+    assert resp.status_code == 200
+    assert 'data-outcome="resurfaced"' in resp.text
+    conn = sqlite3.connect(client._db_path)  # type: ignore[attr-defined]
+    conn.row_factory = sqlite3.Row
+    row = conn.execute("SELECT stage FROM jobs").fetchone()
+    conn.close()
+    assert row["stage"] == "scored"
+
+
+def test_duplicate_low_scored_returns_resurfaced_and_bumps_score(client: TestClient) -> None:
+    _insert_existing_job(client._db_path, stage="scored", score=3)  # type: ignore[attr-defined]
+    data = dict(_VALID_FORM)
+    data["location"] = "San Francisco, CA"
+    resp = client.post("/ingest/manual", data=data)
+    assert resp.status_code == 200
+    assert 'data-outcome="resurfaced"' in resp.text
+    conn = sqlite3.connect(client._db_path)  # type: ignore[attr-defined]
+    conn.row_factory = sqlite3.Row
+    row = conn.execute("SELECT relevance_score FROM jobs").fetchone()
+    conn.close()
+    assert row["relevance_score"] == 8
