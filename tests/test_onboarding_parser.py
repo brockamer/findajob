@@ -1,0 +1,119 @@
+"""Unit tests for the onboarding emission parser (#148)."""
+
+from __future__ import annotations
+
+from findajob.onboarding.parser import ALLOWED_FILENAMES, parse_emission
+
+
+def _wrap(name: str, body: str) -> str:
+    return f"<<<FILE: {name}>>>\n{body}\n<<<END FILE: {name}>>>"
+
+
+_CLEAN_BLOCKS = {
+    "profile.md": "# Profile\nAlice Doe\n",
+    "master_resume.md": "# Resume\n## Contact\nAlice Doe\n",
+    "target_companies.md": "## Tier 1 — Active Focus\n- Acme\n- Example Corp\n",
+    "business_sector_employers_reference.md": "## Categories\n### Foo\n",
+    "jsearch_queries.txt": "senior backend engineer\n",
+    "prefilter_rules.yaml": "hard_rejects:\n  spam:\n    - '\\bspam\\b'\n",
+    "in_domain_patterns.yaml": "positive:\n  - '\\bbackend\\s+engineer\\b'\n",
+}
+
+
+def _clean_emission() -> str:
+    return "\n\n".join(_wrap(n, b) for n, b in _CLEAN_BLOCKS.items())
+
+
+def test_allowed_filenames_are_exactly_seven() -> None:
+    assert len(ALLOWED_FILENAMES) == 7
+    assert set(ALLOWED_FILENAMES) == set(_CLEAN_BLOCKS)
+
+
+def test_clean_emission_all_seven_found() -> None:
+    result = parse_emission(_clean_emission())
+    assert set(result.found) == set(_CLEAN_BLOCKS)
+    assert result.missing == []
+    assert result.unknown == []
+    for name, body in _CLEAN_BLOCKS.items():
+        assert result.found[name] == body
+
+
+def test_embedded_in_transcript_is_still_parsed() -> None:
+    blob = (
+        "User: paste the emission please\n"
+        "Assistant: Here we go.\n\n" + _clean_emission() + "\n\nReply **next** to continue.\n"
+    )
+    result = parse_emission(blob)
+    assert set(result.found) == set(_CLEAN_BLOCKS)
+    assert result.missing == []
+
+
+def test_missing_block_is_reported() -> None:
+    partial_blocks = {k: v for k, v in _CLEAN_BLOCKS.items() if k != "in_domain_patterns.yaml"}
+    blob = "\n\n".join(_wrap(n, b) for n, b in partial_blocks.items())
+    result = parse_emission(blob)
+    assert "in_domain_patterns.yaml" in result.missing
+    assert len(result.found) == 6
+
+
+def test_duplicate_last_wins() -> None:
+    blob = (
+        _wrap("profile.md", "first draft\n")
+        + "\n\n"
+        + "\n\n".join(_wrap(n, b) for n, b in _CLEAN_BLOCKS.items() if n != "profile.md")
+        + "\n\n"
+        + _wrap("profile.md", "second draft\n")
+    )
+    result = parse_emission(blob)
+    assert result.found["profile.md"] == "second draft\n"
+    assert result.missing == []
+
+
+def test_unknown_filename_goes_to_unknown() -> None:
+    blob = _clean_emission() + "\n\n" + _wrap("secrets.env", "API_KEY=...\n")
+    result = parse_emission(blob)
+    assert "secrets.env" in result.unknown
+    assert "secrets.env" not in result.found
+    assert set(result.found) == set(_CLEAN_BLOCKS)
+
+
+def test_code_fence_wrapping_is_stripped() -> None:
+    body = "## Profile\ncontent\n"
+    fenced = f"```markdown\n{body}```"
+    blob = (
+        _wrap("profile.md", fenced)
+        + "\n\n"
+        + "\n\n".join(_wrap(n, b) for n, b in _CLEAN_BLOCKS.items() if n != "profile.md")
+    )
+    result = parse_emission(blob)
+    assert result.found["profile.md"].strip() == body.strip()
+
+
+def test_crlf_line_endings_parse() -> None:
+    blob = _clean_emission().replace("\n", "\r\n")
+    result = parse_emission(blob)
+    assert set(result.found) == set(_CLEAN_BLOCKS)
+    assert result.missing == []
+
+
+def test_dangling_open_delimiter_is_missing() -> None:
+    partial = _wrap("profile.md", "ok\n")
+    # Dangling open for master_resume with no close
+    dangling = "<<<FILE: master_resume.md>>>\nstarted but not finished\n"
+    blob = (
+        partial
+        + "\n\n"
+        + dangling
+        + "\n\n"
+        + "\n\n".join(_wrap(n, b) for n, b in _CLEAN_BLOCKS.items() if n not in ("profile.md", "master_resume.md"))
+    )
+    result = parse_emission(blob)
+    assert "master_resume.md" in result.missing
+    assert "profile.md" in result.found
+
+
+def test_blank_input_returns_all_missing() -> None:
+    result = parse_emission("")
+    assert result.found == {}
+    assert set(result.missing) == set(_CLEAN_BLOCKS)
+    assert result.unknown == []
