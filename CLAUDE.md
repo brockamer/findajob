@@ -111,6 +111,8 @@ When the pipeline runs inside the `ghcr.io/brockamer/findajob` image, paths shif
 | Personal config (`config/*.yaml|.txt|.json`) | `<repo>/config/` | `/app/config/` (bind-mounted from `./state/config/`) |
 | `candidate_context/` | `<repo>/candidate_context/` | `/app/candidate_context/` (bind-mount) |
 | `companies/` | `<repo>/companies/` | `/app/companies/` (bind-mount) |
+| Onboarding sentinel | `<repo>/data/.onboarding-complete` (new in #148) | `/app/data/.onboarding-complete` (bind-mount from `./state/data/`) |
+| Onboarding backups | `<repo>/.backups/{UTC-stamp}/` (new in #148) | `/app/.backups/` (bind-mount from `./state/.backups/`) |
 | `aichat-ng` | `/usr/local/bin/aichat-ng` | `/usr/local/bin/aichat-ng` (blob42/aichat-ng prebuilt) |
 | aichat-ng config dir | `~/.config/aichat_ng/` | `/app/.config/aichat_ng/` (bind-mount from `./state/aichat_ng/`) |
 | Scheduler | systemd user services | supercronic inside the container |
@@ -139,6 +141,10 @@ When the pipeline runs inside the `ghcr.io/brockamer/findajob` image, paths shif
 <repo>/src/findajob/web/routes/config.py     # GET /config/, GET/POST /config/files/{path} — in-browser config editor (#149)
 <repo>/src/findajob/web/routes/tools.py      # GET /tools/ — stub linking to /config/ (#149)
 <repo>/src/findajob/web/config_files.py      # allowlist + resolve_editable() for /config/ editor (#149)
+<repo>/src/findajob/web/onboarding_guard.py # NUX guard dependency — 307s /board,/materials,/stats to /onboarding when sentinel missing (#148)
+<repo>/src/findajob/web/routes/onboarding.py # GET /onboarding/, GET /onboarding/prompt, POST /onboarding/inject (#148)
+<repo>/src/findajob/onboarding/parser.py    # parse interview emission into files to inject (#148)
+<repo>/src/findajob/onboarding/injector.py  # atomic write + backup + Tier-1 derivation + sentinel (#148)
 <repo>/src/findajob/web/routes.py            # /healthz, /folders/<stage>/<name>/*, /files/* routes
 <repo>/src/findajob/web/folder_resolver.py   # resolves stage→filesystem path, path-traversal guards
 <repo>/src/findajob/web/templates/           # Jinja2 templates (index.html, folder.html, viewer.html)
@@ -203,6 +209,18 @@ Foundational decisions (from `docs/superpowers/specs/2026-04-21-web-frontend-14b
 master resume, prefilter rules, search queries, feed URLs, role prompts) with an
 explicit allowlist; no auth, consistent with the Wireguard perimeter model. See
 `findajob.web.config_files` for the allowlist definition (#149).
+
+`/onboarding/` is the first-run NUX + paste-back injector for the interview
+emitted by `config/roles/onboarding_interviewer.md`. A FastAPI dependency on
+the `/board/*`, `/materials/*`, and `/stats/*` router includes redirects to
+`/onboarding/` when `{base_root}/data/.onboarding-complete` is missing. The
+paste-back injector writes seven canonical config files (under
+`candidate_context/` and `config/`) plus a derived
+`config/companies_of_interest.txt`, and backs up any existing destinations
+to `{base_root}/.backups/{UTC-stamp}/` first. Re-triggerable from `/tools/`
+via `/onboarding/?mode=rerun`. See
+`findajob.onboarding.parser`/`findajob.onboarding.injector`/
+`findajob.web.onboarding_guard` for the implementation boundaries (#148).
 
 ---
 

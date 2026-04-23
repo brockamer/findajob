@@ -624,5 +624,9 @@ Quick examples of right vs. wrong:
 
 ## After the interview
 
-> Your instance operator will extract each emitted block to the correct file path on
-> your findajob stack. You do not need to do this yourself.
+> When you've emitted all seven files, return to your findajob stack's
+> `/onboarding/` page. Copy the entire chat (or just the seven delimited
+> blocks) into the text box and click **Inject config**. The pipeline
+> will parse the blocks, back up any existing config, write the new
+> files, and land you on your Board. You don't need to handle file
+> extraction by hand.

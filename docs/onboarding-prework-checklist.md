@@ -36,8 +36,10 @@ chat tab.
 
 ## Running the interview
 
-- [ ] Paste the full contents of `config/roles/onboarding_interviewer.md`
-      into the new chat and hit send.
+- [ ] In your stack's web UI, visit `/onboarding/`. Click "Copy the
+      interview prompt" and paste it into the new chat you opened.
 - [ ] Follow the phase prompts. Upload your documents when asked.
-- [ ] When the prompt emits files at the end, your instance operator will
-      extract each block — you don't need to handle that yourself.
+- [ ] When the LLM has emitted all seven file blocks, copy the entire
+      chat (or just the seven blocks — the parser handles either) and
+      paste it into the text box at the bottom of `/onboarding/`.
+      Click "Inject config". The pipeline is configured.

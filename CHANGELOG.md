@@ -10,6 +10,15 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Added
+
+- **Onboarding NUX at `/onboarding/` — fresh stacks are guided end-to-end.** First-run stacks (no `{base_root}/data/.onboarding-complete` sentinel) redirect from `/board/*`, `/materials/*`, and `/stats/*` to a new `/onboarding/` landing page that walks the user through running the interview (`config/roles/onboarding_interviewer.md`) in their chosen LLM (Claude / ChatGPT / Gemini) and pasting the emission back. The paste-back handler parses the seven `<<<FILE: name>>>`-delimited blocks, backs up any existing destinations to `{base_root}/.backups/{UTC-stamp}/`, atomically writes the seven canonical config files (profile, master resume, target companies, sector reference, search queries, prefilter rules, in-domain patterns) plus a derived `config/companies_of_interest.txt` from the Tier 1 section of `target_companies.md`, and writes the sentinel that clears the redirect. Re-triggerable from `/tools/` via `/onboarding/?mode=rerun`. Closes #148; unblocks #11 (user-facing setup docs).
+- **`/config/` editor allowlist extended for post-injection tuning.** `config/target_companies.md` and `config/business_sector_employers_reference.md` (both injected by the onboarding flow) are now editable via `/config/`. `config/companies_of_interest.txt` stays off the allowlist — it's derived at injection time and editing it directly would drift from `target_companies.md` (#148).
+
+### Migration required
+
+- **Operators with existing stacks:** after pulling this release, either (a) run the onboarding interview once from `/tools/ → Run onboarding interview`, or (b) touch the sentinel file manually: `docker compose exec scheduler python -c "from findajob.onboarding import mark_complete; from pathlib import Path; mark_complete(Path('/app'))"`. Without one of these, the first request to `/board/` will 307-redirect to `/onboarding/` until the sentinel exists. This is a one-time action per stack (#148).
+
 ## [0.2.0] — 2026-04-23
 
 Minor bump. Web UI becomes the primary write surface for the board, replacing Google Sheet edits and the Google Form JD-ingest loop. Adds a `/config/` in-browser editor, the first two `/stats/` dashboards, and the `/board/*` read/write views. Introduces two-tier dedup and a new nullable `loose_fingerprint` column on `jobs` — **operators upgrading from v0.1.4 must run `scripts/migrate_add_loose_fingerprint.py` once after pulling** (see Migration required below). Several prep/sync reliability fixes surfaced during the #61 PR-B smoke are also included.
