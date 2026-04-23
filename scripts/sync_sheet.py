@@ -604,7 +604,11 @@ REJECTED_APPS_HEADERS = [
 
 
 def sync_rejected_apps(svc, conn):
-    """Sync jobs that were rejected or not selected after being in 'applied' stage."""
+    """Sync jobs that were rejected or not selected after being in 'applied' stage.
+
+    Retirable: superseded by the web `/board/rejected` view (#191). Remove alongside
+    the Sheet1-write retirement tracked in #136.
+    """
     rows = conn.execute("""
         SELECT j.*, a.changed_at AS rejected_date
         FROM jobs j

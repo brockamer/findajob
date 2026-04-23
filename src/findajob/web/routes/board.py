@@ -1,4 +1,4 @@
-"""Board tabs: /board/dashboard, /applied, /review, /waitlist, /archive."""
+"""Board tabs: /board/dashboard, /applied, /review, /waitlist, /rejected, /archive."""
 
 from __future__ import annotations
 
@@ -260,6 +260,97 @@ def waitlist(
             "desc": desc,
             "density": _normalize_density(density),
             "tab": "waitlist",
+            "materials_base_url": materials_base_url,
+        },
+    )
+
+
+_REJECTED_COLS = [
+    ("Title", "title"),
+    ("Company", "company"),
+    ("Reason", "reject_reason"),
+    ("Rejected", "rejected_date"),
+    ("Source", "rejection_source"),
+]
+_REJECTED_SORTABLE = {c for _, c in _REJECTED_COLS}
+_REJECTED_DEFAULT_SORT = "rejected_date"
+
+
+# Latest stage-transition into rejected/not_selected per job. audit_log.job_id
+# stores jobs.id (UUID) — match jobs.id, not fingerprint. MAX(changed_at) picks
+# the most recent transition in case a job was rejected, reactivated, and
+# rejected again. See CLAUDE.md §"audit_log timestamp format".
+_REJECTED_SQL = """
+SELECT j.fingerprint, j.title, j.company, j.url, j.stage, j.reject_reason,
+       CASE j.stage WHEN 'not_selected' THEN 'company' ELSE 'user' END AS rejection_source,
+       al.rejected_date
+FROM jobs j
+LEFT JOIN (
+  SELECT job_id, MAX(changed_at) AS rejected_date
+  FROM audit_log
+  WHERE field_changed = 'stage' AND new_value IN ('rejected','not_selected')
+  GROUP BY job_id
+) al ON al.job_id = j.id
+WHERE j.stage IN ('rejected','not_selected')
+ORDER BY {sort_col} {order}
+"""
+
+
+@router.get("/board/rejected", response_class=HTMLResponse)
+def rejected(
+    request: Request,
+    sort: str = Query(default=""),
+    desc: int = Query(default=1),
+    density: str = Query(default=_DEFAULT_DENSITY),
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> HTMLResponse:
+    sort_col = sort if sort in _REJECTED_SORTABLE else _REJECTED_DEFAULT_SORT
+    order = "DESC" if desc else "ASC"
+    rows = db.execute(_REJECTED_SQL.format(sort_col=sort_col, order=order)).fetchall()
+    materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request=request,
+        name="board/rejected.html",
+        context={
+            "columns": _REJECTED_COLS,
+            "rows": rows,
+            "sort": sort_col,
+            "desc": desc,
+            "density": _normalize_density(density),
+            "tab": "rejected",
+            "materials_base_url": materials_base_url,
+        },
+    )
+
+
+@router.get("/board/rejected/rows", response_class=HTMLResponse)
+def rejected_rows(
+    request: Request,
+    q: str = Query(default=""),
+    sort: str = Query(default=""),
+    desc: int = Query(default=1),
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> HTMLResponse:
+    sort_col = sort if sort in _REJECTED_SORTABLE else _REJECTED_DEFAULT_SORT
+    order = "DESC" if desc else "ASC"
+    filter_sql, params = _filter_clause(q)
+    qualified_filter = filter_sql.replace("title", "j.title").replace("company", "j.company")
+    base = _REJECTED_SQL.format(sort_col=sort_col, order=order)
+    sql = base.replace(
+        "WHERE j.stage IN ('rejected','not_selected')",
+        f"WHERE j.stage IN ('rejected','not_selected'){qualified_filter}",
+    )
+    rows = db.execute(sql, params).fetchall()
+    materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request=request,
+        name="_job_rows_fragment.html",
+        context={
+            "columns": _REJECTED_COLS,
+            "rows": rows,
+            "tab": "rejected",
             "materials_base_url": materials_base_url,
         },
     )

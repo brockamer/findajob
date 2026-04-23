@@ -2,6 +2,7 @@
 {% block title %}Archive — findajob{% endblock %}
 {% block content %}
 <h1 class="text-2xl font-semibold mb-4">Archive ({{ rows|length }}{% if next_offset %}+{% endif %})</h1>
+{% include "board/_tabs.html" %}
 <div class="mb-3 text-xs text-slate-600 flex items-center gap-1">
   <span>Rows:</span>
   <a href="?sort={{ sort }}&desc={{ desc }}&density=compact"
