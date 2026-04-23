@@ -34,6 +34,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal
 
+from findajob.actions import reactivate_from_ingest, refresh_active_job, un_reject_job
 from findajob.cleaning import (
     clean_company,
     clean_title,
@@ -69,6 +70,54 @@ class IngestResult:
     existing_stage: str | None = None   # stage of the row at submission time
     prep_folder_path: str | None = None # for not_selected materials link
     prep_launched: bool = False
+
+
+_APPLIED_STAGES = frozenset({"applied", "interview", "offer", "withdrew"})
+
+
+def _handle_duplicate(
+    conn: sqlite3.Connection,
+    existing_id: str,
+    overwrite_fields: dict[str, str],
+) -> IngestResult:
+    """Fetch the existing row and route to the right resurface path."""
+    row = conn.execute(
+        """SELECT id, fingerprint, title, company, stage, relevance_score,
+                  reject_reason, prep_folder_path
+           FROM jobs WHERE id=?""",
+        (existing_id,),
+    ).fetchone()
+
+    stage = row["stage"]
+    common = {
+        "job_id": existing_id,
+        "fingerprint": row["fingerprint"],
+        "company": row["company"],
+        "title": row["title"],
+        "existing_stage": stage,
+    }
+
+    if stage in _APPLIED_STAGES:
+        return IngestResult(status="already_applied", **common)
+
+    if stage == "not_selected":
+        return IngestResult(
+            status="not_selected",
+            prep_folder_path=row["prep_folder_path"],
+            **common,
+        )
+
+    if stage == "rejected":
+        un_reject_job(conn, row, overwrite_fields)
+        return IngestResult(status="resurfaced", **common)
+
+    if stage == "waitlisted":
+        reactivate_from_ingest(conn, row, overwrite_fields)
+        return IngestResult(status="resurfaced", **common)
+
+    # scored / manual_review / prep_in_progress / materials_drafted
+    refresh_active_job(conn, row, overwrite_fields)
+    return IngestResult(status="resurfaced", **common)
 
 
 def ingest_manual_job(
@@ -122,13 +171,15 @@ def ingest_manual_job(
                 break
 
     if existing:
-        return IngestResult(
-            status="duplicate",
-            job_id=existing["id"],
-            company=company,
-            title=title,
-            existing_match=matched_tier,
-        )
+        overwrite_fields = {
+            "url": url,
+            "location": location,
+            "remote_status": remote_status,
+            "raw_jd_text": raw_jd_text,
+            "notes": notes,
+            "known_contacts": known_contacts,
+        }
+        return _handle_duplicate(conn, existing["id"], overwrite_fields)
 
     now = datetime.now(UTC).isoformat()
     job_id = f"{source}-{fp}"
@@ -189,6 +240,7 @@ def ingest_manual_job(
     return IngestResult(
         status="ingested",
         job_id=job_id,
+        fingerprint=fp,
         company=company,
         title=title,
         prep_launched=prep_launched,

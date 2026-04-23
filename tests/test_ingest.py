@@ -137,9 +137,8 @@ def test_strict_fingerprint_duplicate(conn: sqlite3.Connection, popen_calls):
     first = _submit(conn)
     assert first.status == "ingested"
 
-    second = _submit(conn)  # identical submission
-    assert second.status == "duplicate"
-    assert second.existing_match == "strict"
+    second = _submit(conn)  # identical submission — existing row is scored, so resurfaced
+    assert second.status == "resurfaced"
     assert second.job_id == first.job_id
 
     count = conn.execute("SELECT COUNT(*) FROM jobs").fetchone()[0]
@@ -148,14 +147,14 @@ def test_strict_fingerprint_duplicate(conn: sqlite3.Connection, popen_calls):
 
 def test_url_duplicate(conn: sqlite3.Connection, popen_calls):
     first = _submit(conn)
-    # Same URL, different title/location → strict fingerprint misses, URL matches
+    # Same URL, different title/location → strict fingerprint misses, URL matches;
+    # existing row is scored so returns resurfaced
     second = _submit(
         conn,
         title="Operations Manager",
         location="Remote",
     )
-    assert second.status == "duplicate"
-    assert second.existing_match == "url"
+    assert second.status == "resurfaced"
     assert second.job_id == first.job_id
 
 
@@ -165,16 +164,14 @@ def test_tier2_loose_dedup_when_existing_has_coarse_location(conn: sqlite3.Conne
     # this is the cross-source syndication case from #182 Bug C.
     first = _submit(conn, location="United States", url="https://greenhouse.io/a/1")
     second = _submit(conn, location="Barstow, TX", url="https://linkedin.com/jobs/999")
-    assert second.status == "duplicate"
-    assert second.existing_match == "loose"
+    assert second.status == "resurfaced"
     assert second.job_id == first.job_id
 
 
 def test_tier2_loose_dedup_when_incoming_has_coarse_location(conn: sqlite3.Connection, popen_calls):
     _submit(conn, location="Barstow, TX", url="https://greenhouse.io/a/1")
     second = _submit(conn, location="", url="https://linkedin.com/jobs/999")
-    assert second.status == "duplicate"
-    assert second.existing_match == "loose"
+    assert second.status == "resurfaced"
 
 
 def test_distinct_cities_do_not_collapse(conn: sqlite3.Connection, popen_calls):
@@ -206,3 +203,121 @@ def test_source_label_threaded_through(conn: sqlite3.Connection, popen_calls):
     row = conn.execute("SELECT source FROM jobs WHERE id=?", (result.job_id,)).fetchone()
     assert row["source"] == "manual_form"
     assert result.job_id.startswith("manual_form-")
+
+
+def _insert_existing(conn: sqlite3.Connection, *, stage: str, score: int = 5,
+                     company: str = "Acme Data Centers",
+                     title: str = "Senior Operations Engineer",
+                     location: str = "United States",
+                     reject_reason: str = "", folder: str | None = None) -> sqlite3.Row:
+    """Insert a pre-existing job at a given stage (imitates a row triage or a
+    prior ingest created). Uses coarse location so loose-dedup fires on re-submit."""
+    from findajob.cleaning import fingerprint, loose_fingerprint, clean_company, clean_title
+    co = clean_company(company)
+    ti = clean_title(title)
+    fp = fingerprint(ti, co, location)
+    lfp = loose_fingerprint(ti, co)
+    job_id = f"triage-{fp}"
+    conn.execute(
+        """INSERT INTO jobs
+           (id, fingerprint, loose_fingerprint, url, title, company, location, source,
+            relevance_score, stage, apply_flag, reject_reason, prep_folder_path)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'triage', ?, ?, 0, ?, ?)""",
+        (job_id, fp, lfp, f"https://example.com/{fp}", ti, co, location, score, stage,
+         reject_reason, folder),
+    )
+    conn.commit()
+    return conn.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+
+
+class TestHandleDuplicate:
+    """_handle_duplicate branch tests — each exercises one stage category."""
+
+    def test_applied_stage_returns_already_applied(self, conn, popen_calls):
+        _insert_existing(conn, stage="applied", score=8)
+        result = _submit(conn, location="United States")
+        assert result.status == "already_applied"
+        assert result.existing_stage == "applied"
+        # No new row
+        assert conn.execute("SELECT COUNT(*) FROM jobs").fetchone()[0] == 1
+
+    def test_interview_stage_returns_already_applied(self, conn, popen_calls):
+        _insert_existing(conn, stage="interview", score=8)
+        result = _submit(conn, location="United States")
+        assert result.status == "already_applied"
+
+    def test_offer_stage_returns_already_applied(self, conn, popen_calls):
+        _insert_existing(conn, stage="offer", score=8)
+        result = _submit(conn, location="United States")
+        assert result.status == "already_applied"
+
+    def test_withdrew_stage_returns_already_applied(self, conn, popen_calls):
+        _insert_existing(conn, stage="withdrew", score=8)
+        result = _submit(conn, location="United States")
+        assert result.status == "already_applied"
+
+    def test_not_selected_returns_not_selected_with_folder(self, conn, popen_calls, tmp_path):
+        folder = str(tmp_path / "companies" / "_applied" / "Acme_Senior_2026-01-01_120000")
+        _insert_existing(conn, stage="not_selected", score=8, folder=folder)
+        result = _submit(conn, location="United States")
+        assert result.status == "not_selected"
+        assert result.existing_stage == "not_selected"
+        assert result.prep_folder_path == folder
+        assert conn.execute("SELECT COUNT(*) FROM jobs").fetchone()[0] == 1
+
+    def test_rejected_returns_resurfaced_and_updates_stage(self, conn, popen_calls):
+        existing = _insert_existing(conn, stage="rejected", score=4, reject_reason="Low Fit Score")
+        # Seed a feedback_log row that should be deleted
+        conn.execute(
+            "INSERT INTO feedback_log (job_id, title, company, relevance_score, reject_reason)"
+            " VALUES (?, 'Senior Operations Engineer', 'Acme Data Centers', 4, 'Low Fit Score')",
+            (existing["id"],),
+        )
+        conn.commit()
+        result = _submit(conn, location="United States")
+        assert result.status == "resurfaced"
+        assert result.existing_stage == "rejected"
+        row = conn.execute("SELECT stage, relevance_score, reject_reason FROM jobs").fetchone()
+        assert row["stage"] == "scored"
+        assert row["relevance_score"] == 8
+        assert row["reject_reason"] == ""
+        assert conn.execute("SELECT COUNT(*) FROM feedback_log").fetchone()[0] == 0
+
+    def test_waitlisted_returns_resurfaced_and_updates_stage(self, conn, popen_calls):
+        _insert_existing(conn, stage="waitlisted", score=7)
+        result = _submit(conn, location="United States")
+        assert result.status == "resurfaced"
+        assert result.existing_stage == "waitlisted"
+        row = conn.execute("SELECT stage, relevance_score FROM jobs").fetchone()
+        assert row["stage"] == "scored"
+        assert row["relevance_score"] == 8
+
+    def test_scored_low_returns_resurfaced_and_bumps_score(self, conn, popen_calls):
+        _insert_existing(conn, stage="scored", score=4)
+        result = _submit(conn, location="United States")
+        assert result.status == "resurfaced"
+        row = conn.execute("SELECT relevance_score FROM jobs").fetchone()
+        assert row["relevance_score"] == 8
+
+    def test_manual_review_returns_resurfaced_and_promotes_stage(self, conn, popen_calls):
+        _insert_existing(conn, stage="manual_review", score=6)
+        result = _submit(conn, location="United States")
+        assert result.status == "resurfaced"
+        row = conn.execute("SELECT stage FROM jobs").fetchone()
+        assert row["stage"] == "scored"
+
+    def test_field_overwrite_on_resurface(self, conn, popen_calls):
+        _insert_existing(conn, stage="rejected", score=4)
+        result = _submit(conn, location="United States", raw_jd_text="Brand new JD content")
+        assert result.status == "resurfaced"
+        row = conn.execute("SELECT raw_jd_text FROM jobs").fetchone()
+        assert row["raw_jd_text"] == "Brand new JD content"
+
+    def test_fingerprint_populated_on_result(self, conn, popen_calls):
+        _insert_existing(conn, stage="applied", score=8)
+        result = _submit(conn, location="United States")
+        assert result.fingerprint is not None
+
+    def test_fingerprint_populated_on_fresh_insert(self, conn, popen_calls):
+        result = _submit(conn)
+        assert result.fingerprint is not None
