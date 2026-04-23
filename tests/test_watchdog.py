@@ -4,6 +4,7 @@ import json
 import sqlite3
 import sys
 import uuid
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -59,13 +60,20 @@ def _patch_log(tmp_path, monkeypatch):
     return log_path
 
 
-def _insert(conn, *, stage, stage_offset):
-    """Insert a row with stage_updated = datetime('now', stage_offset)."""
+def _insert(conn, *, stage, minutes_ago):
+    """Insert a row with stage_updated in Python ISO format (the production writer format).
+
+    Web handlers write stage_updated via datetime.now(UTC).isoformat(), producing
+    "YYYY-MM-DDTHH:MM:SS+00:00". Tests must mirror that format — fixtures that
+    used SQLite's datetime('now', ...) (space-separated, no TZ) previously hid
+    format-mismatch bugs in reader queries.
+    """
     job_id = str(uuid.uuid4())[:8]
+    stage_updated = (datetime.now(UTC) - timedelta(minutes=minutes_ago)).isoformat()
     conn.execute(
         """INSERT INTO jobs (id, fingerprint, url, title, company, stage, stage_updated)
-           VALUES (?, ?, ?, 'Ops', 'Acme', ?, datetime('now', ?))""",
-        (job_id, f"fp_{job_id}", f"https://example.com/{job_id}", stage, stage_offset),
+           VALUES (?, ?, ?, 'Ops', 'Acme', ?, ?)""",
+        (job_id, f"fp_{job_id}", f"https://example.com/{job_id}", stage, stage_updated),
     )
     conn.commit()
     return job_id
@@ -78,8 +86,8 @@ def _read_events(log_path: Path) -> list[dict]:
 
 
 def test_resets_stale_row_only(db, _patch_log):
-    stale_id = _insert(db, stage="prep_in_progress", stage_offset="-2 hours")
-    fresh_id = _insert(db, stage="prep_in_progress", stage_offset="-5 minutes")
+    stale_id = _insert(db, stage="prep_in_progress", minutes_ago=120)
+    fresh_id = _insert(db, stage="prep_in_progress", minutes_ago=5)
     fresh_stage_before = db.execute("SELECT stage_updated FROM jobs WHERE id=?", (fresh_id,)).fetchone()[
         "stage_updated"
     ]
@@ -94,7 +102,7 @@ def test_resets_stale_row_only(db, _patch_log):
 
 
 def test_audit_log_records_transition(db):
-    stale_id = _insert(db, stage="prep_in_progress", stage_offset="-2 hours")
+    stale_id = _insert(db, stage="prep_in_progress", minutes_ago=120)
 
     watchdog.run_watchdog(db)
 
@@ -121,9 +129,9 @@ class _ConnWrapper:
 
 
 def test_main_emits_watchdog_run_event(db, monkeypatch, _patch_log):
-    _insert(db, stage="prep_in_progress", stage_offset="-2 hours")
-    _insert(db, stage="prep_in_progress", stage_offset="-90 minutes")
-    _insert(db, stage="scored", stage_offset="-1 day")  # unrelated row
+    _insert(db, stage="prep_in_progress", minutes_ago=120)
+    _insert(db, stage="prep_in_progress", minutes_ago=90)
+    _insert(db, stage="scored", minutes_ago=60 * 24)  # unrelated row
 
     monkeypatch.setattr(watchdog.sqlite3, "connect", lambda *a, **kw: _ConnWrapper(db))
 
@@ -133,6 +141,21 @@ def test_main_emits_watchdog_run_event(db, monkeypatch, _patch_log):
     watchdog_events = [e for e in events if e["event"] == "watchdog_run"]
     assert len(watchdog_events) == 1
     assert watchdog_events[0]["stale_reset"] == 2
+
+
+def test_resets_iso_t_timestamps_on_same_day(db, _patch_log):
+    """Regression: stuck prep rows written in ISO-T format (the production format)
+    must be reset even when they fall on the same calendar date as `now`.
+    Pre-fix, `stage_updated < datetime('now', '-60 minutes')` was always false
+    for same-day ISO-T rows because lexical T > space at char 10 of the string."""
+    stale_id = _insert(db, stage="prep_in_progress", minutes_ago=75)
+    fresh_id = _insert(db, stage="prep_in_progress", minutes_ago=10)
+
+    count = watchdog.run_watchdog(db)
+
+    assert count == 1
+    assert db.execute("SELECT stage FROM jobs WHERE id=?", (stale_id,)).fetchone()["stage"] == "scored"
+    assert db.execute("SELECT stage FROM jobs WHERE id=?", (fresh_id,)).fetchone()["stage"] == "prep_in_progress"
 
 
 def test_empty_db_emits_zero_count(db, monkeypatch, _patch_log):

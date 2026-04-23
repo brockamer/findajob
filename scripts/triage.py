@@ -16,7 +16,7 @@ import time
 import traceback
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from findajob.cleaning import fingerprint, is_coarse_location, loose_fingerprint, normalize
 from findajob.cost_tracking import log_call
@@ -95,17 +95,23 @@ def score_null_manual_review_rows(
 
     Only considers rows updated within NULL_SCORE_RETRY_DAYS to avoid retrying
     genuinely unparseable JDs forever. Returns the count of successfully rescored rows.
+
+    stage_updated is stored as Python ISO format ("2026-04-23T17:19:57+00:00");
+    compute the cutoff in Python so both sides of the comparison use the same format.
+    SQLite's datetime('now', ...) returns space-separated form which misorders against
+    ISO-T on same-day rows (T > space at pos 10).
     """
+    cutoff = (datetime.now(UTC) - timedelta(days=NULL_SCORE_RETRY_DAYS)).isoformat()
     rows = conn.execute(
         """
         SELECT id, title, company, location, raw_jd_text FROM jobs
         WHERE stage = 'manual_review'
           AND relevance_score IS NULL
-          AND stage_updated > datetime('now', ?)
+          AND stage_updated > ?
           AND (dupe_of = '' OR dupe_of IS NULL)
         LIMIT ?
         """,
-        (f"-{NULL_SCORE_RETRY_DAYS} days", limit),
+        (cutoff, limit),
     ).fetchall()
 
     rescored = 0
