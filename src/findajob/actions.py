@@ -210,3 +210,114 @@ def promote_to_scored(
     conn.commit()
     write_audit(conn, job["id"], "stage", old_stage, "scored")
     log_event("review_promoted", job_id=job["id"], company=job["company"], title=job["title"])
+
+
+_OVERWRITE_FIELD_MAP: dict[str, str] = {
+    "url": "url",
+    "location": "location",
+    "remote_status": "remote_status",
+    "raw_jd_text": "raw_jd_text",
+    "notes": "ai_notes",
+    "known_contacts": "known_contacts",
+}
+
+
+def _apply_overwrite_fields(set_parts: list[str], params: list, overwrite_fields: dict[str, str]) -> None:
+    """Append non-blank submitted fields to a SET clause builder."""
+    for key, col in _OVERWRITE_FIELD_MAP.items():
+        if overwrite_fields.get(key):
+            set_parts.append(f"{col}=?")
+            params.append(overwrite_fields[key])
+
+
+def un_reject_job(conn: sqlite3.Connection, job: Any, overwrite_fields: dict[str, str]) -> None:
+    """Reverse a user rejection: restore to scored, delete feedback_log rows.
+
+    Clears reject_reason, sets relevance_score=8, overwrites non-blank
+    submitted fields, moves prep folder from _rejected/ back to companies/.
+    Deletes feedback_log rows so the scorer's feedback loop stays clean.
+    """
+    now = datetime.now(UTC).isoformat()
+
+    set_parts = ["stage='scored'", "reject_reason=''", "relevance_score=8", "updated_at=?"]
+    params: list = [now]
+    _apply_overwrite_fields(set_parts, params, overwrite_fields)
+    params.append(job["id"])
+
+    conn.execute(f"UPDATE jobs SET {', '.join(set_parts)} WHERE id=?", params)
+    conn.execute("DELETE FROM feedback_log WHERE job_id=?", (job["id"],))
+
+    folder = job["prep_folder_path"] if job["prep_folder_path"] else None
+    if folder and os.path.isdir(folder):
+        dest = os.path.join(BASE, "companies", os.path.basename(folder))
+        shutil.move(folder, dest)
+        conn.execute("UPDATE jobs SET prep_folder_path=? WHERE id=?", (dest, job["id"]))
+        log_event("folder_moved_from_rejected", job_id=job["id"], folder=os.path.basename(folder))
+
+    conn.commit()
+    write_audit(conn, job["id"], "stage", "rejected", "scored")
+    write_audit(conn, job["id"], "reject_reason", job["reject_reason"] or "", "")
+    log_event("job_un_rejected", job_id=job["id"], company=job["company"], title=job["title"])
+
+
+def reactivate_from_ingest(conn: sqlite3.Connection, job: Any, overwrite_fields: dict[str, str]) -> None:
+    """Reactivate a waitlisted job via manual ingest.
+
+    Sets stage=scored, relevance_score=8, overwrites non-blank submitted
+    fields, moves prep folder from _waitlisted/ back to companies/.
+    """
+    now = datetime.now(UTC).isoformat()
+
+    set_parts = ["stage='scored'", "relevance_score=8", "updated_at=?"]
+    params: list = [now]
+    _apply_overwrite_fields(set_parts, params, overwrite_fields)
+    params.append(job["id"])
+
+    conn.execute(f"UPDATE jobs SET {', '.join(set_parts)} WHERE id=?", params)
+
+    folder = job["prep_folder_path"] if job["prep_folder_path"] else None
+    if folder and os.path.isdir(folder):
+        dest = os.path.join(BASE, "companies", os.path.basename(folder))
+        shutil.move(folder, dest)
+        conn.execute("UPDATE jobs SET prep_folder_path=? WHERE id=?", (dest, job["id"]))
+        log_event("folder_moved_from_waitlisted", job_id=job["id"], folder=os.path.basename(folder))
+
+    conn.commit()
+    write_audit(conn, job["id"], "stage", "waitlisted", "scored")
+    log_event("job_reactivated_via_ingest", job_id=job["id"], company=job["company"], title=job["title"])
+
+
+def refresh_active_job(conn: sqlite3.Connection, job: Any, overwrite_fields: dict[str, str]) -> None:
+    """Refresh an already-visible job submitted again via ingest.
+
+    Bumps relevance_score to 8 if below 8. Promotes manual_review → scored.
+    Overwrites non-blank submitted fields. No folder moves.
+    """
+    now = datetime.now(UTC).isoformat()
+    old_stage = job["stage"]
+    new_stage = "scored" if old_stage == "manual_review" else old_stage
+
+    set_parts = ["updated_at=?"]
+    params: list = [now]
+
+    if (job["relevance_score"] or 0) < 8:
+        set_parts.append("relevance_score=8")
+    if new_stage != old_stage:
+        set_parts.append("stage=?")
+        params.append(new_stage)
+
+    _apply_overwrite_fields(set_parts, params, overwrite_fields)
+    params.append(job["id"])
+
+    conn.execute(f"UPDATE jobs SET {', '.join(set_parts)} WHERE id=?", params)
+    conn.commit()
+
+    if new_stage != old_stage:
+        write_audit(conn, job["id"], "stage", old_stage, new_stage)
+    log_event(
+        "job_refreshed_via_ingest",
+        job_id=job["id"],
+        company=job["company"],
+        title=job["title"],
+        old_stage=old_stage,
+    )
