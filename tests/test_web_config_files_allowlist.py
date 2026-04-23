@@ -13,8 +13,8 @@ from findajob.web.config_files import (
     resolve_editable,
 )
 
-
 # ---- is_editable ----------------------------------------------------------
+
 
 @pytest.mark.parametrize(
     "relpath",
@@ -43,10 +43,10 @@ def test_is_editable_allows_whitelisted(relpath: str) -> None:
         "config/",
         "config/roles",
         "config/roles/",
-        "config/roles/anything.txt",           # wrong extension under roles/
-        "config/roles/nested/file.md",         # no subdir recursion
-        "config/other.yaml",                   # not in flat allowlist
-        "config/roles.md",                     # not under roles/
+        "config/roles/anything.txt",  # wrong extension under roles/
+        "config/roles/nested/file.md",  # no subdir recursion
+        "config/other.yaml",  # not in flat allowlist
+        "config/roles.md",  # not under roles/
         "candidate_context/voice_samples/a.md",  # voice_samples not editable
         "data/pipeline.db",
         "secrets.env",
@@ -62,9 +62,9 @@ def test_is_editable_rejects_unlisted(relpath: str) -> None:
         "../etc/passwd",
         "config/../secrets.env",
         "config/roles/../../etc/passwd",
-        "config/roles/./job_scorer.md",        # dot components rejected
-        "/etc/passwd",                          # absolute path rejected
-        "config/roles/job_scorer.md/..",       # trailing traversal
+        "config/roles/./job_scorer.md",  # dot components rejected
+        "/etc/passwd",  # absolute path rejected
+        "config/roles/job_scorer.md/..",  # trailing traversal
     ],
 )
 def test_is_editable_rejects_traversal(relpath: str) -> None:
@@ -72,6 +72,7 @@ def test_is_editable_rejects_traversal(relpath: str) -> None:
 
 
 # ---- resolve_editable -----------------------------------------------------
+
 
 def test_resolve_editable_returns_absolute_path(tmp_path: Path) -> None:
     target = tmp_path / "config" / "roles" / "job_scorer.md"
@@ -111,6 +112,7 @@ def test_resolve_editable_blocks_symlink_escape(tmp_path: Path) -> None:
 
 
 # ---- list_editable --------------------------------------------------------
+
 
 def test_list_editable_groups_by_category(tmp_path: Path) -> None:
     (tmp_path / "candidate_context").mkdir()

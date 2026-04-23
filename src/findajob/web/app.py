@@ -36,9 +36,7 @@ def create_app(
 
     app.state.companies_root = companies_root
     app.state.db_path = db_path
-    app.state.base_root = base_root if base_root is not None else Path(
-        os.environ.get("JSP_BASE", "/app")
-    )
+    app.state.base_root = base_root if base_root is not None else Path(os.environ.get("JSP_BASE", "/app"))
     app.state.templates = templates
 
     def get_db() -> Generator[sqlite3.Connection, None, None]:

@@ -29,10 +29,7 @@ EDITABLE_CATEGORIES: dict[str, list[str] | str] = {
 }
 
 _FLAT_ALLOWLIST: frozenset[str] = frozenset(
-    p
-    for value in EDITABLE_CATEGORIES.values()
-    if isinstance(value, list)
-    for p in value
+    p for value in EDITABLE_CATEGORIES.values() if isinstance(value, list) for p in value
 )
 
 _ROLES_DIR = "config/roles"
@@ -100,10 +97,7 @@ def list_editable(base_root: Path) -> list[dict]:
 
     for name, value in EDITABLE_CATEGORIES.items():
         if isinstance(value, list):
-            files = [
-                {"relpath": p, "exists": (base_root / p).is_file()}
-                for p in sorted(value)
-            ]
+            files = [{"relpath": p, "exists": (base_root / p).is_file()} for p in sorted(value)]
         else:
             roles_dir = base_root / _ROLES_DIR
             role_files: list[dict] = []
