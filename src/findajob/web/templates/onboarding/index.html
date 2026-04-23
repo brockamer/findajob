@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block title %}Onboarding — findajob{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto p-6 space-y-6">
+  <h1 class="text-2xl font-semibold">Set up your findajob pipeline</h1>
+
+  {% if is_rerun %}
+  <div class="border border-amber-300 bg-amber-50 text-amber-900 px-4 py-3 rounded">
+    <p class="font-medium">Re-running onboarding</p>
+    <p class="text-sm mt-1">
+      Existing config will be backed up to <code>.backups/&lt;UTC-stamp&gt;/</code>
+      before overwrite. For partial updates (e.g., add an exclusion category) use
+      <a class="underline" href="/config/">/config/</a> directly — faster than a full re-run.
+    </p>
+  </div>
+  {% endif %}
+
+  <section class="bg-white border rounded p-4 space-y-3">
+    <h2 class="font-semibold">How this works</h2>
+    <ol class="list-decimal list-inside space-y-1 text-sm">
+      <li>Open a new chat in your chosen LLM (paid reasoning tier required).</li>
+      <li>Copy the full interview prompt and paste it into the chat.</li>
+      <li>Work through the interview (~90 min; you can pause and resume).</li>
+      <li>When the LLM emits the seven file blocks, copy the entire chat and paste it below.</li>
+      <li>We'll parse the blocks and inject them into your stack's config.</li>
+    </ol>
+  </section>
+
+  <section class="bg-white border rounded p-4 space-y-3">
+    <h2 class="font-semibold">Before you start</h2>
+    <ul class="list-disc list-inside space-y-1 text-sm">
+      <li>Have your current resume (PDF or DOCX) ready to upload into the chat.</li>
+      <li>Optional but helpful: recent performance reviews, 360s, prior cover letters.</li>
+      <li>Pick a paid reasoning-grade LLM (see links below).</li>
+    </ul>
+    <p class="text-xs text-gray-600">
+      Full prework checklist:
+      <a class="underline" href="https://github.com/brockamer/findajob/blob/main/docs/onboarding-prework-checklist.md" target="_blank">
+        docs/onboarding-prework-checklist.md
+      </a>
+    </p>
+  </section>
+
+  <section class="bg-white border rounded p-4 space-y-3">
+    <h2 class="font-semibold">Step 1 — Copy the interview prompt</h2>
+    <button type="button"
+            class="inline-flex items-center gap-2 bg-slate-700 text-white px-3 py-1.5 rounded text-sm hover:bg-slate-600"
+            onclick="window.__fjCopyPrompt()">
+      Copy the prompt
+    </button>
+    <p class="text-xs text-gray-600">
+      Or fetch it raw at <a class="underline" href="/onboarding/prompt">/onboarding/prompt</a>.
+    </p>
+  </section>
+
+  <section class="bg-white border rounded p-4 space-y-3">
+    <h2 class="font-semibold">Step 2 — Open a new chat</h2>
+    <div class="flex flex-wrap gap-2">
+      <a href="https://claude.ai/new" target="_blank"
+         class="px-3 py-1.5 border rounded text-sm hover:bg-slate-50">Open Claude</a>
+      <a href="https://chatgpt.com/" target="_blank"
+         class="px-3 py-1.5 border rounded text-sm hover:bg-slate-50">Open ChatGPT</a>
+      <a href="https://gemini.google.com/app" target="_blank"
+         class="px-3 py-1.5 border rounded text-sm hover:bg-slate-50">Open Gemini</a>
+    </div>
+    <p class="text-xs text-gray-600">
+      Paste the prompt from Step 1, upload your resume when asked, and work through the five phases.
+    </p>
+  </section>
+
+  <section class="bg-white border rounded p-4 space-y-3">
+    <h2 class="font-semibold">Step 3 — Paste the emission back</h2>
+    {% include "onboarding/_paste_form.html" %}
+  </section>
+</div>
+
+<script>
+  window.__fjCopyPrompt = async function() {
+    const resp = await fetch("/onboarding/prompt");
+    const text = await resp.text();
+    await navigator.clipboard.writeText(text);
+    alert("Interview prompt copied. Paste it into your new chat.");
+  };
+</script>
+{% endblock %}

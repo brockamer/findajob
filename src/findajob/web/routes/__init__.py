@@ -10,6 +10,7 @@ from findajob.web.routes import (
     ingest,
     landing,
     materials,
+    onboarding,
     stats,
     tools,
 )
@@ -24,3 +25,4 @@ router.include_router(ingest.router)
 router.include_router(stats.router)
 router.include_router(config.router)
 router.include_router(tools.router)
+router.include_router(onboarding.router)

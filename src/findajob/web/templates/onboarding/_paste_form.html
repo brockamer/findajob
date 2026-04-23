@@ -1,0 +1,20 @@
+{# Paste form partial — re-rendered by POST /onboarding/inject on parse failure
+   so `paste_content` and `paste_error` preserve the user's input. #}
+<form method="post" action="/onboarding/inject" class="space-y-3">
+  {% if paste_error %}
+  <div class="border border-red-300 bg-red-50 text-red-900 px-4 py-3 rounded">
+    <p class="font-medium">Couldn't parse your paste.</p>
+    <p class="text-sm mt-1">{{ paste_error }}</p>
+  </div>
+  {% endif %}
+  <label class="block text-sm font-medium" for="emission">
+    Paste the full chat transcript (or just the seven delimited blocks):
+  </label>
+  <textarea name="emission" id="emission" rows="20"
+            class="w-full border rounded p-2 font-mono text-xs"
+            placeholder="Paste from your LLM chat here...">{{ paste_content }}</textarea>
+  <button type="submit"
+          class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+    Inject config
+  </button>
+</form>
