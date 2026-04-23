@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}Funnel — findajob stats{% endblock %}
+{% block main_classes %}w-full px-4 py-6{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-semibold mb-4">Pipeline funnel — last {{ window_days }} days</h1>
+{% include "stats/_tabs.html" %}
+
+<p class="mb-4 text-sm text-slate-600">
+  Each cell counts <em>transitions into</em> the stage on that day — not the
+  number of jobs sitting in it. A job moved from <code>scored</code> to
+  <code>applied</code> adds to the applied column on the day it transitioned.
+  Window: {{ start_day }} → {{ end_day }}.
+</p>
+
+<section class="mb-6">
+  <h2 class="text-lg font-semibold mb-2">{{ window_days }}-day totals</h2>
+  <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+    {% for stage in stages %}
+      <div class="bg-white rounded border border-slate-200 px-3 py-2">
+        <div class="text-xs uppercase text-slate-500 tracking-wide">{{ stage }}</div>
+        <div class="text-xl font-semibold">{{ totals[stage] }}</div>
+      </div>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="mb-6">
+  <h2 class="text-lg font-semibold mb-2">Daily transitions</h2>
+  <div class="bg-white rounded border border-slate-200 p-3">
+    <canvas id="funnel-chart" role="img" aria-label="Daily stage transition counts" height="110"></canvas>
+    <noscript>
+      <p class="text-sm text-slate-600">Chart requires JavaScript. The table below has the same data.</p>
+    </noscript>
+  </div>
+</section>
+
+<section>
+  <h2 class="text-lg font-semibold mb-2">Data table</h2>
+  <div class="overflow-x-auto">
+    <table class="min-w-full bg-white shadow-sm rounded-sm text-sm">
+      <thead class="bg-slate-100 text-left text-xs uppercase tracking-wide text-slate-600">
+        <tr>
+          <th class="px-3 py-2">Day</th>
+          {% for stage in stages %}
+            <th class="px-3 py-2">{{ stage }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in daily_table %}
+          <tr class="{% if loop.index0 % 2 %}bg-slate-50{% endif %}">
+            <td class="px-3 py-1 align-top">{{ row.day }}</td>
+            {% for stage in stages %}
+              <td class="px-3 py-1 align-top {% if row[stage] == 0 %}text-slate-300{% endif %}">{{ row[stage] }}</td>
+            {% endfor %}
+          </tr>
+        {% else %}
+          <tr><td colspan="{{ stages|length + 1 }}" class="px-3 py-4 text-slate-500">No audit_log entries in this window.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script id="funnel-chart-data" type="application/json">{{ chart_data_json | safe }}</script>
+<script>
+  (function () {
+    const payload = JSON.parse(document.getElementById('funnel-chart-data').textContent);
+    // Muted palette: funnel stages in a blue-to-green ramp, terminals in red/orange/grey.
+    const funnelPalette = ['#1d4ed8', '#2563eb', '#0891b2', '#0d9488', '#059669', '#10b981', '#22c55e'];
+    const terminalPalette = { rejected: '#b91c1c', not_selected: '#c2410c', waitlisted: '#64748b' };
+    let f = 0;
+    const datasets = payload.datasets.map((ds) => ({
+      label: ds.label,
+      data: ds.data,
+      borderColor: ds.terminal ? terminalPalette[ds.label] : funnelPalette[f++ % funnelPalette.length],
+      backgroundColor: 'transparent',
+      borderWidth: ds.terminal ? 1.5 : 2,
+      borderDash: ds.terminal ? [4, 4] : [],
+      pointRadius: 2,
+      tension: 0.2,
+    }));
+    new Chart(document.getElementById('funnel-chart'), {
+      type: 'line',
+      data: { labels: payload.labels, datasets: datasets },
+      options: {
+        responsive: true,
+        interaction: { mode: 'nearest', axis: 'x', intersect: false },
+        scales: {
+          y: { beginAtZero: true, ticks: { precision: 0 } },
+          x: { ticks: { maxRotation: 0, autoSkipPadding: 12 } },
+        },
+        plugins: {
+          legend: { position: 'bottom', labels: { boxWidth: 16 } },
+          tooltip: { callbacks: { title: (items) => items[0].label } },
+        },
+      },
+    });
+  })();
+</script>
+{% endblock %}

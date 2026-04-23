@@ -1,19 +1,25 @@
-{# Top navigation. Highlights the active group via aria-current="page". #}
+{# Top navigation. Highlights the active group via aria-current="page".
+
+   `active_prefix` is the URL prefix that marks the group active — distinct
+   from `href` because e.g. the Board link points at /board/dashboard (the
+   landing view) but should highlight on every /board/* page. Previously all
+   non-dashboard board pages failed to highlight the Board tab (#138). #}
 {% set groups = [
-  ("/", "Home"),
-  ("/board/dashboard", "Board"),
-  ("/materials/", "Materials"),
-  ("/ingest/", "Ingest"),
-  ("/tools/", "Tools"),
-  ("/config/", "Config"),
-  ("/docs/", "Docs"),
+  ("/", "Home", "/"),
+  ("/board/dashboard", "Board", "/board/"),
+  ("/materials/", "Materials", "/materials/"),
+  ("/ingest/", "Ingest", "/ingest/"),
+  ("/stats/funnel", "Stats", "/stats/"),
+  ("/tools/", "Tools", "/tools/"),
+  ("/config/", "Config", "/config/"),
+  ("/docs/", "Docs", "/docs/"),
 ] %}
 <nav class="bg-slate-800 text-slate-100 px-4 py-2 shadow-sm">
   <ul class="flex gap-4 items-center">
     <li class="font-bold mr-4">findajob</li>
-    {% for href, label in groups %}
-      {% set active = request.url.path == href
-           or (href != "/" and request.url.path.startswith(href)) %}
+    {% for href, label, active_prefix in groups %}
+      {% set active = (active_prefix == "/" and request.url.path == "/")
+           or (active_prefix != "/" and request.url.path.startswith(active_prefix)) %}
       <li>
         <a href="{{ href }}"
            {% if active %}aria-current="page"{% endif %}
