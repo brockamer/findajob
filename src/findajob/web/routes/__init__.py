@@ -11,6 +11,7 @@ from findajob.web.routes import (
     landing,
     materials,
     stats,
+    tools,
 )
 
 router = APIRouter()
@@ -22,3 +23,4 @@ router.include_router(board_actions.router)
 router.include_router(ingest.router)
 router.include_router(stats.router)
 router.include_router(config.router)
+router.include_router(tools.router)

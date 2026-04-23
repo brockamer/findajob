@@ -178,3 +178,11 @@ def test_save_result_partial_has_expected_attrs(client: TestClient) -> None:
     assert resp.status_code == 200
     assert 'data-outcome="success"' in resp.text
     assert "Saved" in resp.text
+
+
+def test_tools_page_links_to_config(client: TestClient) -> None:
+    resp = client.get("/tools/")
+    assert resp.status_code == 200
+    html = resp.text
+    assert 'href="/config/"' in html
+    assert "Edit config files" in html or "Config editor" in html

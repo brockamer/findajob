@@ -51,7 +51,7 @@ def test_landing_nav_home_active(client: TestClient) -> None:
     [
         # /ingest/ promoted from placeholder to a real route in #62 — covered by tests/test_web_ingest.py.
         # /config/ promoted to a real route in #149 — covered by tests/test_web_config_editor.py.
-        ("/tools/", "Tools", ""),
+        # /tools/ promoted to a stub in #149 — covered by tests/test_web_config_editor.py::test_tools_page_links_to_config.
         ("/docs/", "Docs", ""),
     ],
 )

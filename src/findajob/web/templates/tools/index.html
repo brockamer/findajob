@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block title %}Tools — findajob{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto p-6">
+  <h1 class="text-2xl font-semibold mb-4">Tools</h1>
+  <ul class="divide-y border rounded bg-white">
+    <li class="px-4 py-3">
+      <a href="/config/" class="text-blue-600 hover:underline font-medium">Edit config files</a>
+      <p class="text-sm text-gray-600">Profile, master resume, search config, role prompts.</p>
+    </li>
+  </ul>
+  <p class="text-xs text-gray-500 mt-4">
+    More tools (doctor, scoreboard, feedback inspector) land here as they ship.
+  </p>
+</div>
+{% endblock %}
