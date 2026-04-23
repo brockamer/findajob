@@ -20,6 +20,8 @@ EDITABLE_CATEGORIES: dict[str, list[str] | str] = {
         "candidate_context/master_resume.md",
     ],
     "Search config": [
+        "config/target_companies.md",
+        "config/business_sector_employers_reference.md",
         "config/prefilter_rules.yaml",
         "config/in_domain_patterns.yaml",
         "config/jsearch_queries.txt",
