@@ -15,6 +15,7 @@ import pytest
 
 from findajob import ingest as ingest_mod
 from findajob import utils as findajob_utils
+from findajob.cleaning import clean_company, clean_title, fingerprint, loose_fingerprint
 
 SCHEMA = """
 CREATE TABLE jobs (
@@ -205,14 +206,19 @@ def test_source_label_threaded_through(conn: sqlite3.Connection, popen_calls):
     assert result.job_id.startswith("manual_form-")
 
 
-def _insert_existing(conn: sqlite3.Connection, *, stage: str, score: int = 5,
-                     company: str = "Acme Data Centers",
-                     title: str = "Senior Operations Engineer",
-                     location: str = "United States",
-                     reject_reason: str = "", folder: str | None = None) -> sqlite3.Row:
+def _insert_existing(
+    conn: sqlite3.Connection,
+    *,
+    stage: str,
+    score: int = 5,
+    company: str = "Acme Data Centers",
+    title: str = "Senior Operations Engineer",
+    location: str = "United States",
+    reject_reason: str = "",
+    folder: str | None = None,
+) -> sqlite3.Row:
     """Insert a pre-existing job at a given stage (imitates a row triage or a
     prior ingest created). Uses coarse location so loose-dedup fires on re-submit."""
-    from findajob.cleaning import fingerprint, loose_fingerprint, clean_company, clean_title
     co = clean_company(company)
     ti = clean_title(title)
     fp = fingerprint(ti, co, location)
@@ -223,8 +229,7 @@ def _insert_existing(conn: sqlite3.Connection, *, stage: str, score: int = 5,
            (id, fingerprint, loose_fingerprint, url, title, company, location, source,
             relevance_score, stage, apply_flag, reject_reason, prep_folder_path)
            VALUES (?, ?, ?, ?, ?, ?, ?, 'triage', ?, ?, 0, ?, ?)""",
-        (job_id, fp, lfp, f"https://example.com/{fp}", ti, co, location, score, stage,
-         reject_reason, folder),
+        (job_id, fp, lfp, f"https://example.com/{fp}", ti, co, location, score, stage, reject_reason, folder),
     )
     conn.commit()
     return conn.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()

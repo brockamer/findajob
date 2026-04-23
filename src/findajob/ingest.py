@@ -66,9 +66,9 @@ class IngestResult:
     company: str
     title: str
     fingerprint: str | None = None
-    existing_match: str | None = None   # "strict" / "url" / "loose"
-    existing_stage: str | None = None   # stage of the row at submission time
-    prep_folder_path: str | None = None # for not_selected materials link
+    existing_match: str | None = None  # "strict" / "url" / "loose"
+    existing_stage: str | None = None  # stage of the row at submission time
+    prep_folder_path: str | None = None  # for not_selected materials link
     prep_launched: bool = False
 
 
@@ -155,19 +155,15 @@ def ingest_manual_job(
     lfp = loose_fingerprint(title, company)
 
     existing = conn.execute("SELECT id FROM jobs WHERE fingerprint=?", (fp,)).fetchone()
-    matched_tier: str | None = "strict" if existing else None
 
     if not existing and url:
         existing = conn.execute("SELECT id FROM jobs WHERE url=?", (url,)).fetchone()
-        if existing:
-            matched_tier = "url"
 
     if not existing:
         incoming_coarse = is_coarse_location(location)
         for row in conn.execute("SELECT id, location FROM jobs WHERE loose_fingerprint=?", (lfp,)).fetchall():
             if incoming_coarse or is_coarse_location(row["location"] or ""):
                 existing = row
-                matched_tier = "loose"
                 break
 
     if existing:
