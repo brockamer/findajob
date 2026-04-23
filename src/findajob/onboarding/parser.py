@@ -31,7 +31,7 @@ _BLOCK_RE = re.compile(
 )
 
 _FENCE_OPEN_RE = re.compile(r"\A```[^\n]*\r?\n")
-_FENCE_CLOSE_RE = re.compile(r"\r?\n```\Z")
+_FENCE_CLOSE_RE = re.compile(r"(?<=\n)```[ \t]*\r?\n?\Z")
 
 
 @dataclass(frozen=True)

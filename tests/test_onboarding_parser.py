@@ -77,16 +77,40 @@ def test_unknown_filename_goes_to_unknown() -> None:
     assert set(result.found) == set(_CLEAN_BLOCKS)
 
 
-def test_code_fence_wrapping_is_stripped() -> None:
-    body = "## Profile\ncontent\n"
-    fenced = f"```markdown\n{body}```"
+def test_code_fence_trailing_newline_after_close_is_stripped() -> None:
+    # Common LLM output: closing fence followed by a newline
+    fenced = "```markdown\ncontent\n``` \n"
     blob = (
         _wrap("profile.md", fenced)
         + "\n\n"
         + "\n\n".join(_wrap(n, b) for n, b in _CLEAN_BLOCKS.items() if n != "profile.md")
     )
     result = parse_emission(blob)
-    assert result.found["profile.md"].strip() == body.strip()
+    assert result.found["profile.md"] == "content\n"
+
+
+def test_code_fence_no_trailing_newline_after_close_is_stripped() -> None:
+    # Closing fence at end of string with no trailing newline (\Z case)
+    fenced = "```markdown\ncontent\n```"
+    blob = (
+        _wrap("profile.md", fenced)
+        + "\n\n"
+        + "\n\n".join(_wrap(n, b) for n, b in _CLEAN_BLOCKS.items() if n != "profile.md")
+    )
+    result = parse_emission(blob)
+    assert result.found["profile.md"] == "content\n"
+
+
+def test_no_fences_content_passes_through_unchanged() -> None:
+    # Body with mid-content backticks (inline code, not a fence) must be byte-for-byte identical
+    body = "Some text with `inline` backticks\n"
+    blob = (
+        _wrap("profile.md", body)
+        + "\n\n"
+        + "\n\n".join(_wrap(n, b) for n, b in _CLEAN_BLOCKS.items() if n != "profile.md")
+    )
+    result = parse_emission(blob)
+    assert result.found["profile.md"] == body
 
 
 def test_crlf_line_endings_parse() -> None:
