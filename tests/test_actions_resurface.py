@@ -3,7 +3,6 @@ un_reject_job, reactivate_from_ingest, refresh_active_job."""
 
 from __future__ import annotations
 
-import os
 import sqlite3
 import uuid
 
@@ -56,6 +55,7 @@ CREATE TABLE feedback_log (
 @pytest.fixture()
 def db(tmp_path, monkeypatch):
     import findajob.utils as utils_mod
+
     monkeypatch.setattr(utils_mod, "LOG_PATH", str(tmp_path / "events.jsonl"))
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
@@ -81,14 +81,24 @@ def _insert_job(conn, *, stage="scored", score=5, folder=None, reject_reason="")
            (id, fingerprint, url, title, company, relevance_score, stage,
             prep_folder_path, reject_reason)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (job_id, fp, f"https://example.com/{job_id}",
-         "Data Center Manager", "Acme Corp", score, stage, folder, reject_reason),
+        (
+            job_id,
+            fp,
+            f"https://example.com/{job_id}",
+            "Data Center Manager",
+            "Acme Corp",
+            score,
+            stage,
+            folder,
+            reject_reason,
+        ),
     )
     conn.commit()
     return conn.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
 
 
 # ── un_reject_job ────────────────────────────────────────────────────────────
+
 
 class TestUnRejectJob:
     def test_stage_set_to_scored(self, db, companies_dir):
@@ -113,9 +123,7 @@ class TestUnRejectJob:
     def test_audit_log_entry_written(self, db, companies_dir):
         job = _insert_job(db, stage="rejected", reject_reason="Bad Fit")
         actions_mod.un_reject_job(db, job, {})
-        row = db.execute(
-            "SELECT * FROM audit_log WHERE job_id=? AND field_changed='stage'", (job["id"],)
-        ).fetchone()
+        row = db.execute("SELECT * FROM audit_log WHERE job_id=? AND field_changed='stage'", (job["id"],)).fetchone()
         assert row is not None
         assert row["old_value"] == "rejected"
         assert row["new_value"] == "scored"
@@ -133,14 +141,18 @@ class TestUnRejectJob:
 
     def test_non_blank_fields_overwritten(self, db, companies_dir):
         job = _insert_job(db, stage="rejected")
-        actions_mod.un_reject_job(db, job, {
-            "url": "https://new.example.com/job",
-            "location": "Austin, TX",
-            "remote_status": "Hybrid",
-            "raw_jd_text": "New JD text",
-            "notes": "New notes",
-            "known_contacts": "Jane Doe",
-        })
+        actions_mod.un_reject_job(
+            db,
+            job,
+            {
+                "url": "https://new.example.com/job",
+                "location": "Austin, TX",
+                "remote_status": "Hybrid",
+                "raw_jd_text": "New JD text",
+                "notes": "New notes",
+                "known_contacts": "Jane Doe",
+            },
+        )
         row = db.execute(
             "SELECT url, location, remote_status, raw_jd_text, ai_notes, known_contacts FROM jobs WHERE id=?",
             (job["id"],),
@@ -165,6 +177,7 @@ class TestUnRejectJob:
 
 # ── reactivate_from_ingest ───────────────────────────────────────────────────
 
+
 class TestReactivateFromIngest:
     def test_stage_set_to_scored(self, db, companies_dir):
         job = _insert_job(db, stage="waitlisted", score=7)
@@ -187,9 +200,7 @@ class TestReactivateFromIngest:
     def test_audit_log_entry_written(self, db, companies_dir):
         job = _insert_job(db, stage="waitlisted")
         actions_mod.reactivate_from_ingest(db, job, {})
-        row = db.execute(
-            "SELECT * FROM audit_log WHERE job_id=? AND field_changed='stage'", (job["id"],)
-        ).fetchone()
+        row = db.execute("SELECT * FROM audit_log WHERE job_id=? AND field_changed='stage'", (job["id"],)).fetchone()
         assert row is not None
         assert row["old_value"] == "waitlisted"
         assert row["new_value"] == "scored"
@@ -212,6 +223,7 @@ class TestReactivateFromIngest:
 
 
 # ── refresh_active_job ───────────────────────────────────────────────────────
+
 
 class TestRefreshActiveJob:
     def test_low_score_bumped_to_8(self, db, companies_dir):
