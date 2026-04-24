@@ -73,15 +73,15 @@ file. If you're refactoring an old hardcoded section, add a note to `docs/GENERA
 
 | Item | Value |
 |------|-------|
-| Default model | `gemini:gemini-3-flash-preview` |
+| Default model | `openrouter:google/gemini-3-flash-preview` |
 | Embedding model | `gemini-embed:gemini-embedding-001` — dedicated named client, never touched by `--sync-models` |
 | `job_scorer` | `openrouter:deepseek/deepseek-v3.2` — profile.md injected directly; `--rag` NEVER used |
-| `resume_tailor` / `cover_letter_writer` | `claude:claude-opus-4-6:thinking`, `max_tokens: 4096` |
-| `company_researcher` | `perplexity:sonar-reasoning-pro` |
-| `briefing_writer` | `claude:claude-sonnet-4-6:thinking` |
-| `outreach_drafter` | `claude:claude-sonnet-4-6` — profile injected directly |
-| `fit_analyst` | `perplexity:sonar-reasoning-pro` — appended to company briefing |
-| `resume_change_reviewer` / `network_analyst` | `gemini:gemini-3-flash-preview` |
+| `resume_tailor` / `cover_letter_writer` | `openrouter:anthropic/claude-opus-4.7`, `max_tokens: 4096` |
+| `company_researcher` | `openrouter:perplexity/sonar-reasoning-pro` |
+| `briefing_writer` | `openrouter:anthropic/claude-sonnet-4.6` |
+| `outreach_drafter` | `openrouter:anthropic/claude-sonnet-4.6` — profile injected directly |
+| `fit_analyst` | `openrouter:perplexity/sonar-reasoning-pro` — appended to company briefing |
+| `resume_change_reviewer` / `network_analyst` | `openrouter:google/gemini-3-flash-preview` |
 | Job ingestion | jobs-api14 (RapidAPI) — LinkedIn (`datePosted: 'day'`) + Indeed; Gmail OAuth2 |
 | Package manager | `uv sync` for dev deps; `uv run` prefix for pytest/ruff/mypy/uvicorn |
 | Path resolution | `src/findajob/paths.py` — reads `config/paths.env`; BASE derived from `__file__` |
