@@ -10,6 +10,10 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-04-23
+
+Minor bump. Adds the first-run onboarding NUX at `/onboarding/` (#148) — fresh stacks are now guided end-to-end through an LLM interview that writes the seven canonical config files atomically, with existing destinations backed up. Retires Sheet1 writes (#136) — `/board/archive` has been the archival surface since v0.1.3, and Sheet1 was dead weight. Extends the `/config/` editor allowlist (#149) to cover the two files the onboarding flow newly produces. Two `migration-required` markers below.
+
 ### Removed
 
 - **Sheet1 writes (#136).** `sync_sheet.py` no longer writes to the `Sheet1` tab on the Google Sheet; the `notify.py health-check` drops the "Sheet1 > N rows" warning; `scripts/init_sheet.py` deleted (existed only to write Sheet1 headers); `scripts/setup_sheets.py` no longer formats Sheet1; `build_row()` loses its `use_status` parameter (only dashboard callers remain, all derive status). The web `/board/archive` view has been the archival surface since #60 (v0.1.3) and is strictly more useful than Sheet1's filtered subset.
@@ -191,7 +195,8 @@ from GHCR and deployed via Docker Compose on a shared Docker host.
 - Documentation cleanup — removing `sigoden/aichat` references in favor of
   `blob42/aichat-ng` — is tracked in #70
 
-[Unreleased]: https://github.com/brockamer/findajob/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/brockamer/findajob/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/brockamer/findajob/releases/tag/v0.3.0
 [0.2.0]: https://github.com/brockamer/findajob/releases/tag/v0.2.0
 [0.1.4]: https://github.com/brockamer/findajob/releases/tag/v0.1.4
 [0.1.3]: https://github.com/brockamer/findajob/releases/tag/v0.1.3
