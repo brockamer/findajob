@@ -18,7 +18,7 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 - **Edit `state/aichat_ng/config.yaml` on each deployed stack** to change the top-level `model:` line from `gemini:gemini-3-flash-preview` to `openrouter:google/gemini-3-flash-preview`. The image's `ops/aichat-ng/config.yaml.example` template seeds this file only on first install; existing installs keep their pre-upgrade default otherwise.
 - **Diff `state/aichat_ng/models-override.yaml` against `ops/aichat-ng/models-override.yaml` in this release** and append the two new openrouter catalog entries if absent: `anthropic/claude-opus-4.7` and `google/gemini-3-flash-preview`. Without these, the role files will reference models aichat-ng does not know about.
-- **Ensure `OPENROUTER_API_KEY` is set** in `state/config/.env` (or equivalent). Ten of eleven roles now depend on it.
+- **Ensure `OPENROUTER_API_KEY` is set** in `state/data/.env` (or equivalent). Ten of eleven roles now depend on it.
 
 ## [0.3.3] — 2026-04-24
 
