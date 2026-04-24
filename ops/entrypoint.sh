@@ -110,6 +110,14 @@ if [ -w /app/data ]; then
     gosu "$PUID:$PGID" python3 /app/scripts/init_db.py >/dev/null
 fi
 
+# --- 3d. Backfill derived companies_of_interest.txt (issue #222) ----------
+# Pre-#148 stacks have target_companies.md but lack the derived
+# companies_of_interest.txt; the onboarding injector only derives it on a
+# fresh paste-back. Derive here so config_loader stops warning and the two
+# features it gates (sync_sheet archival exception, notify mis-score check)
+# light back up. Idempotent: no-op when the destination already exists.
+gosu "$PUID:$PGID" python3 /app/scripts/seed_companies_of_interest.py >/dev/null || true
+
 # --- 4. Launch materials viewer (uvicorn) in background -------------------
 # Supercronic stays PID 1 for compose restart tracking. Uvicorn runs as a
 # child process. If it crashes, supercronic keeps running — /healthz is the

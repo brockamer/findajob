@@ -10,6 +10,11 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Pre-#148 stacks now auto-backfill `config/companies_of_interest.txt` at container start (#222).** Stacks whose `config/target_companies.md` was written before the #148 onboarding injector learned to derive a companions list were left with `config/companies_of_interest.txt` missing — `config_loader` silently disabled the `sync_sheet` archival exception and the `notify.py health-check` mis-score probe, and logged a `UserWarning` on every import. A new `scripts/seed_companies_of_interest.py` now runs from `ops/entrypoint.sh` on every start: when `target_companies.md` exists and the derived file is missing, it derives and writes; when both exist, it's a no-op (user edits preserved); when no `## Tier 1` section is present, it logs `companies_of_interest_derive_skip` at info level instead of raising a warning.
+- **RapidAPI LinkedIn JD 429 burst during morning triage (#223).** `fetch_linkedin_job_data()` now mirrors the 429 handling already in `fetch_jobsapi_jobs()`: respects `Retry-After`, sleeps (clamped 10s–60s), retries once, and adds a 0.2s per-call throttle to keep the bursty opening of morning triage below the plan's per-minute cap. Per-hit `linkedin_get_error: 429` spam is replaced by a single end-of-triage `linkedin_rate_limited` summary event with `count` and `total_wait`. Observed cause: Alice's 214-job triage fired 9 LinkedIn JD GETs in a 27s window on 2026-04-24, all logged as `linkedin_get_error` and scoring without enriched JD (Stage 2 prefilter default of 5–6).
+
 ## [0.3.0] — 2026-04-23
 
 Minor bump. Adds the first-run onboarding NUX at `/onboarding/` (#148) — fresh stacks are now guided end-to-end through an LLM interview that writes the seven canonical config files atomically, with existing destinations backed up. Retires Sheet1 writes (#136) — `/board/archive` has been the archival surface since v0.1.3, and Sheet1 was dead weight. Extends the `/config/` editor allowlist (#149) to cover the two files the onboarding flow newly produces. Two `migration-required` markers below.

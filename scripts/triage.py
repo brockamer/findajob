@@ -27,6 +27,8 @@ from findajob.fetchers import (
     fetch_jd,
     fetch_jobsapi_jobs,
     fetch_lever_jobs,
+    get_linkedin_rate_limit_stats,
+    reset_linkedin_rate_limit_stats,
 )
 from findajob.paths import BASE
 from findajob.scoring import _build_feedback_block, score_job
@@ -185,6 +187,7 @@ def find_contacts(company):
 # ── Main Pipeline ──
 def main():
     log_event("pipeline_started")
+    reset_linkedin_rate_limit_stats()
 
     if os.path.exists(DB_PATH):
         shutil.copy2(DB_PATH, f"{DB_PATH}.bak")
@@ -567,6 +570,15 @@ def main():
         log_event("null_score_retry_complete", rescored=rescored)
 
     conn.close()
+
+    linkedin_429_stats = get_linkedin_rate_limit_stats()
+    if linkedin_429_stats["count"] > 0:
+        log_event(
+            "linkedin_rate_limited",
+            count=linkedin_429_stats["count"],
+            total_wait=linkedin_429_stats["total_wait"],
+        )
+
     log_event(
         "pipeline_complete",
         new=new_count,

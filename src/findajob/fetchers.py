@@ -15,6 +15,23 @@ GMAIL_CREDS = f"{BASE}/config/gmail_oauth_client.json"
 GMAIL_TOKEN = f"{BASE}/config/gmail_token.json"
 GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 
+# Per-call throttle to keep morning triage from bursting past the RapidAPI
+# per-minute cap on /v2/linkedin/get. 214-job triage × ~30% LinkedIn ≈ 13s added.
+_LINKEDIN_GET_THROTTLE_SEC = 0.2
+
+# Aggregated counters — triage.py resets at run start and emits one
+# `linkedin_rate_limited` summary event at run end (issue #223 AC2).
+_linkedin_rate_limit_stats: dict[str, int] = {"count": 0, "total_wait": 0}
+
+
+def reset_linkedin_rate_limit_stats() -> None:
+    _linkedin_rate_limit_stats["count"] = 0
+    _linkedin_rate_limit_stats["total_wait"] = 0
+
+
+def get_linkedin_rate_limit_stats() -> dict[str, int]:
+    return dict(_linkedin_rate_limit_stats)
+
 
 # ── JD Fetching ──
 def fetch_jd_curl(url):
@@ -39,16 +56,21 @@ def fetch_linkedin_job_data(job_id):
     api_key = os.environ.get("RAPIDAPI_KEY", "")
     if not api_key or not job_id:
         return {"description": None, "company": None}
+    time.sleep(_LINKEDIN_GET_THROTTLE_SEC)
+    url = "https://jobs-api14.p.rapidapi.com/v2/linkedin/get"
+    headers = {
+        "x-rapidapi-host": "jobs-api14.p.rapidapi.com",
+        "x-rapidapi-key": api_key,
+    }
+    params = {"id": str(job_id)}
     try:
-        response = req.get(
-            "https://jobs-api14.p.rapidapi.com/v2/linkedin/get",
-            headers={
-                "x-rapidapi-host": "jobs-api14.p.rapidapi.com",
-                "x-rapidapi-key": api_key,
-            },
-            params={"id": str(job_id)},
-            timeout=15,
-        )
+        response = req.get(url, headers=headers, params=params, timeout=15)
+        if response.status_code == 429:
+            wait = min(int(response.headers.get("Retry-After", "10")), 60)
+            _linkedin_rate_limit_stats["count"] += 1
+            _linkedin_rate_limit_stats["total_wait"] += wait
+            time.sleep(wait)
+            response = req.get(url, headers=headers, params=params, timeout=15)
         response.raise_for_status()
         data = response.json()
         if data.get("hasError"):
