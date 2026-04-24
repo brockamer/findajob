@@ -1,5 +1,5 @@
 ---
-model: perplexity:sonar-reasoning-pro
+model: openrouter:perplexity/sonar-reasoning-pro
 temperature: 0.2
 ---
 You research companies for a job candidate.
