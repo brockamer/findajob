@@ -13,32 +13,6 @@ SQLite is the source of truth.
 
 ## Tabs
 
-### Sheet1 — Full Archive
-
-All jobs that passed deduplication. Reference view only — not interactive (except the APPLY_FLAG checkbox, which is a legacy field). Use the Dashboard for workflow actions.
-
-Columns A–N:
-| Col | Field |
-|---|---|
-| A | fingerprint (hidden) |
-| B | APPLY_FLAG (checkbox) |
-| C | relevance_score |
-| D | title |
-| E | company |
-| F | location |
-| G | remote_status |
-| H | stage |
-| I | known_contacts |
-| J | comp_estimate |
-| K | ai_notes |
-| L | date_found |
-| M | source |
-| N | url |
-
-Rejected rows are greyed out (conditional formatting on `stage="rejected"`).
-
----
-
 ### Dashboard — Pre-Application Queue
 
 Jobs the user can still act on before applying. Updated by `sync_sheet.py` (after triage and after every prep).
@@ -60,7 +34,7 @@ Columns A–N:
 | E | probability_score | System |
 | F | relevance_score | System |
 | G | title (hyperlink) | System |
-| H | company | System (plain text on Sheet1; hyperlinks into the materials viewer on Dashboard/Applied/Waitlist/Rejected Applications when `FINDAJOB_MATERIALS_BASE_URL` is set) |
+| H | company | System (hyperlinks into the materials viewer when `FINDAJOB_MATERIALS_BASE_URL` is set) |
 | I | location | System |
 | J | remote_status | System |
 | K | known_contacts | System |
@@ -264,11 +238,6 @@ Columns A–H:
 | `days_since_applied 14–20` | Red |
 | `days_since_applied 7–13` | Yellow |
 | `days_since_applied 0–6` | Green |
-
-**Sheet1:**
-| Column | Trigger | Color |
-|---|---|---|
-| stage col H | `rejected` | Entire row grey with grey text |
 
 ---
 

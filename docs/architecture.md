@@ -67,9 +67,10 @@ Everything between them is mediated by SQLite. The Google Sheet is a synced view
           └────────────┬────────────────┘
                        │
           ┌────────────▼────────────────┐
-          │  sync_sheet.py              │
-          │  Sheet1 (archive)           │
-          │  Dashboard (actionable)     │
+          │  Web UI (/board/*)          │
+          │  + sync_sheet.py → Sheets   │
+          │     (Dashboard, Applied,    │
+          │      Review, Waitlist)      │
           └─────────────────────────────┘
 ```
 
@@ -180,26 +181,6 @@ logged_at TEXT DEFAULT (datetime('now'))
 > the Sheet but never reads from it. Operators drive every STATUS and
 > REJECT_REASON transition through the web UI at `/board/*`; edits made
 > directly in the Sheet are overwritten on the next sync cycle.
-
-### Sheet1 — Full Archive (A–N)
-All jobs that passed dedup. Read-only reference view.
-
-| Col | Field | Notes |
-|---|---|---|
-| A | fingerprint | Hidden — matches board_actions.py POST targets |
-| B | APPLY_FLAG | Checkbox (TRUE/FALSE) |
-| C | relevance_score | |
-| D | title | |
-| E | company | |
-| F | location | |
-| G | remote_status | |
-| H | stage | |
-| I | known_contacts | |
-| J | comp_estimate | |
-| K | ai_notes | |
-| L | date_found | |
-| M | source | |
-| N | url | |
 
 ### Dashboard — Pre-Application Queue (A–N)
 Filter: `(score >= 7 AND stage IN (scored, manual_review))` OR `stage IN (prep_in_progress, materials_drafted)`.
