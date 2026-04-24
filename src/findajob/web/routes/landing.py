@@ -1,4 +1,4 @@
-"""Landing page at / and placeholder groups."""
+"""Landing page at /."""
 
 from __future__ import annotations
 
@@ -40,29 +40,3 @@ def landing(
         name="landing.html",
         context={"ordered": ordered},
     )
-
-
-_PLACEHOLDERS = [
-    # /ingest/ promoted to a real route in src/findajob/web/routes/ingest.py (#62).
-    # /config/ promoted to a real route in src/findajob/web/routes/config.py (#149).
-    # /tools/ promoted to a stub in src/findajob/web/routes/tools.py (#149).
-    ("/docs/", "Docs", "User-facing documentation.", ""),
-]
-
-
-def _make_placeholder(path: str, label: str, hint: str, issue: str):
-    @router.get(path, response_class=HTMLResponse)
-    def _handler(request: Request) -> HTMLResponse:
-        templates = request.app.state.templates
-        return templates.TemplateResponse(
-            request=request,
-            name="placeholders/coming_soon.html",
-            context={"label": label, "hint": hint, "issue": issue},
-        )
-
-    _handler.__name__ = f"placeholder_{label.lower()}"
-    return _handler
-
-
-for _p, _l, _h, _i in _PLACEHOLDERS:
-    _make_placeholder(_p, _l, _h, _i)

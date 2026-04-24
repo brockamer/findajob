@@ -7,6 +7,7 @@ from findajob.web.routes import (
     board,
     board_actions,
     config,
+    docs,
     healthz,
     ingest,
     landing,
@@ -29,3 +30,4 @@ router.include_router(stats.router, dependencies=_guard)
 router.include_router(config.router)
 router.include_router(tools.router)
 router.include_router(onboarding.router)
+router.include_router(docs.router)

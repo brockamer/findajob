@@ -46,17 +46,8 @@ def test_landing_nav_home_active(client: TestClient) -> None:
     assert 'aria-current="page"' in r.text
 
 
-@pytest.mark.parametrize(
-    "path,label,issue",
-    [
-        # /ingest/ promoted from placeholder to a real route in #62 — covered by tests/test_web_ingest.py.
-        # /config/ promoted to a real route in #149 — covered by tests/test_web_config_editor.py.
-        # /tools/ promoted to a stub in #149 — covered by tests/test_web_config_editor.py.
-        ("/docs/", "Docs", ""),
-    ],
-)
-def test_placeholder_renders(client: TestClient, path: str, label: str, issue: str) -> None:
-    r = client.get(path)
-    assert r.status_code == 200
-    assert "Coming soon" in r.text
-    assert label in r.text
+# Placeholders retired:
+# - /ingest/ promoted to a real route in #62 — covered by tests/test_web_ingest.py.
+# - /config/ promoted to a real route in #149 — covered by tests/test_web_config_editor.py.
+# - /tools/ promoted to a stub in #149 — covered by tests/test_web_config_editor.py.
+# - /docs/ promoted to a real route in #224 — covered by tests/test_web_docs.py.

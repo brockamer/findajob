@@ -10,6 +10,10 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Added
+
+- **`/docs/` renders user guides inline in the web UI (#224).** The `/docs/` top-nav slot now serves `docs/usage.md`, `docs/troubleshooting.md`, and `docs/setup/README.md` (plus the setup sub-pages it links to: prerequisites, install-docker, install-linux, configure, state-migration) as HTML inside the app shell. `.md` cross-links between guides are rewritten to `/docs/<slug>` at render time; external links get `target="_blank" rel="noopener noreferrer"`; heading `#anchor` fragments resolve (Python-Markdown `toc` extension auto-generates IDs). Markdown source on disk under `docs/` is unchanged — GitHub rendering still works. The shared Markdown helper moved from `routes/materials.py` into `findajob.web.markdown` so both viewers share one implementation. Finishes the last mile of #11.
+
 ### Fixed
 
 - **Pre-#148 stacks now auto-backfill `config/companies_of_interest.txt` at container start (#222).** Stacks whose `config/target_companies.md` was written before the #148 onboarding injector learned to derive a companions list were left with `config/companies_of_interest.txt` missing — `config_loader` silently disabled the `sync_sheet` archival exception and the `notify.py health-check` mis-score probe, and logged a `UserWarning` on every import. A new `scripts/seed_companies_of_interest.py` now runs from `ops/entrypoint.sh` on every start: when `target_companies.md` exists and the derived file is missing, it derives and writes; when both exist, it's a no-op (user edits preserved); when no `## Tier 1` section is present, it logs `companies_of_interest_derive_skip` at info level instead of raising a warning.

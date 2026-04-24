@@ -2,37 +2,20 @@
 
 from __future__ import annotations
 
-import re
 import sqlite3
 from pathlib import Path
 
-import markdown as md_lib
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 
 from findajob.web.folder_resolver import resolve_folder
+from findajob.web.markdown import render_markdown
 
 router = APIRouter()
 
 
 def get_db() -> sqlite3.Connection:  # pragma: no cover — overridden in app factory
     raise NotImplementedError("DB dependency must be overridden by create_app()")
-
-
-def _render_markdown(text: str) -> str:
-    # Convert :::centered ... ::: fenced containers to centered divs before markdown parsing.
-    # md_in_html extension processes markdown inside block-level HTML elements.
-    text = re.sub(
-        r":::centered\n([\s\S]*?)\n:::",
-        lambda m: f'<div class="text-center" markdown="1">\n{m.group(1)}\n</div>',
-        text,
-    )
-    html = md_lib.markdown(text, extensions=["fenced_code", "tables", "md_in_html"], output_format="html")
-    # Strip language class attributes added by fenced_code (e.g. class="language-python" on <code>)
-    html = re.sub(r'(<code[^>]*?) class="language-[^"]*"', r"\1", html)
-    # Neutralize raw script tags that Python-Markdown passes through unchanged
-    html = re.sub(r"<(/?script)", r"&lt;\1", html, flags=re.IGNORECASE)
-    return html
 
 
 _INDEX_QUERY_SECTIONS = [
@@ -124,7 +107,7 @@ def file_serve(
         return templates.TemplateResponse(
             request=request,
             name="base.html",
-            context={"_rendered_md": _render_markdown(body)},
+            context={"_rendered_md": render_markdown(body)},
             headers={"content-type": "text/html; charset=utf-8"},
         )
     if ext == ".txt":

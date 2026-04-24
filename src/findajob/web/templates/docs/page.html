@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block title %}Docs — {{ slug }}{% endblock %}
+{% block content %}
+<nav class="text-sm mb-4"><a class="text-sky-700 hover:text-sky-900 underline" href="/docs/">&larr; Docs</a></nav>
+<div class="prose prose-slate max-w-none">{{ rendered_md | safe }}</div>
+{% endblock %}

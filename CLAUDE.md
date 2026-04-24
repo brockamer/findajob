@@ -140,6 +140,8 @@ When the pipeline runs inside the `ghcr.io/brockamer/findajob` image, paths shif
 <repo>/src/findajob/web/routes/ingest.py     # GET /ingest/ form + POST /ingest/manual handler
 <repo>/src/findajob/web/routes/config.py     # GET /config/, GET/POST /config/files/{path} — in-browser config editor (#149)
 <repo>/src/findajob/web/routes/tools.py      # GET /tools/ — stub linking to /config/ (#149)
+<repo>/src/findajob/web/routes/docs.py       # GET /docs/ index + GET /docs/{slug} — user docs viewer (#224)
+<repo>/src/findajob/web/markdown.py          # render_markdown() — shared MD→HTML helper for materials + docs viewers
 <repo>/src/findajob/web/config_files.py      # allowlist + resolve_editable() for /config/ editor (#149)
 <repo>/src/findajob/web/onboarding_guard.py # NUX guard dependency — 307s /board,/materials,/stats to /onboarding when sentinel missing (#148)
 <repo>/src/findajob/web/routes/onboarding.py # GET /onboarding/, GET /onboarding/prompt, POST /onboarding/inject (#148)
@@ -221,6 +223,15 @@ to `{base_root}/.backups/{UTC-stamp}/` first. Re-triggerable from `/tools/`
 via `/onboarding/?mode=rerun`. See
 `findajob.onboarding.parser`/`findajob.onboarding.injector`/
 `findajob.web.onboarding_guard` for the implementation boundaries (#148).
+
+`/docs/` renders the user-facing guides (`docs/usage.md`,
+`docs/troubleshooting.md`, `docs/setup/README.md` + setup sub-pages) inline
+in the web UI so operators don't have to leave the app for help. Slug → file
+allowlist in `findajob.web.routes.docs`; Markdown rendering is the shared
+`render_markdown()` helper in `findajob.web.markdown`, which also handles
+`.md` cross-link rewriting (`[usage.md](usage.md)` → `/docs/usage`) and
+`target="_blank"` on external links. The markdown files on disk under `docs/`
+remain the source of truth; GitHub rendering is unchanged (#224).
 
 ---
 

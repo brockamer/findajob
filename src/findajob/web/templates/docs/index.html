@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Docs — findajob{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-semibold mb-2">Docs</h1>
+<p class="text-slate-600 mb-6">User-facing guides for running findajob. The markdown source lives at <code class="text-sm bg-slate-100 px-1 rounded">docs/</code> in the repo.</p>
+<ul class="space-y-4">
+  {% for guide in guides %}
+  <li>
+    <a class="text-lg font-medium text-sky-700 hover:text-sky-900 underline" href="/docs/{{ guide.slug }}">{{ guide.title }}</a>
+    <p class="text-slate-600 mt-1">{{ guide.blurb }}</p>
+  </li>
+  {% endfor %}
+</ul>
+{% endblock %}

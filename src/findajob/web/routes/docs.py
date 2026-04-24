@@ -1,0 +1,84 @@
+"""User docs viewer: renders markdown under `docs/` inline at `/docs/`."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import HTMLResponse
+
+from findajob.web.markdown import render_markdown
+
+router = APIRouter()
+
+
+# Slug → path relative to the repo's `docs/` directory. The three guides named
+# in the top-nav index (setup, usage, troubleshooting) anchor the user-facing
+# doc set; the setup sub-pages are included so cross-links from setup/README.md
+# resolve in-app instead of 404ing.
+_PAGES: dict[str, str] = {
+    "usage": "usage.md",
+    "troubleshooting": "troubleshooting.md",
+    "setup": "setup/README.md",
+    "setup/prerequisites": "setup/prerequisites.md",
+    "setup/install-docker": "setup/install-docker.md",
+    "setup/install-linux": "setup/install-linux.md",
+    "setup/configure": "setup/configure.md",
+    "setup/state-migration": "setup/state-migration.md",
+}
+
+_INDEX_GUIDES = [
+    {
+        "slug": "setup",
+        "title": "Setup",
+        "blurb": "From zero to a running container: prerequisites, Docker install, onboarding, verification.",
+    },
+    {
+        "slug": "usage",
+        "title": "Usage",
+        "blurb": "Daily workflow — how to drive the pipeline through the web UI, tab by tab.",
+    },
+    {
+        "slug": "troubleshooting",
+        "title": "Troubleshooting",
+        "blurb": "What the health-check alerts mean and how to unstick common failures.",
+    },
+]
+
+
+@router.get("/docs/", response_class=HTMLResponse)
+def docs_index(request: Request) -> HTMLResponse:
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request=request,
+        name="docs/index.html",
+        context={"guides": _INDEX_GUIDES},
+    )
+
+
+@router.get("/docs/{slug:path}", response_class=HTMLResponse)
+def docs_page(slug: str, request: Request) -> HTMLResponse:
+    rel = _PAGES.get(slug.rstrip("/"))
+    if rel is None:
+        raise HTTPException(status_code=404, detail="doc not found")
+    base_root: Path = request.app.state.base_root
+    docs_root = (base_root / "docs").resolve()
+    path = (docs_root / rel).resolve()
+    # Defense-in-depth: the allowlist already constrains the path, but keep
+    # the traversal guard since `rel` could theoretically contain `..`.
+    try:
+        path.relative_to(docs_root)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="doc not found") from None
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="doc not found")
+    body = path.read_text(encoding="utf-8", errors="replace")
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request=request,
+        name="docs/page.html",
+        context={
+            "slug": slug,
+            "rendered_md": render_markdown(body, source=rel),
+        },
+    )
