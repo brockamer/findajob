@@ -1,5 +1,5 @@
 ---
-model: claude:claude-opus-4-6:thinking
+model: openrouter:anthropic/claude-opus-4.7
 max_tokens: 4096
 temperature: 0.6
 ---

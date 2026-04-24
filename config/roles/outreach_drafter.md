@@ -1,5 +1,5 @@
 ---
-model: claude:claude-sonnet-4-6
+model: openrouter:anthropic/claude-sonnet-4.6
 temperature: 0.5
 ---
 You draft personalized outreach messages for a job candidate's search.
