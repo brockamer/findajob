@@ -1,0 +1,15 @@
+{#
+  Archive-tab-only: Promote action cell. Renders a button for rows at
+  stage='scored' (the pool that can still be promoted to manual_review
+  for Dashboard triage). Empty cell for rows already past that stage.
+  Inputs: row — sqlite3.Row with fingerprint + stage.
+#}
+<td class="px-3 py-1 align-top text-sm whitespace-nowrap">
+  {% if row.stage == 'scored' %}
+    <button type="button"
+            class="rounded bg-indigo-600 px-2 py-1 text-xs font-medium text-white hover:bg-indigo-500"
+            hx-post="/board/jobs/{{ row.fingerprint }}/promote"
+            hx-target="closest tr"
+            hx-swap="outerHTML">Promote</button>
+  {% endif %}
+</td>

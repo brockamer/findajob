@@ -18,6 +18,8 @@
   {% if tab in ('dashboard', 'applied', 'review', 'waitlist') %}
     {% include "board/_status_cell.html" %}
     {% include "board/_reject_cell.html" %}
+  {% elif tab == 'archive' %}
+    {% include "board/_archive_promote_cell.html" %}
   {% endif %}
   {% for display, field in columns %}
     {% if tab == 'applied' and field == 'user_notes' %}

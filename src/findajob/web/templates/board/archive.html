@@ -3,16 +3,28 @@
 {% block content %}
 <h1 class="text-2xl font-semibold mb-4">Archive ({{ rows|length }}{% if next_offset %}+{% endif %})</h1>
 {% include "board/_tabs.html" %}
-<div class="mb-3 text-xs text-slate-600 flex items-center gap-1">
-  <span>Rows:</span>
+<div class="mb-3 text-xs text-slate-600 flex items-center gap-2">
+  <span class="mr-2">Rows:</span>
   <a href="?sort={{ sort }}&desc={{ desc }}&density=compact"
      class="rounded px-2 py-1 {% if (density | default('compact')) == 'compact' %}bg-slate-900 text-white{% else %}bg-slate-100 text-slate-700 hover:bg-slate-200{% endif %}">Compact</a>
   <a href="?sort={{ sort }}&desc={{ desc }}&density=expanded"
      class="rounded px-2 py-1 {% if density == 'expanded' %}bg-slate-900 text-white{% else %}bg-slate-100 text-slate-700 hover:bg-slate-200{% endif %}">Expanded</a>
+  <span class="mx-2 text-slate-300">|</span>
+  <span>Quick filters:</span>
+  <a href="?min_score=6&max_score=6&sort=relevance_score&desc=1"
+     class="rounded px-2 py-1 {% if min_score == 6 and max_score == 6 %}bg-amber-600 text-white{% else %}bg-amber-100 text-amber-800 hover:bg-amber-200{% endif %}"
+     title="Near-miss review queue — promote to Dashboard">Score 6</a>
+  <a href="?min_score=7&sort=relevance_score&desc=1"
+     class="rounded px-2 py-1 {% if min_score == 7 and max_score is none %}bg-emerald-600 text-white{% else %}bg-emerald-100 text-emerald-800 hover:bg-emerald-200{% endif %}">Score 7+</a>
+  {% if min_score is not none or max_score is not none %}
+    <a href="?sort={{ sort }}&desc={{ desc }}"
+       class="rounded px-2 py-1 bg-slate-200 text-slate-700 hover:bg-slate-300">Clear</a>
+  {% endif %}
 </div>
 <table class="min-w-full bg-white shadow-sm rounded-sm density-{{ density | default('compact') }}">
   <thead class="bg-slate-100 text-left text-xs uppercase tracking-wide text-slate-600">
     <tr>
+      <th class="px-3 py-2"></th>
       {% for display, field in columns %}
       <th class="px-3 py-2">
         <a href="?sort={{ field }}&desc={% if sort == field and desc %}0{% else %}1{% endif %}">

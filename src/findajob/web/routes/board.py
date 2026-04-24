@@ -361,7 +361,7 @@ def rejected_rows(
 
 
 _ARCHIVE_COLS = [
-    ("Score", "fit_score"),
+    ("Rel", "relevance_score"),
     ("Title", "title"),
     ("Company", "company"),
     ("Stage", "stage"),
@@ -376,12 +376,32 @@ _ARCHIVE_DEFAULT_SORT = "created_at"
 _ARCHIVE_PAGE_SIZE = 100
 
 
-def _archive_select_sql(sort_col: str, order: str) -> str:
-    return (
-        "SELECT fingerprint, title, company, stage, fit_score, location, remote_status, "
-        "source, url, created_at, stage_updated "
-        f"FROM jobs ORDER BY {sort_col} {order} LIMIT ? OFFSET ?"
+def _archive_score_where(min_score: int | None, max_score: int | None) -> tuple[str, list[int]]:
+    """Build a WHERE clause fragment (including 'WHERE ') and bind params for
+    optional relevance_score bounds. Returns ('', []) if both bounds are None."""
+    clauses: list[str] = []
+    params: list[int] = []
+    if min_score is not None:
+        clauses.append("relevance_score >= ?")
+        params.append(min_score)
+    if max_score is not None:
+        clauses.append("relevance_score <= ?")
+        params.append(max_score)
+    if not clauses:
+        return "", []
+    return " WHERE " + " AND ".join(clauses), params
+
+
+def _archive_select_sql(
+    sort_col: str, order: str, min_score: int | None = None, max_score: int | None = None
+) -> tuple[str, list[int]]:
+    where_sql, where_params = _archive_score_where(min_score, max_score)
+    sql = (
+        "SELECT fingerprint, title, company, stage, relevance_score, fit_score, "
+        "probability_score, location, remote_status, source, url, created_at, stage_updated "
+        f"FROM jobs{where_sql} ORDER BY {sort_col} {order} LIMIT ? OFFSET ?"
     )
+    return sql, where_params
 
 
 @router.get("/board/archive", response_class=HTMLResponse)
@@ -390,11 +410,14 @@ def archive(
     sort: str = Query(default=""),
     desc: int = Query(default=1),
     density: str = Query(default=_DEFAULT_DENSITY),
+    min_score: int | None = Query(default=None),
+    max_score: int | None = Query(default=None),
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
 ) -> HTMLResponse:
     sort_col = sort if sort in _ARCHIVE_SORTABLE else _ARCHIVE_DEFAULT_SORT
     order = "DESC" if desc else "ASC"
-    rows = db.execute(_archive_select_sql(sort_col, order), (_ARCHIVE_PAGE_SIZE, 0)).fetchall()
+    sql, where_params = _archive_select_sql(sort_col, order, min_score, max_score)
+    rows = db.execute(sql, (*where_params, _ARCHIVE_PAGE_SIZE, 0)).fetchall()
     has_more = len(rows) == _ARCHIVE_PAGE_SIZE
     materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
     templates = request.app.state.templates
@@ -410,6 +433,8 @@ def archive(
             "tab": "archive",
             "next_offset": _ARCHIVE_PAGE_SIZE if has_more else None,
             "materials_base_url": materials_base_url,
+            "min_score": min_score,
+            "max_score": max_score,
         },
     )
 
@@ -420,11 +445,14 @@ def archive_rows(
     offset: int = Query(default=0),
     sort: str = Query(default=""),
     desc: int = Query(default=1),
+    min_score: int | None = Query(default=None),
+    max_score: int | None = Query(default=None),
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
 ) -> HTMLResponse:
     sort_col = sort if sort in _ARCHIVE_SORTABLE else _ARCHIVE_DEFAULT_SORT
     order = "DESC" if desc else "ASC"
-    rows = db.execute(_archive_select_sql(sort_col, order), (_ARCHIVE_PAGE_SIZE, offset)).fetchall()
+    sql, where_params = _archive_select_sql(sort_col, order, min_score, max_score)
+    rows = db.execute(sql, (*where_params, _ARCHIVE_PAGE_SIZE, offset)).fetchall()
     has_more = len(rows) == _ARCHIVE_PAGE_SIZE
     materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
     templates = request.app.state.templates
@@ -439,6 +467,8 @@ def archive_rows(
             "sort": sort_col,
             "desc": desc,
             "materials_base_url": materials_base_url,
+            "min_score": min_score,
+            "max_score": max_score,
         },
     )
 

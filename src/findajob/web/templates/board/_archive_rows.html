@@ -2,9 +2,9 @@
   {% include "_job_row.html" %}
 {% endfor %}
 {% if next_offset is not none %}
-  <tr hx-get="/board/archive/rows?offset={{ next_offset }}&sort={{ sort }}&desc={{ desc }}"
+  <tr hx-get="/board/archive/rows?offset={{ next_offset }}&sort={{ sort }}&desc={{ desc }}{% if min_score is not none %}&min_score={{ min_score }}{% endif %}{% if max_score is not none %}&max_score={{ max_score }}{% endif %}"
       hx-trigger="revealed"
       hx-swap="outerHTML">
-    <td colspan="{{ columns|length }}" class="px-3 py-2 text-xs text-slate-400">loading…</td>
+    <td colspan="{{ columns|length + 1 }}" class="px-3 py-2 text-xs text-slate-400">loading…</td>
   </tr>
 {% endif %}
