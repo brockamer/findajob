@@ -213,6 +213,8 @@ _WAITLIST_COLS = [
     ("Title", "title"),
     ("Company", "company"),
     ("Rel", "relevance_score"),
+    ("Fit", "fit_score"),
+    ("Prob", "probability_score"),
     ("Location", "location"),
     ("Remote", "remote_status"),
     ("AI notes", "ai_notes"),
@@ -234,7 +236,9 @@ def waitlist(
     sort_col = sort if sort in _WAITLIST_SORTABLE else _WAITLIST_DEFAULT_SORT
     order = "DESC" if desc else "ASC"
     sql = f"""
-    SELECT w.fingerprint, w.title, w.company, w.relevance_score, w.location, w.remote_status,
+    SELECT w.fingerprint, w.title, w.company, w.relevance_score,
+           w.fit_score, w.probability_score,
+           w.location, w.remote_status,
            w.ai_notes, w.created_at, w.stage, w.url,
            (SELECT j2.title || ' (' || j2.stage || ')'
               FROM jobs j2
@@ -565,7 +569,9 @@ def waitlist_rows(
     filter_sql, params = _filter_clause(q)
     qualified_filter = filter_sql.replace("title", "w.title").replace("company", "w.company")
     sql = f"""
-    SELECT w.fingerprint, w.title, w.company, w.relevance_score, w.location, w.remote_status,
+    SELECT w.fingerprint, w.title, w.company, w.relevance_score,
+           w.fit_score, w.probability_score,
+           w.location, w.remote_status,
            w.ai_notes, w.created_at, w.stage, w.url,
            (SELECT j2.title || ' (' || j2.stage || ')'
               FROM jobs j2

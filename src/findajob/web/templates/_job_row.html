@@ -32,7 +32,7 @@
       {% elif field == 'company' and row.fingerprint and row.stage in folder_stages and materials_base_url %}
         <a class="underline" href="{{ materials_base_url }}/materials/{{ row.fingerprint }}">{{ row[field] }}</a>
       {% elif field in ('fit_score', 'probability_score') %}
-        {{ row[field] | round | int if row[field] is not none else '' }}
+        {{ row[field] | round | int if row[field] is not none else '—' }}
       {% else %}
         {{ row[field] if row[field] is not none else '' }}
       {% endif %}
