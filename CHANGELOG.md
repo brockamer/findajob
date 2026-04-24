@@ -10,6 +10,10 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Removed
+
+- **Sheet1 writes (#136).** `sync_sheet.py` no longer writes to the `Sheet1` tab on the Google Sheet; the `notify.py health-check` drops the "Sheet1 > N rows" warning; `scripts/init_sheet.py` deleted (existed only to write Sheet1 headers); `scripts/setup_sheets.py` no longer formats Sheet1; `build_row()` loses its `use_status` parameter (only dashboard callers remain, all derive status). The web `/board/archive` view has been the archival surface since #60 (v0.1.3) and is strictly more useful than Sheet1's filtered subset.
+
 ### Added
 
 - **Onboarding NUX at `/onboarding/` — fresh stacks are guided end-to-end.** First-run stacks (no `{base_root}/data/.onboarding-complete` sentinel) redirect from `/board/*`, `/materials/*`, and `/stats/*` to a new `/onboarding/` landing page that walks the user through running the interview (`config/roles/onboarding_interviewer.md`) in their chosen LLM (Claude / ChatGPT / Gemini) and pasting the emission back. The paste-back handler parses the seven `<<<FILE: name>>>`-delimited blocks, backs up any existing destinations to `{base_root}/.backups/{UTC-stamp}/`, atomically writes the seven canonical config files (profile, master resume, target companies, sector reference, search queries, prefilter rules, in-domain patterns) plus a derived `config/companies_of_interest.txt` from the Tier 1 section of `target_companies.md`, and writes the sentinel that clears the redirect. Re-triggerable from `/tools/` via `/onboarding/?mode=rerun`. Closes #148; unblocks #11 (user-facing setup docs).
@@ -18,6 +22,7 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 ### Migration required
 
 - **Operators with existing stacks:** after pulling this release, either (a) run the onboarding interview once from `/tools/ → Run onboarding interview`, or (b) touch the sentinel file manually: `docker compose exec scheduler python -c "from findajob.onboarding import mark_complete; from pathlib import Path; mark_complete(Path('/app'))"`. Without one of these, the first request to `/board/` will 307-redirect to `/onboarding/` until the sentinel exists. This is a one-time action per stack (#148).
+- **Stale `Sheet1` tab on existing spreadsheets (#136).** The pipeline no longer writes to or reads from `Sheet1`, but the tab itself is not programmatically deleted. Right-click the `Sheet1` tab in the Sheets UI → Delete once you've confirmed you don't need its contents. The web `/board/archive` view has the same data (and more) with pagination, sort, and filter.
 
 ## [0.2.0] — 2026-04-23
 
