@@ -1,24 +1,8 @@
 #!/usr/bin/env python3
 # ~/JobSearchPipeline/scripts/setup_sheets.py
 """
-One-time setup: formats Sheet1, Dashboard, Review, and Waitlist tabs.
+One-time setup: formats Dashboard, Review, Waitlist, Applied, and Rejected Applications tabs.
 Run after any sheet restructure. Safe to re-run — idempotent.
-
-Sheet1 layout (A–N):
-  A: fingerprint  (hidden — matches board_actions.py POST targets)
-  B: APPLY_FLAG   (checkbox)
-  C: relevance_score
-  D: title
-  E: company
-  F: location
-  G: remote_status
-  H: stage
-  I: known_contacts
-  J: comp_estimate
-  K: ai_notes
-  L: date_found
-  M: source
-  N: url
 
 Dashboard layout (A–N):
   A: STATUS          (dropdown: Flag for Prep / Applied / Interviewing / Offer / Withdrew)
@@ -430,32 +414,6 @@ def score_cf_rules(sheet_id, col_index):
     ]
 
 
-def rejected_row_cf(sheet_id, total_cols):
-    """Grey out entire rows on Sheet1 where stage = 'rejected'."""
-    return [
-        {
-            "addConditionalFormatRule": {
-                "index": 3,
-                "rule": {
-                    "ranges": [
-                        {"sheetId": sheet_id, "startRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": total_cols}
-                    ],
-                    "booleanRule": {
-                        "condition": {
-                            "type": "CUSTOM_FORMULA",
-                            "values": [{"userEnteredValue": '=OR($H2="rejected",$H2="not_selected")'}],
-                        },
-                        "format": {
-                            "backgroundColor": {"red": 0.9, "green": 0.9, "blue": 0.9},
-                            "textFormat": {"foregroundColor": {"red": 0.6, "green": 0.6, "blue": 0.6}},
-                        },
-                    },
-                },
-            }
-        }
-    ]
-
-
 def col_width(sheet_id, col_index, px):
     return {
         "updateDimensionProperties": {
@@ -475,7 +433,6 @@ def main():
     sheets_meta = spreadsheet.get("sheets", [])
     sheets = {s["properties"]["title"]: s["properties"]["sheetId"] for s in sheets_meta}
 
-    sheet1_id = sheets.get("Sheet1")
     dash_id = sheets.get("Dashboard")
     review_id = sheets.get("Review")
     waitlist_id = sheets.get("Waitlist")
@@ -596,71 +553,6 @@ def main():
             reply_idx += 1
     else:
         print("All tabs already exist — re-applying formatting.")
-
-    # ── Sheet1 formatting ──────────────────────────────────────────────────
-    s1_requests = [
-        {
-            "updateSheetProperties": {
-                "properties": {"sheetId": sheet1_id, "gridProperties": {"frozenRowCount": 1, "frozenColumnCount": 1}},
-                "fields": "gridProperties.frozenRowCount,gridProperties.frozenColumnCount",
-            }
-        },
-        # Hide col A (fingerprint)
-        {
-            "updateDimensionProperties": {
-                "range": {"sheetId": sheet1_id, "dimension": "COLUMNS", "startIndex": 0, "endIndex": 1},
-                "properties": {"hiddenByUser": True},
-                "fields": "hiddenByUser",
-            }
-        },
-        # Bold + dark header row
-        {
-            "repeatCell": {
-                "range": {
-                    "sheetId": sheet1_id,
-                    "startRowIndex": 0,
-                    "endRowIndex": 1,
-                    "startColumnIndex": 0,
-                    "endColumnIndex": 14,
-                },
-                "cell": {
-                    "userEnteredFormat": {
-                        "textFormat": {
-                            "bold": True,
-                            "foregroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0},
-                        },
-                        "backgroundColor": {"red": 0.18, "green": 0.18, "blue": 0.18},
-                    }
-                },
-                "fields": "userEnteredFormat(textFormat(bold,foregroundColor),backgroundColor)",
-            }
-        },
-        # Checkbox on col B (APPLY_FLAG)
-        {
-            "setDataValidation": {
-                "range": {"sheetId": sheet1_id, "startRowIndex": 1, "startColumnIndex": 1, "endColumnIndex": 2},
-                "rule": {"condition": {"type": "BOOLEAN"}, "showCustomUi": True},
-            }
-        },
-        col_width(sheet1_id, 1, 90),
-        col_width(sheet1_id, 2, 55),
-        col_width(sheet1_id, 3, 240),
-        col_width(sheet1_id, 4, 150),
-        col_width(sheet1_id, 5, 130),
-        col_width(sheet1_id, 6, 80),
-        col_width(sheet1_id, 7, 110),
-        col_width(sheet1_id, 8, 140),
-        col_width(sheet1_id, 9, 90),
-        col_width(sheet1_id, 10, 280),
-        col_width(sheet1_id, 11, 100),
-        col_width(sheet1_id, 12, 90),
-        col_width(sheet1_id, 13, 180),
-    ]
-    s1_requests += score_cf_rules(sheet1_id, col_index=2)
-    s1_requests += rejected_row_cf(sheet1_id, total_cols=14)
-
-    svc.spreadsheets().batchUpdate(spreadsheetId=SHEET_ID, body={"requests": s1_requests}).execute()
-    print("Sheet1 formatted.")
 
     # ── Dashboard formatting ───────────────────────────────────────────────
     dash_requests = [
