@@ -10,6 +10,16 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Changed
+
+- **OpenRouter Phase 2 cutover (#250).** Ten of eleven pipeline roles now route via OpenRouter as a single gateway: `resume_tailor` and `cover_letter_writer` upgraded to **Opus 4.7** (same pricing as 4.6 per OR catalog, small-to-moderate quality edge on real-pipeline prompts per Phase 1 verdict #22); `briefing_writer` and `outreach_drafter` to `openrouter:anthropic/claude-sonnet-4.6`; `company_researcher` and `fit_analyst` to `openrouter:perplexity/sonar-reasoning-pro` (OR's Perplexity path returns structured URL citations, direct path strips them); `resume_change_reviewer`, `network_analyst`, and the default model to `openrouter:google/gemini-3-flash-preview`. Embedding (`gemini-embed:gemini-embedding-001`) stays on the direct Google client — OR has zero embedding endpoints. `job_scorer` unchanged (already on OR).
+
+### Migration required
+
+- **Edit `state/aichat_ng/config.yaml` on each deployed stack** to change the top-level `model:` line from `gemini:gemini-3-flash-preview` to `openrouter:google/gemini-3-flash-preview`. The image's `ops/aichat-ng/config.yaml.example` template seeds this file only on first install; existing installs keep their pre-upgrade default otherwise.
+- **Diff `state/aichat_ng/models-override.yaml` against `ops/aichat-ng/models-override.yaml` in this release** and append the two new openrouter catalog entries if absent: `anthropic/claude-opus-4.7` and `google/gemini-3-flash-preview`. Without these, the role files will reference models aichat-ng does not know about.
+- **Ensure `OPENROUTER_API_KEY` is set** in `state/config/.env` (or equivalent). Ten of eleven roles now depend on it.
+
 ## [0.3.3] — 2026-04-24
 
 Patch bump. Three additive `/board/*` UI improvements surfaced during the 2026-04-24 structural review (waitlist scores, Archive score-6 browse + promote, dashboard/waitlist company application history), plus a regression fix for Greenhouse fetcher URL parsing that was silently dropping Tier 1 additions using the newer `job-boards.*` subdomain. No migration required — rolling `docker compose pull && up -d` picks it up cleanly.
