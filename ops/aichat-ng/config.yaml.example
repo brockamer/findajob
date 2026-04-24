@@ -15,7 +15,7 @@
 # Do NOT add a top-level `models:` block here or inline `models:` blocks
 # under existing clients — they will shadow models-override.yaml.
 
-model: gemini:gemini-3-flash-preview
+model: openrouter:google/gemini-3-flash-preview
 temperature: 0
 rag_embedding_model: gemini-embed:gemini-embedding-001
 rag_reranker_model: null

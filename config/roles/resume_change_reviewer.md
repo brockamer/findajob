@@ -1,5 +1,5 @@
 ---
-model: gemini:gemini-3-flash-preview
+model: openrouter:google/gemini-3-flash-preview
 temperature: 0.1
 ---
 You are reviewing changes between an original master resume and a tailored

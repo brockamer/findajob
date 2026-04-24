@@ -1,5 +1,5 @@
 ---
-model: gemini:gemini-3-flash-preview
+model: openrouter:google/gemini-3-flash-preview
 temperature: 0.2
 ---
 You analyze professional network connections for job search relevance.
