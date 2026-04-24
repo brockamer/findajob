@@ -42,7 +42,6 @@ Updated as we learn. Not a task list — a knowledge base.
 
 ## Google Sheets Architecture
 
-- Sheet1 archival filter (score≥5, lifecycle stages, <14 days, target company) keeps the sheet under 1000 rows without manual cleanup.
 - The **Dashboard filter** (score≥7 + scored/manual_review, or materials_drafted) is the user's daily decision queue. Everything else is noise.
 - **REJECT_REASON dropdown** drives the feedback loop. Reason categories should be specific enough to signal prefilter improvements ("Too TPM-Heavy" → add TPM patterns).
 - **Company rejections should NOT use REJECT_REASON** — they contaminate the scorer feedback loop. See issue #5 (not_selected stage).

@@ -92,13 +92,12 @@ page with stage counts; `/materials/` is the prep-folder index (previously serve
 curl http://docker.lan:8090/healthz    # expect: ok
 ```
 
-The viewer also serves five board pages under `/board/`: Dashboard, Applied,
-Review, Waitlist, Archive. These mirror the Google Sheet tabs, reading the
-same database. `sync_sheet.py` keeps updating Sheets in parallel — use
-whichever view you prefer. The Archive page covers every job in the DB
-(10k+) with infinite-scroll pagination, per-column sort, and a live text
-filter; it's the web replacement for Sheet1 (which will be retired in
-14d / #14).
+The viewer also serves six board pages under `/board/`: Dashboard, Applied,
+Review, Waitlist, Rejected, Archive. These mirror the Google Sheet tabs,
+reading the same database. `sync_sheet.py` keeps updating Sheets in
+parallel — use whichever view you prefer. The Archive page covers every
+job in the DB (10k+) with infinite-scroll pagination, per-column sort,
+and a live text filter.
 
 ### Materials viewer base URL (for Sheet hyperlinks)
 

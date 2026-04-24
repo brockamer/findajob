@@ -131,7 +131,8 @@ The RAG index is not portable (it contains binary embeddings tied to the build).
 
 ```bash
 python3 scripts/sync_sheet.py
-# Should print: "Sheet1: N jobs  Dashboard: M jobs ..."
+# Should print one "N rows synced" line per tab: Dashboard, Review,
+# Waitlist, Applied, Rejected Applications.
 ```
 
 ### Step 7: Validate aichat-ng
