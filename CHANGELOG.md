@@ -10,9 +10,19 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+## [0.3.3] — 2026-04-24
+
+Patch bump. Three additive `/board/*` UI improvements surfaced during the 2026-04-24 structural review (waitlist scores, Archive score-6 browse + promote, dashboard/waitlist company application history), plus a regression fix for Greenhouse fetcher URL parsing that was silently dropping Tier 1 additions using the newer `job-boards.*` subdomain. No migration required — rolling `docker compose pull && up -d` picks it up cleanly.
+
+### Added
+
+- **Fit and probability scores on `/board/waitlist` (#241).** Waitlist rows now render `fit_score` and `probability_score` alongside `relevance_score`; NULL values show as em-dash. Applies to the shared `_job_row.html` partial so every tab using it benefits. Closes #237.
+- **`/board/archive` score filter + Promote-from-archive (#242).** Archive view accepts `?min_score=N&max_score=M` (bounds optional, inclusive); header carries "Score 6" and "Score 7+" quick-filter presets plus a Clear link. Rows in `stage='scored'` gain a Promote button backing the existing `/board/jobs/{fp}/promote` handler. HTMX infinite-scroll sentinel carries the filter params so pagination stays consistent. Surfaces the ~2–3/day score-6 supply that Dashboard's >=7 filter was hiding without flooding the triage queue. Closes #238.
+- **Company application history cell on `/board/dashboard` and `/board/waitlist` rows (#244).** Each row now shows "N pending" + "N not selected" counts of prior applications to the same company, with a green flag for any offer and a yellow flag for `not_selected` within 90 days. Company matching normalizes on the first token so "Meta" and "Meta Platforms" collapse together. Operator-side `rejected` jobs are excluded (noise, not signal); a row's own fingerprint is excluded from its own history. HTMX row-swap path in `board_actions.py` passes the cell through so post-action re-renders keep the context. Closes #234.
+
 ### Fixed
 
-- **Greenhouse fetcher now recognizes `job-boards.greenhouse.io` URLs and bare-slug entries (#199).** Adding `https://job-boards.greenhouse.io/xai` or `https://boards.greenhouse.io/asteralabs` to `config/feed_urls.txt` now ingests; the previous regex only matched `boards(.eu)?.greenhouse.io/{slug}/` with a required trailing path segment (e.g. `/jobs.rss`), so any addition using Greenhouse's newer `job-boards.*` subdomain or a bare-slug URL was silently dropped. Existing entries continue to parse unchanged; the newer URL shapes now also parse. Discovered while widening Tier 1 coverage (xAI, Nscale, Astera Labs — all served under `job-boards.*`).
+- **Greenhouse fetcher now recognizes `job-boards.greenhouse.io` URLs and bare-slug entries (#245).** Adding URLs using Greenhouse's newer `job-boards.*` subdomain (or bare-slug shapes with no trailing `/jobs.rss`) to `config/feed_urls.txt` now ingests; the previous regex required `boards(.eu)?.greenhouse.io/{slug}/` with a trailing path segment and silently dropped anything else. Existing entries continue to parse unchanged. Discovered while widening Tier 1 coverage (xAI, Nscale, Astera Labs — all served under `job-boards.*`). Closes #199.
 
 ## [0.3.2] — 2026-04-24
 
@@ -220,7 +230,8 @@ from GHCR and deployed via Docker Compose on a shared Docker host.
 - Documentation cleanup — removing `sigoden/aichat` references in favor of
   `blob42/aichat-ng` — is tracked in #70
 
-[Unreleased]: https://github.com/brockamer/findajob/compare/v0.3.2...HEAD
+[Unreleased]: https://github.com/brockamer/findajob/compare/v0.3.3...HEAD
+[0.3.3]: https://github.com/brockamer/findajob/releases/tag/v0.3.3
 [0.3.2]: https://github.com/brockamer/findajob/releases/tag/v0.3.2
 [0.3.1]: https://github.com/brockamer/findajob/releases/tag/v0.3.1
 [0.3.0]: https://github.com/brockamer/findajob/releases/tag/v0.3.0
