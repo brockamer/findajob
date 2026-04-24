@@ -24,6 +24,8 @@
   {% for display, field in columns %}
     {% if tab == 'applied' and field == 'user_notes' %}
       {% include "board/_notes_cell.html" %}
+    {% elif field == 'company_history' %}
+      {% include "board/_company_history_cell.html" %}
     {% else %}
     <td class="px-3 py-1 align-top text-sm
                {% if field == 'known_contacts' and row[field] %}cell-contact-amber{% endif %}

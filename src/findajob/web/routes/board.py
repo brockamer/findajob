@@ -8,6 +8,7 @@ import sqlite3
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse
 
+from findajob.web.company_history import build_history_by_fp, fetch_company_history
 from findajob.web.routes.materials import get_db
 
 router = APIRouter()
@@ -33,6 +34,7 @@ _DASHBOARD_COLS = [
     ("Likelihood", "interview_likelihood"),
     ("Title", "title"),
     ("Company", "company"),
+    ("History", "company_history"),
     ("Location", "location"),
     ("Remote", "remote_status"),
     ("Contacts", "known_contacts"),
@@ -41,7 +43,9 @@ _DASHBOARD_COLS = [
     ("Date", "created_at"),
 ]
 
-_DASHBOARD_SORTABLE = {c for _, c in _DASHBOARD_COLS}
+# company_history is a synthetic column — computed in Python from one
+# full-table scan per render — not a sortable DB field.
+_DASHBOARD_SORTABLE = {c for _, c in _DASHBOARD_COLS if c != "company_history"}
 _DASHBOARD_DEFAULT_SORT = "relevance_score"
 
 _VALID_DENSITIES = {"compact", "expanded"}
@@ -85,6 +89,7 @@ def dashboard(
         f"FROM jobs WHERE {_DASHBOARD_WHERE} "
         f"ORDER BY {sort_col} {order}"
     ).fetchall()
+    history_by_fp = build_history_by_fp(rows, fetch_company_history(db))
     materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
     templates = request.app.state.templates
     return templates.TemplateResponse(
@@ -93,6 +98,7 @@ def dashboard(
         context={
             "columns": _DASHBOARD_COLS,
             "rows": rows,
+            "history_by_fp": history_by_fp,
             "sort": sort_col,
             "desc": desc,
             "density": _normalize_density(density),
@@ -212,6 +218,7 @@ def review(
 _WAITLIST_COLS = [
     ("Title", "title"),
     ("Company", "company"),
+    ("History", "company_history"),
     ("Rel", "relevance_score"),
     ("Fit", "fit_score"),
     ("Prob", "probability_score"),
@@ -221,7 +228,7 @@ _WAITLIST_COLS = [
     ("Date", "created_at"),
     ("Blocking app", "blocking_app"),
 ]
-_WAITLIST_SORTABLE = {c for _, c in _WAITLIST_COLS if c != "blocking_app"}
+_WAITLIST_SORTABLE = {c for _, c in _WAITLIST_COLS if c not in ("blocking_app", "company_history")}
 _WAITLIST_DEFAULT_SORT = "created_at"
 
 
@@ -252,6 +259,7 @@ def waitlist(
     ORDER BY {sort_col} {order}
     """
     rows = db.execute(sql).fetchall()
+    history_by_fp = build_history_by_fp(rows, fetch_company_history(db))
     materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
     templates = request.app.state.templates
     return templates.TemplateResponse(
@@ -260,6 +268,7 @@ def waitlist(
         context={
             "columns": _WAITLIST_COLS,
             "rows": rows,
+            "history_by_fp": history_by_fp,
             "sort": sort_col,
             "desc": desc,
             "density": _normalize_density(density),
@@ -498,6 +507,7 @@ def dashboard_rows(
         f"ORDER BY {sort_col} {order}",
         params,
     ).fetchall()
+    history_by_fp = build_history_by_fp(rows, fetch_company_history(db))
     materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
     templates = request.app.state.templates
     return templates.TemplateResponse(
@@ -506,6 +516,7 @@ def dashboard_rows(
         context={
             "columns": _DASHBOARD_COLS,
             "rows": rows,
+            "history_by_fp": history_by_fp,
             "tab": "dashboard",
             "materials_base_url": materials_base_url,
         },
@@ -615,6 +626,7 @@ def waitlist_rows(
     ORDER BY {sort_col} {order}
     """
     rows = db.execute(sql, params).fetchall()
+    history_by_fp = build_history_by_fp(rows, fetch_company_history(db))
     materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
     templates = request.app.state.templates
     return templates.TemplateResponse(
@@ -623,6 +635,7 @@ def waitlist_rows(
         context={
             "columns": _WAITLIST_COLS,
             "rows": rows,
+            "history_by_fp": history_by_fp,
             "tab": "waitlist",
             "materials_base_url": materials_base_url,
         },

@@ -8,6 +8,8 @@
   --color-interviewing:  #c8a2d8;  /* purple */
   --color-ghosted:       #d6d6d6;  /* gray */
   --color-contact-amber: #ffbf00;
+  --color-history-green: #c6e6b9;   /* offer anywhere at company (#234) */
+  --color-history-yellow: #fff3b0;  /* not_selected within 90d (#234) */
 }
 
 /* Apply via Tailwind arbitrary-value utilities: bg-[var(--color-applied-fresh)] */
@@ -20,6 +22,8 @@
 .row-interviewing   { background-color: var(--color-interviewing); }
 .row-ghosted        { background-color: var(--color-ghosted); }
 .cell-contact-amber { background-color: var(--color-contact-amber); }
+.history-green      { background-color: var(--color-history-green); padding: 0 4px; border-radius: 3px; }
+.history-yellow     { background-color: var(--color-history-yellow); padding: 0 4px; border-radius: 3px; }
 
 /* ── Row density toggle ───────────────────────────────────────────────────
    Compact: data cells truncate to one line with an ellipsis. Full text is

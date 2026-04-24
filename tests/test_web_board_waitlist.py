@@ -15,10 +15,15 @@ def client(tmp_path: Path) -> TestClient:
     db = tmp_path / "pipeline.db"
     conn = sqlite3.connect(db)
     conn.execute(
-        "CREATE TABLE jobs (fingerprint TEXT, title TEXT, company TEXT, stage TEXT, "
+        "CREATE TABLE jobs (id TEXT, fingerprint TEXT, title TEXT, company TEXT, stage TEXT, "
         "relevance_score INTEGER, fit_score REAL, probability_score REAL, "
         "location TEXT, remote_status TEXT, ai_notes TEXT, "
-        "url TEXT, created_at TEXT, stage_updated TEXT)"
+        "url TEXT, created_at TEXT, stage_updated TEXT, prep_folder_path TEXT)"
+    )
+    # #234 — /board/waitlist LEFT JOINs audit_log for the company-history cell.
+    conn.execute(
+        "CREATE TABLE audit_log (id INTEGER PRIMARY KEY, job_id TEXT, field_changed TEXT, "
+        "old_value TEXT, new_value TEXT, changed_at TEXT, changed_by TEXT)"
     )
     # Meta has two jobs: one waitlisted (with all three scores), one actively applied
     conn.execute(

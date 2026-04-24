@@ -20,6 +20,11 @@ def client(tmp_path: Path) -> TestClient:
         "location TEXT, remote_status TEXT, known_contacts TEXT, comp_estimate TEXT, "
         "ai_notes TEXT, created_at TEXT, stage_updated TEXT, url TEXT, prep_folder_path TEXT)"
     )
+    # #234 — /board/dashboard now LEFT JOINs audit_log for the company-history cell.
+    conn.execute(
+        "CREATE TABLE audit_log (id INTEGER PRIMARY KEY, job_id TEXT, field_changed TEXT, "
+        "old_value TEXT, new_value TEXT, changed_at TEXT, changed_by TEXT)"
+    )
     conn.execute(
         "INSERT INTO jobs (fingerprint, title, company, stage, relevance_score, url) "
         "VALUES ('fp1','Senior DC Ops','Meta','scored',8,'https://example.com/meta-dc-ops')"

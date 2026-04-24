@@ -20,6 +20,11 @@ def client(tmp_path: Path) -> TestClient:
         "location TEXT, remote_status TEXT, known_contacts TEXT, comp_estimate TEXT, "
         "ai_notes TEXT, url TEXT, created_at TEXT, stage_updated TEXT, prep_folder_path TEXT)"
     )
+    # #234 — dashboard + waitlist LEFT JOIN audit_log for the company-history cell.
+    conn.execute(
+        "CREATE TABLE audit_log (id INTEGER PRIMARY KEY, job_id TEXT, field_changed TEXT, "
+        "old_value TEXT, new_value TEXT, changed_at TEXT, changed_by TEXT)"
+    )
     for fp, title, company in [
         ("fp1", "NPI PM", "Meta"),
         ("fp2", "Staff Eng", "Anthropic"),

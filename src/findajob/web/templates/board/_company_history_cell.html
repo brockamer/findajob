@@ -1,0 +1,41 @@
+{#
+  #234 — Company application history cell.
+
+  Inputs:
+    row — sqlite3.Row with fingerprint, company
+    history_by_fp — dict keyed by row.fingerprint from
+      findajob.web.company_history.build_history_by_fp
+
+  Behavior:
+    - Empty history → subtle em-dash
+    - Otherwise → "N pending" / "N not selected" badges
+    - Color: history-green if any offer; history-yellow if not_selected
+      within 90d; neutral otherwise
+    - <details> (native HTML, no JS) expands to show the per-row detail
+#}
+{% set h = history_by_fp.get(row.fingerprint) if history_by_fp else None %}
+<td class="px-3 py-1 align-top text-sm whitespace-nowrap" data-col="company_history">
+  {% if h and (h.pending_count or h.not_selected_count) %}
+  <details class="company-history {% if h.flag %}history-{{ h.flag }}{% endif %}">
+    <summary class="cursor-pointer">
+      {% if h.pending_count %}<span class="pending-count">{{ h.pending_count }} pending</span>{% endif %}
+      {% if h.pending_count and h.not_selected_count %} · {% endif %}
+      {% if h.not_selected_count %}<span class="not-selected-count">{{ h.not_selected_count }} not selected</span>{% endif %}
+    </summary>
+    <ul class="mt-1 text-xs">
+      {% for e in h.entries %}
+      <li>
+        {% if e.prep_folder_path and materials_base_url %}
+          <a class="underline" href="{{ materials_base_url }}/materials/{{ e.fingerprint }}">{{ e.title }}</a>
+        {% else %}
+          {{ e.title }}
+        {% endif %}
+        — {{ e.stage }}{% if e.stage == 'not_selected' and e.not_selected_at %} ({{ e.not_selected_at[:10] }}){% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </details>
+  {% else %}
+    <span class="text-slate-300">—</span>
+  {% endif %}
+</td>

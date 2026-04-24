@@ -30,6 +30,7 @@ from findajob.actions import (
 )
 from findajob.paths import BASE
 from findajob.utils import log_event, write_audit
+from findajob.web.company_history import build_history_by_fp, fetch_company_history
 from findajob.web.routes.board import _APPLIED_COLS, _DASHBOARD_COLS
 from findajob.web.routes.materials import get_db
 
@@ -82,15 +83,21 @@ def _fetch_dashboard_row(db: sqlite3.Connection, fingerprint: str) -> sqlite3.Ro
     return db.execute(_DASHBOARD_ROW_SQL, (fingerprint,)).fetchone()
 
 
-def _render_dashboard_row(request: Request, row: sqlite3.Row) -> HTMLResponse:
-    """Render a single dashboard row for HTMX outerHTML swap."""
+def _render_dashboard_row(request: Request, row: sqlite3.Row, db: sqlite3.Connection) -> HTMLResponse:
+    """Render a single dashboard row for HTMX outerHTML swap.
+
+    Annotates the row with its company-history cell (#234) so the HTMX
+    swap doesn't erase the history column until the next full-page reload.
+    """
     templates = request.app.state.templates
+    history_by_fp = build_history_by_fp([row], fetch_company_history(db))
     return templates.TemplateResponse(
         request=request,
         name="_job_row.html",
         context={
             "columns": _DASHBOARD_COLS,
             "row": row,
+            "history_by_fp": history_by_fp,
             "tab": "dashboard",
             "materials_base_url": os.environ.get("FINDAJOB_MATERIALS_BASE_URL", ""),
         },
@@ -194,7 +201,7 @@ def prep(
 
     # Idempotency: already in flight or already prepped — return current row unchanged.
     if row["stage"] in ("prep_in_progress", "materials_drafted"):
-        return _render_dashboard_row(request, row)
+        return _render_dashboard_row(request, row, db)
 
     if _prep_in_flight(db) >= MAX_CONCURRENT_PREPS:
         return _prep_queue_full_response()
@@ -222,7 +229,7 @@ def prep(
 
     updated = _fetch_dashboard_row(db, fingerprint)
     assert updated is not None  # we just updated this row
-    return _render_dashboard_row(request, updated)
+    return _render_dashboard_row(request, updated, db)
 
 
 @router.post("/board/jobs/{fingerprint}/regenerate", response_class=HTMLResponse)
@@ -238,7 +245,7 @@ def regenerate(
 
     # Idempotency: already running — don't clobber a live prep subprocess.
     if row["stage"] == "prep_in_progress":
-        return _render_dashboard_row(request, row)
+        return _render_dashboard_row(request, row, db)
 
     if _prep_in_flight(db) >= MAX_CONCURRENT_PREPS:
         return _prep_queue_full_response()
@@ -273,7 +280,7 @@ def regenerate(
 
     updated = _fetch_dashboard_row(db, fingerprint)
     assert updated is not None
-    return _render_dashboard_row(request, updated)
+    return _render_dashboard_row(request, updated, db)
 
 
 @router.post("/board/jobs/{fingerprint}/apply", response_class=HTMLResponse)
