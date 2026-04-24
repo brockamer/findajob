@@ -1,16 +1,23 @@
 #!/usr/bin/env python3
 # ~/JobSearchPipeline/scripts/notify.py
 """
-ntfy push notification suite for the JobSearchPipeline.
+ntfy push notification suite for findajob.
 
-Usage:
-  notify.py daily-stats      — morning stats: queue depth, recent activity
-  notify.py health-check     — surface errors from logs, confirm automations ran
-  notify.py issues-ping      — open GitHub issues (run every other day)
-  notify.py apply-reminder   — humorous daily nudge to submit at least one application
-  notify.py feedback-review  — alert when feedback_log has enough data to be useful
+Subcommands:
+  daily-stats     — morning summary of pipeline state (user-facing)
+  apply-reminder  — daily nudge with quip + checklist (user-facing)
+  feedback-review — analysis of jobs you've passed on (user-facing)
+  health-check    — operator diagnostic: surface errors and stale automations
+  issues-ping     — open GitHub issues (operator)
+  ci-check        — alert on latest main-branch CI failure (operator)
+  scoreboard      — refresh the pipeline funnel issue (operator)
+  send-raw        — passthrough; usage: notify.py send-raw <title> <body>
 
-ntfy topic is read from NTFY_TOPIC in data/.env, or falls back to NTFY_TOPIC env var.
+User-facing subcommand strings stay in plain English (#151). Operator
+diagnostics keep their technical detail; only their titles are branded.
+
+ntfy topic is read from NTFY_TOPIC in data/.env, or falls back to the
+NTFY_TOPIC env var.
 """
 
 import json
@@ -59,6 +66,11 @@ def send(title, body, priority="default", tags=None):
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
+def _p(n, singular, plural=None):
+    """Pluralize for user-facing notification strings (#151)."""
+    return f"{n} {singular}" if n == 1 else f"{n} {plural or singular + 's'}"
+
+
 def db_connect():
     conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
@@ -168,17 +180,19 @@ def cmd_daily_stats():
     conn.close()
 
     lines = [
-        f"Queue (score≥7, unprepped): {queue_count} jobs",
-        f"Flagged, awaiting prep:     {flagged_unprepped}",
-        f"Materials drafted:          {prepped}",
-        f"Applied:                    {applied}",
-        f"Rejected (user):            {rejected}",
-        f"Not selected (company):     {not_selected}",
-        f"New jobs scored today:      {new_today}",
-        f"Total in pipeline:          {total}",
+        "Good morning! Here's where things stand:",
+        "",
+        f"  {_p(new_today, 'new job')} ranked overnight",
+        f"  {_p(queue_count, 'strong match', 'strong matches')} waiting for you",
+        f"  {_p(flagged_unprepped, 'job')} you've flagged but haven't started yet",
+        f"  {_p(prepped, 'application')} ready to send (resume and cover letter drafted)",
+        f"  {_p(applied, 'application')} submitted overall",
+        f"  {_p(rejected, 'job')} you've passed on",
+        f"  {_p(not_selected, 'application')} where the company said no",
+        f"  {_p(total, 'job')} tracked in total",
     ]
     body = "\n".join(lines)
-    send("JSP Daily Stats", body, priority="default", tags="bar_chart")
+    send("💼 findajob — good morning!", body, priority="default", tags="bar_chart")
 
 
 SHEET1_ROW_WARN = 5000  # warn if Sheet1 would sync more than this many rows
@@ -430,7 +444,7 @@ def cmd_health_check():
         priority = "high" if any("ERROR" in i for i in issues) else "default"
         tags = "warning"
 
-    send("JSP Health Check", body, priority=priority, tags=tags)
+    send("💼 findajob — health check", body, priority=priority, tags=tags)
 
 
 def cmd_issues_ping():
@@ -444,21 +458,25 @@ def cmd_issues_ping():
             lines.append(f"{i}. {iss}")
         body = "\n".join(lines)
         tags = "memo"
-    send("JSP Open Issues", body, priority="default", tags=tags)
+    send("💼 findajob — open issues", body, priority="default", tags=tags)
 
 
 def cmd_apply_reminder():
     QUIPS = [
         "The perfect resume is the enemy of the submitted one. Go click Apply.",
-        "GPT-6 isn't submitting your application. You are. Open a tab.",
+        "Your resume can't apply to itself. We checked. Open a tab.",
         "Somewhere a hiring manager is waiting for your resume. Don't keep them waiting.",
         "Every application you don't submit is a job you definitely didn't get.",
-        "The pipeline doesn't apply for you. That's still a manual step. Do it.",
+        "Today's to-do list: 1) breathe, 2) hydrate, 3) submit one application. You've already crushed two of three.",
         "Your future self is staring at you. They look annoyed. Apply to something.",
-        "DeepSeek scored it a 9. Your mouse is scored a 0. Click Apply.",
+        "What did the cover letter say to the resume? 'I've got you covered.' Now go give them something to cover.",
         "Reject the fear of rejection. Apply anyway. Preferably today.",
         "Fun fact: 0% of jobs you don't apply to result in interviews.",
-        "The Dashboard is not an art installation. It has checkboxes for a reason.",
+        (
+            "Why did the job seeker bring a ladder to the interview? "
+            "Heard there were openings on a higher floor. "
+            "Speaking of openings — apply to one."
+        ),
     ]
     # Rotate by day-of-year in PT so the quip changes at midnight Pacific
     from zoneinfo import ZoneInfo
@@ -481,17 +499,16 @@ def cmd_apply_reminder():
 
     checklist = (
         f"\n---\n"
-        f"1. Dashboard: {n_dashboard} high-score jobs to Flag for Prep or Reject\n"
-        f"2. Ready to Apply: {n_ready} jobs with materials drafted — review and submit\n"
-        f"3. Review tab: {n_review} jobs in manual review — Promote or Reject\n"
-        f"4. Scan Sheet1 for mis-scored target company jobs\n"
-        f"5. Check ntfy health notification for pipeline warnings\n"
+        f"1. {_p(n_dashboard, 'strong match', 'strong matches')} waiting — "
+        f"flag the keepers, pass on the rest\n"
+        f"2. {_p(n_ready, 'application')} ready to send — review and submit\n"
+        f"3. {_p(n_review, 'job')} for you to review — promote or pass\n"
         f"---\n"
-        f"Applied so far: {n_applied}\n"
-        f"Waitlisted: {n_waitlisted} deferred jobs"
+        f"Applications submitted to date: {n_applied}\n"
+        f"Set aside for later: {n_waitlisted}"
     )
 
-    send("Apply To Something Today", quip + checklist, priority="default", tags="rocket")
+    send("💼 findajob — apply to something today!", quip + checklist, priority="default", tags="rocket")
 
 
 def cmd_feedback_review():
@@ -528,22 +545,17 @@ def cmd_feedback_review():
             kw["keyword"] for kw in data.get("keyword_signals", []) if kw["ratio"] < 0.4 and kw["rejected_n"] >= 3
         ][:4]
         body = (
-            f"{count} rejections in feedback_log\n"
-            f"False positives (score 8+): {fp} ({fp_pct}%)\n"
-            f"Top reason: {top_reason[0]} ({top_reason[1]})\n"
-            f"Top FP company: {top_company[0]} ({top_company[1]} rejections)\n"
-            + (f"Prefilter candidates: {', '.join(bad_kws)}\n" if bad_kws else "")
-            + f"Trends: {WEB_BASE_URL}/stats/feedback\n"
-            + "Run: python3 scripts/analyze_feedback.py"
+            f"You've passed on {count} jobs so far.\n"
+            f"{fp} of those were strong matches the ranker recommended ({fp_pct}%) — these are where it got it wrong.\n"
+            f"Most common reason for passing: {top_reason[0]} ({top_reason[1]} times)\n"
+            f"Company you keep passing on: {top_company[0]} ({top_company[1]} times)\n"
+            + (f"Words that often signal a pass: {', '.join(bad_kws)}\n" if bad_kws else "")
+            + f"See the trends: {WEB_BASE_URL}/stats/feedback"
         )
     else:
-        body = (
-            f"feedback_log has {count} rejection entries.\n"
-            f"Trends: {WEB_BASE_URL}/stats/feedback\n"
-            f"Run: python3 scripts/analyze_feedback.py"
-        )
+        body = f"You've passed on {count} jobs so far.\nSee the trends: {WEB_BASE_URL}/stats/feedback"
 
-    send("JSP Feedback Analysis", body, priority="default", tags="magnifying")
+    send("💼 findajob — feedback check", body, priority="default", tags="magnifying")
 
 
 def cmd_send_raw():
@@ -567,7 +579,7 @@ def cmd_ci_check():
         timeout=30,
     )
     if result.returncode != 0:
-        send("JSP CI Check", f"gh run list failed: {result.stderr[:200]}", priority="default", tags="warning")
+        send("💼 findajob — CI check", f"gh run list failed: {result.stderr[:200]}", priority="default", tags="warning")
         return
 
     import json as _json
@@ -590,7 +602,7 @@ def cmd_ci_check():
         f"  {latest.get('displayTitle', '?')}",
         f"  {latest.get('url', '')}",
     ]
-    send("JSP CI Failure", "\n".join(lines), priority="high", tags="x")
+    send("💼 findajob — CI failed", "\n".join(lines), priority="high", tags="x")
 
 
 SCOREBOARD_ISSUE = 31
@@ -858,9 +870,14 @@ Cumulative counts — how many jobs ever reached each stage, not just current st
     )
     if rc.returncode == 0:
         msg = f"Pipeline funnel scoreboard (#31) updated for {today}."
-        send("Scoreboard Updated", msg, priority="low", tags="bar_chart")
+        send("💼 findajob — scoreboard updated", msg, priority="low", tags="bar_chart")
     else:
-        send("Scoreboard Update Failed", f"gh issue edit failed: {rc.stderr[:200]}", priority="high", tags="warning")
+        send(
+            "💼 findajob — scoreboard update failed",
+            f"gh issue edit failed: {rc.stderr[:200]}",
+            priority="high",
+            tags="warning",
+        )
 
 
 # ── Dispatch ───────────────────────────────────────────────────────────────────
