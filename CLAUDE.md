@@ -152,7 +152,7 @@ When the pipeline runs inside the `ghcr.io/brockamer/findajob` image, paths shif
 # ── Entry point scripts (called by systemd / CLI) ──────────────────────────
 <repo>/scripts/triage.py                    # daily ingest → score → DB
 <repo>/scripts/watchdog.py                  # resets stuck prep_in_progress jobs > 60 min (every 10 min cron)
-<repo>/scripts/sync_sheet.py                # SQLite → Sheet1 + Dashboard + Applied + Review + Waitlist + Rejected Applications tabs
+<repo>/scripts/sync_sheet.py                # SQLite → Dashboard + Applied + Review + Waitlist + Rejected Applications tabs (one-way, no Sheet reads)
 <repo>/scripts/setup_sheets.py             # one-time sheet formatting (idempotent)
 <repo>/scripts/prep_application.py          # on-demand LLM material generation
 <repo>/scripts/find_contacts.py             # LinkedIn contact matching + outreach drafts
@@ -299,13 +299,7 @@ return zero LinkedIn results. Validate each query manually before committing.
 > STATUS + REJECT_REASON transition through `/board/*`. As of #62 (14d), the
 > `/ingest/` web form replaces the Google Form + `ingest_form.py` poll loop.
 > The Sheet remains a read-only synced view for mobile/glance use until
-> `sync_sheet.py` itself is retired — the remaining step under the parent
-> #14. Sheet1 is already superseded by `/board/archive` (#60).
-
-**Sheet1** — filtered archive (A–N), archival filter:
-Jobs appear if: `score>=5` OR `stage in lifecycle stages` OR `age < 14 days` OR `target company`.
-Low-score old jobs from non-target companies stay in DB only.
-`fingerprint(hidden) | APPLY_FLAG(checkbox) | score | title | company | location | remote | stage | contacts | comp | notes | date | source | url`
+> `sync_sheet.py` itself is retired — the remaining step under the parent #14.
 
 **Dashboard** — pre-application queue (A–N), filter: `(score>=7 AND stage IN (scored,manual_review))` OR `stage IN (prep_in_progress, materials_drafted)`. Row columns:
 `STATUS(dropdown) | REJECT_REASON(dropdown) | fingerprint(hidden) | fit_score | probability_score | relevance_score | title(hyperlink) | company | location | remote | contacts | comp | notes | date`
@@ -357,7 +351,7 @@ responds in the same request. No poll cycle, no Sheet readback.
 
 **Stage `prep_in_progress`:** Set by `POST /board/jobs/{fp}/prep` immediately before launching `prep_application.py` as a subprocess. Prevents duplicate prep runs (handler idempotency guard + 3-job concurrency cap). Cleared to `materials_drafted` on success. `scripts/watchdog.py` rolls any job stuck > 60 min back to `scored` so the operator can re-flag.
 
-**Health checks** (`notify.py health-check`): warns if Sheet1 > 1000 rows, manual_review backlog > 100, or any target-company job scored 3–6 in last 7 days (potential mis-scores).
+**Health checks** (`notify.py health-check`): warns if manual_review backlog > 100, a source silently stopped producing jobs, or any target-company job scored 3–6 in last 7 days (potential mis-scores).
 
 ---
 
