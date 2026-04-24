@@ -5,10 +5,14 @@
 .gitignore
 .github
 
-# Docs / dev artifacts
-docs
+# Dev artifacts
 tests
 README.md
+
+# docs/ is included in the image — the /docs/ viewer serves the user guides
+# (usage, troubleshooting, setup/*) from /app/docs/. Exclude only the
+# internal plan/spec subtree which is large and not user-facing.
+docs/superpowers
 
 # Python caches (glob patterns need ** to recurse in .dockerignore)
 **/__pycache__
