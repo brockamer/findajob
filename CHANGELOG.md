@@ -10,9 +10,13 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+## [0.3.2] — 2026-04-24
+
+Patch bump. Hotfix for a v0.3.1 regression: the shipped image didn't include the `docs/` tree, so every `/docs/` slug link 404'd post-deploy. Rolling `docker compose pull && up -d` fixes it.
+
 ### Fixed
 
-- **`/docs/` slug routes now actually resolve in the shipped image (#224 follow-up).** v0.3.1 shipped the `/docs/` viewer but the Dockerfile didn't `COPY docs/` into `/app/docs/`, so the route served a 200 index but every slug link 404'd post-deploy. Fixed by copying `docs/` into the image at build time; added a `/docs/` + slug assertion to `scripts/test_container_integration.sh` so the regression can't recur silently — the v0.3.1 pre-tag smoke would have caught this if it had covered the route.
+- **`/docs/` slug routes now actually resolve in the shipped image (#224 follow-up, #235).** v0.3.1 shipped the `/docs/` viewer but the Dockerfile didn't `COPY docs/` into `/app/docs/` (and `.dockerignore` excluded the tree from the build context), so the route served a 200 index but every slug link 404'd post-deploy. Fixed by baking `docs/` into the image at build time (narrowing the `.dockerignore` exclude to `docs/superpowers` — internal plan/spec tree only). Added a `/docs/` + slug assertion to `scripts/test_container_integration.sh` so the regression can't recur silently — the v0.3.1 pre-tag smoke would have caught this if it had covered the route.
 
 ## [0.3.1] — 2026-04-24
 
@@ -212,7 +216,8 @@ from GHCR and deployed via Docker Compose on a shared Docker host.
 - Documentation cleanup — removing `sigoden/aichat` references in favor of
   `blob42/aichat-ng` — is tracked in #70
 
-[Unreleased]: https://github.com/brockamer/findajob/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/brockamer/findajob/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/brockamer/findajob/releases/tag/v0.3.2
 [0.3.1]: https://github.com/brockamer/findajob/releases/tag/v0.3.1
 [0.3.0]: https://github.com/brockamer/findajob/releases/tag/v0.3.0
 [0.2.0]: https://github.com/brockamer/findajob/releases/tag/v0.2.0
