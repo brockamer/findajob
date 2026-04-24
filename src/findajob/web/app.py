@@ -8,6 +8,7 @@ from collections.abc import Generator
 from pathlib import Path
 
 from fastapi import Depends, FastAPI  # noqa: F401 — Depends used in Task 6
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -33,6 +34,16 @@ def create_app(
 
     static_dir = Path(__file__).parent / "static"
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+    # Browsers default-request /favicon.ico at the document root regardless
+    # of <link rel="icon">, producing a 404 on every page load (#138). Serve
+    # the existing SVG from that path; modern browsers accept SVG in the
+    # .ico slot.
+    favicon_path = static_dir / "favicon.svg"
+
+    @app.get("/favicon.ico", include_in_schema=False)
+    async def favicon() -> FileResponse:
+        return FileResponse(favicon_path, media_type="image/svg+xml")
 
     app.state.companies_root = companies_root
     app.state.db_path = db_path
