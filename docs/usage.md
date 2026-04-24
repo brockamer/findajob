@@ -161,8 +161,6 @@ From the tab:
 
 Every job the pipeline has ever ingested, in one paginated, filterable, sortable table. Filters for score, stage, company, date range, source. This is the backstop — if you can't find a job anywhere else, it's here.
 
-Archive replaces the old Sheet1 archive view.
-
 ---
 
 ## The Rejected tab (`/board/rejected`)
@@ -213,7 +211,7 @@ Each folder renders its Markdown files inline and offers `.docx` downloads. The 
 - `/board/jobs/{fp}/reactivate` — Waitlist → scored
 - `/board/jobs/{fp}/notes` — user_notes save
 
-No poll cycle. The Google Sheet (Dashboard, Applied, Review, Waitlist, Rejected Applications tabs) is a one-way synced mirror via `sync_sheet.py` every 15 min — a glance-at-your-phone view, not a write surface. Sheet1 is being retired (#136); the web Archive tab replaces it.
+No poll cycle. The Google Sheet (Dashboard, Applied, Review, Waitlist, Rejected Applications tabs) is a one-way synced mirror via `sync_sheet.py` every 15 min — a glance-at-your-phone view, not a write surface.
 
 **Scheduler timing:**
 

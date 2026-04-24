@@ -62,7 +62,7 @@ Replaced `poll_flags.py` in #61 PR-B — transition logic now lives in `findajob
 **Run by:** end of triage, end of prep; also callable manually
 **No arguments.**
 
-One-way DB → Sheet. Reads SQLite, writes Sheet1 (full archive), Dashboard (pre-application queue), Applied (post-application), Review (manual triage), Waitlist (deferred), and Rejected Applications. As of #61 PR-B, no reads from Sheets — the Sheet is a synced view, not a write surface.
+One-way DB → Sheet. Reads SQLite, writes Dashboard (pre-application queue), Applied (post-application), Review (manual triage), Waitlist (deferred), and Rejected Applications. As of #61 PR-B, no reads from Sheets — the Sheet is a synced view, not a write surface.
 
 **Dashboard filter:** `(relevance_score >= 7 AND stage IN ('scored', 'manual_review'))` OR `stage IN ('prep_in_progress', 'materials_drafted')`. Materials_drafted jobs float to the top (sorted first).
 
@@ -78,7 +78,7 @@ One-way DB → Sheet. Reads SQLite, writes Sheet1 (full archive), Dashboard (pre
 **Run by:** manually (once on new sheet; safe to re-run)
 **No arguments.**
 
-Creates and formats every tab (Sheet1, Dashboard, Review, Waitlist, Rejected Applications, Applied). One-time: if a legacy `Active` tab exists (from before #43), it is renamed to `Applied` on first run. Sets up:
+Creates and formats every tab (Dashboard, Review, Waitlist, Rejected Applications, Applied). One-time: if a legacy `Active` tab exists (from before #43), it is renamed to `Applied` on first run. Sets up:
 - STATUS dropdown (col A) with conditional row highlighting — per-tab option set
 - REJECT_REASON dropdown (col B) with per-option colors
 - Remote status color coding: Remote=red, Hybrid=yellow, On-site=green
@@ -86,7 +86,6 @@ Creates and formats every tab (Sheet1, Dashboard, Review, Waitlist, Rejected App
 - Applied-tab row coloring by priority: Offer→gold, Interviewing→purple, `Ghosted` or ≥21d→gray, 14–20d→red, 7–13d→yellow, 0–6d→green
 - Row banding (where the tab doesn't conflict with full-row CF coloring)
 - Column widths, hidden fingerprint columns, number formats (dates, days count)
-- Rejected row formatting on Sheet1 (grey)
 
 ---
 
@@ -181,14 +180,6 @@ Renames `companies/` folders from old format (`{Company}_{date}_{time}`) to new 
 **No arguments.**
 
 Creates `data/pipeline.db` with all tables: `jobs`, `audit_log`, `feedback_log`. Safe to re-run — uses `CREATE TABLE IF NOT EXISTS`.
-
----
-
-### `init_sheet.py`
-**Run by:** once on new install, or after sheet restructure
-**No arguments.**
-
-Writes column headers to Sheet1 row 1.
 
 ---
 

@@ -108,8 +108,6 @@ jq -c 'select(.event == "sync_failed")' state/logs/pipeline.jsonl | tail -3
 
 Common causes: GCP service-account JSON rotated or missing, wrong `config/sheet_id.txt`, quota exceeded on the Sheets API, or the sheet was deleted / access revoked.
 
-Note: Sheet1 (the full archive tab) is being retired (#136) — use `/board/archive` in the web UI instead. The Dashboard / Applied / Review / Waitlist / Rejected Applications tabs continue until #14.
-
 ### "The `/ingest/` web form isn't saving jobs"
 
 Web form at `http://<your-host>:${FINDAJOB_MATERIALS_PORT}/ingest/` is the primary manual-ingest path (replaced the Google Form in #62).
@@ -167,7 +165,6 @@ Typical failures on first boot:
 | **WARN: N source(s) returned 0 jobs despite producing jobs in last 7d** | A feed silently broke | Check the named source — API key, quota, config file |
 | **WARN: low memory — N MB available** | Container is memory-starved | Increase host RAM, or reduce parallelism in config |
 | **WARN: high swap usage — N/M MB used** | Swap over 50% utilized | Same — investigate memory pressure |
-| **WARN: Sheet1 has ~N rows (threshold: SHEET1_ROW_WARN)** | Sheet1 row count past threshold | Ignore until #136 retires Sheet1 writes |
 | **WARN: N null-score jobs in manual_review (scorer failure — check aichat-ng)** | Jobs were shunted to review because scoring returned null | Smoke-test aichat-ng; check OpenRouter |
 | **WARN: N real-flag jobs in manual_review backlog** | Queue growing past threshold | Triage the Review tab; tune profile if scorer is flagging too much |
 | **WARN: N target-company jobs scored 3–6 in last N days (potential mis-scores)** | Scorer rated Tier 1 company jobs low | Review each; if you disagree, add to profile's Tier 1 list and rescore |
