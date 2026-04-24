@@ -10,6 +10,10 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+## [0.3.1] — 2026-04-24
+
+Patch bump. Two bugfixes for reliability issues surfaced during Alice's morning triage (#222, #223), plus the last-mile `/docs/` viewer that makes user-facing guides reachable from inside the web UI (#224). No migration required — rolling `docker compose pull && up -d` picks it up cleanly.
+
 ### Added
 
 - **`/docs/` renders user guides inline in the web UI (#224).** The `/docs/` top-nav slot now serves `docs/usage.md`, `docs/troubleshooting.md`, and `docs/setup/README.md` (plus the setup sub-pages it links to: prerequisites, install-docker, install-linux, configure, state-migration) as HTML inside the app shell. `.md` cross-links between guides are rewritten to `/docs/<slug>` at render time; external links get `target="_blank" rel="noopener noreferrer"`; heading `#anchor` fragments resolve (Python-Markdown `toc` extension auto-generates IDs). Markdown source on disk under `docs/` is unchanged — GitHub rendering still works. The shared Markdown helper moved from `routes/materials.py` into `findajob.web.markdown` so both viewers share one implementation. Finishes the last mile of #11.
@@ -204,7 +208,8 @@ from GHCR and deployed via Docker Compose on a shared Docker host.
 - Documentation cleanup — removing `sigoden/aichat` references in favor of
   `blob42/aichat-ng` — is tracked in #70
 
-[Unreleased]: https://github.com/brockamer/findajob/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/brockamer/findajob/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/brockamer/findajob/releases/tag/v0.3.1
 [0.3.0]: https://github.com/brockamer/findajob/releases/tag/v0.3.0
 [0.2.0]: https://github.com/brockamer/findajob/releases/tag/v0.2.0
 [0.1.4]: https://github.com/brockamer/findajob/releases/tag/v0.1.4
