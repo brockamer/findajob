@@ -27,8 +27,6 @@ with patch("builtins.open", side_effect=_patched_open):
     from scripts.sync_sheet import (
         DASH_HEADERS,
         DASH_LOOKUP,
-        S1_HEADERS,
-        S1_LOOKUP,
         build_row,
         hyperlink,
         materials_company_cell,
@@ -121,7 +119,7 @@ class TestSafeStr:
 
 
 # ---------------------------------------------------------------------------
-# build_row() — Dashboard mode (use_status=True)
+# build_row() — Dashboard mode
 # ---------------------------------------------------------------------------
 
 
@@ -153,21 +151,21 @@ def _make_row(**overrides):
 
 
 class TestBuildRowDashboard:
-    """build_row with use_status=True (Dashboard mode)."""
+    """build_row for Dashboard tab rows."""
 
     def test_materials_drafted_no_override_ready_to_apply(self):
         row = _make_row(stage="materials_drafted")
-        result = build_row(row, DASH_HEADERS, DASH_LOOKUP, use_status=True)
+        result = build_row(row, DASH_HEADERS, DASH_LOOKUP)
         assert result[0] == "Ready to Apply"
 
     def test_scored_apply_flag_1_flag_for_prep(self):
         row = _make_row(stage="scored", apply_flag=1)
-        result = build_row(row, DASH_HEADERS, DASH_LOOKUP, use_status=True)
+        result = build_row(row, DASH_HEADERS, DASH_LOOKUP)
         assert result[0] == "Flag for Prep"
 
     def test_scored_apply_flag_0_empty(self):
         row = _make_row(stage="scored", apply_flag=0)
-        result = build_row(row, DASH_HEADERS, DASH_LOOKUP, use_status=True)
+        result = build_row(row, DASH_HEADERS, DASH_LOOKUP)
         assert result[0] == ""
 
     def test_status_override_used(self):
@@ -177,7 +175,6 @@ class TestBuildRowDashboard:
             DASH_HEADERS,
             DASH_LOOKUP,
             status_override="Applied",
-            use_status=True,
         )
         assert result[0] == "Applied"
 
@@ -188,61 +185,40 @@ class TestBuildRowDashboard:
             DASH_HEADERS,
             DASH_LOOKUP,
             reject_override="Low Fit Score",
-            use_status=True,
         )
         # REJECT_REASON is at index 1 in DASH_HEADERS
         assert result[1] == "Low Fit Score"
 
     def test_reject_override_none_falls_back_to_db(self):
         row = _make_row(reject_reason="Wrong Level")
-        result = build_row(row, DASH_HEADERS, DASH_LOOKUP, use_status=True)
+        result = build_row(row, DASH_HEADERS, DASH_LOOKUP)
         assert result[1] == "Wrong Level"
 
     def test_prep_in_progress_shows_prep_in_progress(self):
         row = _make_row(stage="prep_in_progress")
-        result = build_row(row, DASH_HEADERS, DASH_LOOKUP, use_status=True)
+        result = build_row(row, DASH_HEADERS, DASH_LOOKUP)
         assert result[0] == "Prep in Progress"
 
     def test_prep_in_progress_apply_flag_1_still_shows_prep_in_progress(self):
         """apply_flag=1 should NOT override stage-derived status."""
         row = _make_row(stage="prep_in_progress", apply_flag=1)
-        result = build_row(row, DASH_HEADERS, DASH_LOOKUP, use_status=True)
+        result = build_row(row, DASH_HEADERS, DASH_LOOKUP)
         assert result[0] == "Prep in Progress"
 
     def test_applied_stage_shows_applied(self):
         row = _make_row(stage="applied", apply_flag=1)
-        result = build_row(row, DASH_HEADERS, DASH_LOOKUP, use_status=True)
+        result = build_row(row, DASH_HEADERS, DASH_LOOKUP)
         assert result[0] == "Applied"
 
     def test_interview_stage_shows_interviewing(self):
         row = _make_row(stage="interview", apply_flag=1)
-        result = build_row(row, DASH_HEADERS, DASH_LOOKUP, use_status=True)
+        result = build_row(row, DASH_HEADERS, DASH_LOOKUP)
         assert result[0] == "Interviewing"
 
     def test_offer_stage_shows_offer(self):
         row = _make_row(stage="offer", apply_flag=1)
-        result = build_row(row, DASH_HEADERS, DASH_LOOKUP, use_status=True)
+        result = build_row(row, DASH_HEADERS, DASH_LOOKUP)
         assert result[0] == "Offer"
-
-
-# ---------------------------------------------------------------------------
-# build_row() — Sheet1 mode (use_status=False)
-# ---------------------------------------------------------------------------
-
-
-class TestBuildRowSheet1:
-    """build_row with use_status=False (Sheet1 mode)."""
-
-    def test_apply_flag_1_true(self):
-        row = _make_row(apply_flag=1)
-        result = build_row(row, S1_HEADERS, S1_LOOKUP, use_status=False)
-        # APPLY_FLAG is at index 1 in S1_HEADERS
-        assert result[1] == "TRUE"
-
-    def test_apply_flag_0_false(self):
-        row = _make_row(apply_flag=0)
-        result = build_row(row, S1_HEADERS, S1_LOOKUP, use_status=False)
-        assert result[1] == "FALSE"
 
 
 # ---------------------------------------------------------------------------
@@ -364,9 +340,9 @@ class TestAssertFullWrite:
     def test_raises_when_actual_less_than_expected(self):
         from scripts.sync_sheet import _assert_full_write
 
-        result = {"updatedRows": 56, "updatedRange": "Sheet1!A1:N56"}
+        result = {"updatedRows": 56, "updatedRange": "Dashboard!A1:N56"}
         with pytest.raises(RuntimeError, match="partial write"):
-            _assert_full_write(result, 9919, "Sheet1")
+            _assert_full_write(result, 9919, "Dashboard")
 
     def test_raises_when_updated_rows_missing(self):
         """Defensive: a contract change that drops updatedRows must not silently pass."""
