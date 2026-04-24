@@ -10,6 +10,10 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Greenhouse fetcher now recognizes `job-boards.greenhouse.io` URLs and bare-slug entries (#199).** Adding `https://job-boards.greenhouse.io/xai` or `https://boards.greenhouse.io/asteralabs` to `config/feed_urls.txt` now ingests; the previous regex only matched `boards(.eu)?.greenhouse.io/{slug}/` with a required trailing path segment (e.g. `/jobs.rss`), so any addition using Greenhouse's newer `job-boards.*` subdomain or a bare-slug URL was silently dropped. Existing entries continue to parse unchanged; the newer URL shapes now also parse. Discovered while widening Tier 1 coverage (xAI, Nscale, Astera Labs — all served under `job-boards.*`).
+
 ## [0.3.2] — 2026-04-24
 
 Patch bump. Hotfix for a v0.3.1 regression: the shipped image didn't include the `docs/` tree, so every `/docs/` slug link 404'd post-deploy. Rolling `docker compose pull && up -d` fixes it.

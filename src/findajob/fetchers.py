@@ -178,7 +178,7 @@ def fetch_greenhouse_jobs(feed_urls_path):
     except FileNotFoundError:
         return jobs
 
-    slug_re = re.compile(r"boards(?:\.eu)?\.greenhouse\.io/([^/]+)/")
+    slug_re = re.compile(r"(?:job-)?boards(?:\.eu)?\.greenhouse\.io/([A-Za-z0-9_.-]+)")
     seen_slugs: set[str] = set()
     slugs = []
     for url in urls:
