@@ -173,5 +173,3 @@ def test_anchor_fragment_links_pass_through(client: TestClient) -> None:
     # In-page anchors stay as-is; the `toc` extension auto-generates heading IDs.
     assert 'href="#applied"' in r.text
     assert 'id="applied"' in r.text
-
-
