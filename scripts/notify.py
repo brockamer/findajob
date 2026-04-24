@@ -195,7 +195,6 @@ def cmd_daily_stats():
     send("💼 findajob — good morning!", body, priority="default", tags="bar_chart")
 
 
-SHEET1_ROW_WARN = 5000  # warn if Sheet1 would sync more than this many rows
 REVIEW_BACKLOG_WARN = 100  # warn if manual_review backlog exceeds this
 TARGET_LOWSCORE_DAYS = 7  # check for mis-scored target company jobs within this window
 
@@ -304,22 +303,8 @@ def cmd_health_check():
     except Exception:
         pass  # /proc/meminfo unavailable — skip
 
-    # ── Sheet / queue health checks ──────────────────────────────────────
+    # ── Queue health checks ──────────────────────────────────────────────
     conn = db_connect()
-
-    # Sheet1 row count (approximate — same filter as sync_sheet.py)
-    sheet1_count = conn.execute("""
-        SELECT COUNT(*) FROM jobs
-        WHERE (dupe_of = '' OR dupe_of IS NULL)
-          AND (
-            relevance_score >= 5
-            OR stage IN ('manual_review', 'materials_drafted', 'waitlisted',
-                         'applied', 'interview', 'offer', 'not_selected', 'withdrawn')
-            OR julianday('now') - julianday(created_at) <= 14
-          )
-    """).fetchone()[0]
-    if sheet1_count > SHEET1_ROW_WARN:
-        issues.append(f"WARN: Sheet1 has ~{sheet1_count} rows (threshold: {SHEET1_ROW_WARN})")
 
     # Manual review backlog — split by cause for operator clarity
     null_score_count = conn.execute(

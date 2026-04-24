@@ -2,11 +2,11 @@
 # ~/JobSearchPipeline/scripts/sync_sheet.py
 """
 Sync SQLite → Google Sheets. One-way after #61 PR-B — no reads from Sheets.
-  Sheet1:    Filtered job archive (score>=5, lifecycle stages, <14d old, or target company).
   Dashboard: Actionable queue (score>=7 scored/manual_review, or materials_drafted).
   Review:    Manual review triage queue (stage=manual_review, null-score scorer failures).
   Waitlist:  Deferred jobs (stage=waitlisted).
   Applied:   Post-application queue (stage in applied/interview/offer).
+  Rejected Applications: Jobs rejected/not-selected after applying.
 STATUS + REJECT_REASON writes live in findajob.web.routes.board_actions.
 """
 
@@ -17,7 +17,6 @@ from pathlib import Path
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
-from findajob.config_loader import is_company_of_interest
 from findajob.paths import BASE
 from findajob.utils import load_env, log_event
 from findajob.web.constants import FOLDER_STAGES as _CANONICAL_FOLDER_STAGES
@@ -63,42 +62,6 @@ def _assert_full_write(result: dict, expected_rows: int, tab_name: str) -> None:
             f"(range={result.get('updatedRange')})"
         )
 
-
-# ── Sheet1: full archive ──────────────────────────────────────────────────────
-# Col A: fingerprint (hidden), Col B: APPLY_FLAG, then data columns.
-S1_HEADERS = [
-    "fingerprint",
-    "APPLY_FLAG",
-    "relevance_score",
-    "title",
-    "company",
-    "location",
-    "remote_status",
-    "stage",
-    "known_contacts",
-    "comp_estimate",
-    "ai_notes",
-    "date_found",
-    "source",
-    "url",
-]
-S1_COL_MAP = {
-    "fingerprint": "fingerprint",
-    "apply_flag": "APPLY_FLAG",
-    "relevance_score": "relevance_score",
-    "title": "title",
-    "company": "company",
-    "location": "location",
-    "remote_status": "remote_status",
-    "stage": "stage",
-    "known_contacts": "known_contacts",
-    "comp_estimate": "comp_estimate",
-    "ai_notes": "ai_notes",
-    "created_at": "date_found",
-    "source": "source",
-    "url": "url",
-}
-S1_LOOKUP = {sh: sc for sc, sh in S1_COL_MAP.items()}
 
 # ── Dashboard: actionable queue ───────────────────────────────────────────────
 # Col A: APPLY_FLAG (checkbox), Col B: REJECT_REASON (dropdown), Col C: fingerprint (hidden).
@@ -181,98 +144,34 @@ def safe_str(val):
     return s
 
 
-def build_row(row, headers, lookup, status_override=None, reject_override=None, use_status=False):
+def build_row(row, headers, lookup, status_override=None, reject_override=None):
     sheet_row = []
     for header in headers:
         sqlite_col = lookup.get(header)
         val = row[sqlite_col] if sqlite_col and sqlite_col in row.keys() else ""
         if header == "APPLY_FLAG":
-            if use_status:
-                # Dashboard: derive status from DB state; user overrides preserved via status_override
-                if status_override is not None:
-                    sheet_row.append(status_override)
-                elif row["stage"] == "materials_drafted":
-                    sheet_row.append("Ready to Apply")
-                elif row["stage"] == "prep_in_progress":
-                    sheet_row.append("Prep in Progress")
-                elif row["stage"] == "applied":
-                    sheet_row.append("Applied")
-                elif row["stage"] == "interview":
-                    sheet_row.append("Interviewing")
-                elif row["stage"] == "offer":
-                    sheet_row.append("Offer")
-                elif bool(val) and row["stage"] in ("scored", "manual_review", "enriched"):
-                    sheet_row.append("Flag for Prep")
-                else:
-                    sheet_row.append("")
+            # Derive status from DB state; user overrides preserved via status_override
+            if status_override is not None:
+                sheet_row.append(status_override)
+            elif row["stage"] == "materials_drafted":
+                sheet_row.append("Ready to Apply")
+            elif row["stage"] == "prep_in_progress":
+                sheet_row.append("Prep in Progress")
+            elif row["stage"] == "applied":
+                sheet_row.append("Applied")
+            elif row["stage"] == "interview":
+                sheet_row.append("Interviewing")
+            elif row["stage"] == "offer":
+                sheet_row.append("Offer")
+            elif bool(val) and row["stage"] in ("scored", "manual_review", "enriched"):
+                sheet_row.append("Flag for Prep")
             else:
-                # Sheet1: write TRUE/FALSE for the checkbox
-                sheet_row.append("TRUE" if bool(val) else "FALSE")
+                sheet_row.append("")
         elif header == "REJECT_REASON":
             sheet_row.append(safe_str(reject_override if reject_override is not None else (val or "")))
         else:
             sheet_row.append(safe_str(val))
     return sheet_row
-
-
-SHEET1_ARCHIVE_DAYS = 14  # jobs younger than this always appear regardless of score
-
-
-def sync_sheet1(svc, conn):
-    # Archival filter: only sync rows that are actionable or worth a glance.
-    # Low-score old jobs from non-target companies stay in DB only.
-    rows = conn.execute(
-        """
-        SELECT * FROM jobs
-        WHERE (dupe_of = '' OR dupe_of IS NULL)
-          AND (
-            relevance_score >= 5
-            OR stage IN ('manual_review', 'prep_in_progress', 'materials_drafted',
-                         'waitlisted', 'applied', 'interview', 'offer', 'not_selected', 'withdrawn')
-            OR julianday('now') - julianday(created_at) <= ?
-          )
-        ORDER BY
-            CASE WHEN relevance_score IS NOT NULL THEN relevance_score ELSE 0 END DESC,
-            created_at DESC
-    """,
-        (SHEET1_ARCHIVE_DAYS,),
-    ).fetchall()
-
-    # Safety net: also include target-company jobs regardless of score/age
-    target_ids = {r["id"] for r in rows}
-    all_rows = conn.execute(
-        """
-        SELECT * FROM jobs
-        WHERE (dupe_of = '' OR dupe_of IS NULL)
-          AND relevance_score IS NOT NULL
-          AND relevance_score < 5
-          AND stage NOT IN ('manual_review', 'prep_in_progress', 'materials_drafted',
-                            'waitlisted', 'applied', 'interview', 'offer', 'not_selected', 'withdrawn')
-          AND julianday('now') - julianday(created_at) > ?
-    """,
-        (SHEET1_ARCHIVE_DAYS,),
-    ).fetchall()
-    target_extras = [r for r in all_rows if r["id"] not in target_ids and is_company_of_interest(r["company"])]
-
-    combined = list(rows) + target_extras
-    # Highest score first, then newest first within same score (ISO dates sort lexically)
-    combined.sort(key=lambda r: r["created_at"] or "", reverse=True)
-    combined.sort(key=lambda r: -(r["relevance_score"] if r["relevance_score"] is not None else 0))
-
-    sheet_rows = [S1_HEADERS] + [build_row(r, S1_HEADERS, S1_LOOKUP) for r in combined]
-
-    svc.spreadsheets().values().clear(spreadsheetId=SHEET_ID, range="Sheet1!A2:N10000").execute()
-    result = (
-        svc.spreadsheets()
-        .values()
-        .update(spreadsheetId=SHEET_ID, range="Sheet1!A1", valueInputOption="USER_ENTERED", body={"values": sheet_rows})
-        .execute()
-    )
-    _assert_full_write(result, len(sheet_rows), "Sheet1")
-    total_db = conn.execute('SELECT count(*) FROM jobs WHERE dupe_of = "" OR dupe_of IS NULL').fetchone()[0]
-    n_synced = len(sheet_rows) - 1
-    print(f"Sheet1: {n_synced} rows synced ({total_db - n_synced} archived from view)")
-    return n_synced
 
 
 def sync_dashboard(svc, conn):
@@ -299,7 +198,7 @@ def sync_dashboard(svc, conn):
             folder = row["prep_folder_path"]
             if not folder or not Path(folder).is_dir():
                 continue
-        sheet_row = build_row(row, DASH_HEADERS, DASH_LOOKUP, use_status=True)
+        sheet_row = build_row(row, DASH_HEADERS, DASH_LOOKUP)
         # Replace plain title with a HYPERLINK formula pointing to the JD URL
         title_idx = DASH_HEADERS.index("title")
         sheet_row[title_idx] = hyperlink(row["url"], row["title"])
@@ -606,8 +505,7 @@ REJECTED_APPS_HEADERS = [
 def sync_rejected_apps(svc, conn):
     """Sync jobs that were rejected or not selected after being in 'applied' stage.
 
-    Retirable: superseded by the web `/board/rejected` view (#191). Remove alongside
-    the Sheet1-write retirement tracked in #136.
+    Retirable: superseded by the web `/board/rejected` view (#191).
     """
     rows = conn.execute("""
         SELECT j.*, a.changed_at AS rejected_date
@@ -670,7 +568,6 @@ def main():
     conn.row_factory = sqlite3.Row
 
     try:
-        n_sheet1 = sync_sheet1(svc, conn)
         n_dash = sync_dashboard(svc, conn)
         n_review = sync_review(svc, conn)
         n_waitlist = sync_waitlist(svc, conn)
@@ -678,7 +575,6 @@ def main():
         sync_rejected_apps(svc, conn)
         log_event(
             "sync_complete",
-            sheet1=n_sheet1,
             dashboard=n_dash,
             review=n_review,
             waitlist=n_waitlist,
