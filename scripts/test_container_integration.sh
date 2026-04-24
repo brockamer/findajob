@@ -336,6 +336,17 @@ if ! echo "$BODY" | grep -q "In flight"; then
 fi
 echo "  index renders with expected sections"
 
+# /docs/ must be reachable — regression guard for #224: docs/ was not baked
+# into the image in v0.3.1, so the slug routes 404'd post-deploy.
+for slug in "" usage troubleshooting setup setup/install-docker; do
+    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:${VIEWER_PORT}/docs/${slug}" || echo "FAIL")
+    if [ "$HTTP_CODE" != "200" ]; then
+        echo "ERROR: /docs/${slug} returned $HTTP_CODE (expected 200)" >&2
+        exit 1
+    fi
+done
+echo "  /docs/ + slug routes: 200 OK"
+
 if (cd "$SCRATCH" && docker compose exec -T scheduler which rclone >/dev/null 2>&1); then
     echo "ERROR: rclone is still in the image" >&2
     exit 1

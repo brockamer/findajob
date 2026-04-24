@@ -10,6 +10,10 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`/docs/` slug routes now actually resolve in the shipped image (#224 follow-up).** v0.3.1 shipped the `/docs/` viewer but the Dockerfile didn't `COPY docs/` into `/app/docs/`, so the route served a 200 index but every slug link 404'd post-deploy. Fixed by copying `docs/` into the image at build time; added a `/docs/` + slug assertion to `scripts/test_container_integration.sh` so the regression can't recur silently — the v0.3.1 pre-tag smoke would have caught this if it had covered the route.
+
 ## [0.3.1] — 2026-04-24
 
 Patch bump. Two bugfixes for reliability issues surfaced during Alice's morning triage (#222, #223), plus the last-mile `/docs/` viewer that makes user-facing guides reachable from inside the web UI (#224). No migration required — rolling `docker compose pull && up -d` picks it up cleanly.

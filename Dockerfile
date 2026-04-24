@@ -63,6 +63,7 @@ RUN pip install --no-cache-dir --break-system-packages -e .
 # shadowing tracked config.
 COPY scripts/ /app/scripts/
 COPY config/ /opt/findajob/bundled-config/
+COPY docs/ /app/docs/
 COPY ops/aichat-ng/ /opt/findajob/bundled-aichat/
 COPY ops/crontab /app/crontab
 COPY ops/entrypoint.sh /entrypoint.sh
