@@ -254,3 +254,24 @@ it defeats the whole purpose.
 
 See also `docs/GENERALIZATION.md` for the broader tracking of domain-specific content that
 should not land in tracked files.
+
+## Rotating API keys on a deployed stack
+
+With Phase 2 of the OpenRouter cutover, 10 of 11 roles depend on
+`OPENROUTER_API_KEY`. Rotating it cleanly on a running stack:
+
+1. Generate a new key in the OpenRouter dashboard and note both the
+   old and new values.
+2. Edit your stack's env file (`/opt/stacks/findajob-<you>/state/config/.env`
+   or wherever you keep credentials — check your compose file's
+   `env_file:` directive) and replace the `OPENROUTER_API_KEY=…` line.
+3. Recreate the container so aichat-ng picks up the new value:
+   `docker compose up -d --force-recreate` from the stack directory.
+4. Verify with a smoke call: `docker compose exec scheduler aichat-ng --model openrouter:google/gemini-3-flash-preview "say hello"`.
+   If the call succeeds, revoke the old key in the OpenRouter dashboard.
+
+The same pattern applies to `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, and
+`PERPLEXITY_API_KEY` if you rotate those (Phase 2 leaves them in the
+config for the embedding client and as fallbacks). Keep rotations
+staggered — don't revoke the old key until the new one has served at
+least one live pipeline run without error.
