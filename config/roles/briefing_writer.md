@@ -1,6 +1,6 @@
 ---
 model: openrouter:anthropic/claude-opus-4.7
-max_tokens: 4096
+max_tokens: 8192
 temperature: 0.3
 ---
 You write pre-interview briefing documents for a job candidate.
