@@ -56,6 +56,19 @@ def remote_cell_class(remote_status: str | None) -> str:
     return "text-slate-600"
 
 
+def filter_qs_with(existing: str, key: str, value: str) -> str:
+    """Return a re-encoded querystring with `key` set to `value`.
+
+    Preserves all other params. Used by the density toggle to switch
+    compact/expanded without losing active filters or sort.
+    """
+    from urllib.parse import parse_qsl
+
+    pairs = [(k, v) for (k, v) in parse_qsl(existing, keep_blank_values=False) if k != key]
+    pairs.append((key, value))
+    return urlencode(pairs)
+
+
 def filter_remove_qs(parsed: ParsedFilters, drop_name: str) -> str:
     """Re-encode parsed filters as a querystring with `drop_name` removed.
 

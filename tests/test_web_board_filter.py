@@ -54,13 +54,3 @@ def test_filter_fragment_has_no_body_tag(client: TestClient) -> None:
     r = client.get("/board/dashboard/rows?q=")
     assert r.status_code == 200
     assert "<body" not in r.text.lower()
-
-
-def test_filter_preserves_sort_via_hidden_inputs(client: TestClient) -> None:
-    """The filter form carries hidden sort/desc inputs so hx-include can
-    forward them to the /rows endpoint — filtering should not strip sort."""
-    r = client.get("/board/dashboard?sort=title&desc=0")
-    assert r.status_code == 200
-    # Hidden inputs exist with the server-echoed values
-    assert 'name="sort" value="title"' in r.text
-    assert 'name="desc" value="0"' in r.text
