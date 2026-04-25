@@ -9,44 +9,12 @@ from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse
 
 from findajob.web.company_history import build_history_by_fp, fetch_company_history
+from findajob.web.filters import ParsedFilters, build_filter_clauses, parse_filter_params
+from findajob.web.filters import registry as filter_registry
 from findajob.web.routes.materials import get_db
 
 router = APIRouter()
 
-
-def _filter_clause(q: str) -> tuple[str, list[str]]:
-    """Build a case-insensitive LIKE filter against title + company.
-
-    Returns ('', []) when q is empty — callers skip the filter entirely.
-    Otherwise returns the SQL fragment (leading space, AND ...) and the
-    two %q% params to bind.
-    """
-    if not q:
-        return "", []
-    like = f"%{q}%"
-    return " AND (title LIKE ? COLLATE NOCASE OR company LIKE ? COLLATE NOCASE)", [like, like]
-
-
-_DASHBOARD_COLS = [
-    ("Rel", "relevance_score"),
-    ("Fit", "fit_score"),
-    ("Prob", "probability_score"),
-    ("Likelihood", "interview_likelihood"),
-    ("Title", "title"),
-    ("Company", "company"),
-    ("History", "company_history"),
-    ("Location", "location"),
-    ("Remote", "remote_status"),
-    ("Contacts", "known_contacts"),
-    ("Comp", "comp_estimate"),
-    ("Notes", "ai_notes"),
-    ("Date", "created_at"),
-]
-
-# company_history is a synthetic column — computed in Python from one
-# full-table scan per render — not a sortable DB field.
-_DASHBOARD_SORTABLE = {c for _, c in _DASHBOARD_COLS if c != "company_history"}
-_DASHBOARD_DEFAULT_SORT = "relevance_score"
 
 _VALID_DENSITIES = {"compact", "expanded"}
 _DEFAULT_DENSITY = "compact"
@@ -56,10 +24,17 @@ def _normalize_density(raw: str) -> str:
     return raw if raw in _VALID_DENSITIES else _DEFAULT_DENSITY
 
 
-# Exclude rows whose (company, title) already has a sibling in a post-application
-# stage — dedup failures (see #13/#16/#17) otherwise surface already-applied jobs.
-# LOWER+TRIM guards against whitespace/casing differences in title ingestion.
-_DASHBOARD_WHERE = (
+def _resolve_visible(specs: object, parsed: ParsedFilters) -> set[str]:
+    """Cascade: URL ?cols= > ColumnSpec.default_visible. (Persisted prefs in #277.)"""
+    if parsed.cols:
+        return set(parsed.cols)
+    return {s.name for s in specs if s.default_visible}  # type: ignore[union-attr]
+
+
+_DASHBOARD_DEFAULT_SORT = "relevance_score"
+
+# Base WHERE always intersects user filters (see spec "Default landings").
+_DASHBOARD_BASE_WHERE = (
     "((relevance_score >= 7 AND stage IN ('scored','manual_review'))"
     " OR stage IN ('prep_in_progress','materials_drafted'))"
     " AND NOT EXISTS ("
@@ -72,35 +47,43 @@ _DASHBOARD_WHERE = (
 )
 
 
+def _dashboard_query(parsed: ParsedFilters) -> tuple[str, list[object]]:
+    specs = filter_registry.DASHBOARD_COLUMNS
+    clauses, params = build_filter_clauses(specs, parsed)
+    sort = parsed.sort or _DASHBOARD_DEFAULT_SORT
+    order = "DESC" if parsed.desc else "ASC"
+    sql = (
+        "SELECT fingerprint, title, company, location, remote_status, known_contacts, "
+        "comp_estimate, ai_notes, relevance_score, fit_score, probability_score, "
+        "interview_likelihood, stage, created_at, stage_updated, url, prep_folder_path "
+        f"FROM jobs WHERE ({_DASHBOARD_BASE_WHERE}){clauses} ORDER BY {sort} {order}"
+    )
+    return sql, params
+
+
 @router.get("/board/dashboard", response_class=HTMLResponse)
 def dashboard(
     request: Request,
-    sort: str = Query(default=""),
-    desc: int = Query(default=1),
     density: str = Query(default=_DEFAULT_DENSITY),
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
 ) -> HTMLResponse:
-    sort_col = sort if sort in _DASHBOARD_SORTABLE else _DASHBOARD_DEFAULT_SORT
-    order = "DESC" if desc else "ASC"
-    rows = db.execute(
-        f"SELECT fingerprint, title, company, location, remote_status, known_contacts, "
-        f"comp_estimate, ai_notes, relevance_score, fit_score, probability_score, "
-        f"interview_likelihood, stage, created_at, stage_updated, url, prep_folder_path "
-        f"FROM jobs WHERE {_DASHBOARD_WHERE} "
-        f"ORDER BY {sort_col} {order}"
-    ).fetchall()
+    specs = filter_registry.DASHBOARD_COLUMNS
+    parsed = parse_filter_params(specs, request.query_params)
+    sql, params = _dashboard_query(parsed)
+    rows = db.execute(sql, params).fetchall()
     history_by_fp = build_history_by_fp(rows, fetch_company_history(db))
     materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
+    visible = _resolve_visible(specs, parsed)
     templates = request.app.state.templates
     return templates.TemplateResponse(
         request=request,
         name="board/dashboard.html",
         context={
-            "columns": _DASHBOARD_COLS,
+            "specs": specs,
+            "visible": visible,
+            "parsed": parsed,
             "rows": rows,
             "history_by_fp": history_by_fp,
-            "sort": sort_col,
-            "desc": desc,
             "density": _normalize_density(density),
             "tab": "dashboard",
             "materials_base_url": materials_base_url,
@@ -108,64 +91,65 @@ def dashboard(
     )
 
 
-_APPLIED_COLS = [
-    ("Title", "title"),
-    ("Company", "company"),
-    ("Applied", "applied_date"),
-    ("Days", "days_since_applied"),
-    ("Stage", "stage"),
-    ("Notes", "user_notes"),
-    ("Contacts", "known_contacts"),
-    ("Location", "location"),
-    ("Remote", "remote_status"),
-    ("Comp", "comp_estimate"),
-    ("AI notes", "ai_notes"),
-]
-_APPLIED_SORTABLE = {c for _, c in _APPLIED_COLS} | {"applied_date"}
 _APPLIED_DEFAULT_SORT = "applied_date"
+_APPLIED_BASE_WHERE = "j.stage IN ('applied','interview','offer')"
+
+
+def _applied_source() -> str:
+    """FROM/JOIN clause for Applied — LEFT JOIN audit_log for applied_date."""
+    return (
+        "FROM jobs j "
+        "LEFT JOIN ("
+        "  SELECT job_id, MIN(changed_at) AS applied_date "
+        "  FROM audit_log "
+        "  WHERE field_changed = 'stage' AND new_value IN ('applied','interview','offer') "
+        "  GROUP BY job_id"
+        ") al ON al.job_id = j.id"
+    )
+
+
+def _applied_query(parsed: ParsedFilters) -> tuple[str, list[object]]:
+    specs = filter_registry.APPLIED_COLUMNS
+    clauses, params = build_filter_clauses(specs, parsed)
+    sort = parsed.sort or _APPLIED_DEFAULT_SORT
+    # sort by spec name → use db_expr if defined; else the bare name.
+    sort_spec = next((s for s in specs if s.name == sort), None)
+    sort_ref = sort_spec.sql_ref if sort_spec else _APPLIED_DEFAULT_SORT
+    order = "DESC" if parsed.desc else "ASC"
+    sql = (
+        "SELECT j.fingerprint, j.title, j.company, j.stage, j.location, j.remote_status, "
+        "       j.known_contacts, j.comp_estimate, j.ai_notes, j.user_notes, j.created_at, "
+        "       j.url, "
+        "       al.applied_date, "
+        "       CAST((julianday('now') - julianday(al.applied_date)) AS INTEGER) AS days_since_applied "
+        f"{_applied_source()} "
+        f"WHERE ({_APPLIED_BASE_WHERE}){clauses} "
+        f"ORDER BY {sort_ref} {order}"
+    )
+    return sql, params
 
 
 @router.get("/board/applied", response_class=HTMLResponse)
 def applied(
     request: Request,
-    sort: str = Query(default=""),
-    desc: int = Query(default=1),
     density: str = Query(default=_DEFAULT_DENSITY),
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
 ) -> HTMLResponse:
-    sort_col = sort if sort in _APPLIED_SORTABLE else _APPLIED_DEFAULT_SORT
-    order = "DESC" if desc else "ASC"
-    # applied_date = earliest audit_log transition into a post-application stage.
-    # Mirrors scripts/sync_sheet.py — jobs can skip 'applied' (recruiter flows go
-    # straight to 'interview'), and audit_log.job_id stores jobs.id (UUID), not
-    # jobs.fingerprint.
-    sql = f"""
-    SELECT j.fingerprint, j.title, j.company, j.stage, j.location, j.remote_status,
-           j.known_contacts, j.comp_estimate, j.ai_notes, j.user_notes, j.created_at,
-           j.url,
-           al.applied_date,
-           CAST((julianday('now') - julianday(al.applied_date)) AS INTEGER) AS days_since_applied
-    FROM jobs j
-    LEFT JOIN (
-      SELECT job_id, MIN(changed_at) AS applied_date
-      FROM audit_log
-      WHERE field_changed = 'stage' AND new_value IN ('applied','interview','offer')
-      GROUP BY job_id
-    ) al ON al.job_id = j.id
-    WHERE j.stage IN ('applied','interview','offer')
-    ORDER BY {sort_col} {order}
-    """
-    rows = db.execute(sql).fetchall()
+    specs = filter_registry.APPLIED_COLUMNS
+    parsed = parse_filter_params(specs, request.query_params)
+    sql, params = _applied_query(parsed)
+    rows = db.execute(sql, params).fetchall()
     materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
+    visible = _resolve_visible(specs, parsed)
     templates = request.app.state.templates
     return templates.TemplateResponse(
         request=request,
         name="board/applied.html",
         context={
-            "columns": _APPLIED_COLS,
+            "specs": specs,
+            "visible": visible,
+            "parsed": parsed,
             "rows": rows,
-            "sort": sort_col,
-            "desc": desc,
             "density": _normalize_density(density),
             "tab": "applied",
             "materials_base_url": materials_base_url,
@@ -173,41 +157,44 @@ def applied(
     )
 
 
-_REVIEW_COLS = [
-    ("Title", "title"),
-    ("Company", "company"),
-    ("Flag reason", "score_flag_reason"),
-    ("Source", "source"),
-    ("Date", "created_at"),
-]
-_REVIEW_SORTABLE = {c for _, c in _REVIEW_COLS}
 _REVIEW_DEFAULT_SORT = "created_at"
+_REVIEW_BASE_WHERE = "stage = 'manual_review'"
+
+
+def _review_query(parsed: ParsedFilters) -> tuple[str, list[object]]:
+    specs = filter_registry.REVIEW_COLUMNS
+    clauses, params = build_filter_clauses(specs, parsed)
+    sort = parsed.sort or _REVIEW_DEFAULT_SORT
+    order = "DESC" if parsed.desc else "ASC"
+    sql = (
+        "SELECT fingerprint, title, company, score_flag_reason, source, created_at, stage, url "
+        f"FROM jobs WHERE ({_REVIEW_BASE_WHERE}){clauses} "
+        f"ORDER BY {sort} {order}"
+    )
+    return sql, params
 
 
 @router.get("/board/review", response_class=HTMLResponse)
 def review(
     request: Request,
-    sort: str = Query(default=""),
-    desc: int = Query(default=1),
     density: str = Query(default=_DEFAULT_DENSITY),
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
 ) -> HTMLResponse:
-    sort_col = sort if sort in _REVIEW_SORTABLE else _REVIEW_DEFAULT_SORT
-    order = "DESC" if desc else "ASC"
-    rows = db.execute(
-        f"SELECT fingerprint, title, company, score_flag_reason, source, created_at, stage, url "
-        f"FROM jobs WHERE stage = 'manual_review' ORDER BY {sort_col} {order}"
-    ).fetchall()
+    specs = filter_registry.REVIEW_COLUMNS
+    parsed = parse_filter_params(specs, request.query_params)
+    sql, params = _review_query(parsed)
+    rows = db.execute(sql, params).fetchall()
     materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
+    visible = _resolve_visible(specs, parsed)
     templates = request.app.state.templates
     return templates.TemplateResponse(
         request=request,
         name="board/review.html",
         context={
-            "columns": _REVIEW_COLS,
+            "specs": specs,
+            "visible": visible,
+            "parsed": parsed,
             "rows": rows,
-            "sort": sort_col,
-            "desc": desc,
             "density": _normalize_density(density),
             "tab": "review",
             "materials_base_url": materials_base_url,
@@ -215,36 +202,20 @@ def review(
     )
 
 
-_WAITLIST_COLS = [
-    ("Title", "title"),
-    ("Company", "company"),
-    ("History", "company_history"),
-    ("Rel", "relevance_score"),
-    ("Fit", "fit_score"),
-    ("Prob", "probability_score"),
-    ("Location", "location"),
-    ("Remote", "remote_status"),
-    ("AI notes", "ai_notes"),
-    ("Date", "created_at"),
-    ("Blocking app", "blocking_app"),
-]
-_WAITLIST_SORTABLE = {c for _, c in _WAITLIST_COLS if c not in ("blocking_app", "company_history")}
-_WAITLIST_DEFAULT_SORT = "created_at"
+_WAITLIST_DEFAULT_SORT = "w.created_at"
+_WAITLIST_BASE_WHERE = "w.stage = 'waitlisted'"
 
 
-@router.get("/board/waitlist", response_class=HTMLResponse)
-def waitlist(
-    request: Request,
-    sort: str = Query(default=""),
-    desc: int = Query(default=1),
-    density: str = Query(default=_DEFAULT_DENSITY),
-    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
-) -> HTMLResponse:
-    sort_col = sort if sort in _WAITLIST_SORTABLE else _WAITLIST_DEFAULT_SORT
-    order = "DESC" if desc else "ASC"
+def _waitlist_query(parsed: ParsedFilters) -> tuple[str, list[object]]:
+    specs = filter_registry.WAITLIST_COLUMNS
+    clauses, params = build_filter_clauses(specs, parsed)
+    sort = parsed.sort or "created_at"
+    sort_spec = next((s for s in specs if s.name == sort), None)
+    sort_ref = sort_spec.sql_ref if sort_spec else _WAITLIST_DEFAULT_SORT
+    order = "DESC" if parsed.desc else "ASC"
     sql = f"""
     SELECT w.fingerprint, w.title, w.company, w.relevance_score,
-           w.fit_score, w.probability_score,
+           w.fit_score, w.probability_score, w.interview_likelihood,
            w.location, w.remote_status,
            w.ai_notes, w.created_at, w.stage, w.url,
            (SELECT j2.title || ' (' || j2.stage || ')'
@@ -255,22 +226,35 @@ def waitlist(
              ORDER BY j2.stage_updated DESC
              LIMIT 1) AS blocking_app
     FROM jobs w
-    WHERE w.stage = 'waitlisted'
-    ORDER BY {sort_col} {order}
+    WHERE ({_WAITLIST_BASE_WHERE}){clauses}
+    ORDER BY {sort_ref} {order}
     """
-    rows = db.execute(sql).fetchall()
+    return sql, params
+
+
+@router.get("/board/waitlist", response_class=HTMLResponse)
+def waitlist(
+    request: Request,
+    density: str = Query(default=_DEFAULT_DENSITY),
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> HTMLResponse:
+    specs = filter_registry.WAITLIST_COLUMNS
+    parsed = parse_filter_params(specs, request.query_params)
+    sql, params = _waitlist_query(parsed)
+    rows = db.execute(sql, params).fetchall()
     history_by_fp = build_history_by_fp(rows, fetch_company_history(db))
     materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
+    visible = _resolve_visible(specs, parsed)
     templates = request.app.state.templates
     return templates.TemplateResponse(
         request=request,
         name="board/waitlist.html",
         context={
-            "columns": _WAITLIST_COLS,
+            "specs": specs,
+            "visible": visible,
+            "parsed": parsed,
             "rows": rows,
             "history_by_fp": history_by_fp,
-            "sort": sort_col,
-            "desc": desc,
             "density": _normalize_density(density),
             "tab": "waitlist",
             "materials_base_url": materials_base_url,
@@ -278,58 +262,65 @@ def waitlist(
     )
 
 
-_REJECTED_COLS = [
-    ("Title", "title"),
-    ("Company", "company"),
-    ("Reason", "reject_reason"),
-    ("Rejected", "rejected_date"),
-    ("Source", "rejection_source"),
-]
-_REJECTED_SORTABLE = {c for _, c in _REJECTED_COLS}
 _REJECTED_DEFAULT_SORT = "rejected_date"
+_REJECTED_BASE_WHERE = "j.stage IN ('rejected','not_selected')"
 
 
-# Latest stage-transition into rejected/not_selected per job. audit_log.job_id
-# stores jobs.id (UUID) — match jobs.id, not fingerprint. MAX(changed_at) picks
-# the most recent transition in case a job was rejected, reactivated, and
-# rejected again. See CLAUDE.md §"audit_log timestamp format".
-_REJECTED_SQL = """
-SELECT j.fingerprint, j.title, j.company, j.url, j.stage, j.reject_reason,
-       CASE j.stage WHEN 'not_selected' THEN 'company' ELSE 'user' END AS rejection_source,
-       al.rejected_date
-FROM jobs j
-LEFT JOIN (
-  SELECT job_id, MAX(changed_at) AS rejected_date
-  FROM audit_log
-  WHERE field_changed = 'stage' AND new_value IN ('rejected','not_selected')
-  GROUP BY job_id
-) al ON al.job_id = j.id
-WHERE j.stage IN ('rejected','not_selected')
-ORDER BY {sort_col} {order}
-"""
+def _rejected_source() -> str:
+    # Latest stage-transition into rejected/not_selected per job. audit_log.job_id
+    # stores jobs.id (UUID) — match jobs.id, not fingerprint. MAX(changed_at) picks
+    # the most recent transition in case a job was rejected, reactivated, and
+    # rejected again. See CLAUDE.md §"audit_log timestamp format".
+    return (
+        "FROM jobs j "
+        "LEFT JOIN ("
+        "  SELECT job_id, MAX(changed_at) AS rejected_date "
+        "  FROM audit_log "
+        "  WHERE field_changed = 'stage' AND new_value IN ('rejected','not_selected') "
+        "  GROUP BY job_id"
+        ") al ON al.job_id = j.id"
+    )
+
+
+def _rejected_query(parsed: ParsedFilters) -> tuple[str, list[object]]:
+    specs = filter_registry.REJECTED_COLUMNS
+    clauses, params = build_filter_clauses(specs, parsed)
+    sort = parsed.sort or _REJECTED_DEFAULT_SORT
+    sort_spec = next((s for s in specs if s.name == sort), None)
+    sort_ref = sort_spec.sql_ref if sort_spec else "al.rejected_date"
+    order = "DESC" if parsed.desc else "ASC"
+    sql = (
+        "SELECT j.fingerprint, j.title, j.company, j.url, j.stage, j.reject_reason, "
+        "       CASE j.stage WHEN 'not_selected' THEN 'company' ELSE 'user' END AS rejection_source, "
+        "       al.rejected_date "
+        f"{_rejected_source()} "
+        f"WHERE ({_REJECTED_BASE_WHERE}){clauses} "
+        f"ORDER BY {sort_ref} {order}"
+    )
+    return sql, params
 
 
 @router.get("/board/rejected", response_class=HTMLResponse)
 def rejected(
     request: Request,
-    sort: str = Query(default=""),
-    desc: int = Query(default=1),
     density: str = Query(default=_DEFAULT_DENSITY),
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
 ) -> HTMLResponse:
-    sort_col = sort if sort in _REJECTED_SORTABLE else _REJECTED_DEFAULT_SORT
-    order = "DESC" if desc else "ASC"
-    rows = db.execute(_REJECTED_SQL.format(sort_col=sort_col, order=order)).fetchall()
+    specs = filter_registry.REJECTED_COLUMNS
+    parsed = parse_filter_params(specs, request.query_params)
+    sql, params = _rejected_query(parsed)
+    rows = db.execute(sql, params).fetchall()
     materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
+    visible = _resolve_visible(specs, parsed)
     templates = request.app.state.templates
     return templates.TemplateResponse(
         request=request,
         name="board/rejected.html",
         context={
-            "columns": _REJECTED_COLS,
+            "specs": specs,
+            "visible": visible,
+            "parsed": parsed,
             "rows": rows,
-            "sort": sort_col,
-            "desc": desc,
             "density": _normalize_density(density),
             "tab": "rejected",
             "materials_base_url": materials_base_url,
@@ -340,28 +331,21 @@ def rejected(
 @router.get("/board/rejected/rows", response_class=HTMLResponse)
 def rejected_rows(
     request: Request,
-    q: str = Query(default=""),
-    sort: str = Query(default=""),
-    desc: int = Query(default=1),
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
 ) -> HTMLResponse:
-    sort_col = sort if sort in _REJECTED_SORTABLE else _REJECTED_DEFAULT_SORT
-    order = "DESC" if desc else "ASC"
-    filter_sql, params = _filter_clause(q)
-    qualified_filter = filter_sql.replace("title", "j.title").replace("company", "j.company")
-    base = _REJECTED_SQL.format(sort_col=sort_col, order=order)
-    sql = base.replace(
-        "WHERE j.stage IN ('rejected','not_selected')",
-        f"WHERE j.stage IN ('rejected','not_selected'){qualified_filter}",
-    )
+    specs = filter_registry.REJECTED_COLUMNS
+    parsed = parse_filter_params(specs, request.query_params)
+    sql, params = _rejected_query(parsed)
     rows = db.execute(sql, params).fetchall()
     materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
+    visible = _resolve_visible(specs, parsed)
     templates = request.app.state.templates
     return templates.TemplateResponse(
         request=request,
         name="_job_rows_fragment.html",
         context={
-            "columns": _REJECTED_COLS,
+            "specs": specs,
+            "visible": visible,
             "rows": rows,
             "tab": "rejected",
             "materials_base_url": materials_base_url,
@@ -369,81 +353,54 @@ def rejected_rows(
     )
 
 
-_ARCHIVE_COLS = [
-    ("Rel", "relevance_score"),
-    ("Title", "title"),
-    ("Company", "company"),
-    ("Stage", "stage"),
-    ("Location", "location"),
-    ("Remote", "remote_status"),
-    ("Date", "created_at"),
-    ("Source", "source"),
-    ("URL", "url"),
-]
-_ARCHIVE_SORTABLE = {c for _, c in _ARCHIVE_COLS}
 _ARCHIVE_DEFAULT_SORT = "created_at"
 _ARCHIVE_PAGE_SIZE = 100
 
 
-def _archive_score_where(min_score: int | None, max_score: int | None) -> tuple[str, list[int]]:
-    """Build a WHERE clause fragment (including 'WHERE ') and bind params for
-    optional relevance_score bounds. Returns ('', []) if both bounds are None."""
-    clauses: list[str] = []
-    params: list[int] = []
-    if min_score is not None:
-        clauses.append("relevance_score >= ?")
-        params.append(min_score)
-    if max_score is not None:
-        clauses.append("relevance_score <= ?")
-        params.append(max_score)
-    if not clauses:
-        return "", []
-    return " WHERE " + " AND ".join(clauses), params
-
-
-def _archive_select_sql(
-    sort_col: str, order: str, min_score: int | None = None, max_score: int | None = None
-) -> tuple[str, list[int]]:
-    where_sql, where_params = _archive_score_where(min_score, max_score)
+def _archive_query(parsed: ParsedFilters, offset: int, page_size: int = _ARCHIVE_PAGE_SIZE) -> tuple[str, list[object]]:
+    specs = filter_registry.ARCHIVE_COLUMNS
+    clauses, filter_params = build_filter_clauses(specs, parsed)
+    sort = parsed.sort or _ARCHIVE_DEFAULT_SORT
+    order = "DESC" if parsed.desc else "ASC"
+    # Strip leading " AND " and prefix with " WHERE " — Archive has no base WHERE.
+    where_sql = ""
+    if clauses:
+        where_sql = " WHERE " + clauses[len(" AND ") :]
     sql = (
         "SELECT fingerprint, title, company, stage, relevance_score, fit_score, "
         "probability_score, location, remote_status, source, url, created_at, stage_updated "
-        f"FROM jobs{where_sql} ORDER BY {sort_col} {order} LIMIT ? OFFSET ?"
+        f"FROM jobs{where_sql} ORDER BY {sort} {order} LIMIT ? OFFSET ?"
     )
-    return sql, where_params
+    params: list[object] = [*filter_params, page_size, offset]
+    return sql, params
 
 
 @router.get("/board/archive", response_class=HTMLResponse)
 def archive(
     request: Request,
-    sort: str = Query(default=""),
-    desc: int = Query(default=1),
     density: str = Query(default=_DEFAULT_DENSITY),
-    min_score: int | None = Query(default=None),
-    max_score: int | None = Query(default=None),
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
 ) -> HTMLResponse:
-    sort_col = sort if sort in _ARCHIVE_SORTABLE else _ARCHIVE_DEFAULT_SORT
-    order = "DESC" if desc else "ASC"
-    sql, where_params = _archive_select_sql(sort_col, order, min_score, max_score)
-    rows = db.execute(sql, (*where_params, _ARCHIVE_PAGE_SIZE, 0)).fetchall()
+    specs = filter_registry.ARCHIVE_COLUMNS
+    parsed = parse_filter_params(specs, request.query_params)
+    sql, params = _archive_query(parsed, offset=0)
+    rows = db.execute(sql, params).fetchall()
     has_more = len(rows) == _ARCHIVE_PAGE_SIZE
     materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
+    visible = _resolve_visible(specs, parsed)
     templates = request.app.state.templates
     return templates.TemplateResponse(
         request=request,
         name="board/archive.html",
         context={
-            "columns": _ARCHIVE_COLS,
+            "specs": specs,
+            "visible": visible,
+            "parsed": parsed,
             "rows": rows,
-            "sort": sort_col,
-            "desc": desc,
             "density": _normalize_density(density),
             "tab": "archive",
             "next_offset": _ARCHIVE_PAGE_SIZE if has_more else None,
             "materials_base_url": materials_base_url,
-            "min_score": min_score,
-            "max_score": max_score,
         },
     )
 
@@ -452,69 +409,56 @@ def archive(
 def archive_rows(
     request: Request,
     offset: int = Query(default=0),
-    sort: str = Query(default=""),
-    desc: int = Query(default=1),
-    min_score: int | None = Query(default=None),
-    max_score: int | None = Query(default=None),
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
 ) -> HTMLResponse:
-    sort_col = sort if sort in _ARCHIVE_SORTABLE else _ARCHIVE_DEFAULT_SORT
-    order = "DESC" if desc else "ASC"
-    sql, where_params = _archive_select_sql(sort_col, order, min_score, max_score)
-    rows = db.execute(sql, (*where_params, _ARCHIVE_PAGE_SIZE, offset)).fetchall()
+    specs = filter_registry.ARCHIVE_COLUMNS
+    parsed = parse_filter_params(specs, request.query_params)
+    sql, params = _archive_query(parsed, offset=offset)
+    rows = db.execute(sql, params).fetchall()
     has_more = len(rows) == _ARCHIVE_PAGE_SIZE
     materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
+    visible = _resolve_visible(specs, parsed)
     templates = request.app.state.templates
     return templates.TemplateResponse(
         request=request,
         name="board/_archive_rows.html",
         context={
-            "columns": _ARCHIVE_COLS,
+            "specs": specs,
+            "visible": visible,
+            "parsed": parsed,
             "rows": rows,
             "tab": "archive",
             "next_offset": offset + _ARCHIVE_PAGE_SIZE if has_more else None,
-            "sort": sort_col,
-            "desc": desc,
             "materials_base_url": materials_base_url,
-            "min_score": min_score,
-            "max_score": max_score,
         },
     )
 
 
 # ──────────────────────────────────────────────────────────────────────
-# HTMX filter endpoints — each tab renders only its <tbody> rows as
-# _job_rows_fragment.html. Shared ?q= text filters title + company.
+# HTMX rows endpoints — each tab renders only its <tbody> rows as
+# _job_rows_fragment.html, driven by the filter framework.
 # ──────────────────────────────────────────────────────────────────────
 
 
 @router.get("/board/dashboard/rows", response_class=HTMLResponse)
 def dashboard_rows(
     request: Request,
-    q: str = Query(default=""),
-    sort: str = Query(default=""),
-    desc: int = Query(default=1),
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
 ) -> HTMLResponse:
-    sort_col = sort if sort in _DASHBOARD_SORTABLE else _DASHBOARD_DEFAULT_SORT
-    order = "DESC" if desc else "ASC"
-    filter_sql, params = _filter_clause(q)
-    rows = db.execute(
-        f"SELECT fingerprint, title, company, location, remote_status, known_contacts, "
-        f"comp_estimate, ai_notes, relevance_score, fit_score, probability_score, "
-        f"interview_likelihood, stage, created_at, stage_updated, url, prep_folder_path "
-        f"FROM jobs WHERE ({_DASHBOARD_WHERE}) {filter_sql} "
-        f"ORDER BY {sort_col} {order}",
-        params,
-    ).fetchall()
+    specs = filter_registry.DASHBOARD_COLUMNS
+    parsed = parse_filter_params(specs, request.query_params)
+    sql, params = _dashboard_query(parsed)
+    rows = db.execute(sql, params).fetchall()
     history_by_fp = build_history_by_fp(rows, fetch_company_history(db))
     materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
+    visible = _resolve_visible(specs, parsed)
     templates = request.app.state.templates
     return templates.TemplateResponse(
         request=request,
         name="_job_rows_fragment.html",
         context={
-            "columns": _DASHBOARD_COLS,
+            "specs": specs,
+            "visible": visible,
             "rows": rows,
             "history_by_fp": history_by_fp,
             "tab": "dashboard",
@@ -526,39 +470,21 @@ def dashboard_rows(
 @router.get("/board/applied/rows", response_class=HTMLResponse)
 def applied_rows(
     request: Request,
-    q: str = Query(default=""),
-    sort: str = Query(default=""),
-    desc: int = Query(default=1),
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
 ) -> HTMLResponse:
-    sort_col = sort if sort in _APPLIED_SORTABLE else _APPLIED_DEFAULT_SORT
-    order = "DESC" if desc else "ASC"
-    filter_sql, params = _filter_clause(q)
-    qualified_filter = filter_sql.replace("title", "j.title").replace("company", "j.company")
-    sql = f"""
-    SELECT j.fingerprint, j.title, j.company, j.stage, j.location, j.remote_status,
-           j.known_contacts, j.comp_estimate, j.ai_notes, j.user_notes, j.created_at,
-           j.url,
-           al.applied_date,
-           CAST((julianday('now') - julianday(al.applied_date)) AS INTEGER) AS days_since_applied
-    FROM jobs j
-    LEFT JOIN (
-      SELECT job_id, MIN(changed_at) AS applied_date
-      FROM audit_log
-      WHERE field_changed = 'stage' AND new_value IN ('applied','interview','offer')
-      GROUP BY job_id
-    ) al ON al.job_id = j.id
-    WHERE j.stage IN ('applied','interview','offer'){qualified_filter}
-    ORDER BY {sort_col} {order}
-    """
+    specs = filter_registry.APPLIED_COLUMNS
+    parsed = parse_filter_params(specs, request.query_params)
+    sql, params = _applied_query(parsed)
     rows = db.execute(sql, params).fetchall()
     materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
+    visible = _resolve_visible(specs, parsed)
     templates = request.app.state.templates
     return templates.TemplateResponse(
         request=request,
         name="_job_rows_fragment.html",
         context={
-            "columns": _APPLIED_COLS,
+            "specs": specs,
+            "visible": visible,
             "rows": rows,
             "tab": "applied",
             "materials_base_url": materials_base_url,
@@ -569,27 +495,21 @@ def applied_rows(
 @router.get("/board/review/rows", response_class=HTMLResponse)
 def review_rows(
     request: Request,
-    q: str = Query(default=""),
-    sort: str = Query(default=""),
-    desc: int = Query(default=1),
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
 ) -> HTMLResponse:
-    sort_col = sort if sort in _REVIEW_SORTABLE else _REVIEW_DEFAULT_SORT
-    order = "DESC" if desc else "ASC"
-    filter_sql, params = _filter_clause(q)
-    rows = db.execute(
-        f"SELECT fingerprint, title, company, score_flag_reason, source, created_at, stage, url "
-        f"FROM jobs WHERE stage = 'manual_review' {filter_sql} "
-        f"ORDER BY {sort_col} {order}",
-        params,
-    ).fetchall()
+    specs = filter_registry.REVIEW_COLUMNS
+    parsed = parse_filter_params(specs, request.query_params)
+    sql, params = _review_query(parsed)
+    rows = db.execute(sql, params).fetchall()
     materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
+    visible = _resolve_visible(specs, parsed)
     templates = request.app.state.templates
     return templates.TemplateResponse(
         request=request,
         name="_job_rows_fragment.html",
         context={
-            "columns": _REVIEW_COLS,
+            "specs": specs,
+            "visible": visible,
             "rows": rows,
             "tab": "review",
             "materials_base_url": materials_base_url,
@@ -600,40 +520,22 @@ def review_rows(
 @router.get("/board/waitlist/rows", response_class=HTMLResponse)
 def waitlist_rows(
     request: Request,
-    q: str = Query(default=""),
-    sort: str = Query(default=""),
-    desc: int = Query(default=1),
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
 ) -> HTMLResponse:
-    sort_col = sort if sort in _WAITLIST_SORTABLE else _WAITLIST_DEFAULT_SORT
-    order = "DESC" if desc else "ASC"
-    filter_sql, params = _filter_clause(q)
-    qualified_filter = filter_sql.replace("title", "w.title").replace("company", "w.company")
-    sql = f"""
-    SELECT w.fingerprint, w.title, w.company, w.relevance_score,
-           w.fit_score, w.probability_score,
-           w.location, w.remote_status,
-           w.ai_notes, w.created_at, w.stage, w.url,
-           (SELECT j2.title || ' (' || j2.stage || ')'
-              FROM jobs j2
-             WHERE j2.company = w.company
-               AND j2.fingerprint != w.fingerprint
-               AND j2.stage IN ('applied','interview','offer','materials_drafted','prep_in_progress')
-             ORDER BY j2.stage_updated DESC
-             LIMIT 1) AS blocking_app
-    FROM jobs w
-    WHERE w.stage = 'waitlisted'{qualified_filter}
-    ORDER BY {sort_col} {order}
-    """
+    specs = filter_registry.WAITLIST_COLUMNS
+    parsed = parse_filter_params(specs, request.query_params)
+    sql, params = _waitlist_query(parsed)
     rows = db.execute(sql, params).fetchall()
     history_by_fp = build_history_by_fp(rows, fetch_company_history(db))
     materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
+    visible = _resolve_visible(specs, parsed)
     templates = request.app.state.templates
     return templates.TemplateResponse(
         request=request,
         name="_job_rows_fragment.html",
         context={
-            "columns": _WAITLIST_COLS,
+            "specs": specs,
+            "visible": visible,
             "rows": rows,
             "history_by_fp": history_by_fp,
             "tab": "waitlist",
