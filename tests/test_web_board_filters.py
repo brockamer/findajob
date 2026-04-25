@@ -4,11 +4,12 @@ Each test seeds a small set of jobs (with jobs.id set per
 feedback_test_fixtures_jobs_id), hits a /board/{tab}/rows endpoint
 with various URL params, and asserts the right rows are returned.
 """
+
 from __future__ import annotations
 
 import sqlite3
 from collections.abc import Iterator
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -75,7 +76,7 @@ def _insert_job(
         "relevance_score": relevance_score,
         "source": source,
         "remote_status": "Remote",
-        "created_at": created_at or datetime.now(timezone.utc).isoformat(),
+        "created_at": created_at or datetime.now(UTC).isoformat(),
         **kw,
     }
     placeholders = ", ".join("?" * len(cols))
@@ -189,8 +190,8 @@ def test_applied_filter_by_days_since_applied(
     app_with_db: tuple[TestClient, Path],
 ) -> None:
     client, db_path = app_with_db
-    old = (datetime.now(timezone.utc) - timedelta(days=21)).strftime("%Y-%m-%d %H:%M:%S")
-    fresh = (datetime.now(timezone.utc) - timedelta(days=2)).strftime("%Y-%m-%d %H:%M:%S")
+    old = (datetime.now(UTC) - timedelta(days=21)).strftime("%Y-%m-%d %H:%M:%S")
+    fresh = (datetime.now(UTC) - timedelta(days=2)).strftime("%Y-%m-%d %H:%M:%S")
     _insert_job(db_path, id="ap1", fingerprint="fp-ap1", stage="applied", title="Old App")
     _audit_log(db_path, job_id="ap1", new_value="applied", changed_at=old)
     _insert_job(db_path, id="ap2", fingerprint="fp-ap2", stage="applied", title="Fresh App")
@@ -209,7 +210,7 @@ def test_rejected_filter_by_reason(
     app_with_db: tuple[TestClient, Path],
 ) -> None:
     client, db_path = app_with_db
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
     _insert_job(
         db_path,
         id="rj1",
