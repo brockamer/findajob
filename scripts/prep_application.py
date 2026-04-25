@@ -230,7 +230,7 @@ def main():
 
     # ── Step 2: Company briefing FIRST — gives all downstream steps rich context ──
     brief_prompt = f"Research {company} thoroughly.\nJob title: {title}\nJD excerpt:\n{jd_text[:2000]}"
-    raw_briefing = aichat("company_researcher", brief_prompt, model_override="perplexity:sonar-reasoning-pro")
+    raw_briefing = aichat("company_researcher", brief_prompt)
 
     # Pass raw research through briefing_writer with candidate context for stories
     formatted_brief_prompt = (
@@ -260,7 +260,7 @@ def main():
         f"JD:\n{jd_text[:3000]}\n\n"
         f"COMPANY BRIEFING:\n{briefing}"
     )
-    fit_analysis = aichat("fit_analyst", fit_prompt, model_override="perplexity:sonar-reasoning-pro")
+    fit_analysis = aichat("fit_analyst", fit_prompt)
 
     # Combine briefing and fit analysis into one document.
     # The briefing ends with an Overall Recommendation verdict; fit analysis
