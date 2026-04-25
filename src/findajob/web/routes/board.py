@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse
 
 from findajob.web.company_history import build_history_by_fp, fetch_company_history
-from findajob.web.filters import ParsedFilters, build_filter_clauses, parse_filter_params
+from findajob.web.filters import ColumnSpec, ParsedFilters, build_filter_clauses, parse_filter_params
 from findajob.web.filters import registry as filter_registry
 from findajob.web.routes.materials import get_db
 
@@ -24,11 +24,11 @@ def _normalize_density(raw: str) -> str:
     return raw if raw in _VALID_DENSITIES else _DEFAULT_DENSITY
 
 
-def _resolve_visible(specs: object, parsed: ParsedFilters) -> set[str]:
+def _resolve_visible(specs: tuple[ColumnSpec, ...], parsed: ParsedFilters) -> set[str]:
     """Cascade: URL ?cols= > ColumnSpec.default_visible. (Persisted prefs in #277.)"""
     if parsed.cols:
         return set(parsed.cols)
-    return {s.name for s in specs if s.default_visible}  # type: ignore[union-attr]
+    return {s.name for s in specs if s.default_visible}
 
 
 _DASHBOARD_DEFAULT_SORT = "relevance_score"
