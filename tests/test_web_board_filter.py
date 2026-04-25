@@ -43,7 +43,7 @@ def client(tmp_path: Path) -> TestClient:
 
 
 def test_dashboard_filter_narrows_by_company(client: TestClient) -> None:
-    r = client.get("/board/dashboard/rows?q=meta")
+    r = client.get("/board/dashboard/rows?company=meta")
     assert r.status_code == 200
     assert "NPI PM" in r.text
     assert "TPM" in r.text

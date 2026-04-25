@@ -26,11 +26,11 @@ def client(tmp_path: Path) -> TestClient:
         "CREATE TABLE audit_log (id INTEGER PRIMARY KEY, job_id TEXT, field_changed TEXT, "
         "old_value TEXT, new_value TEXT, changed_at TEXT, changed_by TEXT)"
     )
-    # Meta has two jobs: one waitlisted (with all three scores), one actively applied
+    # Meta has two jobs: one waitlisted (with all scores), one actively applied
     conn.execute(
         "INSERT INTO jobs (fingerprint, title, company, stage, relevance_score, "
-        "fit_score, probability_score, stage_updated) "
-        "VALUES ('fp-wait','Ops Lead','Meta','waitlisted',8,72.0,48.0,'2026-04-18')"
+        "fit_score, probability_score, interview_likelihood, stage_updated) "
+        "VALUES ('fp-wait','Ops Lead','Meta','waitlisted',8,72.0,48.0,55.0,'2026-04-18')"
     )
     conn.execute(
         "INSERT INTO jobs (fingerprint, title, company, stage, stage_updated) "
@@ -59,13 +59,15 @@ def test_waitlist_shows_waitlisted_and_blocking_app(client: TestClient) -> None:
     assert "applied" in r.text
 
 
-def test_waitlist_shows_fit_and_probability_scores(client: TestClient) -> None:
-    """#237: waitlist view surfaces fit_score + probability_score for triage ranking."""
+def test_waitlist_shows_fit_and_likelihood_scores(client: TestClient) -> None:
+    """#237/#273: waitlist view surfaces fit_score + interview_likelihood for triage ranking.
+    probability_score is now default_visible=False (hidden-by-default); interview_likelihood
+    replaces it as the default-visible scoring column on Waitlist."""
     r = client.get("/board/waitlist")
     assert r.status_code == 200
-    # Meta 'Ops Lead' row has fit_score=72.0, probability_score=48.0 — both render as integers.
+    # Meta 'Ops Lead' row has fit_score=72.0, interview_likelihood=55.0 — both render.
     assert "72" in r.text
-    assert "48" in r.text
+    assert "55" in r.text
 
 
 def test_waitlist_renders_dash_for_null_scores(client: TestClient) -> None:

@@ -99,7 +99,7 @@ def test_rejected_company_hyperlinks_to_materials(client: TestClient) -> None:
 
 
 def test_rejected_rows_filter_endpoint(client: TestClient) -> None:
-    r = client.get("/board/rejected/rows?q=Principal")
+    r = client.get("/board/rejected/rows?title=Principal")
     assert r.status_code == 200
     assert "Principal Eng" in r.text
     assert "Wrong Stack" not in r.text
