@@ -79,9 +79,10 @@ file. If you're refactoring an old hardcoded section, add a note to `docs/GENERA
 | `resume_tailor` / `cover_letter_writer` | `openrouter:anthropic/claude-opus-4.7`, `max_tokens: 4096` |
 | `company_researcher` | `openrouter:perplexity/sonar-reasoning-pro` |
 | `briefing_writer` | `openrouter:anthropic/claude-sonnet-4.6` |
-| `outreach_drafter` | `openrouter:anthropic/claude-sonnet-4.6` — profile injected directly |
+| `outreach_drafter` | `openrouter:anthropic/claude-opus-4.7` — profile + voice samples injected directly |
 | `fit_analyst` | `openrouter:perplexity/sonar-reasoning-pro` — appended to company briefing |
 | `resume_change_reviewer` / `network_analyst` | `openrouter:google/gemini-3-flash-preview` |
+| `recruiter_critic` | `openrouter:anthropic/claude-opus-4.7`, `max_tokens: 1024` — sees company, title, JD, tailored resume, cover; NOT profile/briefing/fit |
 | Job ingestion | jobs-api14 (RapidAPI) — LinkedIn (`datePosted: 'day'`) + Indeed; Gmail OAuth2 |
 | Package manager | `uv sync` for dev deps; `uv run` prefix for pytest/ruff/mypy/uvicorn |
 | Path resolution | `src/findajob/paths.py` — reads `config/paths.env`; BASE derived from `__file__` |

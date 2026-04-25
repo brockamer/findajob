@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-# ~/JobSearchPipeline/scripts/find_contacts.py
-# Args: company, jd_text_excerpt, outdir, [file_prefix], [timestamp_fn]
+# Args: company, jd_text, outdir, [file_prefix], [timestamp_fn]
 """
 Find LinkedIn connections at a company and generate outreach drafts.
-Called by prep_application.py with: company, jd_text[:2000], outdir,
+Called by prep_application.py with: company, jd_text, outdir,
 [file_prefix], [timestamp_fn]. The last two are optional; if omitted the
 script reads the prefix from profile.md and generates its own timestamp
 (useful for running this script directly, outside of a prep cycle).
@@ -17,7 +16,14 @@ import sys
 from datetime import datetime
 
 from findajob.paths import AICHAT, BASE
-from findajob.utils import build_outreach_filename, load_env, log_event, read_candidate_name, read_file_prefix
+from findajob.utils import (
+    build_outreach_filename,
+    load_env,
+    load_voice_samples,
+    log_event,
+    read_candidate_name,
+    read_file_prefix,
+)
 
 
 def company_match(search, contact_company):
@@ -85,14 +91,18 @@ def rank_contacts(contacts):
     return sorted(contacts, key=score, reverse=True)
 
 
-def generate_outreach(contact, company, jd_text, outdir, profile_text, file_prefix, timestamp_fn, candidate_name):
-    """Call aichat-ng outreach_drafter role. Profile injected directly — no RAG."""
+def generate_outreach(
+    contact, company, jd_text, outdir, profile_text, file_prefix, timestamp_fn, candidate_name, voice_samples
+):
+    """Call aichat-ng outreach_drafter role. Profile + voice samples injected directly — no RAG."""
+    voice_section = f"VOICE SAMPLES:\n{voice_samples}\n\n" if voice_samples else ""
     prompt = (
         f"CANDIDATE PROFILE:\n{profile_text}\n\n"
-        f"Draft a brief LinkedIn outreach message from {candidate_name} to {contact['name']}, "
+        f"{voice_section}"
+        f"Draft a LinkedIn outreach message from {candidate_name} to {contact['name']}, "
         f"who is a {contact['title']} at {company}.\n\n"
-        f"Context: {candidate_name} is exploring a role at {company}. JD excerpt:\n{jd_text[:1000]}\n\n"
-        f"Keep it under 150 words. No generic opener. Reference their specific role."
+        f"Context: {candidate_name} is exploring a role at {company}.\n\n"
+        f"JD:\n{jd_text}"
     )
     cmd = [AICHAT, "--role", "outreach_drafter", "-S", prompt]
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
@@ -131,6 +141,8 @@ def main():
         profile_text = "[Profile not found]"
 
     candidate_name = read_candidate_name()
+    voice_samples = load_voice_samples()
+    log_event("voice_samples_loaded", caller="find_contacts", chars=len(voice_samples))
 
     contacts = find_contacts(company)
     ranked = rank_contacts(contacts)
@@ -143,7 +155,9 @@ def main():
     log_event("find_contacts", company=company, found=len(contacts), drafting=len(top))
 
     for contact in top:
-        generate_outreach(contact, company, jd_text, outdir, profile_text, file_prefix, timestamp_fn, candidate_name)
+        generate_outreach(
+            contact, company, jd_text, outdir, profile_text, file_prefix, timestamp_fn, candidate_name, voice_samples
+        )
 
     print(f"Generated {len(top)} outreach drafts for {company}")
 

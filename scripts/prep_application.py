@@ -23,6 +23,7 @@ from findajob.utils import (
     JD_MAX_CHARS,
     build_prep_filenames,
     load_env,
+    load_voice_samples,
     log_event,
     quarantine_stale_prep_folders,
     read_file_prefix,
@@ -229,7 +230,7 @@ def main():
         return
 
     # ── Step 2: Company briefing FIRST — gives all downstream steps rich context ──
-    brief_prompt = f"Research {company} thoroughly.\nJob title: {title}\nJD excerpt:\n{jd_text[:2000]}"
+    brief_prompt = f"Research {company} thoroughly.\nJob title: {title}\nJD:\n{jd_text}"
     raw_briefing = aichat("company_researcher", brief_prompt)
 
     # Pass raw research through briefing_writer with candidate context for stories
@@ -239,7 +240,7 @@ def main():
         f"RAW RESEARCH:\n{raw_briefing}\n\n"
         f"CANDIDATE PROFILE:\n{profile_text}\n\n"
         f"MASTER RESUME:\n{master_text}\n\n"
-        f"JD:\n{jd_text[:3000]}"
+        f"JD:\n{jd_text}"
     )
     briefing = aichat("briefing_writer", formatted_brief_prompt)
 
@@ -257,7 +258,7 @@ def main():
         f"CANDIDATE PROFILE:\n{profile_text}\n\n"
         f"MASTER RESUME:\n{master_text}\n\n"
         f"Company: {company}\nTitle: {title}\n\n"
-        f"JD:\n{jd_text[:3000]}\n\n"
+        f"JD:\n{jd_text}\n\n"
         f"COMPANY BRIEFING:\n{briefing}"
     )
     fit_analysis = aichat("fit_analyst", fit_prompt)
@@ -321,7 +322,7 @@ def main():
     )
 
     # ── Step 3: Resume — briefing + fit analysis context now available ──
-    briefing_context = full_briefing[:10000] if full_briefing else ""
+    briefing_context = full_briefing if full_briefing else ""
     resume_prompt = (
         f"MASTER RESUME:\n{master_text}\n\n"
         f"CANDIDATE PROFILE:\n{profile_text}\n\n"
@@ -376,18 +377,20 @@ def main():
     )
 
     # Generate change log
-    changes_prompt = (
-        f"ORIGINAL MASTER RESUME:\n{master_text}\n\nTAILORED RESUME:\n{resume_md}\n\nTARGET JD:\n{jd_text[:2000]}"
-    )
+    changes_prompt = f"ORIGINAL MASTER RESUME:\n{master_text}\n\nTAILORED RESUME:\n{resume_md}\n\nTARGET JD:\n{jd_text}"
     changes_md = aichat("resume_change_reviewer", changes_prompt)
     with open(out["changes_md"], "w") as f:
         f.write(changes_md)
 
     # ── Step 4: Cover letter — briefing + fit analysis for company signals ──
     today_str = datetime.now().strftime("%B %d, %Y")
+    voice_samples = load_voice_samples()
+    log_event("voice_samples_loaded", caller="cover_letter_writer", chars=len(voice_samples))
+    voice_section = f"VOICE SAMPLES:\n{voice_samples}\n\n" if voice_samples else ""
     cover_prompt = (
         f"CANDIDATE PROFILE:\n{profile_text}\n\n"
         f"MASTER RESUME:\n{master_text}\n\n"
+        f"{voice_section}"
         f"Company: {company}\nTitle: {title}\nDate: {today_str}\n\n"
         f"JD:\n{jd_text}\n\n"
         f"COMPANY BRIEFING AND FIT ANALYSIS:\n{briefing_context}"
@@ -413,6 +416,21 @@ def main():
     )
     _add_cover_letter_spacing(out["cover_docx"])
 
+    # ── Step 4.5: Recruiter critique — skeptical outside read of resume + cover ──
+    # Sees only what an actual recruiter sees: company, title, JD, resume, cover.
+    # No profile / briefing / fit analysis — the point is to simulate a reader who
+    # has NOT done background research on the candidate.
+    critique_prompt = (
+        f"Company: {company}\nTitle: {title}\n\n"
+        f"JD:\n{jd_text}\n\n"
+        f"TAILORED RESUME:\n{resume_md}\n\n"
+        f"COVER LETTER:\n{cover_md_text}"
+    )
+    critique_md = aichat("recruiter_critic", critique_prompt)
+    if critique_md:
+        with open(out["critique_md"], "w") as f:
+            f.write(critique_md)
+
     # ── Step 5: Network outreach ──
     # Pass the file_prefix and timestamp so outreach files follow the same naming convention.
     subprocess.run(
@@ -420,7 +438,7 @@ def main():
             sys.executable,
             f"{BASE}/scripts/find_contacts.py",
             company,
-            jd_text[:2000],
+            jd_text,
             outdir,
             file_prefix,
             timestamp_fn,

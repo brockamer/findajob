@@ -263,6 +263,7 @@ def build_prep_filenames(company: str, title: str, timestamp_fn: str, file_prefi
       {Prefix} Cover - {Company} - {Title} - {YYYYMMDD-HHMMSS}.{md,docx}
       {Prefix} Briefing - {Company} - {Title} - {YYYYMMDD-HHMMSS}.{md,docx}
       {Prefix} Resume Changes - {Company} - {Title} - {YYYYMMDD-HHMMSS}.md
+      {Prefix} Critique - {Company} - {Title} - {YYYYMMDD-HHMMSS}.md
       JD - {Company} - {Title}.txt
       Review Checklist - {Company} - {Title}.md
 
@@ -275,6 +276,7 @@ def build_prep_filenames(company: str, title: str, timestamp_fn: str, file_prefi
     cover_base = f"{file_prefix} Cover - {co} - {t} - {timestamp_fn}"
     briefing_base = f"{file_prefix} Briefing - {co} - {t} - {timestamp_fn}"
     changes_base = f"{file_prefix} Resume Changes - {co} - {t} - {timestamp_fn}"
+    critique_base = f"{file_prefix} Critique - {co} - {t} - {timestamp_fn}"
     # Internal reference docs: short form, no prefix or timestamp
     jd_base = f"JD - {co} - {t}"
     checklist_base = f"Review Checklist - {co} - {t}"
@@ -286,6 +288,7 @@ def build_prep_filenames(company: str, title: str, timestamp_fn: str, file_prefi
         "briefing_md": f"{briefing_base}.md",
         "briefing_docx": f"{briefing_base}.docx",
         "changes_md": f"{changes_base}.md",
+        "critique_md": f"{critique_base}.md",
         "jd_txt": f"{jd_base}.txt",
         "checklist_md": f"{checklist_base}.md",
     }
@@ -354,6 +357,46 @@ def build_outreach_filename(contact_name: str, company: str, timestamp_fn: str, 
     co = safe_filename_part(company, 40)
     ct = safe_filename_part(contact_name, 40)
     return f"{file_prefix} Outreach to {ct} - {co} - {timestamp_fn}.txt"
+
+
+# ── Voice samples ─────────────────────────────────────────────────────────
+
+
+def load_voice_samples(samples_dir: str | None = None, max_chars: int = 32000) -> str:
+    """Concatenate candidate voice samples for style calibration.
+
+    Reads .md and .txt files from candidate_context/voice_samples/ (excluding
+    README*), joins with double-newline separators, caps at max_chars. Returns
+    empty string when the directory is missing, contains no samples, or only
+    contains README files.
+    """
+    if samples_dir is None:
+        samples_dir = f"{BASE}/candidate_context/voice_samples"
+    if not os.path.isdir(samples_dir):
+        return ""
+
+    parts: list[str] = []
+    for name in sorted(os.listdir(samples_dir)):
+        if name.lower().startswith("readme"):
+            continue
+        if not (name.endswith(".md") or name.endswith(".txt")):
+            continue
+        path = os.path.join(samples_dir, name)
+        try:
+            with open(path) as f:
+                content = f.read().strip()
+        except OSError:
+            continue
+        if content:
+            parts.append(content)
+
+    if not parts:
+        return ""
+
+    text = "\n\n".join(parts)
+    if len(text) > max_chars:
+        text = text[:max_chars]
+    return text
 
 
 # ── JD boilerplate stripping ───────────────────────────────────────────────

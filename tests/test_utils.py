@@ -13,6 +13,7 @@ from findajob.utils import (
     is_ingest_noise_title,
     is_valid_company,
     jd_is_usable,
+    load_voice_samples,
     log_event,
     safe_filename_part,
     strip_jd_boilerplate,
@@ -272,10 +273,10 @@ class TestBuildPrepFilenames:
             company="Google",
             title="Data Center Ops Manager",
             timestamp_fn="20260412-143000",
-            file_prefix="Brock",
+            file_prefix="TestUser",
         )
 
-    def test_returns_exactly_9_keys(self):
+    def test_returns_exactly_10_keys(self):
         expected_keys = {
             "resume_md",
             "resume_docx",
@@ -284,29 +285,33 @@ class TestBuildPrepFilenames:
             "briefing_md",
             "briefing_docx",
             "changes_md",
+            "critique_md",
             "jd_txt",
             "checklist_md",
         }
         assert set(self.result.keys()) == expected_keys
 
+    def test_critique_md_format(self):
+        assert self.result["critique_md"] == ("TestUser Critique - Google - Data Center Ops Manager - 20260412-143000.md")
+
     def test_resume_md_format(self):
-        assert self.result["resume_md"] == "Brock Resume - Google - Data Center Ops Manager - 20260412-143000.md"
+        assert self.result["resume_md"] == "TestUser Resume - Google - Data Center Ops Manager - 20260412-143000.md"
 
     def test_resume_docx_format(self):
-        assert self.result["resume_docx"] == "Brock Resume - Google - Data Center Ops Manager - 20260412-143000.docx"
+        assert self.result["resume_docx"] == "TestUser Resume - Google - Data Center Ops Manager - 20260412-143000.docx"
 
     def test_cover_md_format(self):
-        assert self.result["cover_md"] == "Brock Cover - Google - Data Center Ops Manager - 20260412-143000.md"
+        assert self.result["cover_md"] == "TestUser Cover - Google - Data Center Ops Manager - 20260412-143000.md"
 
     def test_cover_docx_format(self):
-        assert self.result["cover_docx"] == "Brock Cover - Google - Data Center Ops Manager - 20260412-143000.docx"
+        assert self.result["cover_docx"] == "TestUser Cover - Google - Data Center Ops Manager - 20260412-143000.docx"
 
     def test_briefing_md_format(self):
-        assert self.result["briefing_md"] == "Brock Briefing - Google - Data Center Ops Manager - 20260412-143000.md"
+        assert self.result["briefing_md"] == "TestUser Briefing - Google - Data Center Ops Manager - 20260412-143000.md"
 
     def test_changes_md_format(self):
         assert self.result["changes_md"] == (
-            "Brock Resume Changes - Google - Data Center Ops Manager - 20260412-143000.md"
+            "TestUser Resume Changes - Google - Data Center Ops Manager - 20260412-143000.md"
         )
 
     def test_jd_txt_has_no_prefix_or_timestamp(self):
@@ -335,17 +340,17 @@ class TestBuildOutreachFilename:
             contact_name="Jane Smith",
             company="Google",
             timestamp_fn="20260412-143000",
-            file_prefix="Brock",
+            file_prefix="TestUser",
         )
-        assert result == "Brock Outreach to Jane Smith - Google - 20260412-143000.txt"
+        assert result == "TestUser Outreach to Jane Smith - Google - 20260412-143000.txt"
 
     def test_special_chars_in_contact_sanitized(self):
-        result = build_outreach_filename("Jane (Sr.)", "Google", "20260412-143000", "Brock")
+        result = build_outreach_filename("Jane (Sr.)", "Google", "20260412-143000", "TestUser")
         assert "(" not in result
         assert ")" not in result
 
     def test_special_chars_in_company_sanitized(self):
-        result = build_outreach_filename("Jane", "Google/Alphabet", "20260412-143000", "Brock")
+        result = build_outreach_filename("Jane", "Google/Alphabet", "20260412-143000", "TestUser")
         assert "/" not in result
 
 
@@ -445,3 +450,66 @@ class TestStripJdBoilerplate:
         text = body.strip() + "\n\n" + boilerplate
         result = strip_jd_boilerplate(text)
         assert "Benefits:" not in result
+
+
+# ── load_voice_samples ─────────────────────────────────────────────────────
+
+
+class TestLoadVoiceSamples:
+    def test_missing_dir_returns_empty(self, tmp_path):
+        missing = tmp_path / "nope"
+        assert load_voice_samples(samples_dir=str(missing)) == ""
+
+    def test_empty_dir_returns_empty(self, tmp_path):
+        assert load_voice_samples(samples_dir=str(tmp_path)) == ""
+
+    def test_only_readme_returns_empty(self, tmp_path):
+        (tmp_path / "README.md").write_text("# voice samples\nThis is just docs.")
+        (tmp_path / "readme.txt").write_text("more docs")
+        assert load_voice_samples(samples_dir=str(tmp_path)) == ""
+
+    def test_single_md_file(self, tmp_path):
+        (tmp_path / "voice-samples.md").write_text("My one true voice.")
+        assert load_voice_samples(samples_dir=str(tmp_path)) == "My one true voice."
+
+    def test_single_txt_file(self, tmp_path):
+        (tmp_path / "essay.txt").write_text("Plain text voice.")
+        assert load_voice_samples(samples_dir=str(tmp_path)) == "Plain text voice."
+
+    def test_multiple_files_concatenated_alphabetically(self, tmp_path):
+        (tmp_path / "b.md").write_text("Second.")
+        (tmp_path / "a.md").write_text("First.")
+        (tmp_path / "c.txt").write_text("Third.")
+        assert load_voice_samples(samples_dir=str(tmp_path)) == "First.\n\nSecond.\n\nThird."
+
+    def test_readme_excluded_from_concatenation(self, tmp_path):
+        (tmp_path / "README.md").write_text("Skip me.")
+        (tmp_path / "voice-samples.md").write_text("Real voice.")
+        assert load_voice_samples(samples_dir=str(tmp_path)) == "Real voice."
+
+    def test_non_md_non_txt_ignored(self, tmp_path):
+        (tmp_path / "voice-samples.md").write_text("Real voice.")
+        (tmp_path / "image.png").write_text("binary garbage")
+        (tmp_path / "data.json").write_text('{"x": 1}')
+        assert load_voice_samples(samples_dir=str(tmp_path)) == "Real voice."
+
+    def test_empty_files_filtered(self, tmp_path):
+        (tmp_path / "a.md").write_text("")
+        (tmp_path / "b.md").write_text("   \n\n  ")
+        (tmp_path / "c.md").write_text("Real content.")
+        assert load_voice_samples(samples_dir=str(tmp_path)) == "Real content."
+
+    def test_max_chars_caps_output(self, tmp_path):
+        (tmp_path / "a.md").write_text("x" * 50000)
+        out = load_voice_samples(samples_dir=str(tmp_path), max_chars=100)
+        assert len(out) == 100
+        assert out == "x" * 100
+
+    def test_max_chars_default_is_32k(self, tmp_path):
+        (tmp_path / "a.md").write_text("y" * 50000)
+        out = load_voice_samples(samples_dir=str(tmp_path))
+        assert len(out) == 32000
+
+    def test_under_cap_unchanged(self, tmp_path):
+        (tmp_path / "a.md").write_text("short content")
+        assert load_voice_samples(samples_dir=str(tmp_path), max_chars=1000) == "short content"
