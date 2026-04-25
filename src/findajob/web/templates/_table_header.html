@@ -1,0 +1,181 @@
+{# src/findajob/web/templates/_table_header.html
+   Inputs:
+     specs        — sequence of ColumnSpec for the tab
+     parsed       — ParsedFilters with current values
+     visible      — set[str] of column names currently shown (after ?cols= cascade)
+     leading_cols — list of (label, css) tuples for non-spec columns rendered first
+                    (e.g., dashboard renders Status + Reject cells before the spec
+                     columns; archive renders a Promote cell)
+   Renders the entire <thead>: column-title row + filter-input row.
+
+   The filter inputs all carry data-filter-input so HTMX hx-include picks them
+   up; popovers use Alpine.js (x-data/x-show) and write their committed values
+   into hidden inputs that share the same data-filter-input attribute.
+#}
+{% set tab_path = request.url.path.rstrip('/') %}
+{% set rows_url = tab_path + '/rows' %}
+<thead class="bg-slate-100 text-left text-xs uppercase tracking-wide text-slate-600">
+  <tr>
+    {% for label, css in (leading_cols or []) %}
+      <th class="px-3 py-2 {{ css or '' }}">{{ label }}</th>
+    {% endfor %}
+    {% for s in specs if s.name in visible %}
+      {% set is_filtered = (
+        s.name in parsed.text or s.name in parsed.numeric_range
+        or s.name in parsed.enum or s.name in parsed.date_range
+      ) %}
+      <th class="px-3 py-2 {% if is_filtered %}bg-blue-50{% endif %}">
+        {% if s.sortable %}
+          <a href="?sort={{ s.name }}&desc={% if parsed.sort == s.name and parsed.desc %}0{% else %}1{% endif %}{% if parsed.cols %}&cols={{ parsed.cols | join(',') }}{% endif %}">
+            {{ s.label }}{% if parsed.sort == s.name %}{% if parsed.desc %} ▼{% else %} ▲{% endif %}{% endif %}
+          </a>
+        {% else %}
+          <span>{{ s.label }}</span>
+        {% endif %}
+        {% if is_filtered %} <span class="text-blue-700">●</span>{% endif %}
+      </th>
+    {% endfor %}
+  </tr>
+  <tr class="bg-slate-50 border-b border-slate-200 normal-case">
+    {% for label, css in (leading_cols or []) %}
+      <th class="px-1 py-1"><span class="text-slate-400">—</span></th>
+    {% endfor %}
+    {% for s in specs if s.name in visible %}
+      <th class="px-1 py-1 align-top">
+        {% if not s.filterable %}
+          <span class="text-slate-400">—</span>
+        {% elif s.kind.value == 'text' %}
+          <input type="text"
+                 name="{{ s.name }}"
+                 data-filter-input
+                 value="{{ parsed.text.get(s.name, '') }}"
+                 placeholder="contains…"
+                 class="border border-slate-300 rounded px-1 py-0.5 text-xs w-full"
+                 hx-get="{{ rows_url }}"
+                 hx-trigger="keyup changed delay:200ms"
+                 hx-target="#rows"
+                 hx-swap="innerHTML"
+                 hx-include="[data-filter-input]"
+                 hx-push-url="true">
+        {% elif s.kind.value in ('score', 'integer') %}
+          {% set lo, hi = parsed.numeric_range.get(s.name, (none, none)) %}
+          <span class="inline-flex items-center gap-0.5">
+            <input type="number"
+                   name="{{ s.name }}_min"
+                   data-filter-input
+                   value="{{ lo if lo is not none else '' }}"
+                   placeholder="≥"
+                   class="border border-slate-300 rounded px-1 py-0.5 text-xs w-12"
+                   hx-get="{{ rows_url }}"
+                   hx-trigger="keyup changed delay:200ms"
+                   hx-target="#rows"
+                   hx-swap="innerHTML"
+                   hx-include="[data-filter-input]"
+                   hx-push-url="true">
+            <span class="text-slate-400">–</span>
+            <input type="number"
+                   name="{{ s.name }}_max"
+                   data-filter-input
+                   value="{{ hi if hi is not none else '' }}"
+                   placeholder="≤"
+                   class="border border-slate-300 rounded px-1 py-0.5 text-xs w-12"
+                   hx-get="{{ rows_url }}"
+                   hx-trigger="keyup changed delay:200ms"
+                   hx-target="#rows"
+                   hx-swap="innerHTML"
+                   hx-include="[data-filter-input]"
+                   hx-push-url="true">
+          </span>
+        {% elif s.kind.value == 'enum' %}
+          {% set picks = parsed.enum.get(s.name, ()) %}
+          <div x-data="{ open: false }" class="relative">
+            <button type="button"
+                    @click="open = !open"
+                    class="text-xs text-slate-700 hover:text-slate-900">
+              {% if picks %}{{ picks | length }} selected{% else %}any{% endif %} ▾
+            </button>
+            <input type="hidden"
+                   name="{{ s.name }}"
+                   data-filter-input
+                   value="{{ picks | join(',') }}"
+                   data-popover-target="{{ s.name }}">
+            <div x-show="open"
+                 x-cloak
+                 @click.outside="open = false"
+                 class="absolute z-10 mt-1 bg-white border border-slate-300 rounded shadow-lg p-2 min-w-[10rem] text-xs">
+              <div class="font-semibold uppercase text-slate-500 mb-1">{{ s.label }}</div>
+              {% for v in s.enum_values %}
+                <label class="block">
+                  <input type="checkbox"
+                         value="{{ v }}"
+                         data-popover-checkbox="{{ s.name }}"
+                         {% if v in picks %}checked{% endif %}>
+                  {{ v }}
+                </label>
+              {% endfor %}
+              <div class="mt-2 flex gap-1">
+                <button type="button"
+                        data-popover-apply="{{ s.name }}"
+                        @click="open = false"
+                        class="px-2 py-0.5 bg-slate-900 text-white rounded text-xs">Apply</button>
+                <button type="button"
+                        data-popover-clear="{{ s.name }}"
+                        @click="open = false"
+                        class="px-2 py-0.5 bg-slate-100 text-slate-700 rounded text-xs">Clear</button>
+                <button type="button"
+                        @click="open = false"
+                        class="px-2 py-0.5 text-slate-500 text-xs">Cancel</button>
+              </div>
+            </div>
+          </div>
+        {% elif s.kind.value == 'date' %}
+          {% set d_from, d_to = parsed.date_range.get(s.name, (none, none)) %}
+          <div x-data="{ open: false }" class="relative">
+            <button type="button"
+                    @click="open = !open"
+                    class="text-xs text-slate-700 hover:text-slate-900">
+              {% if d_from or d_to %}{{ d_from or '…' }}–{{ d_to or '…' }}{% else %}any{% endif %} ▾
+            </button>
+            <input type="hidden"
+                   name="{{ s.name }}_from"
+                   data-filter-input
+                   value="{{ d_from or '' }}"
+                   data-popover-target="{{ s.name }}_from">
+            <input type="hidden"
+                   name="{{ s.name }}_to"
+                   data-filter-input
+                   value="{{ d_to or '' }}"
+                   data-popover-target="{{ s.name }}_to">
+            <div x-show="open"
+                 x-cloak
+                 @click.outside="open = false"
+                 class="absolute z-10 mt-1 bg-white border border-slate-300 rounded shadow-lg p-2 text-xs">
+              <div class="font-semibold uppercase text-slate-500 mb-1">{{ s.label }}</div>
+              <label class="block mb-1">From: <input type="date" data-popover-date-from="{{ s.name }}" value="{{ d_from or '' }}" class="border border-slate-300 rounded px-1 py-0.5"></label>
+              <label class="block mb-2">Until: <input type="date" data-popover-date-to="{{ s.name }}" value="{{ d_to or '' }}" class="border border-slate-300 rounded px-1 py-0.5"></label>
+              <div class="flex gap-1">
+                <button type="button"
+                        data-popover-apply="{{ s.name }}"
+                        @click="open = false"
+                        class="px-2 py-0.5 bg-slate-900 text-white rounded text-xs">Apply</button>
+                <button type="button"
+                        data-popover-clear="{{ s.name }}"
+                        @click="open = false"
+                        class="px-2 py-0.5 bg-slate-100 text-slate-700 rounded text-xs">Clear</button>
+                <button type="button"
+                        @click="open = false"
+                        class="px-2 py-0.5 text-slate-500 text-xs">Cancel</button>
+              </div>
+            </div>
+          </div>
+        {% else %}
+          <span class="text-slate-400">—</span>
+        {% endif %}
+      </th>
+    {% endfor %}
+  </tr>
+  {# Hidden sort inputs so HTMX hx-include picks them up regardless of column visibility #}
+  {% if parsed.sort %}<input type="hidden" name="sort" value="{{ parsed.sort }}" data-filter-input>{% endif %}
+  <input type="hidden" name="desc" value="{{ '1' if parsed.desc else '0' }}" data-filter-input>
+  {% if parsed.cols %}<input type="hidden" name="cols" value="{{ parsed.cols | join(',') }}" data-filter-input>{% endif %}
+</thead>
