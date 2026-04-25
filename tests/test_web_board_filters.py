@@ -133,6 +133,49 @@ def test_archive_score_min_5_surfaces_buried_gems(
     assert "fp-b3" not in r.text
 
 
+def test_dashboard_score_min_5_surfaces_buried_gems_on_dashboard(
+    app_with_db: tuple[TestClient, Path],
+) -> None:
+    """The score-7+ default on Dashboard is route-level, not baked into the
+    base WHERE — so an explicit ?relevance_score_min=5 surfaces 5/6 jobs that
+    were hidden by the cold-load 7+ floor."""
+    client, db_path = app_with_db
+    _insert_job(db_path, id="bg1", fingerprint="fp-bg1", relevance_score=8, title="Eight", stage="scored")
+    _insert_job(db_path, id="bg2", fingerprint="fp-bg2", relevance_score=6, title="Six", stage="scored")
+    _insert_job(db_path, id="bg3", fingerprint="fp-bg3", relevance_score=5, title="Five", stage="scored")
+    _insert_job(db_path, id="bg4", fingerprint="fp-bg4", relevance_score=4, title="Four", stage="scored")
+
+    # Cold load: only the 8.
+    r1 = client.get("/board/dashboard")
+    assert r1.status_code == 200
+    assert "fp-bg1" in r1.text
+    assert "fp-bg2" not in r1.text
+    assert "fp-bg3" not in r1.text
+
+    # ?relevance_score_min=5 explicitly: 5, 6, 8 — but NOT 4.
+    r2 = client.get("/board/dashboard?relevance_score_min=5")
+    assert r2.status_code == 200
+    assert "fp-bg1" in r2.text
+    assert "fp-bg2" in r2.text
+    assert "fp-bg3" in r2.text
+    assert "fp-bg4" not in r2.text
+
+
+def test_dashboard_score_min_0_disables_default_floor(
+    app_with_db: tuple[TestClient, Path],
+) -> None:
+    """An explicit ?relevance_score_min=0 lets the operator see everything in
+    the dashboard's stage gate, including very low scores."""
+    client, db_path = app_with_db
+    _insert_job(db_path, id="z1", fingerprint="fp-z1", relevance_score=2, title="Two", stage="scored")
+    _insert_job(db_path, id="z2", fingerprint="fp-z2", relevance_score=8, title="Eight", stage="scored")
+
+    r = client.get("/board/dashboard?relevance_score_min=0")
+    assert r.status_code == 200
+    assert "fp-z1" in r.text
+    assert "fp-z2" in r.text
+
+
 def test_dashboard_text_filter_on_title(
     app_with_db: tuple[TestClient, Path],
 ) -> None:

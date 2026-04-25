@@ -32,11 +32,15 @@ def _resolve_visible(specs: tuple[ColumnSpec, ...], parsed: ParsedFilters) -> se
 
 
 _DASHBOARD_DEFAULT_SORT = "relevance_score"
+_DASHBOARD_DEFAULT_SCORE_MIN = 7
 
-# Base WHERE always intersects user filters (see spec "Default landings").
+# Stage gate + dedup-sibling exclusion. The score floor is no longer baked in —
+# it's applied as a ROUTE-LEVEL DEFAULT (see _dashboard_query) so that
+# ?relevance_score_min=5 actually surfaces score-5/6 buried gems instead of
+# being clobbered by the base WHERE. The default keeps cold-load behavior
+# unchanged at score >= 7.
 _DASHBOARD_BASE_WHERE = (
-    "((relevance_score >= 7 AND stage IN ('scored','manual_review'))"
-    " OR stage IN ('prep_in_progress','materials_drafted'))"
+    "stage IN ('scored','manual_review','prep_in_progress','materials_drafted')"
     " AND NOT EXISTS ("
     "  SELECT 1 FROM jobs sib"
     "  WHERE sib.id != jobs.id"
@@ -47,8 +51,26 @@ _DASHBOARD_BASE_WHERE = (
 )
 
 
+def _apply_dashboard_default_score(parsed: ParsedFilters) -> ParsedFilters:
+    """If the user didn't pass ?relevance_score_min/_max, apply a default score
+    floor of 7 so the cold-load surface stays at 7+. Any explicit user value
+    wins (including 0, e.g., ?relevance_score_min=0 to see everything)."""
+    if "relevance_score" in parsed.numeric_range:
+        return parsed
+    from dataclasses import replace
+
+    return replace(
+        parsed,
+        numeric_range={
+            **parsed.numeric_range,
+            "relevance_score": (_DASHBOARD_DEFAULT_SCORE_MIN, None),
+        },
+    )
+
+
 def _dashboard_query(parsed: ParsedFilters) -> tuple[str, list[object]]:
     specs = filter_registry.DASHBOARD_COLUMNS
+    parsed = _apply_dashboard_default_score(parsed)
     clauses, params = build_filter_clauses(specs, parsed)
     sort = parsed.sort or _DASHBOARD_DEFAULT_SORT
     order = "DESC" if parsed.desc else "ASC"
