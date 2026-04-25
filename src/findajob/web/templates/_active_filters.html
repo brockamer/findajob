@@ -1,0 +1,67 @@
+{# src/findajob/web/templates/_active_filters.html
+   Inputs:
+     parsed       — ParsedFilters
+     specs        — sequence of ColumnSpec for the current tab (label lookup)
+   Renders the chip strip + Clear-all link + Copy-link button.
+
+   Hidden inputs that mirror every active filter live HERE so HTMX
+   hx-include="[data-filter-input]" picks them up. The popover form fields
+   write their committed values back into these inputs on Apply.
+#}
+{% set spec_label = {} %}
+{% for s in specs %}{% if spec_label.update({s.name: s.label}) %}{% endif %}{% endfor %}
+{% if not parsed.is_empty() or parsed.cols or parsed.sort %}
+<div class="mt-2 mb-3 flex items-center gap-2 flex-wrap text-xs">
+  {% for name, val in parsed.text.items() %}
+    <span class="inline-flex items-center gap-1 px-2 py-1 bg-slate-100 rounded">
+      <span class="font-semibold">{{ spec_label.get(name, name) }}:</span>
+      <span>{{ val }}</span>
+      <a href="?{{ filter_remove_qs(parsed, name) }}" class="text-slate-500 hover:text-slate-900" title="Clear">✕</a>
+    </span>
+  {% endfor %}
+  {% for name, (lo, hi) in parsed.numeric_range.items() %}
+    <span class="inline-flex items-center gap-1 px-2 py-1 bg-slate-100 rounded">
+      <span class="font-semibold">{{ spec_label.get(name, name) }}:</span>
+      <span>{{ lo if lo is not none else '−∞' }}–{{ hi if hi is not none else '+∞' }}</span>
+      <a href="?{{ filter_remove_qs(parsed, name) }}" class="text-slate-500 hover:text-slate-900" title="Clear">✕</a>
+    </span>
+  {% endfor %}
+  {% for name, picks in parsed.enum.items() %}
+    <span class="inline-flex items-center gap-1 px-2 py-1 bg-slate-100 rounded">
+      <span class="font-semibold">{{ spec_label.get(name, name) }}:</span>
+      <span>{{ picks | join(', ') }}</span>
+      <a href="?{{ filter_remove_qs(parsed, name) }}" class="text-slate-500 hover:text-slate-900" title="Clear">✕</a>
+    </span>
+  {% endfor %}
+  {% for name, (d_from, d_to) in parsed.date_range.items() %}
+    <span class="inline-flex items-center gap-1 px-2 py-1 bg-slate-100 rounded">
+      <span class="font-semibold">{{ spec_label.get(name, name) }}:</span>
+      <span>{{ d_from or '…' }} → {{ d_to or '…' }}</span>
+      <a href="?{{ filter_remove_qs(parsed, name) }}" class="text-slate-500 hover:text-slate-900" title="Clear">✕</a>
+    </span>
+  {% endfor %}
+  {% if parsed.cols %}
+    <span class="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-800 rounded">
+      <span class="font-semibold">cols:</span>
+      <span>{{ parsed.cols | join(', ') }}</span>
+      <a href="?{{ filter_remove_qs(parsed, 'cols') }}" class="hover:text-blue-900" title="Reset to default columns">✕</a>
+    </span>
+  {% endif %}
+  {% if not parsed.is_empty() or parsed.cols %}
+    <a href="{{ request.url.path }}" class="text-slate-600 hover:text-slate-900 underline">Clear all</a>
+  {% endif %}
+  <button type="button"
+          data-copy-link
+          class="ml-auto text-slate-600 hover:text-slate-900 px-2 py-1 border border-slate-300 rounded">
+    🔗 <span data-copy-link-label>Copy link</span>
+  </button>
+</div>
+{% else %}
+<div class="mt-2 mb-3 flex justify-end">
+  <button type="button"
+          data-copy-link
+          class="text-xs text-slate-600 hover:text-slate-900 px-2 py-1 border border-slate-300 rounded">
+    🔗 <span data-copy-link-label>Copy link</span>
+  </button>
+</div>
+{% endif %}

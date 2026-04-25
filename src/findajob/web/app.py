@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from findajob.web.constants import FOLDER_STAGES
-from findajob.web.helpers import applied_age_bucket, remote_cell_class, stage_row_class
+from findajob.web.helpers import applied_age_bucket, filter_remove_qs, remote_cell_class, stage_row_class
 from findajob.web.routes import materials as _materials_routes
 from findajob.web.routes import router as _aggregated_router
 
@@ -31,6 +31,7 @@ def create_app(
     templates.env.globals["applied_age_bucket"] = applied_age_bucket
     templates.env.globals["remote_cell_class"] = remote_cell_class
     templates.env.globals["stage_row_class"] = stage_row_class
+    templates.env.globals["filter_remove_qs"] = filter_remove_qs
 
     static_dir = Path(__file__).parent / "static"
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
