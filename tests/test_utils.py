@@ -292,7 +292,9 @@ class TestBuildPrepFilenames:
         assert set(self.result.keys()) == expected_keys
 
     def test_critique_md_format(self):
-        assert self.result["critique_md"] == ("TestUser Critique - Google - Data Center Ops Manager - 20260412-143000.md")
+        assert self.result["critique_md"] == (
+            "TestUser Critique - Google - Data Center Ops Manager - 20260412-143000.md"
+        )
 
     def test_resume_md_format(self):
         assert self.result["resume_md"] == "TestUser Resume - Google - Data Center Ops Manager - 20260412-143000.md"
