@@ -75,3 +75,40 @@ def test_validate_specs_accepts_clean_list() -> None:
         ColumnSpec(name="stage", label="Stage", kind=Kind.ENUM, enum_values=("a", "b")),
     )
     validate_specs(ok)  # no exception
+
+
+def test_all_tab_registries_pass_validate() -> None:
+    """Every registered tab spec list passes validate_specs at import time."""
+    from findajob.web.filters import registry
+
+    for name in (
+        "DASHBOARD_COLUMNS",
+        "APPLIED_COLUMNS",
+        "REVIEW_COLUMNS",
+        "WAITLIST_COLUMNS",
+        "REJECTED_COLUMNS",
+        "ARCHIVE_COLUMNS",
+    ):
+        specs = getattr(registry, name)
+        validate_specs(specs)
+        assert len(specs) > 0
+
+
+def test_dashboard_visibility_defaults() -> None:
+    from findajob.web.filters import registry
+
+    visible = {s.name for s in registry.DASHBOARD_COLUMNS if s.default_visible}
+    hidden = {s.name for s in registry.DASHBOARD_COLUMNS if not s.default_visible}
+
+    # AI notes + Likelihood visible, Prob hidden, Stage hidden — per spec.
+    assert "ai_notes" in visible
+    assert "interview_likelihood" in visible
+    assert "probability_score" in hidden
+    assert "stage" in hidden
+
+
+def test_waitlist_includes_likelihood_visible() -> None:
+    from findajob.web.filters import registry
+
+    visible = {s.name for s in registry.WAITLIST_COLUMNS if s.default_visible}
+    assert "interview_likelihood" in visible
