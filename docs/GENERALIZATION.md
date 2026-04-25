@@ -43,16 +43,13 @@ domain. Each item is a future task to make the pipeline domain-neutral.
 
 ### Scorer role prompt — `config/roles/job_scorer.md`
 
-- [ ] **`HARD REJECT RULES`** section — enumerates tech job categories explicitly (software engineering, security, IT, supply chain, networking, hardware design, biotech, finance, legal, HR, marketing, facilities)
-  - Should become: "Hard reject any role that matches a category listed in the candidate's profile under `## Excluded Categories`. The profile determines what's excluded."
+- [x] **`HARD REJECT RULES`** — fixed 2026-04-25 (#65): no longer enumerates tech categories. Prompt now instructs the LLM to read the candidate's profile under any of `## Excluded Categories`, `## Deal-Breakers`, `## What I Am NOT`, `## Not Open To`, or `## Reduce score for` (under `## Flags for Scorer`). Profile exclusions explicitly take priority over the Tier 1 floor.
 
-- [ ] **`TIER 1 COMPANY EXCEPTION`** — defines in-domain titles as "Data center technician, DC operations, NPI program manager, operational readiness, forward deployed engineer"
-  - Should reference profile's `## Core Competencies` and `## Target Role` sections
-  - The exception logic (Tier 1 + in-domain → score 6 minimum) is generic and can stay
+- [x] **`TIER 1 COMPANY EXCEPTION`** — fixed 2026-04-25 (#65): in-domain title list removed; prompt now instructs the LLM to derive in-domain from the profile's target-role and core-competency sections. Exception logic (Tier 1 + in-domain → 6 floor) preserved as generic.
 
-- [ ] **`ENGINEER TITLE CALIBRATION`** section — assumes candidate has mixed IC/ops/program background in hardware
-  - This entire section is personal calibration based on past false positives
-  - Should move to `candidate_context/profile.md` as candidate-specific scoring guidance, or become optional
+- [x] **`ENGINEER TITLE CALIBRATION`** — fixed 2026-04-25 (#65): the operator-specific IC-vs-ops engineer calibration moved into the operator's profile under a new `## Title Calibration Notes` section. The prompt now contains a generic "candidate-token calibration" rule: don't broadly reject on a single token if that token appears in titles the candidate has held; honor any `## Title Calibration Notes` section in the profile for finer guidance. Also added to `profile.md.example` with both tech and non-tech examples.
+
+- [x] **`CROSS-INDUSTRY RECOGNITION`** — fixed 2026-04-25 (#65): hardware-specific industry list (robotics, AVs, satellites, fusion) removed from prompt. Prompt now instructs the LLM to look for cross-industry framing in profile sections like `## Core Competency (Cross-Industry)` or `## Framing for Private-Sector Applications`. Conservative scoring + ai_notes flag when the connection is speculative.
 
 ### Role prompts with tech vocabulary — `config/roles/*.md`
 
@@ -136,10 +133,10 @@ Remaining roles audited 2026-04-22 and found clean: `briefing_writer.md`, `fit_a
 2. ~~Move `_HARD_REJECT_PATTERNS`~~ → loaded from `config/prefilter_rules.yaml` via `config_loader`.
 3. ~~Move `_IN_DOMAIN_PATTERNS` and `_IN_DOMAIN_POISON`~~ → loaded from `config/in_domain_patterns.yaml`.
 
-**Phase 2: Prompt neutralization**
-4. Rewrite `job_scorer.md` hard reject section to reference profile categories rather than enumerate tech
-5. Move engineer-calibration logic from prompt to profile.md.example (as a generic example of "per-candidate scoring calibration")
-6. Audit other role prompts for domain vocabulary
+**Phase 2: Prompt neutralization** — ✅ shipped 2026-04-25 (#65)
+4. ~~Rewrite `job_scorer.md` hard reject section~~ → references profile sections instead of enumerating categories.
+5. ~~Move engineer-calibration logic~~ → moved to operator's `profile.md` under `## Title Calibration Notes`; `profile.md.example` shows the new section with both tech and non-tech examples.
+6. ~~Audit other role prompts for domain vocabulary~~ → completed 2026-04-22 (#156); see status flags above.
 
 **Phase 3: Example diversification**
 7. Rewrite `profile.md.example` and `target_companies.md.example` to show 3 fields

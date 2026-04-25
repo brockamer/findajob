@@ -1,11 +1,13 @@
 # Candidate Profile — EXAMPLE
-# Copy this file to config/profile.md and replace with your real content.
-# This file is injected directly into resume tailor, cover letter, and outreach prompts.
-# It is NOT passed through RAG. Keep it dense and factual.
+# Copy this file to candidate_context/profile.md and replace with your real content.
+# This file is injected directly into job_scorer, resume_tailor, cover_letter_writer,
+# outreach_drafter, and briefing_writer prompts. It is NOT passed through RAG.
+# Keep it dense and factual.
 #
-# The pipeline is field-agnostic — the examples below show a software engineer, but this
-# file works equally well for social workers, teachers, nurses, designers, and any other
-# field. Fill in your own details.
+# The pipeline is field-agnostic — the examples below show several fields. Fill in your
+# own details. The job_scorer prompt expects to find your exclusions and target roles
+# here; without them it will score everything as moderate fit and you will drown in
+# noise.
 
 ## Identity
 Name: Jane Smith
@@ -22,7 +24,7 @@ Phone: (555) 555-5555
   - "Nonprofit development director at an environmental org. $2-10M budget range."
 ]
 Open to: [types of roles, work arrangements, locations]
-Not open to: [explicit exclusions]
+Not open to: [explicit exclusions — high level; deep list goes under ## Excluded Categories below]
 
 ## What Makes You Unusual
 [2–3 sentences describing your differentiated background. What do you bring that a typical
@@ -47,16 +49,40 @@ volunteer work if relevant. Example:
 
 ## Target Companies / Organizations
 [List primary targets. Could be companies, nonprofits, school districts, hospital systems,
-government agencies — whatever fits your field. These inform the "Tier 1" logic in
-target_companies.md]
+government agencies — whatever fits your field. The job_scorer reads this to apply the
+"Tier 1 floor" — in-domain titles at these orgs get a minimum score of 6 even at junior
+levels.]
 
 ## Excluded Categories
-[Optional but highly recommended: list categories of roles to auto-reject. Examples:
-  - Software engineer:  "Do not show me security/SOC roles, sales engineer, solution architect"
-  - Social worker:      "Do not show me child protective services, corrections, or collections roles"
-  - Teacher:            "Do not show me substitute positions, assistant teacher, daycare"
-  - Designer:           "Do not show me print production, 3D modeling, game art"
-These feed the scorer's hard-reject logic.]
+[**Strongly recommended.** The job_scorer reads this section to hard-reject roles by title
+alone, no LLM analysis. Be explicit about categories of roles you will not consider.
+Examples by field:
+  - Software engineer:  "Security analyst, SOC, sales engineer, solution architect, supply chain,
+                         networking engineer, hardware design (silicon/FPGA/firmware)."
+  - Social worker:      "Frontline case management, child protective services, corrections,
+                         collections roles. Junior, entry-level, intern, associate analyst."
+  - Teacher:            "Substitute positions, assistant teacher, daycare, after-school care."
+  - Designer:           "Print production, 3D modeling, game art, junior production roles."
+A title that clearly matches anything you list here gets score 1, score_status=scored — no
+JD needed. Profile exclusions take priority over the Tier 1 company floor.]
+
+## Title Calibration Notes
+[**Optional.** Use this when a common token in your field's titles ("engineer," "analyst,"
+"manager," "director," "coordinator") spans both work you can do and work you cannot.
+Tell the scorer how to disambiguate when the JD is available.
+
+Examples:
+  - Tech: "My titles include 'engineer' but I am NOT an IC hardware-design engineer.
+          Score 'NPI Engineer' (validation focus) conservatively at 5-6 even at Tier 1.
+          Score 'Operations Engineer' or 'Infrastructure Engineer' normally — that's my domain.
+          When JD describes bench work / schematic review / silicon validation → 5-6 ceiling.
+          When JD describes program management / cross-functional ops → score normally."
+  - Social work: "I am NOT a frontline case manager. Roles titled 'Case Manager' are hard
+          rejects regardless of organization. Senior 'Program Manager' or 'Policy Director'
+          roles are in-domain even when 'Manager' alone might suggest something junior."
+  - Teaching: "'Lead Teacher' is in-domain; 'Assistant Lead' or 'Co-Teacher' are not."
+This section is read by the scorer when a title token appears in both your past titles
+and an excluded category — it tells the scorer how to break the tie.]
 
 ## What to Emphasize
 [1–2 paragraphs on the themes to lead with in tailored applications. What's your "elevator
