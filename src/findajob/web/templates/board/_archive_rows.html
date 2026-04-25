@@ -2,9 +2,11 @@
   {% include "_job_row.html" %}
 {% endfor %}
 {% if next_offset is not none %}
-  <tr hx-get="/board/archive/rows?offset={{ next_offset }}&sort={{ sort }}&desc={{ desc }}{% if min_score is not none %}&min_score={{ min_score }}{% endif %}{% if max_score is not none %}&max_score={{ max_score }}{% endif %}"
+  {% set base_qs = filter_qs_with(request.url.query, 'offset', next_offset | string) %}
+  <tr hx-get="/board/archive/rows?{{ base_qs }}"
       hx-trigger="revealed"
       hx-swap="outerHTML">
-    <td colspan="{{ columns|length + 1 }}" class="px-3 py-2 text-xs text-slate-400">loading…</td>
+    {% set spec_count = (specs | selectattr('name', 'in', visible) | list | length) %}
+    <td colspan="{{ spec_count + 1 }}" class="px-3 py-2 text-xs text-slate-400">loading…</td>
   </tr>
 {% endif %}
