@@ -1,10 +1,11 @@
 """Tests for the aichat-ng config template shipped in ops/aichat-ng/.
 
 The template is YAML-valid and contains the client entries the pipeline
-expects (claude, openai, gemini, openrouter, perplexity). We can't run
-aichat-ng against the template itself (no API keys loaded at test time),
-but we can assert structure so a future edit doesn't accidentally break
-parseability.
+expects. As of v0.4.0 (#251) the direct `claude` and `perplexity` clients
+were removed — both providers are reached through OpenRouter now. We
+can't run aichat-ng against the template itself (no API keys loaded at
+test time), but we can assert structure so a future edit doesn't
+accidentally break parseability.
 """
 
 from __future__ import annotations
@@ -32,10 +33,16 @@ def test_template_has_required_clients():
     names = set()
     for c in data["clients"]:
         names.add(c.get("name") or c.get("type"))
-    # These are the clients the roles config actually invokes.
-    required = {"claude", "openai", "gemini", "openrouter", "perplexity"}
+    # These are the clients the roles config actually invokes. claude and
+    # perplexity were retired in #251 — both providers route through
+    # openrouter now (see openrouter:anthropic/* and openrouter:perplexity/*
+    # model IDs in config/roles/).
+    required = {"openai", "gemini", "openrouter"}
     missing = required - names
     assert not missing, f"template missing required clients: {missing}"
+    # gemini-embed is a separately-named gemini client used for RAG; the
+    # template seeds it as a sibling of the chat-gemini client.
+    assert "gemini-embed" in names, "template missing gemini-embed client"
 
 
 def test_template_has_no_literal_keys():
