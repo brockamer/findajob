@@ -6,46 +6,30 @@ Everything you need before running the setup guide.
 
 ## Required Accounts and API Keys
 
-### 1. Anthropic (Claude)
-Used by: `resume_tailor`, `cover_letter_writer`, `briefing_writer`, `outreach_drafter`
-
-- Sign up at https://console.anthropic.com
-- Create an API key
-- Add to `data/.env` as `ANTHROPIC_API_KEY`
-- Models used: `claude-opus-4-6:thinking`, `claude-sonnet-4-6`
-
-### 2. OpenRouter
-Used by: `job_scorer` (DeepSeek v3.2)
+### 1. OpenRouter
+Used by: 10 of 11 pipeline roles — `job_scorer`, `resume_tailor`, `cover_letter_writer`, `briefing_writer`, `outreach_drafter`, `company_researcher`, `fit_analyst`, `recruiter_critic`, `resume_change_reviewer`, `network_analyst`, plus the default model.
 
 - Sign up at https://openrouter.ai
 - Create an API key
 - Add to `data/.env` as `OPENROUTER_API_KEY`
-- Model: `deepseek/deepseek-v3.2` — very cheap, accurate for structured JSON
+- Models routed: `anthropic/claude-opus-4.7`, `anthropic/claude-sonnet-4.6`, `google/gemini-3-flash-preview`, `deepseek/deepseek-v3.2`, `perplexity/sonar-reasoning-pro`
 
-### 3. Google AI (Gemini)
-Used by: default aichat-ng model, `resume_change_reviewer`, `network_analyst`, embedding model
+### 2. Google AI (Gemini)
+Used by: embedding model only (`gemini-embedding-001`) for RAG indexing of `candidate_context/`. Direct-Gemini chat models were retired from the pipeline in v0.4.0 — Gemini chat now routes through OpenRouter as well.
 
 - Sign up at https://aistudio.google.com
 - Create an API key
 - Add to `data/.env` as `GOOGLE_API_KEY`
-- Models: `gemini-3-flash-preview`, `gemini-embedding-001`
+- Model: `gemini-embedding-001` (embedding endpoint; no OpenRouter equivalent)
 
-### 4. Perplexity
-Used by: `company_researcher`
-
-- Sign up at https://www.perplexity.ai
-- Create an API key
-- Add to `data/.env` as `PERPLEXITY_API_KEY`
-- Model: `sonar-reasoning-pro` (real-time web access with reasoning)
-
-### 5. RapidAPI — jobs-api14
+### 3. RapidAPI — jobs-api14
 Used by: LinkedIn and Indeed job search in `triage.py`
 
 - Sign up at https://rapidapi.com
 - Subscribe to **jobs-api14** (has a free tier)
 - Add API key to `data/.env` as `RAPIDAPI_KEY`
 
-### 6. Google Cloud — Sheets API + Gmail API
+### 4. Google Cloud — Sheets API + Gmail API
 
 **Why:** The pipeline reads/writes Google Sheets and reads Gmail for job emails.
 

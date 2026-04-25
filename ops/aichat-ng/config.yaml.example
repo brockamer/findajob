@@ -37,10 +37,6 @@ clients:
   - type: openai
     api_key: ${OPENAI_API_KEY}
 
-  - type: claude
-    api_base: https://api.anthropic.com/v1
-    api_key: ${ANTHROPIC_API_KEY}
-
   - type: gemini
     api_base: https://generativelanguage.googleapis.com/v1beta
     api_key: ${GOOGLE_API_KEY}
@@ -78,11 +74,6 @@ clients:
     name: openrouter
     api_base: https://openrouter.ai/api/v1
     api_key: ${OPENROUTER_API_KEY}
-
-  - type: openai-compatible
-    name: perplexity
-    api_base: https://api.perplexity.ai
-    api_key: ${PERPLEXITY_API_KEY}
 
   - type: openai-compatible
     name: groq

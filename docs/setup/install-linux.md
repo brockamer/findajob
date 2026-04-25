@@ -120,20 +120,14 @@ mkdir -p ~/.config/aichat_ng/roles
 Create `~/.config/aichat_ng/config.yaml`:
 ```yaml
 # See docs/setup/configure.md for full config template
-model: gemini:gemini-3-flash-preview
+model: openrouter:google/gemini-3-flash-preview
 
 clients:
   - type: gemini
     api_key: ${GOOGLE_API_KEY}
 
-  - type: claude
-    api_key: ${ANTHROPIC_API_KEY}
-
   - type: openrouter
     api_key: ${OPENROUTER_API_KEY}
-
-  - type: perplexity
-    api_key: ${PERPLEXITY_API_KEY}
 
   - type: gemini
     name: gemini-embed

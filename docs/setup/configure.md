@@ -106,10 +106,8 @@ Linux defaults are already built into `src/findajob/paths.py`. If everything is 
 API keys and secrets. See `data/.env.example` for the full list.
 
 ```bash
-ANTHROPIC_API_KEY=sk-ant-...
 OPENROUTER_API_KEY=sk-or-...
 GOOGLE_API_KEY=AIza...
-PERPLEXITY_API_KEY=pplx-...
 RAPIDAPI_KEY=...
 NTFY_TOPIC=your-topic-name
 ```
@@ -124,20 +122,14 @@ Located at `~/.config/aichat_ng/config.yaml`.
 
 Full template:
 ```yaml
-model: gemini:gemini-3-flash-preview
+model: openrouter:google/gemini-3-flash-preview
 
 clients:
   - type: gemini
     api_key: ${GOOGLE_API_KEY}
 
-  - type: claude
-    api_key: ${ANTHROPIC_API_KEY}
-
   - type: openrouter
     api_key: ${OPENROUTER_API_KEY}
-
-  - type: perplexity
-    api_key: ${PERPLEXITY_API_KEY}
 
   # Dedicated embedding client — name must match what triage.py passes to --rag
   # Do NOT include this client in --sync-models runs
@@ -157,7 +149,7 @@ rag_reranker_model: ~
 
 **Critical:** API keys MUST use `${VAR_NAME}` syntax, not literal values. The variables must be in your environment when you run aichat-ng. The pipeline's scripts load `data/.env` at startup, but REPL usage needs the env vars set in your shell profile.
 
-**`type: claude` not `type: anthropic`** — aichat-ng uses `claude` as the type identifier.
+Anthropic and Perplexity model access routes through OpenRouter — there are no direct `claude` or `perplexity` clients in the config since v0.4.0. If your pre-v0.4.0 stack still has those blocks in `state/aichat_ng/config.yaml`, they are inert and safe to remove.
 
 ---
 
@@ -273,8 +265,7 @@ With Phase 2 of the OpenRouter cutover, 10 of 11 roles depend on
 `GOOGLE_API_KEY` remains live after Phase 2 — it still powers the
 Gemini embedding client (`gemini-embed:gemini-embedding-001`) that
 the RAG index uses. Rotate it the same way. `ANTHROPIC_API_KEY` and
-`PERPLEXITY_API_KEY` are still declared in the aichat-ng config but
-no live role routes to them after the cutover; they are retirement
-candidates rather than fallbacks. Keep rotations staggered — don't
+`PERPLEXITY_API_KEY` were retired in v0.4.0 — both providers are
+reached through OpenRouter now. Keep rotations staggered — don't
 revoke the old key until the new one has served at least one live
 pipeline run without error.

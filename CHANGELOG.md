@@ -10,6 +10,11 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Removed
+
+- **Direct-Anthropic and direct-Perplexity aichat-ng client blocks (#251).** `ops/aichat-ng/config.yaml.example` no longer seeds `type: claude` or `type: openai-compatible name: perplexity` clients. Both providers are reached through OpenRouter as of the #250 Phase 2 cutover, so the inline blocks were inert. Same cleanup applied to the legacy native-install paths in `scripts/bootstrap.sh`, `docs/setup/install-linux.md`, and `docs/setup/configure.md`.
+- **`ANTHROPIC_API_KEY` and `PERPLEXITY_API_KEY` env vars (#261).** `data/.env.example` no longer asks for them; `ops/entrypoint.sh` no longer substitutes them when seeding `state/aichat_ng/config.yaml`; `docs/setup/prerequisites.md` retired the Anthropic and Perplexity sections (Anthropic models now route via `openrouter:anthropic/...`, Perplexity via `openrouter:perplexity/sonar-reasoning-pro`). Existing stacks: the variables are simply unused — leaving them in `state/data/.env` is harmless. Closes the #250 cutover loop.
+
 ### Added
 
 - **Onboarding interview now collects voice samples + auto-cleans (#262).** The interview prompt at `config/roles/onboarding_interviewer.md` adds a new Phase 3f that asks the user to paste 3,000–8,000 words of their own long-form prose (blog posts, essays, long emails) for cover-letter / outreach voice calibration. The interview emits an optional eighth file `voice-samples.md`; the paste-back injector runs the body through `findajob.onboarding.voice_processor.process_voice_samples`, which (1) deterministically strips markdown structure (headers, images, link syntax, bold/italic, blockquotes, code fences, footnote markers, HTML tags, tables, frontmatter) without altering prose, then (2) calls Opus 4.7 to generalize personal identifiers the user may not have thought to scrub (specific dates, named third parties, exact geographic specifiers, named institutions) while preserving voice. The cleaned-and-generalized text lands at `candidate_context/voice_samples/voice-samples.md`. Voice samples are **optional** — absence yields no error and falls back to resume-based voice calibration. LLM redaction failure degrades to cleaned-only with a flag the caller can surface. Closes the onboarding gap left by #257.
