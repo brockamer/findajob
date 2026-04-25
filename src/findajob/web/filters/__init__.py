@@ -1,8 +1,14 @@
-"""Per-column filter framework for the board tabs.
+"""Per-column filter framework for the board tabs."""
 
-See docs/superpowers/specs/2026-04-25-board-filter-framework-design.md.
-"""
-
+from findajob.web.filters.query import build_filter_clauses
 from findajob.web.filters.spec import ColumnSpec, Kind, validate_specs
+from findajob.web.filters.url import ParsedFilters, parse_filter_params
 
-__all__ = ["ColumnSpec", "Kind", "validate_specs"]
+__all__ = [
+    "ColumnSpec",
+    "Kind",
+    "ParsedFilters",
+    "build_filter_clauses",
+    "parse_filter_params",
+    "validate_specs",
+]
