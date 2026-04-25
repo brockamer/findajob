@@ -24,6 +24,12 @@ ALLOWED_FILENAMES: tuple[str, ...] = (
     "in_domain_patterns.yaml",
 )
 
+# Recognized but not required. If present in an emission, the injector
+# processes them; if absent, no error and no entry in ParsedEmission.missing.
+OPTIONAL_FILENAMES: tuple[str, ...] = ("voice-samples.md",)
+
+_KNOWN_FILENAMES: frozenset[str] = frozenset(ALLOWED_FILENAMES) | frozenset(OPTIONAL_FILENAMES)
+
 
 _BLOCK_RE = re.compile(
     r"<<<FILE:\s*(?P<name>[^>\s]+)\s*>>>\r?\n(?P<body>.*?)\r?\n<<<END FILE:\s*(?P=name)\s*>>>",
@@ -66,7 +72,7 @@ def parse_emission(blob: str) -> ParsedEmission:
     for match in _BLOCK_RE.finditer(blob):
         name = match.group("name").strip()
         body = _strip_code_fences(match.group("body"))
-        if name in ALLOWED_FILENAMES:
+        if name in _KNOWN_FILENAMES:
             found[name] = body
         else:
             if name not in unknown:

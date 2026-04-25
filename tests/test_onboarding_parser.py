@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from findajob.onboarding.parser import ALLOWED_FILENAMES, parse_emission
+from findajob.onboarding.parser import ALLOWED_FILENAMES, OPTIONAL_FILENAMES, parse_emission
 
 
 def _wrap(name: str, body: str) -> str:
@@ -141,3 +141,43 @@ def test_blank_input_returns_all_missing() -> None:
     assert result.found == {}
     assert set(result.missing) == set(_CLEAN_BLOCKS)
     assert result.unknown == []
+
+
+# ── OPTIONAL_FILENAMES (#262 voice samples) ─────────────────────────────────
+
+
+def test_optional_filenames_includes_voice_samples() -> None:
+    assert "voice-samples.md" in OPTIONAL_FILENAMES
+
+
+def test_voice_samples_absent_does_not_appear_in_missing() -> None:
+    """Optional files never trigger a missing-required failure."""
+    result = parse_emission(_clean_emission())
+    assert result.missing == []
+    assert "voice-samples.md" not in result.missing
+    assert "voice-samples.md" not in result.found
+
+
+def test_voice_samples_present_appears_in_found() -> None:
+    """When the user provides voice samples, parser puts them in found."""
+    body = "I lived for quite a while in this house. Real prose follows."
+    blob = _clean_emission() + "\n\n" + _wrap("voice-samples.md", body)
+    result = parse_emission(blob)
+    assert "voice-samples.md" in result.found
+    assert result.found["voice-samples.md"] == body
+    assert result.missing == []
+
+
+def test_voice_samples_does_not_pollute_unknown() -> None:
+    """voice-samples.md is recognized, so it's not 'unknown'."""
+    body = "Some prose here."
+    blob = _clean_emission() + "\n\n" + _wrap("voice-samples.md", body)
+    result = parse_emission(blob)
+    assert "voice-samples.md" not in result.unknown
+
+
+def test_truly_unknown_file_still_lands_in_unknown() -> None:
+    """Sanity: an actual unknown filename still goes to unknown."""
+    blob = _clean_emission() + "\n\n" + _wrap("not-a-real-file.txt", "garbage")
+    result = parse_emission(blob)
+    assert "not-a-real-file.txt" in result.unknown

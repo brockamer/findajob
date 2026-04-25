@@ -226,6 +226,15 @@ via `/onboarding/?mode=rerun`. See
 `findajob.onboarding.parser`/`findajob.onboarding.injector`/
 `findajob.web.onboarding_guard` for the implementation boundaries (#148).
 
+The interview also accepts an **optional eighth file** — `voice-samples.md`
+— containing the user's pasted long-form prose for cover-letter and outreach
+voice calibration. When provided, the injector runs the body through
+`findajob.onboarding.voice_processor.process_voice_samples` (deterministic
+markdown-strip pass + Opus 4.7 PII-generalization pass) before atomically
+writing to `candidate_context/voice_samples/voice-samples.md`. Absent or
+empty voice samples → the file is never created and the pipeline falls
+back to resume-based voice calibration with no error (#262).
+
 `/docs/` renders the user-facing guides (`docs/usage.md`,
 `docs/troubleshooting.md`, `docs/setup/README.md` + setup sub-pages) inline
 in the web UI so operators don't have to leave the app for help. Slug → file

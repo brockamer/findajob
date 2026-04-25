@@ -204,3 +204,80 @@ def test_inject_raises_on_missing_file_in_parsed(tmp_path: Path) -> None:
     partial = {k: v for k, v in _MIN_FILES.items() if k != "profile.md"}
     with pytest.raises(ValueError, match="profile.md"):
         inject(tmp_path, partial)
+
+
+# ── voice-samples.md handling (#262) ────────────────────────────────────────
+
+
+def _full_files_with_voice(voice_body: str) -> dict[str, str]:
+    return {**_MIN_FILES, "voice-samples.md": voice_body}
+
+
+def test_inject_omits_voice_samples_when_absent(tmp_path: Path) -> None:
+    """No voice-samples.md → file is never created on disk, no error."""
+    inject(tmp_path, _MIN_FILES)
+    voice_dest = tmp_path / "candidate_context" / "voice_samples" / "voice-samples.md"
+    assert not voice_dest.exists()
+
+
+def test_inject_writes_voice_samples_when_present(tmp_path: Path) -> None:
+    """When voice-samples.md is provided, the file lands at the canonical path."""
+    voice_body = "I lived for quite a while in this house. Things got bad before they got better."
+    with patch("findajob.onboarding.injector.process_voice_samples") as mock_process:
+        # Bypass LLM redaction in tests; return cleaned identity
+        mock_process.return_value = (voice_body, True)
+        inject(tmp_path, _full_files_with_voice(voice_body))
+    voice_dest = tmp_path / "candidate_context" / "voice_samples" / "voice-samples.md"
+    assert voice_dest.exists()
+    assert voice_dest.read_text(encoding="utf-8") == voice_body
+
+
+def test_inject_runs_process_voice_samples_with_redact_flag(tmp_path: Path) -> None:
+    """The process_voice_samples helper is called with the inject() flag value."""
+    voice_body = "Some prose here."
+    with patch("findajob.onboarding.injector.process_voice_samples") as mock_process:
+        mock_process.return_value = ("processed text", True)
+        inject(tmp_path, _full_files_with_voice(voice_body), redact_voice_samples=False)
+        mock_process.assert_called_once_with(voice_body, redact=False)
+
+
+def test_inject_skips_voice_write_when_processing_returns_empty(tmp_path: Path) -> None:
+    """If cleaning empties the body (all-structural input), no file is written."""
+    voice_body = "# Just A Header\n\n---"
+    with patch("findajob.onboarding.injector.process_voice_samples") as mock_process:
+        mock_process.return_value = ("", True)
+        inject(tmp_path, _full_files_with_voice(voice_body))
+    voice_dest = tmp_path / "candidate_context" / "voice_samples" / "voice-samples.md"
+    assert not voice_dest.exists()
+
+
+def test_inject_creates_voice_samples_parent_dir(tmp_path: Path) -> None:
+    """The candidate_context/voice_samples/ directory is created if missing."""
+    voice_body = "Real prose."
+    with patch("findajob.onboarding.injector.process_voice_samples") as mock_process:
+        mock_process.return_value = (voice_body, True)
+        inject(tmp_path, _full_files_with_voice(voice_body))
+    voice_dir = tmp_path / "candidate_context" / "voice_samples"
+    assert voice_dir.is_dir()
+
+
+def test_inject_backs_up_existing_voice_samples_file(tmp_path: Path) -> None:
+    """An existing voice-samples.md is copied to .backups/ before being overwritten."""
+    voice_dir = tmp_path / "candidate_context" / "voice_samples"
+    voice_dir.mkdir(parents=True)
+    existing = voice_dir / "voice-samples.md"
+    existing.write_text("OLD voice content.", encoding="utf-8")
+
+    with patch("findajob.onboarding.injector.process_voice_samples") as mock_process:
+        mock_process.return_value = ("NEW voice content.", True)
+        inject(tmp_path, _full_files_with_voice("anything"))
+
+    # Final state: new content
+    assert existing.read_text(encoding="utf-8") == "NEW voice content."
+    # Backup contains old content
+    backup_root = tmp_path / ".backups"
+    backups = list(backup_root.iterdir()) if backup_root.exists() else []
+    assert backups, "Expected a backup directory"
+    backed_up = backups[0] / "candidate_context" / "voice_samples" / "voice-samples.md"
+    assert backed_up.exists()
+    assert backed_up.read_text(encoding="utf-8") == "OLD voice content."

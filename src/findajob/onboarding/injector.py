@@ -22,6 +22,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from findajob.onboarding.parser import ALLOWED_FILENAMES
+from findajob.onboarding.voice_processor import process_voice_samples
 
 # Maps emission filename -> destination relative path (relative to base_root).
 _ALL_DESTINATIONS: dict[str, str] = {
@@ -32,6 +33,13 @@ _ALL_DESTINATIONS: dict[str, str] = {
     "jsearch_queries.txt": "config/jsearch_queries.txt",
     "prefilter_rules.yaml": "config/prefilter_rules.yaml",
     "in_domain_patterns.yaml": "config/in_domain_patterns.yaml",
+}
+
+# Optional emission filenames -> destination relative path. Processed if
+# present in the emission, silently skipped if absent. Backed up the same as
+# required destinations.
+_OPTIONAL_DESTINATIONS: dict[str, str] = {
+    "voice-samples.md": "candidate_context/voice_samples/voice-samples.md",
 }
 
 _COMPANIES_OF_INTEREST_DEST = "config/companies_of_interest.txt"
@@ -63,6 +71,7 @@ def _utc_stamp() -> str:
 
 def _backup_relpaths() -> list[str]:
     paths = list(_ALL_DESTINATIONS.values())
+    paths.extend(_OPTIONAL_DESTINATIONS.values())
     paths.append(_COMPANIES_OF_INTEREST_DEST)
     paths.append(_SENTINEL_RELPATH)
     return paths
@@ -115,11 +124,17 @@ def derive_companies_of_interest(target_companies_md: str) -> str:
     return "\n".join(companies) + "\n"
 
 
-def inject(base_root: Path, found: dict[str, str]) -> Path:
+def inject(base_root: Path, found: dict[str, str], redact_voice_samples: bool = True) -> Path:
     """Backup, stage, commit. Returns the (possibly empty) backup dir.
 
     ``found`` must contain every filename in :data:`ALLOWED_FILENAMES`;
     otherwise raises :class:`ValueError` without touching disk.
+
+    Optional filenames (currently ``voice-samples.md``) are processed if
+    present and silently skipped if absent. When voice-samples.md is present,
+    its body is run through ``process_voice_samples`` (clean + LLM-redact)
+    before staging; ``redact_voice_samples=False`` skips the LLM step and
+    writes only the structurally-cleaned text.
 
     On any staging or commit error, all tempfiles and the backup dir
     created this run are removed, and the exception propagates.
@@ -128,8 +143,12 @@ def inject(base_root: Path, found: dict[str, str]) -> Path:
     if missing:
         raise ValueError(f"inject(): parsed emission is missing: {missing}")
 
-    # Ensure target directories exist
-    for relpath in list(_ALL_DESTINATIONS.values()) + [_COMPANIES_OF_INTEREST_DEST]:
+    # Ensure target directories exist (required + any optional that was provided)
+    parent_relpaths: list[str] = list(_ALL_DESTINATIONS.values()) + [_COMPANIES_OF_INTEREST_DEST]
+    for opt_name, opt_relpath in _OPTIONAL_DESTINATIONS.items():
+        if opt_name in found:
+            parent_relpaths.append(opt_relpath)
+    for relpath in parent_relpaths:
         (base_root / relpath).parent.mkdir(parents=True, exist_ok=True)
     (base_root / _SENTINEL_RELPATH).parent.mkdir(parents=True, exist_ok=True)
 
@@ -138,13 +157,23 @@ def inject(base_root: Path, found: dict[str, str]) -> Path:
 
     tempfiles: list[tuple[str, Path]] = []  # (tmp_name, final_dest)
     try:
-        # Stage the seven parsed files
+        # Stage the seven required parsed files
         for name in ALLOWED_FILENAMES:
             dest = base_root / _ALL_DESTINATIONS[name]
             fd, tmp_name = tempfile.mkstemp(prefix=dest.name + ".", suffix=".tmp", dir=str(dest.parent))
             with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
                 fh.write(found[name])
             tempfiles.append((tmp_name, dest))
+
+        # Stage optional files (voice-samples.md, etc.) — clean + redact first
+        if "voice-samples.md" in found:
+            processed, _redaction_ok = process_voice_samples(found["voice-samples.md"], redact=redact_voice_samples)
+            if processed:
+                dest = base_root / _OPTIONAL_DESTINATIONS["voice-samples.md"]
+                fd, tmp_name = tempfile.mkstemp(prefix=dest.name + ".", suffix=".tmp", dir=str(dest.parent))
+                with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
+                    fh.write(processed)
+                tempfiles.append((tmp_name, dest))
 
         # Stage the derived companies_of_interest.txt
         coi_body = derive_companies_of_interest(found["target_companies.md"])

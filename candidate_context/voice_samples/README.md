@@ -32,6 +32,22 @@ newlines, and caps the result at 32,000 characters (~8,000 tokens). The combined
 text is injected into the cover letter and outreach prompts as a `VOICE SAMPLES:`
 section under explicit "use for style only, not topic" guard rails.
 
+## Onboarding flow handles this for you
+
+If you went through the `/onboarding/` interview, you were prompted in Phase 3f
+to paste long-form prose. The interview emits a `voice-samples.md` block; the
+paste-back injector runs it through a structural-cleaning pass (strips markdown
+headers, image tags, link syntax, footnotes, code fences, etc. without altering
+prose) plus an Opus 4.7 PII-generalization pass (replaces specific dates, named
+third parties, named places, named institutions with generic equivalents while
+preserving voice). The result lands here as `voice-samples.md`. To re-trigger,
+visit `/onboarding/?mode=rerun`.
+
+## Manual addition
+
+If you didn't go through onboarding, or want to add additional samples, drop
+files here directly. The loader picks them up on the next prep run.
+
 ## Naming
 
 No required convention. Descriptive names help. Files starting with `README` are
