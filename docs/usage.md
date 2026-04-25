@@ -24,6 +24,17 @@ Rejections come later — from the Applied tab when a company comes back "no", o
 
 The Dashboard shows every scored job worth your attention — usually `score >= 7` plus anything you've flagged manually. You'll spend more time here than anywhere else.
 
+### Filtering and sorting
+
+A filter row sits directly under each column header. TEXT columns (Title, Company, Location, Contacts, AI notes) accept a substring; the match is case-insensitive. SCORE columns (Rel, Fit, Likelihood) show a min/max range pair. ENUM columns (Remote, Stage) and DATE columns (Date) open a popover (▾) with value checkboxes or from/to date pickers. Pressing Enter or clicking away applies the filter.
+
+Below the table header, active filters appear as a chip strip — click ✕ on any chip to remove that filter, or **Clear all** to reset everything. The 🔗 Copy link button in the top-right copies the current URL (with all active filters and sort) to the clipboard, making any view bookmarkable and shareable.
+
+To browse score-5/6 jobs that the default 7+ cutoff hides (useful for triage), visit:
+`/board/dashboard?relevance_score_min=5&stage=scored,manual_review`
+
+Sort is sticky with filters — changing the sort column preserves all active filters, and adding a filter preserves the current sort.
+
 ### Column meaning, in plain English
 
 | Column | What it tells you |
@@ -99,6 +110,8 @@ scored → prep_in_progress → materials_drafted → applied
 
 Jobs land here when the scorer's output couldn't be confidently validated — the LLM said "needs human review," or returned a low-confidence fit/probability split, or the JD was thin. `stage = manual_review`.
 
+The tab has the same per-column filter row as the Dashboard: substring inputs for Title and Company, a popover (▾) for Source and Date. Active-filter chips appear below the header with ✕ to dismiss individually or **Clear all** to reset. The 🔗 Copy link button copies the current filtered URL to the clipboard.
+
 Use the tab to:
 
 - **Promote** → move the job to `scored` so it appears on the Dashboard.
@@ -111,6 +124,8 @@ A healthy pipeline has a small (under 20) steady state on Review. If the queue g
 ## The Applied tab (`/board/applied`)
 
 Everything you've applied to, ordered by how long ago you applied.
+
+A filter row sits under each column header: substring inputs for Title, Company, and Location; min/max range inputs for score columns; a popover (▾) for Stage, Remote, and Date. Active-filter chips appear below the header — click ✕ to clear individual filters or **Clear all** to reset. The 🔗 Copy link button copies the current filtered+sorted URL to the clipboard.
 
 ### Post-application STATUS options
 
@@ -146,6 +161,8 @@ The notes field saves on 800 ms debounce. Type, pause, it's written. Useful for 
 
 Waitlisted jobs are jobs you didn't want to reject — maybe the role is good but you're interviewing somewhere else, maybe the comp wasn't disclosed and you want to see if a similar listing surfaces, maybe the company is a "yes but only if another option falls through."
 
+The tab has the same per-column filter row: substring inputs for Title, Company, and Location; min/max range inputs for Rel, Fit, and Likelihood; a popover (▾) for Remote and Date. Active-filter chips and the 🔗 Copy link button work the same way as on the Dashboard.
+
 **Waitlist is not rejection.** It does *not* write to the feedback log. The scorer never sees it.
 
 From the tab:
@@ -159,13 +176,13 @@ From the tab:
 
 ## The Archive tab (`/board/archive`)
 
-Every job the pipeline has ever ingested, in one paginated, filterable, sortable table. Filters for score, stage, company, date range, source. This is the backstop — if you can't find a job anywhere else, it's here.
+Every job the pipeline has ever ingested, in one paginated, filterable, sortable table. A per-column filter row provides: substring inputs for Title, Company, and Location; min/max range inputs for Rel, Fit, and Probability scores; popovers (▾) for Stage, Source, Remote, and Date. Active-filter chips appear below the header with ✕ to clear individual filters or **Clear all** to reset. The 🔗 Copy link button copies the current filtered+sorted+paginated URL to the clipboard. This is the backstop — if you can't find a job anywhere else, it's here.
 
 ---
 
 ## The Rejected tab (`/board/rejected`)
 
-Every rejection, including rejections *from* you (stage = `rejected`) and rejections *from companies* (stage = `not_selected`). Browseable and filterable by reason, date, company. Useful for catching patterns — if `Skills Mismatch` is spiking, the profile's wrong; if `Geography/Onsite` is spiking, the search queries are.
+Every rejection, including rejections *from* you (stage = `rejected`) and rejections *from companies* (stage = `not_selected`). The per-column filter row lets you narrow by Title or Company (substring), Reject Reason (popover multi-select), Stage (rejected vs. not_selected), and Date range. Active-filter chips appear below the header with ✕ to clear individual filters or **Clear all** to reset. The 🔗 Copy link button copies the current filtered URL. Useful for catching patterns — if `Skills Mismatch` is spiking, the profile's wrong; if `Geography/Onsite` is spiking, the search queries are.
 
 ---
 

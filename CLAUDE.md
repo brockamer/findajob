@@ -244,6 +244,31 @@ allowlist in `findajob.web.routes.docs`; Markdown rendering is the shared
 `target="_blank"` on external links. The markdown files on disk under `docs/`
 remain the source of truth; GitHub rendering is unchanged (#224).
 
+### Per-column filter framework
+
+All board tabs use a single declarative filter framework under
+`findajob.web.filters`. Each tab declares a `tuple[ColumnSpec, ...]`
+in `findajob.web.filters.registry`; the framework parses URL params
+into `ParsedFilters`, builds parameterized SQL clauses via
+`build_filter_clauses()`, and renders header inputs + popovers via
+shared partials (`_table_header.html`, `_active_filters.html`).
+
+URL contract is flat with type-suffixed param names:
+- TEXT: `?col=substring` (case-insensitive contains)
+- SCORE / INTEGER: `?col_min=&col_max=`
+- ENUM: `?col=a,b,c` (multi-select via comma)
+- DATE: `?col_from=&col_to=`
+- Sort: `?sort=col&desc=1` (existing convention preserved)
+- Visibility: `?cols=a,b,c` (explicit replacement set; default per spec)
+
+State cascade: URL querystring > ColumnSpec.default_visible. Persisted
+per-tab prefs are #277 — the cascade has the layer hook.
+
+When adding a new board tab, declare its ColumnSpec list in
+`registry.py`, add a base WHERE constant + `_<tab>_query()` builder
+in `routes/board.py`, and create the tab template that includes
+`_filters.html` + `_table_header.html`. No per-tab filter code needed.
+
 ---
 
 ## Critical Architecture Rules

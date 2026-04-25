@@ -10,6 +10,35 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Added
+
+- **Per-column filter+sort framework on every board tab (#273).** Replaces
+  the single `?q=` text input with type-aware filters: TEXT (substring),
+  SCORE / INTEGER (min/max range), ENUM (multi-select via comma-separated
+  values), DATE (from/to range). Sort changes preserve filter state and
+  vice versa. All state lives in URL query params (`hx-push-url`), so any
+  view is bookmarkable + shareable. A 🔗 Copy-link button on every tab
+  writes the current URL to the clipboard. Column visibility supports
+  explicit override via `?cols=a,b,c`. The framework lives in
+  `findajob.web.filters` as a declarative `ColumnSpec` registry; new
+  board tabs declare their column specs and the filter UI + SQL composer
+  apply automatically. Per-tab default-visible columns retuned: Dashboard
+  surfaces AI notes + Likelihood by default and hides Probability + Stage
+  (filterable via `?stage=...` for score-5/6 triage); Waitlist gains
+  Likelihood for parity with Dashboard's scoring trio.
+- **Surfaceable score-5/6 jobs on the Dashboard.** Visit
+  `/board/dashboard?relevance_score_min=5&stage=scored,manual_review` to
+  see jobs the prior 7+ default hid. The 7+ happy path is unchanged on
+  cold load. Followed by #277 (Columns dropdown UI + per-tab pref
+  persistence) and #276 (scorer-side IC-vs-manager noise reduction).
+
+### Removed
+
+- **`?q=` text-search URL param on board tabs.** Superseded by the
+  per-column TEXT filters under `?title=...&company=...`. Bookmarks using
+  the old `?q=foo` will silently drop the filter — the bookmark scheme
+  was internal to one feature.
+
 ## [0.4.0] — 2026-04-24
 
 Minor bump. Closes the #250 OpenRouter Phase 2 cutover loop with three follow-ons (#254, #251, #261), promotes `briefing_writer` to Opus 4.7 to complete the prep-quality cascade (#264), neutralizes the `job_scorer` prompt so it derives reject categories and in-domain titles from the candidate profile rather than enumerating a tech-specific list (#65), adds a recruiter critic step + voice-samples calibration to the prep flow (#257), and wires voice-sample collection + auto-clean into the onboarding interview (#262). Three `migration-required` markers below — the #250 trio still applies to anyone bumping past v0.3.x for the first time, plus a new one for the scorer prompt change.
