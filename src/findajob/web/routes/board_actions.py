@@ -31,7 +31,7 @@ from findajob.actions import (
 from findajob.paths import BASE
 from findajob.utils import log_event, write_audit
 from findajob.web.company_history import build_history_by_fp, fetch_company_history
-from findajob.web.routes.board import _APPLIED_COLS, _DASHBOARD_COLS
+from findajob.web.filters import registry as filter_registry
 from findajob.web.routes.materials import get_db
 
 router = APIRouter()
@@ -91,11 +91,14 @@ def _render_dashboard_row(request: Request, row: sqlite3.Row, db: sqlite3.Connec
     """
     templates = request.app.state.templates
     history_by_fp = build_history_by_fp([row], fetch_company_history(db))
+    specs = filter_registry.DASHBOARD_COLUMNS
+    visible = {s.name for s in specs if s.default_visible}
     return templates.TemplateResponse(
         request=request,
         name="_job_row.html",
         context={
-            "columns": _DASHBOARD_COLS,
+            "specs": specs,
+            "visible": visible,
             "row": row,
             "history_by_fp": history_by_fp,
             "tab": "dashboard",
@@ -128,11 +131,14 @@ def _fetch_applied_row(db: sqlite3.Connection, fingerprint: str) -> sqlite3.Row 
 def _render_applied_row(request: Request, row: sqlite3.Row) -> HTMLResponse:
     """Render a single Applied-tab row for HTMX outerHTML swap."""
     templates = request.app.state.templates
+    specs = filter_registry.APPLIED_COLUMNS
+    visible = {s.name for s in specs if s.default_visible}
     return templates.TemplateResponse(
         request=request,
         name="_job_row.html",
         context={
-            "columns": _APPLIED_COLS,
+            "specs": specs,
+            "visible": visible,
             "row": row,
             "tab": "applied",
             "materials_base_url": os.environ.get("FINDAJOB_MATERIALS_BASE_URL", ""),
