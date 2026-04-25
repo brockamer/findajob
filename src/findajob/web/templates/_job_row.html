@@ -1,9 +1,18 @@
 {#
-  Shared row partial for board tables. Inputs:
+  Shared row partial for board tables. Supports two context shapes:
+  New shape (Phase 3+): specs (sequence of ColumnSpec) + visible (set of names)
+  Old shape (legacy): columns — list of (display_name, field_name) tuples
+
+  Inputs (new shape):
     row — a sqlite3.Row (or dict) with fields for the current tab's columns
-    columns — list of (display_name, field_name) tuples to render in order
-    tab — "dashboard" | "applied" | "review" | "waitlist" | "archive"
+    specs — sequence of ColumnSpec for the tab
+    visible — set of column name strings currently shown
+    tab — "dashboard" | "applied" | "review" | "waitlist" | "rejected" | "archive"
     materials_base_url — optional URL for the materials viewer hyperlink
+
+  Inputs (old shape):
+    row, columns, tab, materials_base_url (same as before)
+
   Applies tab-specific conditional formatting via findajob.web.helpers
   (exposed as Jinja globals in app.py::create_app).
 #}
@@ -21,27 +30,54 @@
   {% elif tab == 'archive' %}
     {% include "board/_archive_promote_cell.html" %}
   {% endif %}
-  {% for display, field in columns %}
-    {% if tab == 'applied' and field == 'user_notes' %}
-      {% include "board/_notes_cell.html" %}
-    {% elif field == 'company_history' %}
-      {% include "board/_company_history_cell.html" %}
-    {% else %}
-    <td class="px-3 py-1 align-top text-sm
-               {% if field == 'known_contacts' and row[field] %}cell-contact-amber{% endif %}
-               {% if field == 'remote_status' %}{{ remote_cell_class(row[field]) }}{% endif %}">
-      <div class="cell-text-wrap" title="{{ row[field] if row[field] is not none else '' }}">
-      {% if field == 'title' and row.url %}
-        <a class="underline" href="{{ row.url }}" target="_blank" rel="noopener noreferrer">{{ row[field] }}</a>
-      {% elif field == 'company' and row.fingerprint and row.stage in folder_stages and materials_base_url %}
-        <a class="underline" href="{{ materials_base_url }}/materials/{{ row.fingerprint }}">{{ row[field] }}</a>
-      {% elif field in ('fit_score', 'probability_score') %}
-        {{ row[field] | round | int if row[field] is not none else '—' }}
+  {% if specs is defined %}
+    {% for s in specs if s.name in visible %}
+      {% set field = s.name %}
+      {% if tab == 'applied' and field == 'user_notes' %}
+        {% include "board/_notes_cell.html" %}
+      {% elif field == 'company_history' %}
+        {% include "board/_company_history_cell.html" %}
       {% else %}
-        {{ row[field] if row[field] is not none else '' }}
+      <td class="px-3 py-1 align-top text-sm
+                 {% if field == 'known_contacts' and row[field] %}cell-contact-amber{% endif %}
+                 {% if field == 'remote_status' %}{{ remote_cell_class(row[field]) }}{% endif %}">
+        <div class="cell-text-wrap" title="{{ row[field] if row[field] is not none else '' }}">
+        {% if field == 'title' and row.url %}
+          <a class="underline" href="{{ row.url }}" target="_blank" rel="noopener noreferrer">{{ row[field] }}</a>
+        {% elif field == 'company' and row.fingerprint and row.stage in folder_stages and materials_base_url %}
+          <a class="underline" href="{{ materials_base_url }}/materials/{{ row.fingerprint }}">{{ row[field] }}</a>
+        {% elif field in ('fit_score', 'probability_score', 'interview_likelihood') %}
+          {{ row[field] | round | int if row[field] is not none else '—' }}
+        {% else %}
+          {{ row[field] if row[field] is not none else '' }}
+        {% endif %}
+        </div>
+      </td>
       {% endif %}
-      </div>
-    </td>
-    {% endif %}
-  {% endfor %}
+    {% endfor %}
+  {% else %}
+    {% for display, field in columns %}
+      {% if tab == 'applied' and field == 'user_notes' %}
+        {% include "board/_notes_cell.html" %}
+      {% elif field == 'company_history' %}
+        {% include "board/_company_history_cell.html" %}
+      {% else %}
+      <td class="px-3 py-1 align-top text-sm
+                 {% if field == 'known_contacts' and row[field] %}cell-contact-amber{% endif %}
+                 {% if field == 'remote_status' %}{{ remote_cell_class(row[field]) }}{% endif %}">
+        <div class="cell-text-wrap" title="{{ row[field] if row[field] is not none else '' }}">
+        {% if field == 'title' and row.url %}
+          <a class="underline" href="{{ row.url }}" target="_blank" rel="noopener noreferrer">{{ row[field] }}</a>
+        {% elif field == 'company' and row.fingerprint and row.stage in folder_stages and materials_base_url %}
+          <a class="underline" href="{{ materials_base_url }}/materials/{{ row.fingerprint }}">{{ row[field] }}</a>
+        {% elif field in ('fit_score', 'probability_score') %}
+          {{ row[field] | round | int if row[field] is not none else '—' }}
+        {% else %}
+          {{ row[field] if row[field] is not none else '' }}
+        {% endif %}
+        </div>
+      </td>
+      {% endif %}
+    {% endfor %}
+  {% endif %}
 </tr>

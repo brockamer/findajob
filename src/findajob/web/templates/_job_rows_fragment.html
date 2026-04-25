@@ -1,5 +1,10 @@
 {% for row in rows %}
   {% include "_job_row.html" %}
 {% else %}
-  <tr><td colspan="{{ columns|length }}" class="px-3 py-4 text-slate-500">No matches.</td></tr>
+  {% if specs is defined %}
+    {% set spec_count = (specs | selectattr('name', 'in', visible) | list | length) %}
+    <tr><td colspan="{{ spec_count + 2 }}" class="px-3 py-4 text-slate-500">No matches.</td></tr>
+  {% else %}
+    <tr><td colspan="{{ columns|length }}" class="px-3 py-4 text-slate-500">No matches.</td></tr>
+  {% endif %}
 {% endfor %}
