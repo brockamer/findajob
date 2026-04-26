@@ -91,3 +91,20 @@ def test_build_prompt_two_profiles_produce_different_outputs() -> None:
     assert "Skill A" in a and "Acme" in a
     # Profile B markers
     assert "Skill C" in b and "Delta" in b
+
+
+def test_build_prompt_opens_with_search_friendly_framing() -> None:
+    """Perplexity's search component reads the user prompt's opener as the
+    search query (system prompt is ignored — see docs.perplexity.ai). The
+    template MUST open with hiring-activity framing, not with a literal
+    section name like "Target Companies / Organizations" that would anchor
+    the search on the wrong noun phrase. Empirically caught during PR-time
+    smoke when the prior template caused Perplexity to search for "Target
+    Companies" → returned Target Corporation (the retailer)."""
+    prompt = build_prompt(_profile_a())
+    opener = prompt.split("=== BEGIN CANDIDATE PROFILE ===", 1)[0]
+    assert "hiring" in opener.lower()
+    # The literal phrase "Target Companies" must NOT lead the prompt — it
+    # may still appear via the embedded profile body (which comes after the
+    # opener) but never in the scaffolding before the profile delimiter.
+    assert "Target Companies" not in opener

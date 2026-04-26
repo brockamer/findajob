@@ -5,26 +5,33 @@ user-prompt string that wraps the candidate's profile. Field-agnostic: the
 scaffolding contains no enumerated industries, named companies, or role
 titles. Profile content passes through verbatim — the LLM is responsible
 for reading and reasoning about it.
+
+Perplexity-aware: the user prompt opens with a search-friendly framing
+because Perplexity's real-time search component does not attend to the
+system prompt (per docs.perplexity.ai/guides/prompt-guide). Salient noun
+phrases in the user-prompt scaffold become the search query, so the
+opener is phrased generically (no literal "Target Companies" or other
+prompt boilerplate that the search layer would latch onto).
 """
 
 from __future__ import annotations
 
 _TEMPLATE = """\
-The candidate profile is below, between the delimiters. Read it carefully.
-Pay particular attention to the sections named: Core Competencies, Career
-Summary, Target Roles (or Target Role), Target Companies / Organizations.
+Find organizations actively hiring people whose competency stack matches
+the candidate profile below. Group findings by competency-fit relationship:
+direct domain match, transferable-competency adjacency, and cross-industry
+application. Cite a verifiable hiring-activity source for every recommendation.
 
-The Target Companies / Organizations section is a seed, not the universe.
-Augment it with companies the candidate has not named, grouped into the
-three clusters described in your role.
+The candidate profile follows. Read every section. The competencies and
+career signals it names are the basis for grouping.
 
 === BEGIN CANDIDATE PROFILE ===
 {profile}
 === END CANDIDATE PROFILE ===
 
-Now produce the discovered-companies markdown per your role's output
-format. Cite every company. If the profile lacks the required sections,
-respond with the literal text INSUFFICIENT_PROFILE and nothing else.
+Produce the markdown per your role's output format. If the profile lacks
+the sections your role requires, respond with the literal text
+INSUFFICIENT_PROFILE and nothing else.
 """
 
 
