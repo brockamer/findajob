@@ -10,6 +10,10 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Archive tab no longer shifts horizontally relative to other board tabs (#280).** Root cause: the `html` element didn't reserve the vertical-scrollbar gutter, so tabs whose content overflowed vertically (Archive with thousands of historical jobs) rendered ~15px narrower than tabs that fit on screen (Dashboard with a handful of pre-application rows). Switching between them via hx-boost made the content area "shift right" because the scrollbar appeared on Archive but not on Dashboard. Fix: one CSS rule, `html { scrollbar-gutter: stable; }`, in `static/app.css`. Reserves the gutter on every page regardless of content height; layout is now consistent across all six board tabs and all other routes that extend `base.html`.
+
 ### Added
 
 - **In-app feedback widget files a GitHub issue per submission (#227).** Floating "Feedback" button in the bottom-right corner of every page opens a small modal with a textarea; submission posts to `/feedback/submit` which calls the GitHub Issues API server-side and labels the issue `feedback` (plus an optional per-stack identifier label). New env vars in `state/data/.env`: `GITHUB_FEEDBACK_PAT` (fine-grained PAT scoped to Issues:read+write on the target repo, required), `FEEDBACK_STACK_LABEL` (optional second label, e.g. `from:operator` / `from:alice-doe`), `FEEDBACK_REPO` (defaults to `brockamer/findajob`). The PAT is held server-side and never reaches the browser. No PII guard, no rate limit — testers see what they're typing and the feedback path is internal to the Wireguard perimeter.

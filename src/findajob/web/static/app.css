@@ -1,3 +1,11 @@
+/* Reserve the vertical-scrollbar gutter on every page (#280). Without this,
+   tabs that don't overflow vertically (e.g. Dashboard with few rows) render
+   ~15px wider than tabs that do (Archive with thousands of rows), so
+   switching between them shifts the content area horizontally. */
+html {
+  scrollbar-gutter: stable;
+}
+
 /* Design tokens matching the Google Sheet's conditional formatting palette. */
 :root {
   --color-applied-fresh: #c6e6b9;  /* 0–6 days, green */
