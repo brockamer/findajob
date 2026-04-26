@@ -10,6 +10,15 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+## [0.5.1] — 2026-04-26
+
+Patch bump. Two bug fixes that surfaced after v0.5.0 deployed: the discoverer's atomic-replace writer was creating files at mode 0o600 (the `tempfile.mkstemp` default), which made them unreadable by the FastAPI process when written by a different user, and the scorer's JSON parser was failing on prose-prefixed LLM responses (~5–10/triage cycle on the operator stack). Rolling `docker compose pull && up -d` picks both up.
+
+### Fixed
+
+- **Discoverer outputs now mode 0o644; /config/ shows readable errors instead of silently 500ing (#289).** Two-part defense-in-depth fix: (1) `findajob.discoverer.writer.commit_atomically` now `os.chmod(0o644)` after staging both the markdown and JSON outputs — `tempfile.mkstemp` defaulted to 0o600, so files written by a non-FastAPI user (e.g., manual `docker exec` as root) were unreadable when the web server tried to render them in the editor; (2) `GET /config/files/{path}` now catches `PermissionError` and `OSError` on the read path and renders an inline red error block in the editor template, naming the failure mode and pointing at chown/chmod as the host-side fix — previously the exception 500ed silently into HTMX with no visual indication anything was wrong.
+- **Scorer recovers from prose-prefixed and fenced LLM JSON output (#278).** Symptom on the operator stack: 43 `score_validation_failed` events in pipeline.jsonl over ~36h, all with identical parser error `JSON parse: Expecting value: line 3 column 21 (char 50)` — the scorer model (DeepSeek v3.2) sometimes prepended prose to its JSON or wrapped it in markdown fences embedded in prose, and the previous fence-stripper only handled the "entire response is wrapped in ```...```" shape. New `findajob.utils.extract_json_payload` helper handles four shapes: whole-response fence (with or without language tag), fenced JSON block embedded in prose, bare JSON after prose, and the no-JSON fallthrough. Both `validate_llm_json` and `_normalize_llm_output` route through it. Defense-in-depth: `score_validation_failed` events now carry `raw_excerpt` (first 500 chars of the LLM response) so any remaining failure modes are diagnosable from pipeline.jsonl without redeploying a debug branch.
+
 ## [0.5.0] — 2026-04-26
 
 Minor bump. Three additive board+pipeline shipments and one Archive-tab bug fix. Adds a per-column filter framework on every board tab (#273) that bookmarks any view via URL query params, introduces dynamic competency-driven company discovery (#284) as a new weekly Sunday-02:00 cron job, and unsticks the Archive-tab Promote button on score-6 stage='scored' rows (#282). One `migration-required` marker below — the new scheduled job is image-baked, but operators should know it will start firing.
@@ -334,7 +343,8 @@ from GHCR and deployed via Docker Compose on a shared Docker host.
 - Documentation cleanup — removing `sigoden/aichat` references in favor of
   `blob42/aichat-ng` — is tracked in #70
 
-[Unreleased]: https://github.com/brockamer/findajob/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/brockamer/findajob/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/brockamer/findajob/releases/tag/v0.5.1
 [0.5.0]: https://github.com/brockamer/findajob/releases/tag/v0.5.0
 [0.4.0]: https://github.com/brockamer/findajob/releases/tag/v0.4.0
 [0.3.3]: https://github.com/brockamer/findajob/releases/tag/v0.3.3
