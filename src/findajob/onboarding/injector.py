@@ -20,6 +20,12 @@ import shutil
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import NamedTuple
+
+# Imported lazily inside inject() to avoid a circular import on the
+# discoverer side, and to keep this module importable even when the
+# discoverer package isn't yet on the path during unit tests of unrelated
+# subsystems.
 
 from findajob.onboarding.parser import ALLOWED_FILENAMES
 from findajob.onboarding.voice_processor import process_voice_samples
@@ -50,6 +56,23 @@ _TIER1_HEADING_RE = re.compile(r"^##\s+tier\s*1\b[^\n]*", re.IGNORECASE | re.MUL
 _NEXT_H2_RE = re.compile(r"^##\s+\S", re.MULTILINE)
 _BULLET_RE = re.compile(r"^\s*(?:[-*]\s+|\d+\.\s+)(.*)")
 _SPLIT_COMMENTARY_RE = re.compile(r"\s+[—-]\s+|\s+\(")
+
+
+class DiscoveryStatus(NamedTuple):
+    """Lightweight mirror of findajob.discoverer.RunResult for return.
+
+    Kept module-local so callers don't have to import the discoverer
+    package to inspect onboarding results.
+    """
+
+    success: bool
+    count: int
+    error: str | None
+
+
+class InjectResult(NamedTuple):
+    backup_dir: Path
+    discovery: DiscoveryStatus
 
 
 def is_complete(base_root: Path) -> bool:
@@ -124,8 +147,8 @@ def derive_companies_of_interest(target_companies_md: str) -> str:
     return "\n".join(companies) + "\n"
 
 
-def inject(base_root: Path, found: dict[str, str], redact_voice_samples: bool = True) -> Path:
-    """Backup, stage, commit. Returns the (possibly empty) backup dir.
+def inject(base_root: Path, found: dict[str, str], redact_voice_samples: bool = True) -> InjectResult:
+    """Backup, stage, commit, then run the discovery hook. Returns :class:`InjectResult`.
 
     ``found`` must contain every filename in :data:`ALLOWED_FILENAMES`;
     otherwise raises :class:`ValueError` without touching disk.
@@ -200,4 +223,17 @@ def inject(base_root: Path, found: dict[str, str], redact_voice_samples: bool = 
         shutil.rmtree(backup_dir, ignore_errors=True)
         raise
 
-    return backup_dir
+    # Post-commit discovery hook. Soft-fail: any failure here does NOT
+    # roll back the seven-file commit (sentinel is already written).
+    try:
+        from findajob.discoverer import run as run_discovery  # noqa: PLC0415
+
+        discovery_result = run_discovery(base_root, ntfy_enabled=False)
+        discovery = DiscoveryStatus(
+            success=discovery_result.success,
+            count=discovery_result.count,
+            error=discovery_result.error,
+        )
+    except Exception as e:  # noqa: BLE001 — discovery must never crash onboarding
+        discovery = DiscoveryStatus(success=False, count=0, error=str(e))
+    return InjectResult(backup_dir=backup_dir, discovery=discovery)

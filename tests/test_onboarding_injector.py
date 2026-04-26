@@ -129,8 +129,12 @@ def test_backup_copies_existing_destinations(tmp_path: Path) -> None:
 
 
 def test_inject_writes_seven_files_and_sentinel_and_derivation(tmp_path: Path) -> None:
-    backup = inject(tmp_path, _MIN_FILES)
-    assert backup is not None  # returns the (possibly empty) backup dir
+    result = inject(tmp_path, _MIN_FILES)
+    assert result.backup_dir is not None  # returns the (possibly empty) backup dir
+    # Discovery is exercised in the discoverer's own tests; here we only
+    # confirm the result is shaped correctly. Discovery will fail in this
+    # test environment because aichat-ng isn't on PATH, which is expected.
+    assert result.discovery.success in (True, False)
     # Seven canonical files
     assert (tmp_path / "candidate_context" / "profile.md").read_text() == _MIN_FILES["profile.md"]
     assert (tmp_path / "candidate_context" / "master_resume.md").read_text() == _MIN_FILES["master_resume.md"]
@@ -281,3 +285,23 @@ def test_inject_backs_up_existing_voice_samples_file(tmp_path: Path) -> None:
     backed_up = backups[0] / "candidate_context" / "voice_samples" / "voice-samples.md"
     assert backed_up.exists()
     assert backed_up.read_text(encoding="utf-8") == "OLD voice content."
+
+
+def test_inject_discovery_hook_soft_fails_when_aichat_missing(tmp_path: Path, monkeypatch) -> None:
+    """When aichat-ng isn't available, inject() returns success=True for the
+    seven-file commit but discovery.success=False. Sentinel is still written.
+    """
+    # Force the discoverer's subprocess call to fail
+    import findajob.discoverer.runner as run_mod
+
+    def boom(*a, **kw):
+        raise FileNotFoundError("simulated: aichat-ng not on PATH")
+
+    monkeypatch.setattr(run_mod.subprocess, "run", boom)
+
+    result = inject(tmp_path, _MIN_FILES)
+    # Sentinel was written (onboarding succeeded)
+    assert (tmp_path / "data" / ".onboarding-complete").is_file()
+    # Discovery soft-failed
+    assert result.discovery.success is False
+    assert result.discovery.error is not None
