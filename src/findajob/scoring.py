@@ -9,7 +9,7 @@ import time
 
 from findajob.paths import AICHAT, BASE
 from findajob.scorer_prefilter import _hard_reject_match, prefilter_score
-from findajob.utils import jd_is_usable, log_event, validate_llm_json
+from findajob.utils import extract_json_payload, jd_is_usable, log_event, validate_llm_json
 
 DB_PATH: str = f"{BASE}/data/pipeline.db"
 SCHEMA_PATH: str = f"{BASE}/config/scoring_schema.json"
@@ -30,12 +30,7 @@ def _normalize_llm_output(raw: str) -> str:
     Fixes: remote_status variants ("Remote-Friendly" → "Remote"),
            score values outside 1-10 range.
     """
-    text = raw.strip()
-    if text.startswith("```"):
-        text = "\n".join(text.split("\n")[1:])
-    if text.endswith("```"):
-        text = text[: text.rfind("```")]
-    text = text.strip()
+    text = extract_json_payload(raw)
     try:
         d = json.loads(text)
     except (json.JSONDecodeError, ValueError):
@@ -194,7 +189,17 @@ JD:
     parsed, error = validate_llm_json(_normalize_llm_output(result.stdout), SCHEMA_PATH)
 
     if error:
-        log_event("score_validation_failed", error=error, title=title, company=company)
+        # Capture the first 500 chars of the raw response so future parse
+        # failures can be diagnosed from pipeline.jsonl alone (the extractor
+        # already handles known fenced/prose-prefixed shapes; anything that
+        # still fails is a new failure mode).
+        log_event(
+            "score_validation_failed",
+            error=error,
+            title=title,
+            company=company,
+            raw_excerpt=(result.stdout or "").strip()[:500],
+        )
         # Stage 1.5: if LLM failed AND title matches a hard reject pattern, auto-reject
         # instead of cluttering the manual_review queue with obvious mismatches
         if _hard_reject_match(title):

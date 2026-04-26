@@ -9,6 +9,7 @@ from findajob.utils import (
     _clean_profile_field,
     build_outreach_filename,
     build_prep_filenames,
+    extract_json_payload,
     is_aggregator_company,
     is_ingest_noise_title,
     is_valid_company,
@@ -515,3 +516,62 @@ class TestLoadVoiceSamples:
     def test_under_cap_unchanged(self, tmp_path):
         (tmp_path / "a.md").write_text("short content")
         assert load_voice_samples(samples_dir=str(tmp_path), max_chars=1000) == "short content"
+
+
+# ── extract_json_payload ───────────────────────────────────────────────────
+
+
+class TestExtractJsonPayload:
+    """Recovery shapes for LLM scorer responses (#278). The scorer prompt
+    asks for JSON only; reality is sometimes prose, sometimes fenced,
+    sometimes both. The extractor handles each known shape so the parser
+    that runs after it sees clean JSON.
+    """
+
+    def test_plain_json_unchanged(self):
+        text = '{"relevance_score": 7}'
+        assert extract_json_payload(text) == text
+
+    def test_strips_whole_response_fence_with_json_lang(self):
+        text = '```json\n{"relevance_score": 7}\n```'
+        assert extract_json_payload(text) == '{"relevance_score": 7}'
+
+    def test_strips_whole_response_fence_no_lang(self):
+        text = '```\n{"relevance_score": 7}\n```'
+        assert extract_json_payload(text) == '{"relevance_score": 7}'
+
+    def test_extracts_fenced_json_block_inside_prose(self):
+        text = (
+            "Looking at this role, here's the analysis:\n\n"
+            "```json\n"
+            '{"relevance_score": 5}\n'
+            "```\n\n"
+            "Notes: the fit is moderate."
+        )
+        assert json.loads(extract_json_payload(text)) == {"relevance_score": 5}
+
+    def test_extracts_bare_json_after_prose(self):
+        # The exact failure mode reported in #278: prose at lines 1–2,
+        # then JSON starting on line 3. Original parser saw "Looking..."
+        # on char 0 and bombed at "char 50".
+        text = (
+            'Looking at this job posting,\n\nthe scoring output is:\n{"relevance_score": 6, "interview_likelihood": 4}'
+        )
+        assert json.loads(extract_json_payload(text)) == {
+            "relevance_score": 6,
+            "interview_likelihood": 4,
+        }
+
+    def test_extracts_bare_json_array_after_prose(self):
+        text = "Here are the results:\n[1, 2, 3]"
+        assert json.loads(extract_json_payload(text)) == [1, 2, 3]
+
+    def test_falls_through_to_input_when_no_json_present(self):
+        # Pure prose — extractor returns the input unchanged so the
+        # downstream parser surfaces a meaningful JSONDecodeError.
+        text = "I cannot evaluate this role without more information."
+        assert extract_json_payload(text) == text
+
+    def test_handles_leading_whitespace(self):
+        text = '   \n  {"relevance_score": 7}'
+        assert json.loads(extract_json_payload(text)) == {"relevance_score": 7}
