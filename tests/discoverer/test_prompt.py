@@ -61,8 +61,18 @@ def test_build_prompt_is_field_agnostic() -> None:
     # Strip the verbatim profile block; what's left is the scaffolding.
     scaffolding = prompt.replace(_profile_a().strip(), "")
     forbidden = (
-        "tech", "software", "engineer", "GPU", "NVIDIA", "Meta", "Google",
-        "social work", "nursing", "teaching", "robotics", "data center",
+        "tech",
+        "software",
+        "engineer",
+        "GPU",
+        "NVIDIA",
+        "Meta",
+        "Google",
+        "social work",
+        "nursing",
+        "teaching",
+        "robotics",
+        "data center",
     )
     for tok in forbidden:
         assert tok.lower() not in scaffolding.lower(), f"scaffolding contains field-locked token: {tok!r}"

@@ -14,9 +14,7 @@ import re
 from dataclasses import dataclass, field
 
 VALID_CLUSTERS: frozenset[str] = frozenset({"direct", "adjacency", "cross_industry"})
-VALID_CHANNELS: frozenset[str] = frozenset(
-    {"greenhouse", "ashby", "lever", "workday", "in_house", "unknown"}
-)
+VALID_CHANNELS: frozenset[str] = frozenset({"greenhouse", "ashby", "lever", "workday", "in_house", "unknown"})
 
 _CLUSTER_HEADING_RE = re.compile(
     r"^##\s+Cluster:\s+(?P<label>.+?)\s*$",
@@ -66,7 +64,7 @@ def _resolve_references(md: str) -> dict[int, str]:
     ref_match = _REFERENCES_HEADING_RE.search(md)
     if not ref_match:
         return {}
-    tail = md[ref_match.end():]
+    tail = md[ref_match.end() :]
     return {int(i): url.strip() for i, url in _REF_LINE_RE.findall(tail)}
 
 
@@ -141,20 +139,12 @@ def parse_markdown(md_text: str) -> ParseResult:
                 m = re.search(r"\*\*([^*]+)\*\*", ln)
                 bad_name = m.group(1).strip() if m else "<unknown>"
                 if "channel=" not in ln:
-                    raise DiscoveryParseError(
-                        f"company {bad_name!r} is missing channel field in cluster {cluster!r}"
-                    )
-                raise DiscoveryParseError(
-                    f"company {bad_name!r} row is malformed in cluster {cluster!r}"
-                )
+                    raise DiscoveryParseError(f"company {bad_name!r} is missing channel field in cluster {cluster!r}")
+                raise DiscoveryParseError(f"company {bad_name!r} row is malformed in cluster {cluster!r}")
 
     if len(companies) < 3:
-        raise DiscoveryParseError(
-            f"validation: at least 3 companies required, got {len(companies)}"
-        )
+        raise DiscoveryParseError(f"validation: at least 3 companies required, got {len(companies)}")
     if len(seen_clusters) < 2:
-        raise DiscoveryParseError(
-            f"validation: at least 2 clusters required, got {sorted(seen_clusters)}"
-        )
+        raise DiscoveryParseError(f"validation: at least 2 clusters required, got {sorted(seen_clusters)}")
 
     return ParseResult(markdown_clean=md_text.strip(), companies=companies)

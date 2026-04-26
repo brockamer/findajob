@@ -26,7 +26,6 @@ from typing import NamedTuple
 # discoverer side, and to keep this module importable even when the
 # discoverer package isn't yet on the path during unit tests of unrelated
 # subsystems.
-
 from findajob.onboarding.parser import ALLOWED_FILENAMES
 from findajob.onboarding.voice_processor import process_voice_samples
 
@@ -66,7 +65,7 @@ class DiscoveryStatus(NamedTuple):
     """
 
     success: bool
-    count: int
+    count: int  # type: ignore[assignment]  # NamedTuple field shadows tuple.count method
     error: str | None
 
 

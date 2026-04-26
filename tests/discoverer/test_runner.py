@@ -1,13 +1,9 @@
 import json
-import os
 import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-from findajob.discoverer.runner import RunResult, run
-
+from findajob.discoverer.runner import run
 
 VALID_LLM_OUTPUT = """\
 # Discovered Companies — generated 2026-04-26
@@ -75,7 +71,11 @@ def test_run_strips_think_blocks_before_parser(tmp_path: Path) -> None:
 
 def test_run_parse_failure_returns_failure_and_leaves_disk_untouched(tmp_path: Path) -> None:
     _setup_profile(tmp_path)
-    bad_output = "## Cluster: Direct domain match\n- **A** — channel=greenhouse. Reasoning: x. Citations: [1].\n## References\n[1] https://example.com"
+    bad_output = (
+        "## Cluster: Direct domain match\n"
+        "- **A** — channel=greenhouse. Reasoning: x. Citations: [1].\n"
+        "## References\n[1] https://example.com"
+    )
     with patch("findajob.discoverer.runner.subprocess.run", _stub_subprocess_run(bad_output)):
         result = run(tmp_path, ntfy_enabled=False)
     assert result.success is False

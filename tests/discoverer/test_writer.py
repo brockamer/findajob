@@ -12,8 +12,13 @@ def _payload() -> dict:
         "generated_at": "2026-04-26",
         "model": "openrouter:perplexity/sonar-reasoning-pro",
         "companies": [
-            {"name": "Alpha", "cluster": "direct", "channel": "greenhouse",
-             "reasoning": "x", "citations": ["https://example.com"]},
+            {
+                "name": "Alpha",
+                "cluster": "direct",
+                "channel": "greenhouse",
+                "reasoning": "x",
+                "citations": ["https://example.com"],
+            },
         ],
     }
 
@@ -59,6 +64,7 @@ def test_commit_atomically_rolls_back_on_replace_failure(tmp_path: Path) -> None
     (cc / "discovered_companies.json").write_text("OLD JSON\n")
 
     import findajob.discoverer.writer as wr
+
     real_replace = wr.os.replace
     calls = {"n": 0}
 

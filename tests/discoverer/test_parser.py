@@ -90,8 +90,11 @@ def test_invalid_missing_channel_raises_with_clear_message() -> None:
 
 def test_company_entry_is_frozen() -> None:
     entry = CompanyEntry(
-        name="X", cluster="direct", channel="greenhouse",
-        reasoning="r", citations=("u",),
+        name="X",
+        cluster="direct",
+        channel="greenhouse",
+        reasoning="r",
+        citations=("u",),
     )
     with pytest.raises((AttributeError, Exception)):
         entry.name = "Y"  # type: ignore[misc]

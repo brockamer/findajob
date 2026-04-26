@@ -24,7 +24,6 @@ from findajob.discoverer.writer import commit_atomically
 from findajob.paths import AICHAT, BASE
 from findajob.utils import log_event
 
-
 _DEFAULT_TIMEOUT_S = 540  # under cron's 600s timeout, room for IO
 _DEFAULT_COST_THRESHOLD_USD = 10.00
 _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
@@ -32,7 +31,7 @@ _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
 
 class RunResult(NamedTuple):
     success: bool
-    count: int
+    count: int  # type: ignore[assignment]  # NamedTuple field shadows tuple.count method
     error: str | None
     cost_usd: float | None
 
