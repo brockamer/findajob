@@ -29,6 +29,12 @@ def test_commit_atomically_writes_both_files(tmp_path: Path) -> None:
     assert md_path.read_text() == "# md\n\nhello\n"
     json_path = tmp_path / "candidate_context" / "discovered_companies.json"
     assert json.loads(json_path.read_text())["companies"][0]["name"] == "Alpha"
+    # Files must be world-readable (0o644) so the FastAPI process running as
+    # `lad` can read files that the discoverer wrote as a different user
+    # (e.g., manual `docker exec` as root). tempfile.mkstemp's default 0o600
+    # would make /config/ silently 500 on the file-read path.
+    assert (md_path.stat().st_mode & 0o777) == 0o644
+    assert (json_path.stat().st_mode & 0o777) == 0o644
 
 
 def test_commit_atomically_creates_parent_dir(tmp_path: Path) -> None:

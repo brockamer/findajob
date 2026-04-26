@@ -9,7 +9,11 @@
   </p>
   <h1 class="text-xl font-semibold font-mono mb-1">{{ relpath }}</h1>
 
-  {% if not exists %}
+  {% if error %}
+    <p class="text-sm text-red-800 bg-red-50 border border-red-300 rounded px-3 py-2 mb-4">
+      {{ error }}
+    </p>
+  {% elif not exists %}
     <p class="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2 mb-4">
       File does not exist yet — it will be created on save.
     </p>

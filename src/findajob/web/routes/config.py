@@ -44,14 +44,28 @@ def config_edit_form(relpath: str, request: Request) -> HTMLResponse:
 
     content = ""
     exists = resolved.is_file()
+    error: str | None = None
     if exists:
-        content = resolved.read_text(encoding="utf-8", errors="replace")
+        try:
+            content = resolved.read_text(encoding="utf-8", errors="replace")
+        except PermissionError:
+            # File exists but is unreadable by the web process (e.g., it was
+            # written by a different user via `docker exec` and has restrictive
+            # mode). Render an inline error rather than 500ing into HTMX.
+            error = (
+                f"Cannot read {relpath}: permission denied. The file exists but "
+                "is not readable by the web server. Check ownership and mode "
+                "on the host (e.g., `chown $(id -u):$(id -g) <file>`, "
+                "`chmod 644 <file>`)."
+            )
+        except OSError as exc:
+            error = f"Cannot read {relpath}: {exc.strerror or type(exc).__name__}."
 
     templates = request.app.state.templates
     return templates.TemplateResponse(
         request=request,
         name="config/editor.html",
-        context={"relpath": relpath, "content": content, "exists": exists},
+        context={"relpath": relpath, "content": content, "exists": exists, "error": error},
     )
 
 

@@ -105,6 +105,24 @@ def test_editor_rejects_unlisted_file(client: TestClient) -> None:
     assert resp.status_code == 403
 
 
+def test_editor_renders_inline_error_on_unreadable_file(client: TestClient, base_root: Path, monkeypatch) -> None:
+    """A 0o000-mode file (or one owned by another user) was 500ing into HTMX
+    silently. The route now catches PermissionError and renders an inline
+    error in the editor template (#289)."""
+    target = base_root / "candidate_context" / "profile.md"
+
+    def _raise_permission(*_a, **_kw):
+        raise PermissionError(13, "Permission denied", str(target))
+
+    monkeypatch.setattr(Path, "read_text", _raise_permission)
+
+    resp = client.get("/config/files/candidate_context/profile.md")
+    assert resp.status_code == 200
+    html = resp.text
+    assert "permission denied" in html.lower()
+    assert "candidate_context/profile.md" in html
+
+
 def test_editor_rejects_path_traversal(client: TestClient) -> None:
     resp = client.get("/config/files/config/../../etc/passwd")
     assert resp.status_code in (403, 404)

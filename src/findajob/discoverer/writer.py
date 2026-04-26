@@ -19,6 +19,11 @@ from pathlib import Path
 _MD_RELPATH = "candidate_context/discovered_companies.md"
 _JSON_RELPATH = "candidate_context/discovered_companies.json"
 _BACKUP_ROOT = ".backups"
+# tempfile.mkstemp() defaults to 0o600 (owner-only). Outputs land in
+# bind-mounted candidate_context/ and must be readable by the web server
+# even when the writer ran as a different user (e.g., manual `docker exec`
+# as root vs. the FastAPI process running as `lad`).
+_OUTPUT_FILE_MODE = 0o644
 
 
 def _utc_stamp() -> str:
@@ -75,6 +80,7 @@ def commit_atomically(
         fd, tmp_md = tempfile.mkstemp(prefix=md_dest.name + ".", suffix=".tmp", dir=str(md_dest.parent))
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
             fh.write(markdown)
+        os.chmod(tmp_md, _OUTPUT_FILE_MODE)
         tempfiles.append((tmp_md, md_dest))
 
         # Stage JSON
@@ -82,6 +88,7 @@ def commit_atomically(
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
             json.dump(json_payload, fh, ensure_ascii=False, indent=2)
             fh.write("\n")
+        os.chmod(tmp_json, _OUTPUT_FILE_MODE)
         tempfiles.append((tmp_json, json_dest))
 
         # Commit
