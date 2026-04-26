@@ -96,11 +96,11 @@ def _read_fixture(name: str) -> str:
     return (_FIXTURE_DIR / name).read_text(encoding="utf-8")
 
 
-def test_inject_clean_emission_redirects_to_board(client: TestClient, tmp_path: _Path) -> None:
+def test_inject_clean_emission_renders_completion_page(client: TestClient, tmp_path: _Path) -> None:
     blob = _read_fixture("alice-doe-clean-emission.txt")
     resp = client.post("/onboarding/inject", data={"emission": blob})
-    assert resp.status_code == 303
-    assert resp.headers["location"] == "/board/dashboard"
+    assert resp.status_code == 200
+    assert "Onboarding complete" in resp.text
     # Files on disk under the TestClient's base_root (tmp_path)
     assert (tmp_path / "candidate_context" / "profile.md").is_file()
     assert (tmp_path / "config" / "target_companies.md").is_file()
@@ -146,7 +146,7 @@ def test_inject_empty_paste_rerenders_with_error(client: TestClient, tmp_path: _
 def test_inject_populates_companies_of_interest_from_tier1(client: TestClient, tmp_path: _Path) -> None:
     blob = _read_fixture("alice-doe-clean-emission.txt")
     resp = client.post("/onboarding/inject", data={"emission": blob})
-    assert resp.status_code == 303
+    assert resp.status_code == 200
     coi = (tmp_path / "config" / "companies_of_interest.txt").read_text()
     assert "Metro Health Authority" in coi
     assert "Sample Benefit Corporation" in coi

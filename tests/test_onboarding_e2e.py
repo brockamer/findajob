@@ -78,8 +78,8 @@ def test_fresh_stack_end_to_end(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
 
     blob = _FIXTURE.read_text(encoding="utf-8")
     r = client.post("/onboarding/inject", data={"emission": blob})
-    assert r.status_code == 303
-    assert r.headers["location"] == "/board/dashboard"
+    assert r.status_code == 200
+    assert "Onboarding complete" in r.text
 
     assert (tmp_path / "candidate_context" / "profile.md").is_file()
     assert (tmp_path / "candidate_context" / "master_resume.md").is_file()

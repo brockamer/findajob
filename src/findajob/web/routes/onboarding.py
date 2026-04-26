@@ -49,10 +49,10 @@ def onboarding_inject(
     request: Request,
     emission: str = Form(default=""),
 ) -> HTMLResponse | RedirectResponse:
-    """Parse and inject an interview emission; redirect to /board/ on success."""
+    """Parse and inject an interview emission; render completion page on success."""
     result = parse_emission(emission)
+    templates = request.app.state.templates
     if result.missing:
-        templates = request.app.state.templates
         return templates.TemplateResponse(
             request=request,
             name="onboarding/index.html",
@@ -68,7 +68,15 @@ def onboarding_inject(
             status_code=400,
         )
     base_root: Path = request.app.state.base_root
-    inject(base_root, result.found)
+    inject_result = inject(base_root, result.found)
     # Clear cached guard state so the next /board/ request passes through
     request.app.state.onboarding_complete = True
-    return RedirectResponse(url="/board/dashboard", status_code=303)
+    return templates.TemplateResponse(
+        request=request,
+        name="onboarding/complete.html",
+        context={
+            "discovery_success": inject_result.discovery.success,
+            "discovery_count": inject_result.discovery.count,
+            "discovery_error": inject_result.discovery.error,
+        },
+    )
