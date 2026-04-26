@@ -28,7 +28,7 @@ The fix is to introduce a **reasoned, regenerable, field-agnostic discovered set
 |---|---|---|
 | **Primary objective** | Operator's applies-from-discovered-companies in 30 days post-deploy | ≥1 application to a company appearing only on the discovered list (not in the static `## Target Companies`) |
 | **Generalization gate** | Same role prompt produces sensibly different outputs | Eyeballed PR-time smoke against the operator's real profile; expected output reads as field-appropriate |
-| **Cost ceiling (soft)** | Per-run reported cost on `openrouter:perplexity/sonar-reasoning-pro` | ntfy warning if any single run reports >$10; does not block run |
+| **Cost ceiling (soft)** | Per-run reported cost on `openrouter:perplexity/sonar-reasoning-pro` | ntfy warning if any single run reports >$10; does not block run. **Empirical (smoke #5):** ~$0.10/run, far under threshold; envelope (~$260/year/stack) is overstated by ~50× and can be revisited in a follow-up. |
 | **Failure semantics** | Network/parse/garbage failure | Last-good output preserved; ntfy alert sent; cron exit non-zero |
 | **Onboarding latency** | Time added to fresh-stack onboarding completion | <60s budgeted for the post-injection LLM call; soft-fail if exceeded |
 | **Atomicity** | Disk-state during failed write | Either both `.md` and `.json` sidecar update, or neither; previous good output preserved |
@@ -282,11 +282,23 @@ The `last-good preserved` invariant is the architectural guarantee: at no point 
   - `<think>...</think>` blocks are stripped before parser sees the content
   - Cost-threshold breach emits ntfy warning but does not block write
 
-### 9.3 Manual smoke (PR-time, real API, ~$5)
+### 9.3 Manual smoke (PR-time, real API, ~$0.10)
 
-Run the discoverer against the operator's real `candidate_context/profile.md` once during implementation review. Eyeball the three clusters: do they read as field-appropriate? Are the citations real URLs? Does the prompt's reasoning-per-row reference the operator's competencies plausibly?
+Run the discoverer against the operator's real `candidate_context/profile.md` once during implementation review. Eyeball the three clusters: do they read as field-appropriate? Are the recommended companies NOVEL (not on the candidate's static `## Target Companies` list)? Does the prompt's reasoning-per-row reference the operator's competencies plausibly?
 
 Document the result in the PR description (one paragraph, the count + cluster headers + a representative reasoning line). No permanent fixture, no committed Alice fixture, no permanent CI gate. Per the Q4 brainstorm reflection, generalization is a code-review concern for upstream contributions — not a CI contract.
+
+**Empirical findings (smoke iterations during PR-time validation):**
+
+The PR-time smoke caught two high-value design defects the brainstorm/spec phase did not anticipate:
+
+1. **Perplexity's search architecture is single-query-per-call.** The role-file system prompt is ignored by the search component (per docs.perplexity.ai/guides/prompt-guide). Salient noun phrases in the user prompt's opening sentence drive the auto-generated search query. "See below" structures, generic openers ("identify companies hiring people for the following roles"), and literal section names ("Target Companies / Organizations") all anchored the search incorrectly — produced refusals or off-topic hits. **Fix:** `prompt.py` extracts the candidate's first target-role bullet's headline + descriptor and inlines them in the opener so the search query is field-grounded.
+
+2. **The "Target Companies" list as a "seed" produced regurgitation, not discovery.** With the original spec wording, the model treated the candidate's static list as inclusion guidance and recommended ~80% companies the candidate already knew. **Fix:** `## Target Companies / Organizations` is now treated as the **EXCLUSION list** — the role file's load-bearing instruction is novelty (find companies the candidate has NOT named). The opener biases toward "emerging or less-prominent" organizations.
+
+3. **Strict per-row citation requirement blocked novel discoveries.** Perplexity's search returns prominent hits (= excluded hyperscalers); the model knew the right emerging companies from training data but couldn't cite them under the strict-URL constraint. The model would refuse rather than recommend without a URL. **Fix:** citations are now OPTIONAL per row — when a verifiable URL is in search results, include it; otherwise omit the `Citations: [N]` clause entirely. Operator hand-verifies via the `/config/` editor (already allowlisted). Parser updated: `_ROW_RE` makes the citations clause optional; `tests/fixtures/discoverer/valid_no_citations.md` covers the new shape.
+
+Final smoke (smoke #5) against the operator's profile produced 11 NOVEL companies across all three clusters with reasoning lines tying each to specific operator competencies (NPI, EVT→DVT→PVT lifecycle, technician enablement, field deployment). Zero overlap with the operator's Tier 1 / Tier 2 seed list. Cost: ~$0.10.
 
 ## 10. Generalization safety
 
