@@ -106,3 +106,18 @@ def test_parse_markdown_returns_clean_markdown() -> None:
     # Clean markdown is the input minus any think-block residue.
     # For valid input, it equals the input (modulo strip).
     assert result.markdown_clean.strip() == md.strip()
+
+
+def test_valid_no_citations_rows_parse_with_empty_citations() -> None:
+    """Citations clause is OPTIONAL per row (over-strict citation
+    requirement caused real-API smokes to refuse valid recommendations
+    when the model couldn't confirm a URL). Rows without `Citations: [N]`
+    must parse successfully with `citations=()`."""
+    result = parse_markdown(_read("valid_no_citations.md"))
+    assert len(result.companies) == 3
+    by_name = {c.name: c for c in result.companies}
+    # Two rows have no Citations clause
+    assert by_name["Alpha Co"].citations == ()
+    assert by_name["Beta Inc"].citations == ()
+    # One row keeps its citation
+    assert by_name["Gamma LLC"].citations == ("https://gamma.example.com/about",)

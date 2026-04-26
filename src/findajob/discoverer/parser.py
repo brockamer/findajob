@@ -22,11 +22,16 @@ _CLUSTER_HEADING_RE = re.compile(
 )
 # Row format:
 #   - **Name** — channel=foo. Reasoning: ... Citations: [1], [2].
+# Citations clause is OPTIONAL: rows may omit it entirely when the model
+# cannot confirm a verifiable URL. When present, must be `Citations: [N]`
+# (one or more bracketed indices, optionally comma-separated). When absent,
+# the row ends after the reasoning sentence.
 _ROW_RE = re.compile(
     r"^\s*-\s+\*\*(?P<name>[^*]+?)\*\*\s*[—-]\s*"
     r"channel=(?P<channel>[a-z_]+)\.\s*"
-    r"Reasoning:\s*(?P<reasoning>.+?)\s*"
-    r"Citations:\s*(?P<cites>(?:\[\d+\],?\s*)+)\s*\.?\s*$",
+    r"Reasoning:\s*(?P<reasoning>.+?)"
+    r"(?:\s*Citations:\s*(?P<cites>(?:\[\d+\],?\s*)+))?"
+    r"\s*\.?\s*$",
     re.MULTILINE,
 )
 _CITE_INDEX_RE = re.compile(r"\[(\d+)\]")
@@ -97,7 +102,7 @@ def parse_markdown(md_text: str) -> ParseResult:
             name = row.group("name").strip()
             channel = row.group("channel").strip()
             reasoning = row.group("reasoning").strip().rstrip(".").strip()
-            cites_raw = row.group("cites")
+            cites_raw = row.group("cites") or ""
             cite_indices = [int(m.group(1)) for m in _CITE_INDEX_RE.finditer(cites_raw)]
             citations = tuple(refs[i] for i in cite_indices if i in refs)
             if not name:
