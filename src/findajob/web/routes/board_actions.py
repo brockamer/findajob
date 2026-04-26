@@ -387,18 +387,27 @@ def reactivate(
     return HTMLResponse("")
 
 
+_PROMOTABLE_STAGES = ("manual_review", "scored")
+
+
 @router.post("/board/jobs/{fingerprint}/promote", response_class=HTMLResponse)
 def promote(
     fingerprint: str,
     request: Request,  # noqa: ARG001
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
 ) -> HTMLResponse:
-    """Promote a manual_review job onto the Dashboard."""
+    """Promote a job onto the Dashboard with relevance_score=7.
+
+    Two surfaces invoke this:
+    - Review tab: rows at stage='manual_review' (raises score, keeps stage)
+    - Archive tab: rows at stage='scored' with score<7 (bumps score to 7
+      so the row appears on the Dashboard's score>=7 filter).
+    """
     job = _fetch_job(db, fingerprint)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
-    if job["stage"] != "manual_review":
-        raise HTTPException(status_code=409, detail="Job is not in manual_review")
+    if job["stage"] not in _PROMOTABLE_STAGES:
+        raise HTTPException(status_code=409, detail="Job is not promotable from its current stage")
     promote_to_scored(db, job, reason="Promoted from web UI")
     return HTMLResponse("")
 

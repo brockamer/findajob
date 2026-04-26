@@ -782,11 +782,28 @@ class TestPromote:
         audit = _fetch_audit(client, "fp_manual")
         assert any(a == ("stage", "manual_review", "scored") for a in audit)
 
-    def test_409_on_non_manual_review_job(self, client: TestClient):
-        response = client.post("/board/jobs/fp_scored/promote")
+    def test_happy_path_from_archive_scored(self, client: TestClient):
+        """Archive-tab Promote on a score-6 stage='scored' row bumps to score=7."""
+        conn = sqlite3.connect(client._db_path)
+        _insert_job(conn, fingerprint="fp_archive_6", stage="scored", score=6)
+        conn.close()
+
+        response = client.post("/board/jobs/fp_archive_6/promote")
+
+        assert response.status_code == 200
+        assert response.text == ""
+
+        conn = sqlite3.connect(client._db_path)
+        row = conn.execute("SELECT stage, relevance_score FROM jobs WHERE fingerprint='fp_archive_6'").fetchone()
+        conn.close()
+        assert row[0] == "scored"
+        assert row[1] == 7
+
+    def test_409_on_post_application_stage(self, client: TestClient):
+        response = client.post("/board/jobs/fp_applied/promote")
 
         assert response.status_code == 409
-        assert _fetch_stage(client, "fp_scored") == "scored"
+        assert _fetch_stage(client, "fp_applied") == "applied"
 
     def test_404_on_unknown_fingerprint(self, client: TestClient):
         response = client.post("/board/jobs/fp_nonexistent/promote")

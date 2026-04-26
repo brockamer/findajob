@@ -191,12 +191,15 @@ def promote_to_scored(
     job: Any,
     reason: str = "Promoted from web UI",
 ) -> None:
-    """Promote a manual_review job to scored with relevance_score=7.
+    """Promote a job to stage='scored' with relevance_score=7.
 
-    Used when the operator marks a Review-tab job as "Promote" — bumps the
-    score so it lands on the Dashboard for a Flag for Prep decision. The
-    caller is responsible for checking that the job's stage is manual_review
-    (handlers return 409 otherwise).
+    Used when the operator marks a job as "Promote" from either:
+    - Review tab (stage='manual_review' → 'scored'), or
+    - Archive tab (stage='scored', score<7 → score=7).
+
+    Bumps the score so it lands on the Dashboard's score>=7 filter for a
+    Flag for Prep decision. The caller (web handler) is responsible for
+    verifying the source stage is in the promotable set.
     """
     now = datetime.now(UTC).isoformat()
     old_stage = job["stage"]
