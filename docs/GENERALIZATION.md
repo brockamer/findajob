@@ -153,6 +153,31 @@ Remaining roles audited 2026-04-22 and found clean: `briefing_writer.md`, `fit_a
 
 ---
 
+## Company discovery — replaces hand-curated Tier 1 expansion (#284)
+
+The `## Target Companies / Organizations` section in `profile.md` was
+previously the only mechanism for naming companies the candidate would
+take a job at. It conflated two signals: strategic preference (would-take
+even if not a perfect fit) and competency-domain fit (skill-stack
+matches). Hand-expanding the list to cover competency-fit was a known
+dead end — hand-written lists don't track hiring activity and don't scale
+across operator fields.
+
+The `company_discoverer` role (#284) handles competency-fit discovery as
+a parallel, regenerable, field-agnostic signal. The static list stays as
+the strategic-preference signal. The two are read separately by
+downstream consumers (#285's scorer rewire, #283's Greenhouse-slug
+derivation) without either acting as a hard floor.
+
+The discoverer's role file (`config/roles/company_discoverer.md`) is
+intentionally field-agnostic. It enumerates no industries, no companies,
+no role titles. If you fork to tune the prompt for your own field, that
+is expected; if you contribute back upstream, please preserve
+field-agnosticism so other operators in unrelated fields continue to
+benefit.
+
+---
+
 ## Self-Check for Future Sessions
 
 Before committing code or prompt changes, ask:

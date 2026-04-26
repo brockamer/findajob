@@ -77,6 +77,7 @@ file. If you're refactoring an old hardcoded section, add a note to `docs/GENERA
 | Embedding model | `gemini-embed:gemini-embedding-001` — dedicated named client, never touched by `--sync-models` |
 | `job_scorer` | `openrouter:deepseek/deepseek-v3.2` — profile.md injected directly; `--rag` NEVER used |
 | `resume_tailor` / `cover_letter_writer` | `openrouter:anthropic/claude-opus-4.7`, `max_tokens: 4096` |
+| `company_discoverer` | `openrouter:perplexity/sonar-reasoning-pro` — runs weekly Sun 02:00; emits `candidate_context/discovered_companies.md` + `.json`; field-agnostic, augments static `## Target Companies` |
 | `company_researcher` | `openrouter:perplexity/sonar-reasoning-pro` |
 | `briefing_writer` | `openrouter:anthropic/claude-opus-4.7` — cascades into `resume_tailor` + `cover_letter_writer`, both Opus 4.7 |
 | `outreach_drafter` | `openrouter:anthropic/claude-opus-4.7` — profile + voice samples injected directly |
@@ -111,6 +112,7 @@ When the pipeline runs inside the `ghcr.io/brockamer/findajob` image, paths shif
 | `config/roles/` | `<repo>/config/roles/` | `/app/config/roles/` (baked into image — NOT from bind mount) |
 | Personal config (`config/*.yaml|.txt|.json`) | `<repo>/config/` | `/app/config/` (bind-mounted from `./state/config/`) |
 | `candidate_context/` | `<repo>/candidate_context/` | `/app/candidate_context/` (bind-mount) |
+| `discovered_companies.md/.json` | `<repo>/candidate_context/discovered_companies.{md,json}` (gitignored, generated) | `/app/candidate_context/discovered_companies.{md,json}` (generated into bind-mount) |
 | `companies/` | `<repo>/companies/` | `/app/companies/` (bind-mount) |
 | Onboarding sentinel | `<repo>/data/.onboarding-complete` (new in #148) | `/app/data/.onboarding-complete` (bind-mount from `./state/data/`) |
 | Onboarding backups | `<repo>/.backups/{UTC-stamp}/` (new in #148) | `/app/.backups/` (bind-mount from `./state/.backups/`) |
@@ -148,6 +150,7 @@ When the pipeline runs inside the `ghcr.io/brockamer/findajob` image, paths shif
 <repo>/src/findajob/web/routes/onboarding.py # GET /onboarding/, GET /onboarding/prompt, POST /onboarding/inject (#148)
 <repo>/src/findajob/onboarding/parser.py    # parse interview emission into files to inject (#148)
 <repo>/src/findajob/onboarding/injector.py  # atomic write + backup + Tier-1 derivation + sentinel (#148)
+<repo>/src/findajob/discoverer/                # company discovery library — prompt, parser, runner, writer
 <repo>/src/findajob/web/routes/healthz.py    # GET /healthz
 <repo>/src/findajob/web/routes/materials.py  # GET /materials/ — candidate materials viewer (uses folder_resolver)
 <repo>/src/findajob/web/folder_resolver.py   # stage→filesystem resolver with path-traversal guards
@@ -163,6 +166,7 @@ When the pipeline runs inside the `ghcr.io/brockamer/findajob` image, paths shif
 <repo>/scripts/ingest_form.py               # Google Form → DB ingestion (retired: timer disabled in #62; kept for manual runs)
 <repo>/scripts/notify.py                    # ntfy push notifications (8 subcommands incl. send-raw, scoreboard)
 <repo>/scripts/rename_folders.py            # rename company folders to new format (idempotent)
+<repo>/scripts/discover_companies.py            # weekly company discovery cron entry
 
 # ── Candidate content (all gitignored — fill these in after cloning) ────────
 <repo>/candidate_context/profile.md         # candidate profile — injected into scoring, resume, CL, outreach
@@ -303,6 +307,16 @@ Never rely on LLM prompt instructions alone for boolean classification tasks.
 Any internally-branded teams, programs, or org names with ambiguous abbreviations must be
 spelled out explicitly in role prompts and CLAUDE.local.md. LLMs will misinterpret
 abbreviations if context is not given. See CLAUDE.local.md for this installation's specifics.
+
+### Company Discovery is a Parallel Signal
+`config/roles/company_discoverer.md` runs weekly via supercronic and after
+onboarding completion. It emits `candidate_context/discovered_companies.md`
++ `.json` (gitignored). Both are read by #285's scorer rewire and #283's
+Greenhouse-slug derivation as INPUTS, not floors. The static
+`## Target Companies / Organizations` section in profile.md remains as a
+strategic-preference signal — orthogonal to the competency-fit signal the
+discoverer produces. Do not delete the static list to "consolidate" — they
+serve different purposes.
 
 ### Output Folder Format
 `{Company}_{AbbrevTitle}_{YYYY-MM-DD}_{HHMMSS}` — title abbreviated to first 3 words, underscored.

@@ -48,10 +48,11 @@ volunteer work if relevant. Example:
 ]
 
 ## Target Companies / Organizations
-[List primary targets. Could be companies, nonprofits, school districts, hospital systems,
-government agencies — whatever fits your field. The job_scorer reads this to apply the
-"Tier 1 floor" — in-domain titles at these orgs get a minimum score of 6 even at junior
-levels.]
+[List primary targets you'd take a job at even if the role isn't a perfect fit. This is
+a SEED — not the universe. The findajob `company_discoverer` role (#284) augments this
+with a regenerable, reasoned set in `candidate_context/discovered_companies.md`. The
+job_scorer reads BOTH lists as inputs to scoring; this section carries strategic
+preference, the discovered list carries competency-fit (orthogonal signals).]
 
 ## Excluded Categories
 [**Strongly recommended.** The job_scorer reads this section to hard-reject roles by title

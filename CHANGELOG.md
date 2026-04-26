@@ -31,6 +31,19 @@ changes may land in minor version bumps; patch releases are bugfix-only.
   see jobs the prior 7+ default hid. The 7+ happy path is unchanged on
   cold load. Followed by #277 (Columns dropdown UI + per-tab pref
   persistence) and #276 (scorer-side IC-vs-manager noise reduction).
+- **Dynamic company discovery (#284).** New `company_discoverer` role
+  (`openrouter:perplexity/sonar-reasoning-pro`, ~$3-5/run) runs weekly on
+  Sunday 02:00 and after onboarding completion. Emits
+  `candidate_context/discovered_companies.md` (human-readable, gitignored)
+  + `.json` sidecar (machine-readable consumer contract for #285 scorer
+  rewire and #283 Greenhouse-slug derivation). Augments — does not
+  replace — the static `## Target Companies / Organizations` profile
+  section: the static list now carries strategic preference, the
+  discovered set carries competency-fit (orthogonal signals). Field-
+  agnostic by design; same prompt produces sensibly different outputs for
+  operators in different fields. Cost soft-guardrail: ntfy warning when
+  any single run reports >$10 (configurable via
+  `DISCOVERY_COST_THRESHOLD_USD`).
 
 ### Removed
 
