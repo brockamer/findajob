@@ -156,3 +156,12 @@ def test_editable_categories_constant_shape() -> None:
     assert "candidate_context/profile.md" in EDITABLE_CATEGORIES["Candidate context"]
     assert "config/jsearch_queries.txt" in EDITABLE_CATEGORIES["Search config"]
     assert EDITABLE_CATEGORIES["Role prompts"] == "config/roles/*.md"
+
+
+def test_discovered_companies_md_is_editable() -> None:
+    assert is_editable("candidate_context/discovered_companies.md") is True
+
+
+def test_discovered_companies_json_is_NOT_editable() -> None:
+    """JSON sidecar is machine-managed; only the markdown is operator-editable."""
+    assert is_editable("candidate_context/discovered_companies.json") is False

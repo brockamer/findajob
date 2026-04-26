@@ -18,6 +18,7 @@ EDITABLE_CATEGORIES: dict[str, list[str] | str] = {
     "Candidate context": [
         "candidate_context/profile.md",
         "candidate_context/master_resume.md",
+        "candidate_context/discovered_companies.md",
     ],
     "Search config": [
         "config/target_companies.md",
