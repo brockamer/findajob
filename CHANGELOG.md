@@ -10,6 +10,10 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-04-26
+
+Minor bump. Three additive board+pipeline shipments and one Archive-tab bug fix. Adds a per-column filter framework on every board tab (#273) that bookmarks any view via URL query params, introduces dynamic competency-driven company discovery (#284) as a new weekly Sunday-02:00 cron job, and unsticks the Archive-tab Promote button on score-6 stage='scored' rows (#282). One `migration-required` marker below — the new scheduled job is image-baked, but operators should know it will start firing.
+
 ### Added
 
 - **Per-column filter+sort framework on every board tab (#273).** Replaces
@@ -45,12 +49,35 @@ changes may land in minor version bumps; patch releases are bugfix-only.
   any single run reports >$10 (configurable via
   `DISCOVERY_COST_THRESHOLD_USD`).
 
+### Fixed
+
+- **Archive-tab Promote 409 on score-6 rows (#282).** The `/board/jobs/{fp}/promote`
+  handler accepted only `stage='manual_review'`, but the Archive-tab template
+  renders the Promote button on `stage='scored'` rows (operator's bump-score-6-to-7
+  path). Clicks failed silently with HTMX swallowing a 409 "Job is not in
+  manual_review" response. Handler now accepts both `manual_review` and `scored`
+  stages; `promote_to_scored` already produces the correct end state in either
+  case (stage='scored', relevance_score=7). Test coverage added for the
+  Archive-tab path. Verified end-to-end on the operator stack 2026-04-26.
+
 ### Removed
 
 - **`?q=` text-search URL param on board tabs.** Superseded by the
   per-column TEXT filters under `?title=...&company=...`. Bookmarks using
   the old `?q=foo` will silently drop the filter — the bookmark scheme
   was internal to one feature.
+
+### Migration required
+
+- **No user action required for the new weekly cron job (#284).** A new
+  supercronic line at Sunday 02:00 (container time, UTC) runs the
+  `company_discoverer` role and writes
+  `candidate_context/discovered_companies.{md,json}` into your bind-mounted
+  `state/candidate_context/`. The schedule is image-baked, so `docker compose
+  pull && up -d` is sufficient — but operators should know the new artifact
+  will start appearing weekly and that each run consumes ~$3–5 of OpenRouter
+  Perplexity-Sonar budget. Set `DISCOVERY_COST_THRESHOLD_USD` in
+  `state/data/.env` to override the default >$10 ntfy soft-guardrail.
 
 ## [0.4.0] — 2026-04-24
 
@@ -307,7 +334,8 @@ from GHCR and deployed via Docker Compose on a shared Docker host.
 - Documentation cleanup — removing `sigoden/aichat` references in favor of
   `blob42/aichat-ng` — is tracked in #70
 
-[Unreleased]: https://github.com/brockamer/findajob/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/brockamer/findajob/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/brockamer/findajob/releases/tag/v0.5.0
 [0.4.0]: https://github.com/brockamer/findajob/releases/tag/v0.4.0
 [0.3.3]: https://github.com/brockamer/findajob/releases/tag/v0.3.3
 [0.3.2]: https://github.com/brockamer/findajob/releases/tag/v0.3.2
