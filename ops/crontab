@@ -26,5 +26,8 @@ PYTHONUNBUFFERED=1
 # 30   8   *  *  1        python3 /app/scripts/notify.py scoreboard
 0    8   *  *  0        python3 /app/scripts/notify.py feedback-review
 
+# ── Discovery (Sunday 02:00 — competency-driven company discovery, #284) ─────
+0    2   *  *  0   timeout 600 python3 /app/scripts/discover_companies.py
+
 # ── RAG rebuild (Sunday 03:00) ───────────────────────────────────────────────
 0    3   *  *  0   /usr/local/bin/aichat-ng --rag job_search_rag --rebuild-rag
