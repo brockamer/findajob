@@ -1,0 +1,13 @@
+{# Result partial swapped into #feedback-result by the feedback form (#227). #}
+{% if ok %}
+  <div class="rounded border border-emerald-300 bg-emerald-50 text-emerald-900 px-3 py-2">
+    {{ message }}
+    {% if issue_url %}
+      <a href="{{ issue_url }}" target="_blank" rel="noopener noreferrer" class="underline ml-1">View issue</a>
+    {% endif %}
+  </div>
+{% else %}
+  <div class="rounded border border-rose-300 bg-rose-50 text-rose-900 px-3 py-2">
+    {{ message }}
+  </div>
+{% endif %}

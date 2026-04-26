@@ -10,6 +10,14 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Added
+
+- **In-app feedback widget files a GitHub issue per submission (#227).** Floating "Feedback" button in the bottom-right corner of every page opens a small modal with a textarea; submission posts to `/feedback/submit` which calls the GitHub Issues API server-side and labels the issue `feedback` (plus an optional per-stack identifier label). New env vars in `state/data/.env`: `GITHUB_FEEDBACK_PAT` (fine-grained PAT scoped to Issues:read+write on the target repo, required), `FEEDBACK_STACK_LABEL` (optional second label, e.g. `from:operator` / `from:alice-doe`), `FEEDBACK_REPO` (defaults to `brockamer/findajob`). The PAT is held server-side and never reaches the browser. No PII guard, no rate limit — testers see what they're typing and the feedback path is internal to the Wireguard perimeter.
+
+### Migration required
+
+- Set `GITHUB_FEEDBACK_PAT` in each stack's `state/data/.env` before the next `docker compose up -d`. Without it, the widget renders but submissions return a 503 with a friendly "feedback isn't configured on this stack" message — i.e. the app stays up; only the feedback path is degraded. Generate a fine-grained PAT at github.com/settings/personal-access-tokens/new with `Issues: read+write` scoped to the target repo only. Optionally set `FEEDBACK_STACK_LABEL=from:<stack>` per stack so triage can tell operator-stack and tester-stack reports apart.
+
 ## [0.5.1] — 2026-04-26
 
 Patch bump. Two bug fixes that surfaced after v0.5.0 deployed: the discoverer's atomic-replace writer was creating files at mode 0o600 (the `tempfile.mkstemp` default), which made them unreadable by the FastAPI process when written by a different user, and the scorer's JSON parser was failing on prose-prefixed LLM responses (~5–10/triage cycle on the operator stack). Rolling `docker compose pull && up -d` picks both up.

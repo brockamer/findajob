@@ -8,6 +8,7 @@ from findajob.web.routes import (
     board_actions,
     config,
     docs,
+    feedback,
     healthz,
     ingest,
     landing,
@@ -31,3 +32,4 @@ router.include_router(config.router)
 router.include_router(tools.router)
 router.include_router(onboarding.router)
 router.include_router(docs.router)
+router.include_router(feedback.router)
