@@ -14,6 +14,8 @@ config/jsearch_queries.txt
 config/feed_urls.txt
 candidate_context/profile.md
 candidate_context/master_resume.md
+candidate_context/discovered_companies.md
+candidate_context/discovered_companies.json
 candidate_context/voice_samples/*
 !candidate_context/voice_samples/README.md
 CLAUDE.local.md
