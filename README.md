@@ -152,3 +152,11 @@ The repository contains no personal data. All candidate content (resume, profile
 ## License
 
 MIT.
+
+## 💰 Bounty Contribution
+
+- **Task:** Explore you.com API as alternative LLM provider
+- **Reward:** $100
+- **Source:** GitHub-Paid
+- **Date:** 2026-04-27
+
