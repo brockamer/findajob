@@ -33,6 +33,35 @@
 set -euo pipefail
 
 # ────────────────────────────────────────────────────────────────────────────
+# 0. PUID/PGID guard — refuse to run as root
+# ────────────────────────────────────────────────────────────────────────────
+#
+# The compose snippet below shells out $(id -u):$(id -g) at script-run time.
+# Under `sudo` (or `sudo -E`), those resolve to 0:0, the container entrypoint
+# tries `groupadd -g 0 lad`, collides with the existing root GID, and
+# supercronic never starts (manifests as a 60s startup timeout downstream).
+# Fail fast here with a clear diagnostic instead.
+
+if [ "$(id -u)" -eq 0 ] || [ "$(id -g)" -eq 0 ]; then
+    cat >&2 <<'EOM'
+ERROR: this smoke script must NOT be run as root (uid=0 / gid=0).
+
+The compose file embeds $(id -u):$(id -g) as PUID/PGID. Running under sudo
+collapses both to 0, which collides with the container's root GID and
+prevents the entrypoint from creating the unprivileged 'lad' user.
+
+Re-invoke as your normal docker-group user, without sudo:
+
+    FINDAJOB_SMOKE_SHEET_ID=<sheet-id> \
+      scripts/test_container_integration.sh
+
+If your account is not in the 'docker' group, add it once with
+`sudo usermod -aG docker $USER` and re-login — don't sudo this script.
+EOM
+    exit 2
+fi
+
+# ────────────────────────────────────────────────────────────────────────────
 # 1. Resolve repo root + fixture paths
 # ────────────────────────────────────────────────────────────────────────────
 

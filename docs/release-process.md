@@ -123,6 +123,13 @@ FINDAJOB_TEST_IMAGE=findajob:local \
 The script takes 2–5 minutes (dominated by ~20 LLM scoring calls over the real
 network) and costs ≤$0.10 of API budget per run.
 
+**Run as your normal docker-group user — do not `sudo` this script.** The
+compose snippet embeds `$(id -u):$(id -g)` as PUID/PGID; running under sudo
+collapses both to 0, collides with the container's root GID, and prevents
+the unprivileged `lad` user from being created. The script now fails fast
+with a clear diagnostic if it detects uid=0 or gid=0, so this is a
+one-line correction rather than a 60s startup timeout to debug.
+
 **If the smoke is green on the commit you intend to tag, the gate is cleared
 and Claude may propose the cut.** No time window, no 24h/48h observation. A
 binary signal tied to what a fresh tester actually exercises.
