@@ -278,12 +278,33 @@ def read_candidate_name(profile_path: str | None = None) -> str:
 def read_file_prefix(profile_path: str | None = None) -> str:
     """Read the prefix used in generated filenames.
 
-    Prefers an explicit `File Prefix: Xxx` line (from profile.md). Falls back
-    to the last word of the candidate's name (from `Name:`). Returns 'Candidate'
-    if neither is available.
+    Resolution order:
+      1. ``display_name.txt`` sibling of profile.md (single line, written by
+         the #328 onboarding injector). Last word of the line — deterministic,
+         matches the AbbrevName-Last shape used historically.
+      2. Explicit ``File Prefix:`` line in profile.md (legacy).
+      3. ``Name:`` line in profile.md, last word (legacy fallback).
+      4. ``Candidate`` if nothing else matches.
+
+    The display_name.txt path is the structured source — preferred over
+    profile.md narrative parsing, which can break when the LLM emits the
+    "Name" / "Identity" section in a non-standard shape.
     """
     if profile_path is None:
         profile_path = f"{BASE}/candidate_context/profile.md"
+
+    # 1. Structured source from #328 onboarding — sibling of profile.md
+    display_name_path = os.path.join(os.path.dirname(profile_path), "display_name.txt")
+    try:
+        with open(display_name_path) as f:
+            display_name = f.read().strip()
+        if display_name:
+            parts = display_name.split()
+            return parts[-1] if parts else display_name
+    except (FileNotFoundError, OSError):
+        pass
+
+    # 2. Legacy: explicit File Prefix line in profile.md
     try:
         with open(profile_path) as f:
             for line in f:
@@ -295,6 +316,7 @@ def read_file_prefix(profile_path: str | None = None) -> str:
     except (FileNotFoundError, OSError):
         pass
 
+    # 3. Legacy: last word of Name line in profile.md
     name = read_candidate_name(profile_path)
     parts = name.strip().split()
     return parts[-1] if parts else "Candidate"
