@@ -10,6 +10,14 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Added
+
+- **Schema foundation for speculative ingest (#131, B1 of 4).** New `jobs.synthetic` column (idempotent ALTER on existing stacks; default `0` for all real-posting rows) marks rows produced by the upcoming speculative cold-outreach path. New `speculative_requests` table holds pre-approval state (briefing, role-cards JSON, status lifecycle, prompt-version tags) before any `jobs` rows are written. New `findajob.utils.is_synthetic_job(job)` helper centralizes the read pattern. `handle_rejection` now skips `feedback_log` writes when the job is synthetic, and `_build_feedback_block` LEFT JOINs against `jobs.synthetic` to exclude synthetic rejections from the scorer's prompt history — defense-in-depth so synthesizer hallucinations cannot contaminate the scorer's feedback loop. Subsequent PRs (B2 synthesis pipeline, B3 web form / review gate, B4 prep + sent-outreach button) build on this foundation; no operator-visible UX yet.
+
+### Migration required
+
+- (#131 B1) `jobs.synthetic` column adds via idempotent `ALTER TABLE ADD COLUMN` (default 0); `speculative_requests` is a fresh `CREATE TABLE` with a `CHECK` constraint on the status enum. Both run automatically on next `docker compose up -d` via `init_db.py`. No operator action required beyond `docker compose pull && up -d`.
+
 ## [0.5.2] — 2026-04-28
 
 Patch bump. Two substantial Added shipments — the new interview-prep artifact triggered on the board's `applied → interview` transition (#258) and the in-app feedback widget that files GitHub issues per submission (#227) — plus the jobs-api14 Indeed slot drop (#274), three quality bugfixes (#308 Ashby timeout, #302 probability_score visibility, #280 Archive horizontal shift), and two documentation passes (README polish, CLAUDE.md scheduler-row drift fix). One soft-migration marker below for the feedback widget's optional GitHub PAT — the pipeline stays up and only the feedback path degrades if the PAT is unset, so existing operators on `:v0.5` can `docker compose pull && up -d` without reading anything if they don't care about the widget.
