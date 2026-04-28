@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from findajob.web.auth import install_basic_auth
 from findajob.web.constants import FOLDER_STAGES
 from findajob.web.helpers import (
     applied_age_bucket,
@@ -68,6 +69,7 @@ def create_app(
 
     app.dependency_overrides.setdefault(_materials_routes.get_db, get_db)
     app.include_router(_aggregated_router)
+    install_basic_auth(app)
     return app
 
 

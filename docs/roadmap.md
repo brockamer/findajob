@@ -56,10 +56,11 @@ Append-only. Numbers are stable references. Amend an entry in place only for fac
 13. **User-facing documentation — split planned.** The umbrella scope is too broad for one issue. Plan: three focused issues, each paired with the shipping work that makes the doc concrete — (a) day-1 Dashboard usage guide paired with Phase 4 tester deploy, (b) tuning guide paired with first feedback-calibration cycle, (c) troubleshooting guide paired with first real tester failure.
 14. **Post-GA milestone split (2026-04-24).** Post-GA Hardening grab-bag replaced with four dated release milestones (v1.1 / v1.2 / v1.3 / v1.4 — see "Post-GA horizon" below). Driven by a structural review: the single grab-bag milestone couldn't pass the one-sentence-deliverable test, and the Roadmap view showed no visible arc past GA. v1.4 (Funnel + Triage UX) precedes v1.2/v1.3 because active-operator triage friction is the binding constraint on the daily job-search loop.
 15. **Umbrella-epic convention (2026-04-24).** GitHub's native sub-issue field is the canonical parent-child relationship for grouping related work (example: #228 tuning loop → #229/#230/#231; #239 credentials hygiene → #67/#225; #240 cost observability → #48/#87). Epics are `enhancement`-labeled, Medium priority, and live on the board like any other issue — not labels, not milestones. Milestones are release boundaries; epics are thematic groupings that may span milestones.
+16. **Optional HTTP Basic Auth for internet-exposed instances (2026-04-28, supersedes #3 for the public-exposure case).** A FastAPI middleware (`findajob.web.auth`) gates the entire web UI behind shared-secret HTTP Basic Auth when `FINDAJOB_AUTH_USER` / `FINDAJOB_AUTH_PASS` env vars are both set, with `/healthz`, `/static/*`, and `/favicon.ico` allowlisted. When env vars are unset the middleware is a no-op — Wireguard-only deployments are unchanged. Intended for per-tester instances at `findajob-{tester}.example.com`; defends against drive-by scanning, not against a determined adversary. Real per-user identity / RBAC remains out of scope (still a future change). See `docs/setup/internet-exposure.md` (#327).
 
 ### Scope out (explicit)
 
-- Public web access / app-level auth (follow-up if demand materializes).
+- Per-user identity / RBAC inside findajob — Decision 16 added shared-secret auth, not identity.
 - Separate rclone-replacement project.
 - Manual RAG source document editing.
 - Alternative LLM provider exploration.

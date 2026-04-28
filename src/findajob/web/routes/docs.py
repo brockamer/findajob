@@ -25,6 +25,7 @@ _PAGES: dict[str, str] = {
     "setup/install-linux": "setup/install-linux.md",
     "setup/configure": "setup/configure.md",
     "setup/state-migration": "setup/state-migration.md",
+    "setup/internet-exposure": "setup/internet-exposure.md",
 }
 
 _INDEX_GUIDES = [

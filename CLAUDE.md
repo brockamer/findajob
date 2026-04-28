@@ -218,8 +218,12 @@ Foundational decisions (from `docs/superpowers/specs/2026-04-21-web-frontend-14b
 
 `/config/` is the in-browser editor for the pipeline's editable config files (profile,
 master resume, prefilter rules, search queries, feed URLs, role prompts) with an
-explicit allowlist; no auth, consistent with the Wireguard perimeter model. See
-`findajob.web.config_files` for the allowlist definition (#149).
+explicit allowlist. There is no per-user authorization inside findajob — anyone the
+perimeter lets in can edit pipeline config. The default perimeter is Wireguard-only;
+internet-exposed per-tester instances additionally gate the entire web UI behind HTTP
+Basic Auth via the `FINDAJOB_AUTH_USER` / `FINDAJOB_AUTH_PASS` env vars (see
+`findajob.web.auth` and `docs/setup/internet-exposure.md` (#327)). See
+`findajob.web.config_files` for the `/config/` allowlist definition (#149).
 
 `/onboarding/` is the first-run NUX + paste-back injector for the interview
 emitted by `config/roles/onboarding_interviewer.md`. A FastAPI dependency on

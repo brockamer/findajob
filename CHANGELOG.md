@@ -10,6 +10,10 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Added
+
+- **Optional HTTP Basic Auth on the findajob web UI for internet-exposed instances (#327).** Per-tester instances reachable at `https://findajob-{tester}.example.com` no longer have to rely on the Wireguard perimeter alone. New FastAPI middleware (`findajob.web.auth.BasicAuthMiddleware`) gates every request to the web UI behind HTTP Basic Auth when `FINDAJOB_AUTH_USER` and `FINDAJOB_AUTH_PASS` env vars are both set; allowlist for `/healthz`, `/static/*`, and `/favicon.ico` so health checks and the auth-prompt page itself still render. Constant-time credential compare via `hmac.compare_digest`. When env vars are unset the middleware is not installed at all — Wireguard-only deployments and local-dev loops are unchanged. Threat model is drive-by scanning of the open internet (TLS terminates upstream, Firewalla/equivalent restricts geography); per-user identity / RBAC remains intentionally out of scope. New pattern doc at `docs/setup/internet-exposure.md` (also reachable at `/docs/setup/internet-exposure` in-app). Roadmap Decision 16 supersedes Decision 3 for the public-exposure case. 14-test canary suite at `tests/test_web_basic_auth.py` — including a check that the gate fires for protected routes — guards against accidental middleware-order regressions in `app.py`.
+
 ## [0.6.1] — 2026-04-28
 
 Patch bump. Two small bugfix PRs against board interactions. Bugfix-only — operators pinned to `:v0.6` pick this up automatically on `docker compose pull && up -d`. No migration required.
