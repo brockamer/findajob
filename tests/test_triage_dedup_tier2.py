@@ -27,7 +27,8 @@ CREATE TABLE jobs (
     source TEXT NOT NULL,
     stage TEXT DEFAULT 'discovered',
     stage_updated TEXT,
-    created_at TEXT DEFAULT (datetime('now'))
+    created_at TEXT DEFAULT (datetime('now')),
+    synthetic INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX idx_jobs_loose_fingerprint ON jobs(loose_fingerprint);
 """

@@ -33,7 +33,8 @@ def app_with_db(tmp_path: Path) -> Iterator[tuple[TestClient, Path]]:
       interview_likelihood REAL,
       stage TEXT, created_at TEXT, stage_updated TEXT,
       url TEXT, prep_folder_path TEXT, source TEXT,
-      score_flag_reason TEXT, reject_reason TEXT, user_notes TEXT
+      score_flag_reason TEXT, reject_reason TEXT, user_notes TEXT,
+      synthetic INTEGER NOT NULL DEFAULT 0
     );
     CREATE TABLE IF NOT EXISTS audit_log (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

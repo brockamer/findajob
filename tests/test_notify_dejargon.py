@@ -72,7 +72,8 @@ def notify_module(tmp_path, monkeypatch):
             stage_updated TEXT,
             apply_flag INTEGER DEFAULT 0,
             dupe_of TEXT DEFAULT '',
-            prep_folder_path TEXT
+            prep_folder_path TEXT,
+            synthetic INTEGER NOT NULL DEFAULT 0
         );
         CREATE TABLE feedback_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

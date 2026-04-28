@@ -37,7 +37,8 @@ CREATE TABLE jobs (
     stage_updated TEXT DEFAULT (datetime('now')),
     status TEXT DEFAULT 'active',
     updated_at TEXT DEFAULT (datetime('now')),
-    dupe_of TEXT DEFAULT ''
+    dupe_of TEXT DEFAULT '',
+    synthetic INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE audit_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

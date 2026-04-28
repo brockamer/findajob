@@ -34,7 +34,8 @@ CREATE TABLE jobs (
     created_at TEXT,
     stage_updated TEXT,
     url TEXT,
-    prep_folder_path TEXT
+    prep_folder_path TEXT,
+    synthetic INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE audit_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

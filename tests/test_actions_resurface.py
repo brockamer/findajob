@@ -28,7 +28,8 @@ CREATE TABLE jobs (
     apply_flag INTEGER DEFAULT 0,
     reject_reason TEXT DEFAULT '',
     prep_folder_path TEXT,
-    updated_at TEXT DEFAULT (datetime('now'))
+    updated_at TEXT DEFAULT (datetime('now')),
+    synthetic INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE audit_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -46,7 +46,8 @@ CREATE TABLE jobs (
     known_contacts TEXT DEFAULT '',
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now')),
-    dupe_of TEXT DEFAULT ''
+    dupe_of TEXT DEFAULT '',
+    synthetic INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE audit_log (
@@ -504,9 +505,7 @@ def test_handle_rejection_skips_feedback_log_for_synthetic(tmp_path, monkeypatch
     monkeypatch.setattr(actions, "BASE", str(tmp_path))
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
-    conn.executescript(SCHEMA + """
-        ALTER TABLE jobs ADD COLUMN synthetic INTEGER NOT NULL DEFAULT 0;
-    """)
+    conn.executescript(SCHEMA)
     syn_id = str(uuid.uuid4())
     real_id = str(uuid.uuid4())
     conn.execute(

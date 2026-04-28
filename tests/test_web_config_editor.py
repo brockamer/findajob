@@ -17,7 +17,8 @@ CREATE TABLE jobs (
     title TEXT NOT NULL,
     company TEXT NOT NULL,
     stage TEXT DEFAULT 'discovered',
-    created_at TEXT DEFAULT (datetime('now'))
+    created_at TEXT DEFAULT (datetime('now')),
+    synthetic INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE audit_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

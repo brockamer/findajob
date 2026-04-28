@@ -28,7 +28,8 @@ CREATE TABLE jobs (
     stage TEXT DEFAULT 'discovered',
     stage_updated TEXT,
     prep_folder_path TEXT,
-    updated_at TEXT DEFAULT (datetime('now'))
+    updated_at TEXT DEFAULT (datetime('now')),
+    synthetic INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE audit_log (

@@ -20,7 +20,8 @@ CREATE TABLE jobs (
     stage TEXT DEFAULT 'scored',
     relevance_score INTEGER,
     created_at TEXT DEFAULT (datetime('now')),
-    dupe_of TEXT DEFAULT ''
+    dupe_of TEXT DEFAULT '',
+    synthetic INTEGER NOT NULL DEFAULT 0
 );
 """
 
