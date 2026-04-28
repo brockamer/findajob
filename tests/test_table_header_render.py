@@ -57,3 +57,41 @@ def test_table_header_renders_filter_row(tmp_path) -> None:
     # HTMX wiring present.
     assert 'hx-get="/board/dashboard/rows"' in rendered
     assert 'hx-push-url="true"' in rendered
+
+
+def test_enum_hidden_input_has_htmx_change_trigger(tmp_path) -> None:
+    """ENUM popover Apply commits to a hidden input via htmx.trigger(_, 'change');
+    that hidden input must carry hx-trigger='change' or the request never fires.
+    Regression for the ENUM filter no-op bug."""
+    from findajob.web.app import create_app
+
+    app = create_app(
+        companies_root=tmp_path / "companies",
+        db_path=tmp_path / "pipeline.db",
+    )
+    templates = app.state.templates
+    specs = (
+        ColumnSpec(
+            name="stage",
+            label="Stage",
+            kind=Kind.ENUM,
+            enum_values=("applied", "interview", "offer"),
+        ),
+    )
+    parsed = ParsedFilters()
+
+    class _StubReq:
+        class url:
+            path = "/board/applied"
+
+    rendered = templates.get_template("_table_header.html").render(
+        request=_StubReq, specs=specs, parsed=parsed, visible={"stage"}, leading_cols=[]
+    )
+    # Find the hidden input for stage and assert it carries htmx attrs.
+    hidden_marker = 'data-popover-target="stage"'
+    assert hidden_marker in rendered
+    # Slice the input element and check inside it.
+    start = rendered.index(hidden_marker)
+    chunk = rendered[max(0, start - 400) : start + 400]
+    assert 'hx-trigger="change"' in chunk
+    assert 'hx-get="/board/applied/rows"' in chunk

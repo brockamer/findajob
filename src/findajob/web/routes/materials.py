@@ -6,7 +6,7 @@ import sqlite3
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse
 
 from findajob.web.folder_resolver import resolve_folder
 from findajob.web.markdown import render_markdown
@@ -64,6 +64,11 @@ def folder_view(
     root: Path = request.app.state.companies_root
     folder = resolve_folder(fingerprint, db, root)
     if folder is None:
+        # Synthetic rows have no prep folder until flag-for-prep — surface the
+        # role-card description (raw_jd_text) instead of dead-ending.
+        synth_row = db.execute("SELECT synthetic FROM jobs WHERE fingerprint = ?", (fingerprint,)).fetchone()
+        if synth_row is not None and synth_row["synthetic"]:
+            return RedirectResponse(url=f"/jobs/{fingerprint}/jd", status_code=303)
         raise HTTPException(status_code=404, detail="folder not found")
     row = db.execute("SELECT title, company, stage FROM jobs WHERE fingerprint = ?", (fingerprint,)).fetchone()
     files = sorted(p.name for p in folder.iterdir() if p.is_file())
@@ -79,6 +84,30 @@ def folder_view(
             "stage": row["stage"] if row else "",
             "files": files,
         },
+    )
+
+
+@router.get("/jobs/{fingerprint}/jd", response_class=HTMLResponse)
+def jd_view(
+    fingerprint: str,
+    request: Request,
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> HTMLResponse:
+    row = db.execute(
+        "SELECT title, company, raw_jd_text FROM jobs WHERE fingerprint = ?",
+        (fingerprint,),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="job not found")
+    body = (row["raw_jd_text"] or "").strip()
+    header = f"# {row['title']}\n\n_{row['company']}_\n\n---\n\n"
+    md = header + (body if body else "_No JD text on file._")
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request=request,
+        name="base.html",
+        context={"_rendered_md": render_markdown(md)},
+        headers={"content-type": "text/html; charset=utf-8"},
     )
 
 

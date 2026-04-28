@@ -98,7 +98,13 @@
                    name="{{ s.name }}"
                    data-filter-input
                    value="{{ picks | join(',') }}"
-                   data-popover-target="{{ s.name }}">
+                   data-popover-target="{{ s.name }}"
+                   hx-get="{{ rows_url }}"
+                   hx-trigger="change"
+                   hx-target="#rows"
+                   hx-swap="innerHTML"
+                   hx-include="[data-filter-input]"
+                   hx-push-url="true">
             <div x-show="open"
                  x-cloak
                  @click.outside="open = false"
@@ -140,7 +146,13 @@
                    name="{{ s.name }}_from"
                    data-filter-input
                    value="{{ d_from or '' }}"
-                   data-popover-target="{{ s.name }}_from">
+                   data-popover-target="{{ s.name }}_from"
+                   hx-get="{{ rows_url }}"
+                   hx-trigger="change"
+                   hx-target="#rows"
+                   hx-swap="innerHTML"
+                   hx-include="[data-filter-input]"
+                   hx-push-url="true">
             <input type="hidden"
                    name="{{ s.name }}_to"
                    data-filter-input

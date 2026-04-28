@@ -93,3 +93,121 @@ def test_dashboard_title_links_to_job_url(client: TestClient) -> None:
     assert 'href="https://example.com/meta-dc-ops"' in r.text
     assert 'target="_blank"' in r.text
     assert 'rel="noopener noreferrer"' in r.text
+
+
+def test_speculative_title_links_to_internal_jd_viewer(tmp_path: Path) -> None:
+    """[SPEC]-prefixed rows must NOT render the speculative:// sentinel as an href.
+    Regression for the title-click-goes-nowhere bug."""
+    db = tmp_path / "pipeline.db"
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE jobs (id TEXT, fingerprint TEXT, title TEXT, company TEXT, stage TEXT, "
+        "relevance_score INTEGER, fit_score REAL, probability_score REAL, interview_likelihood INTEGER, "
+        "location TEXT, remote_status TEXT, known_contacts TEXT, comp_estimate TEXT, "
+        "ai_notes TEXT, raw_jd_text TEXT, created_at TEXT, stage_updated TEXT, url TEXT, "
+        "prep_folder_path TEXT, synthetic INTEGER DEFAULT 0)"
+    )
+    conn.execute(
+        "CREATE TABLE audit_log (id INTEGER PRIMARY KEY, job_id TEXT, field_changed TEXT, "
+        "old_value TEXT, new_value TEXT, changed_at TEXT, changed_by TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO jobs (fingerprint, title, company, stage, relevance_score, url, raw_jd_text, synthetic) "
+        "VALUES ('spec1','[SPEC] Director of Capacity','Anthropic','scored',7,"
+        "'speculative://Anthropic/0/42','Lead capacity planning for clusters.', 1)"
+    )
+    conn.commit()
+    conn.close()
+    companies = tmp_path / "companies"
+    companies.mkdir()
+    mark_complete(tmp_path)
+    client = TestClient(create_app(companies_root=companies, db_path=db, base_root=tmp_path))
+
+    r = client.get("/board/dashboard")
+    assert r.status_code == 200
+    assert "speculative://" not in r.text  # sentinel must not leak as href
+    assert 'href="/jobs/spec1/jd"' in r.text
+
+
+def test_jd_viewer_renders_raw_jd_text(tmp_path: Path) -> None:
+    db = tmp_path / "pipeline.db"
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE jobs (id TEXT, fingerprint TEXT, title TEXT, company TEXT, stage TEXT, "
+        "relevance_score INTEGER, fit_score REAL, probability_score REAL, interview_likelihood INTEGER, "
+        "location TEXT, remote_status TEXT, known_contacts TEXT, comp_estimate TEXT, "
+        "ai_notes TEXT, raw_jd_text TEXT, created_at TEXT, stage_updated TEXT, url TEXT, "
+        "prep_folder_path TEXT, synthetic INTEGER DEFAULT 0)"
+    )
+    conn.execute(
+        "CREATE TABLE audit_log (id INTEGER PRIMARY KEY, job_id TEXT, field_changed TEXT, "
+        "old_value TEXT, new_value TEXT, changed_at TEXT, changed_by TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO jobs (fingerprint, title, company, stage, raw_jd_text, synthetic) "
+        "VALUES ('spec1','[SPEC] Director of Capacity','Anthropic','scored',"
+        "'Lead capacity planning for clusters.', 1)"
+    )
+    conn.commit()
+    conn.close()
+    companies = tmp_path / "companies"
+    companies.mkdir()
+    mark_complete(tmp_path)
+    client = TestClient(create_app(companies_root=companies, db_path=db, base_root=tmp_path))
+
+    r = client.get("/jobs/spec1/jd")
+    assert r.status_code == 200
+    assert "Director of Capacity" in r.text
+    assert "Anthropic" in r.text
+    assert "Lead capacity planning for clusters." in r.text
+
+
+def test_materials_redirects_synthetic_row_to_jd_viewer(tmp_path: Path) -> None:
+    """Synthetic rows have no prep_folder_path until flag-for-prep; /materials/{fp}
+    must redirect to the JD viewer instead of 404ing."""
+    db = tmp_path / "pipeline.db"
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE jobs (id TEXT, fingerprint TEXT, title TEXT, company TEXT, stage TEXT, "
+        "raw_jd_text TEXT, prep_folder_path TEXT, synthetic INTEGER DEFAULT 0)"
+    )
+    conn.execute(
+        "INSERT INTO jobs (fingerprint, title, company, stage, raw_jd_text, synthetic) "
+        "VALUES ('spec1','[SPEC] Director','Anthropic','scored','Lead capacity.', 1)"
+    )
+    # Real job with no prep folder — must still 404, not redirect.
+    conn.execute(
+        "INSERT INTO jobs (fingerprint, title, company, stage, raw_jd_text, synthetic) "
+        "VALUES ('real1','Director','Acme','scored','Real JD.', 0)"
+    )
+    conn.commit()
+    conn.close()
+    companies = tmp_path / "companies"
+    companies.mkdir()
+    mark_complete(tmp_path)
+    client = TestClient(create_app(companies_root=companies, db_path=db, base_root=tmp_path))
+
+    r = client.get("/materials/spec1", follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"] == "/jobs/spec1/jd"
+
+    r = client.get("/materials/real1", follow_redirects=False)
+    assert r.status_code == 404
+
+
+def test_jd_viewer_404_for_unknown_fingerprint(tmp_path: Path) -> None:
+    db = tmp_path / "pipeline.db"
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE jobs (id TEXT, fingerprint TEXT, title TEXT, company TEXT, stage TEXT, "
+        "raw_jd_text TEXT, synthetic INTEGER DEFAULT 0)"
+    )
+    conn.commit()
+    conn.close()
+    companies = tmp_path / "companies"
+    companies.mkdir()
+    mark_complete(tmp_path)
+    client = TestClient(create_app(companies_root=companies, db_path=db, base_root=tmp_path))
+
+    r = client.get("/jobs/nope/jd")
+    assert r.status_code == 404
