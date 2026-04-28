@@ -408,16 +408,9 @@ def fetch_jobsapi_jobs(queries_path):
             },
             "url_field": "linkedinUrl",
         },
-        {
-            "name": "indeed",
-            "url": "https://jobs-api14.p.rapidapi.com/v2/indeed/search",
-            "params": lambda q: {
-                "query": q,
-                "countryCode": "us",
-                "sortType": "date",
-            },
-            "url_field": "applyUrl",
-        },
+        # No Indeed slot: jobs-api14's Indeed endpoint accepts no recency,
+        # level, or employment-type filter, so its keyword matching returns
+        # ~89% off-target rows. Indeed coverage continues via gmail_indeed.
     ]
 
     jobs = []

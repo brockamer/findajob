@@ -84,7 +84,7 @@ file. If you're refactoring an old hardcoded section, add a note to `docs/GENERA
 | `fit_analyst` | `openrouter:perplexity/sonar-reasoning-pro` — appended to company briefing |
 | `resume_change_reviewer` / `network_analyst` | `openrouter:google/gemini-3-flash-preview` |
 | `recruiter_critic` | `openrouter:anthropic/claude-opus-4.7`, `max_tokens: 1024` — sees company, title, JD, tailored resume, cover; NOT profile/briefing/fit |
-| Job ingestion | jobs-api14 (RapidAPI) — LinkedIn (`datePosted: 'day'`) + Indeed; Gmail OAuth2 |
+| Job ingestion | jobs-api14 (RapidAPI) — LinkedIn only (`datePosted: 'day'`; Indeed slot dropped #274 due to 0.08% application rate); direct Greenhouse/Ashby/Lever JSON; Gmail OAuth2 (LinkedIn + Indeed alerts) |
 | Package manager | `uv sync` for dev deps; `uv run` prefix for pytest/ruff/mypy/uvicorn |
 | Path resolution | `src/findajob/paths.py` — reads `config/paths.env`; BASE derived from `__file__` |
 | Roles dir | `config/roles/` |

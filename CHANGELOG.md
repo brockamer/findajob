@@ -10,6 +10,10 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Changed
+
+- **Dropped the jobs-api14 Indeed slot from daily triage (#274).** Lifetime data showed 0.08% application rate (3 of 3,584 ingested) and 0.77% LLM-precision at score≥7 — vs 4.2% LLM-precision for Greenhouse on the same scorer. Root cause is upstream: jobs-api14's Indeed endpoint accepts no recency, level, or employment-type filter, so its keyword matching returns large volumes of off-target rows ("Patient Engagement *Center* QA Analyst" for `query=data center operations manager`, etc.). The LinkedIn slot in the same fetcher remains — it accepts `datePosted` + `experienceLevels` filters and is producing useful signal. Indeed coverage continues via `gmail_indeed` (LinkedIn / Indeed alert emails parsed from Gmail). Cuts ~$4/month of pure-noise LLM scoring spend and removes ~120 daily off-target rows from triage. The historical 3,584 rows remain in the DB and are still filterable via the `source` column on the board's Archive tab. See the issue thread for the diagnostic + market-survey writeup of replacement candidates (JSearch, Adzuna) — tracked as separate follow-up issues.
+
 ### Fixed
 
 - **probability_score column visible by default + canonical score-column order on Dashboard and Waitlist (#302).** The `probability_score` column had `default_visible=False` in the per-column filter framework's registry (`src/findajob/web/filters/registry.py`), so the operator never saw the briefing-derived probability average on triage views. The column declarations also had `interview_likelihood` after `probability_score`, so even when toggled on via `?cols=`, the rendered order didn't match expectations. Both fixed: `probability_score` is now `default_visible=True`, and the four score columns now render in the canonical order `relevance_score → interview_likelihood → fit_score → probability_score` — putting compositional/relative signals on the left and derived briefing scores on the right. Two parametrized regression tests in `tests/test_filter_score_columns.py` pin both invariants for every tab declaring all four scores.

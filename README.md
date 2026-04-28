@@ -61,7 +61,7 @@ Live status of every issue and milestone is on the **[project board](https://git
 
 ## How it works
 
-**1. Daily triage** (00:00, scheduler-driven) — fetches 100–500 listings from RapidAPI (LinkedIn + Indeed), Greenhouse, and Gmail job alerts; cleans + deduplicates; enriches with JD text; scores each against your `profile.md` using an LLM. Results land in SQLite.
+**1. Daily triage** (00:00, scheduler-driven) — fetches 100–500 listings from RapidAPI (LinkedIn), direct ATS feeds (Greenhouse, Ashby, Lever), and Gmail job alerts (LinkedIn + Indeed); cleans + deduplicates; enriches with JD text; scores each against your `profile.md` using an LLM. Results land in SQLite.
 
 **2. Dashboard triage** — the web UI shows every scored job that cleared the threshold, with relevance/fit/probability scores, known contacts, and AI notes. You flag the ones worth prepping.
 
