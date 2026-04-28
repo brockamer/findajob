@@ -492,3 +492,47 @@ class TestPromoteToScored:
         promoted = [e for e in entries if e["event"] == "review_promoted"]
         assert len(promoted) == 1
         assert promoted[0]["job_id"] == job["id"]
+
+
+# ── synthetic job guard ─────────────────────────────────────────────────────
+
+
+def test_handle_rejection_skips_feedback_log_for_synthetic(tmp_path, monkeypatch):
+    """A synthetic job rejected by the user must NOT write to feedback_log —
+    contaminating the scorer's feedback loop with synthetic signal would be a
+    permanent data-quality hit. Real-job rejection still writes."""
+    monkeypatch.setattr(actions, "BASE", str(tmp_path))
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript(SCHEMA + """
+        ALTER TABLE jobs ADD COLUMN synthetic INTEGER NOT NULL DEFAULT 0;
+    """)
+    syn_id = str(uuid.uuid4())
+    real_id = str(uuid.uuid4())
+    conn.execute(
+        "INSERT INTO jobs (id, fingerprint, url, title, company, source, stage, relevance_score, synthetic) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (syn_id, "syn-fp", "http://x", "[SPEC] PSI Eng", "PSIQuantum", "web_speculative", "applied", 7, 1),
+    )
+    conn.execute(
+        "INSERT INTO jobs (id, fingerprint, url, title, company, source, stage, relevance_score, synthetic) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (real_id, "real-fp", "http://y", "Real Eng", "RealCo", "greenhouse", "applied", 7, 0),
+    )
+
+    syn_job = conn.execute("SELECT * FROM jobs WHERE id=?", (syn_id,)).fetchone()
+    real_job = conn.execute("SELECT * FROM jobs WHERE id=?", (real_id,)).fetchone()
+
+    actions.handle_rejection(conn, syn_job, "Fit Mismatch")
+    actions.handle_rejection(conn, real_job, "Fit Mismatch")
+
+    syn_count = conn.execute("SELECT COUNT(*) FROM feedback_log WHERE job_id=?", (syn_id,)).fetchone()[0]
+    real_count = conn.execute("SELECT COUNT(*) FROM feedback_log WHERE job_id=?", (real_id,)).fetchone()[0]
+    assert syn_count == 0, "synthetic rejection must not write feedback_log"
+    assert real_count == 1, "real rejection must still write feedback_log"
+
+    # Stage transition still happens for both — synthetic guard only affects feedback_log
+    syn_after = conn.execute("SELECT stage FROM jobs WHERE id=?", (syn_id,)).fetchone()
+    real_after = conn.execute("SELECT stage FROM jobs WHERE id=?", (real_id,)).fetchone()
+    assert syn_after["stage"] == "rejected"
+    assert real_after["stage"] == "rejected"

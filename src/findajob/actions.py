@@ -35,11 +35,14 @@ def handle_rejection(conn: sqlite3.Connection, job: Any, reason: str) -> bool:
     # jd_excerpt: first 500 chars of raw_jd_text for post-hoc analysis
     jd = conn.execute("SELECT raw_jd_text, prep_folder_path FROM jobs WHERE id=?", (job["id"],)).fetchone()
     jd_excerpt = (jd["raw_jd_text"] or "")[:500] if jd and jd["raw_jd_text"] else ""
-    conn.execute(
-        """INSERT INTO feedback_log (job_id, title, company, relevance_score, reject_reason, jd_excerpt)
-           VALUES (?, ?, ?, ?, ?, ?)""",
-        (job["id"], job["title"], job["company"], job["relevance_score"], reason, jd_excerpt),
-    )
+    from findajob.utils import is_synthetic_job  # local import to avoid circular at module load
+
+    if not is_synthetic_job(job):
+        conn.execute(
+            """INSERT INTO feedback_log (job_id, title, company, relevance_score, reject_reason, jd_excerpt)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (job["id"], job["title"], job["company"], job["relevance_score"], reason, jd_excerpt),
+        )
 
     # Move company folder to _rejected if it exists
     folder_moved = False
