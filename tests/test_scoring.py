@@ -121,6 +121,7 @@ def test_build_feedback_block_excludes_synthetic(tmp_path, monkeypatch):
     guard (data already in feedback_log from before the guard landed), the
     read-time filter excludes it."""
     import sqlite3
+
     from findajob import scoring
 
     db_path = tmp_path / "test_pipeline.db"
@@ -147,14 +148,22 @@ def test_build_feedback_block_excludes_synthetic(tmp_path, monkeypatch):
         );
     """)
     # Two rejected jobs: one synthetic, one real, same reason.
-    conn.execute("INSERT INTO jobs (id, fingerprint, title, company, synthetic) VALUES (?, ?, ?, ?, ?)",
-                 ("syn1", "fp-syn", "[SPEC] X Eng", "PSI", 1))
-    conn.execute("INSERT INTO jobs (id, fingerprint, title, company, synthetic) VALUES (?, ?, ?, ?, ?)",
-                 ("real1", "fp-real", "Real X Eng", "RealCo", 0))
-    conn.execute("INSERT INTO feedback_log (job_id, title, company, relevance_score, reject_reason) VALUES (?, ?, ?, ?, ?)",
-                 ("syn1", "[SPEC] X Eng", "PSI", 7, "Fit Mismatch"))
-    conn.execute("INSERT INTO feedback_log (job_id, title, company, relevance_score, reject_reason) VALUES (?, ?, ?, ?, ?)",
-                 ("real1", "Real X Eng", "RealCo", 7, "Fit Mismatch"))
+    conn.execute(
+        "INSERT INTO jobs (id, fingerprint, title, company, synthetic) VALUES (?, ?, ?, ?, ?)",
+        ("syn1", "fp-syn", "[SPEC] X Eng", "PSI", 1),
+    )
+    conn.execute(
+        "INSERT INTO jobs (id, fingerprint, title, company, synthetic) VALUES (?, ?, ?, ?, ?)",
+        ("real1", "fp-real", "Real X Eng", "RealCo", 0),
+    )
+    conn.execute(
+        "INSERT INTO feedback_log (job_id, title, company, relevance_score, reject_reason) VALUES (?, ?, ?, ?, ?)",
+        ("syn1", "[SPEC] X Eng", "PSI", 7, "Fit Mismatch"),
+    )
+    conn.execute(
+        "INSERT INTO feedback_log (job_id, title, company, relevance_score, reject_reason) VALUES (?, ?, ?, ?, ?)",
+        ("real1", "Real X Eng", "RealCo", 7, "Fit Mismatch"),
+    )
     conn.commit()
     conn.close()
 
