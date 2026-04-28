@@ -997,3 +997,62 @@ class TestWithdraw:
     def test_404_on_unknown_fingerprint(self, client: TestClient):
         response = client.post("/board/jobs/fp_nonexistent/withdraw")
         assert response.status_code == 404
+
+
+# ── /apply handler synthetic-aware changed_by branch ─────────────────────────
+
+
+class TestApplySyntheticBranch:
+    """The /apply handler must write changed_by='outreach_button' when the
+    target row has synthetic=1. Real rows keep the existing changed_by value."""
+
+    def _insert_synthetic(self, client: TestClient, fingerprint: str = "fp_spec_drafted") -> str:
+        """Add a synthetic job in materials_drafted stage to the test DB."""
+        import uuid
+
+        conn = sqlite3.connect(client._db_path)
+        job_id = str(uuid.uuid4())
+        conn.execute(
+            "INSERT INTO jobs (id, fingerprint, url, title, company, stage, source, synthetic) "
+            "VALUES (?, ?, 'speculative://x', ?, 'PSI', 'materials_drafted', 'web_speculative', 1)",
+            (job_id, fingerprint, "[SPEC] Critical Infra Eng"),
+        )
+        conn.commit()
+        conn.close()
+        return job_id
+
+    def test_synthetic_apply_writes_outreach_button_changed_by(self, client: TestClient):
+        self._insert_synthetic(client, "fp_spec_drafted")
+        response = client.post("/board/jobs/fp_spec_drafted/apply")
+        assert response.status_code == 200
+        assert _fetch_stage(client, "fp_spec_drafted") == "applied"
+
+        conn = sqlite3.connect(client._db_path)
+        row = conn.execute(
+            "SELECT al.changed_by FROM audit_log al JOIN jobs j ON j.id = al.job_id "
+            "WHERE j.fingerprint=? AND al.field_changed='stage' AND al.new_value='applied'",
+            ("fp_spec_drafted",),
+        ).fetchone()
+        conn.close()
+        assert row is not None
+        assert row[0] == "outreach_button", (
+            f"synthetic /apply should write changed_by='outreach_button', got {row[0]!r}"
+        )
+
+    def test_real_apply_does_not_use_outreach_button(self, client: TestClient):
+        """Move fp_drafted (real, materials_drafted in seed) to applied via /apply."""
+        response = client.post("/board/jobs/fp_drafted/apply")
+        assert response.status_code == 200
+        assert _fetch_stage(client, "fp_drafted") == "applied"
+
+        conn = sqlite3.connect(client._db_path)
+        row = conn.execute(
+            "SELECT al.changed_by FROM audit_log al JOIN jobs j ON j.id = al.job_id "
+            "WHERE j.fingerprint=? AND al.field_changed='stage' AND al.new_value='applied'",
+            ("fp_drafted",),
+        ).fetchone()
+        conn.close()
+        assert row is not None
+        assert row[0] != "outreach_button", (
+            f"real /apply must not use outreach_button changed_by, got {row[0]!r}"
+        )

@@ -32,11 +32,26 @@ def write_audit(
     field_changed: str,
     old_value: object,
     new_value: object,
+    *,
+    changed_by: str | None = None,
 ) -> None:
-    conn.execute(
-        "INSERT INTO audit_log (job_id, field_changed, old_value, new_value) VALUES (?, ?, ?, ?)",
-        (job_id, field_changed, str(old_value) if old_value is not None else None, str(new_value)),
-    )
+    if changed_by is not None:
+        conn.execute(
+            "INSERT INTO audit_log (job_id, field_changed, old_value, new_value, changed_by) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (
+                job_id,
+                field_changed,
+                str(old_value) if old_value is not None else None,
+                str(new_value),
+                changed_by,
+            ),
+        )
+    else:
+        conn.execute(
+            "INSERT INTO audit_log (job_id, field_changed, old_value, new_value) VALUES (?, ?, ?, ?)",
+            (job_id, field_changed, str(old_value) if old_value is not None else None, str(new_value)),
+        )
     conn.commit()
 
 

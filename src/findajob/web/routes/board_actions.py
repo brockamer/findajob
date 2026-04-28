@@ -29,7 +29,7 @@ from findajob.actions import (
     promote_to_scored,
 )
 from findajob.paths import BASE
-from findajob.utils import log_event, write_audit
+from findajob.utils import is_synthetic_job, log_event, write_audit
 from findajob.web.company_history import build_history_by_fp, fetch_company_history
 from findajob.web.filters import registry as filter_registry
 from findajob.web.routes.materials import get_db
@@ -167,6 +167,8 @@ def _transition_stage(
     job: sqlite3.Row,
     new_stage: str,
     event_name: str,
+    *,
+    changed_by: str | None = None,
 ) -> None:
     """Apply a plain stage transition: UPDATE, audit, log. No folder work."""
     now = datetime.now(UTC).isoformat()
@@ -175,7 +177,7 @@ def _transition_stage(
         (new_stage, now, now, job["id"]),
     )
     db.commit()
-    write_audit(db, job["id"], "stage", job["stage"], new_stage)
+    write_audit(db, job["id"], "stage", job["stage"], new_stage, changed_by=changed_by)
     log_event(
         event_name,
         job_id=job["id"],
@@ -206,7 +208,7 @@ def _move_folder_to_applied(db: sqlite3.Connection, job: sqlite3.Row) -> bool:
 
 def _fetch_job(db: sqlite3.Connection, fingerprint: str) -> sqlite3.Row | None:
     return db.execute(
-        "SELECT id, fingerprint, title, company, url, stage FROM jobs WHERE fingerprint=?",
+        "SELECT id, fingerprint, title, company, url, stage, synthetic FROM jobs WHERE fingerprint=?",
         (fingerprint,),
     ).fetchone()
 
@@ -317,7 +319,8 @@ def apply(
         raise HTTPException(status_code=404, detail="Job not found")
     if job["stage"] == "applied":
         return HTMLResponse("")
-    _transition_stage(db, job, "applied", event_name="web_applied")
+    changed_by = "outreach_button" if is_synthetic_job(job) else "user"
+    _transition_stage(db, job, "applied", event_name="web_applied", changed_by=changed_by)
     _move_folder_to_applied(db, job)
     return HTMLResponse("")
 
