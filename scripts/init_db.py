@@ -19,6 +19,9 @@ if "jobs" in _existing_tables:
     if "loose_fingerprint" not in _jobs_cols:
         conn.execute("ALTER TABLE jobs ADD COLUMN loose_fingerprint TEXT")
         conn.commit()
+    if "synthetic" not in _jobs_cols:
+        conn.execute("ALTER TABLE jobs ADD COLUMN synthetic INTEGER NOT NULL DEFAULT 0")
+        conn.commit()
 
 conn.executescript("""
 CREATE TABLE IF NOT EXISTS jobs (
@@ -64,7 +67,8 @@ CREATE TABLE IF NOT EXISTS jobs (
 
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now')),
-    dupe_of TEXT DEFAULT ''
+    dupe_of TEXT DEFAULT '',
+    synthetic INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_jobs_fingerprint ON jobs(fingerprint);
