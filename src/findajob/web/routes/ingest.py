@@ -32,13 +32,24 @@ twenty postings in a row with the checkbox on.
 
 
 @router.get("/ingest/", response_class=HTMLResponse)
-def ingest_page(request: Request) -> HTMLResponse:
+def ingest_page(
+    request: Request,
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> HTMLResponse:
     """Render the manual-JD form."""
     templates = request.app.state.templates
+    try:
+        today_speculative_count = db.execute(
+            "SELECT COUNT(*) FROM speculative_requests WHERE date(submitted_at)=date('now', 'localtime')"
+        ).fetchone()[0]
+    except sqlite3.OperationalError:
+        # Table absent in legacy/test fixtures that haven't run init_db.py.
+        # Falls back to no soft-warn — pipeline-correct default.
+        today_speculative_count = 0
     return templates.TemplateResponse(
         request=request,
         name="ingest/form.html",
-        context={},
+        context={"today_speculative_count": today_speculative_count},
     )
 
 

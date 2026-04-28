@@ -60,6 +60,17 @@ CREATE TABLE feedback_log (
     jd_excerpt TEXT DEFAULT '',
     created_at TEXT DEFAULT (datetime('now'))
 );
+
+CREATE TABLE speculative_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    company TEXT NOT NULL,
+    hint TEXT,
+    personal_notes TEXT,
+    status TEXT NOT NULL DEFAULT 'researching',
+    submitted_at TEXT NOT NULL DEFAULT (datetime('now')),
+    research_completed_at TEXT,
+    approved_at TEXT
+);
 """
 
 _VALID_FORM: dict[str, str] = {
@@ -127,8 +138,9 @@ def test_get_renders_form(client: TestClient) -> None:
     html = resp.text
     assert 'id="manual-ingest-form"' in html
     assert 'hx-post="/ingest/manual"' in html
-    # Speculative mode stub must be present so #131 slots in cleanly.
-    assert "#131" in html
+    # Speculative mode (#131) is now wired — toggle and form should be present.
+    assert 'action="/ingest/speculative"' in html
+    assert "Submit speculative" in html
 
 
 def test_post_success_inserts_row(client: TestClient, popen_calls) -> None:

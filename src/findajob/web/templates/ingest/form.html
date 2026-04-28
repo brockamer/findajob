@@ -9,20 +9,24 @@
   the same as the old Google Form.
 </p>
 
-{# Mode toggle. Speculative (#131) slots in here later. #}
+{# Mode toggle (#131). Switches between real-JD form and speculative form. #}
+<div x-data="{ mode: 'real' }">
 <div class="flex gap-2 mb-6 border-b border-slate-200">
   <button type="button"
-          class="px-3 py-2 text-sm font-medium border-b-2 border-slate-800 text-slate-900"
-          aria-current="page">
+          @click="mode = 'real'"
+          :class="mode === 'real' ? 'border-slate-800 text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'"
+          class="px-3 py-2 text-sm font-medium border-b-2">
     Real posting
   </button>
   <button type="button"
-          class="px-3 py-2 text-sm font-medium border-b-2 border-transparent text-slate-400 cursor-not-allowed"
-          disabled
-          title="Speculative company briefing — coming in #131">
-    Speculative &middot; <span class="text-xs">#131</span>
+          @click="mode = 'speculative'"
+          :class="mode === 'speculative' ? 'border-slate-800 text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'"
+          class="px-3 py-2 text-sm font-medium border-b-2">
+    Speculative
   </button>
 </div>
+
+<div x-show="mode === 'real'">
 
 <form id="manual-ingest-form"
       hx-post="/ingest/manual"
@@ -107,4 +111,49 @@
 </form>
 
 <div id="ingest-result" class="mt-6 max-w-3xl"></div>
+
+</div>{# /x-show real #}
+
+<div x-show="mode === 'speculative'" x-cloak>
+  <p class="text-sm text-slate-600 mb-4">
+    No JD? Submit a company name and the pipeline will research them via Perplexity Deep Research,
+    synthesize 1–5 plausible roles, and let you approve a cold-outreach package.
+    <strong>Takes 1–5 minutes.</strong>
+  </p>
+  {% if today_speculative_count and today_speculative_count > 0 %}
+    <div class="rounded bg-yellow-50 border border-yellow-300 p-3 mb-4 text-sm">
+      You've already submitted {{ today_speculative_count }} speculative request(s) today
+      (~${{ "%.2f"|format(today_speculative_count * 0.50) }} of Perplexity Deep Research).
+      No hard cap — submit if it's worth it.
+    </div>
+  {% endif %}
+  <form method="post" action="/ingest/speculative" class="space-y-4 max-w-3xl">
+    <label class="block">
+      <span class="text-sm font-medium text-slate-700">Company <span class="text-red-600">*</span></span>
+      <input type="text" name="company" required autocomplete="off"
+             class="mt-1 block w-full rounded border-slate-300 shadow-sm focus:border-slate-500 focus:ring-slate-500 text-sm">
+    </label>
+    <label class="block">
+      <span class="text-sm font-medium text-slate-700">Hint (optional)</span>
+      <input type="text" name="hint" placeholder="data center team / ML platform org / …" autocomplete="off"
+             class="mt-1 block w-full rounded border-slate-300 shadow-sm focus:border-slate-500 focus:ring-slate-500 text-sm">
+      <span class="text-xs text-slate-500 mt-1 block">Helps focus the research on a specific function/team.</span>
+    </label>
+    <label class="block">
+      <span class="text-sm font-medium text-slate-700">Connection notes (optional)</span>
+      <textarea name="personal_notes" rows="2"
+                placeholder="Any prior contacts, mutual connections, or context worth surfacing in outreach"
+                class="mt-1 block w-full rounded border-slate-300 shadow-sm focus:border-slate-500 focus:ring-slate-500 text-sm"></textarea>
+    </label>
+    <div class="flex items-center gap-3 pt-2">
+      <button type="submit"
+              class="bg-slate-800 text-white text-sm font-medium rounded px-4 py-2 hover:bg-slate-700">
+        Submit speculative
+      </button>
+      <span class="text-xs text-slate-500">Redirects to a status page that polls until research completes.</span>
+    </div>
+  </form>
+</div>{# /x-show speculative #}
+
+</div>{# /x-data mode toggle #}
 {% endblock %}
