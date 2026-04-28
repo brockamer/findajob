@@ -126,7 +126,9 @@ CREATE TABLE IF NOT EXISTS speculative_requests (
     company TEXT NOT NULL,
     hint TEXT,
     personal_notes TEXT,
-    status TEXT NOT NULL DEFAULT 'researching',
+    status TEXT NOT NULL DEFAULT 'researching' CHECK(status IN (
+        'researching', 'ready_for_review', 'approved', 'trashed', 'failed'
+    )),
     error_message TEXT,
     briefing_md TEXT,
     role_cards_json TEXT,
