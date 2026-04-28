@@ -47,7 +47,8 @@ def approve_request(
 
     if not kept_indices:
         conn.execute(
-            "UPDATE speculative_requests SET status='trashed' WHERE id=?", (request_id,),
+            "UPDATE speculative_requests SET status='trashed' WHERE id=?",
+            (request_id,),
         )
         conn.commit()
         log_event("speculative_request_trashed", request_id=request_id, company=row["company"])

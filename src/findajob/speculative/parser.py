@@ -45,8 +45,13 @@ def parse_role_cards(raw: str) -> list[RoleCard]:
     for i, item in enumerate(data[:_MAX_CARDS]):
         if not isinstance(item, dict):
             raise ValueError(f"role card {i} is not a JSON object")
-        for required in ("title", "description", "why_this_fits_candidate",
-                         "likely_team_or_org", "suggested_contact_type"):
+        for required in (
+            "title",
+            "description",
+            "why_this_fits_candidate",
+            "likely_team_or_org",
+            "suggested_contact_type",
+        ):
             if required not in item or not item[required]:
                 raise ValueError(f"role card {i} missing required field: {required}")
         contact_type = item["suggested_contact_type"]
@@ -55,13 +60,15 @@ def parse_role_cards(raw: str) -> list[RoleCard]:
                 f"role card {i} has invalid suggested_contact_type "
                 f"{contact_type!r}; expected one of {sorted(_VALID_CONTACT_TYPES)}"
             )
-        cards.append(RoleCard(
-            title=str(item["title"]).strip(),
-            description=str(item["description"]).strip(),
-            why_this_fits_candidate=str(item["why_this_fits_candidate"]).strip(),
-            likely_team_or_org=str(item["likely_team_or_org"]).strip(),
-            suggested_contact_type=contact_type,
-        ))
+        cards.append(
+            RoleCard(
+                title=str(item["title"]).strip(),
+                description=str(item["description"]).strip(),
+                why_this_fits_candidate=str(item["why_this_fits_candidate"]).strip(),
+                likely_team_or_org=str(item["likely_team_or_org"]).strip(),
+                suggested_contact_type=contact_type,
+            )
+        )
     return cards
 
 

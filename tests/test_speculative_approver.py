@@ -76,8 +76,13 @@ CREATE TABLE audit_log (
 
 def _seed_ready(conn: sqlite3.Connection, n_cards: int = 3) -> int:
     cards = [
-        {"title": f"Role {i}", "description": "D", "why_this_fits_candidate": "W",
-         "likely_team_or_org": "T", "suggested_contact_type": "recruiter"}
+        {
+            "title": f"Role {i}",
+            "description": "D",
+            "why_this_fits_candidate": "W",
+            "likely_team_or_org": "T",
+            "suggested_contact_type": "recruiter",
+        }
         for i in range(n_cards)
     ]
     cur = conn.execute(

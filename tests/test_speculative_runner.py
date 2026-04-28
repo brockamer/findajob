@@ -15,8 +15,6 @@ import json
 import sqlite3
 from unittest.mock import patch
 
-import pytest
-
 from findajob.speculative.runner import run_research
 
 SCHEMA = """
@@ -54,15 +52,17 @@ def _ok_briefing() -> str:
 
 
 def _ok_role_cards() -> str:
-    return json.dumps([
-        {
-            "title": "Critical Infrastructure Engineer",
-            "description": "Own GPU cluster bring-up.",
-            "why_this_fits_candidate": "FTW Lab analog.",
-            "likely_team_or_org": "Site Operations",
-            "suggested_contact_type": "hiring_manager",
-        }
-    ])
+    return json.dumps(
+        [
+            {
+                "title": "Critical Infrastructure Engineer",
+                "description": "Own GPU cluster bring-up.",
+                "why_this_fits_candidate": "FTW Lab analog.",
+                "likely_team_or_org": "Site Operations",
+                "suggested_contact_type": "hiring_manager",
+            }
+        ]
+    )
 
 
 def test_run_research_happy_path(tmp_path):
@@ -113,8 +113,10 @@ def test_run_research_briefing_failure_sets_status_failed(tmp_path):
     conn.executescript(SCHEMA)
     req_id = _seed(conn)
 
-    profile = tmp_path / "profile.md"; profile.write_text("p")
-    resume = tmp_path / "master_resume.md"; resume.write_text("r")
+    profile = tmp_path / "profile.md"
+    profile.write_text("p")
+    resume = tmp_path / "master_resume.md"
+    resume.write_text("r")
 
     with patch("findajob.speculative.runner._call_aichat") as mock_call:
         mock_call.side_effect = RuntimeError("aichat-ng exit 1: rate limited")
@@ -141,8 +143,10 @@ def test_run_research_synth_failure_preserves_briefing(tmp_path):
     conn.executescript(SCHEMA)
     req_id = _seed(conn)
 
-    profile = tmp_path / "profile.md"; profile.write_text("p")
-    resume = tmp_path / "master_resume.md"; resume.write_text("r")
+    profile = tmp_path / "profile.md"
+    profile.write_text("p")
+    resume = tmp_path / "master_resume.md"
+    resume.write_text("r")
 
     with patch("findajob.speculative.runner._call_aichat") as mock_call:
         mock_call.side_effect = [_ok_briefing(), RuntimeError("synth failed: invalid JSON")]
