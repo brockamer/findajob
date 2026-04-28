@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-3xl mx-auto p-6">
+  <h1 class="text-2xl font-bold mb-4">Speculative submission for {{ row.company }}</h1>
+  <div id="status" hx-get="/speculative/status/{{ row.id }}/poll" hx-trigger="every 5s" hx-swap="outerHTML">
+    {% include "speculative/_status_fragment.html" %}
+  </div>
+</div>
+{% endblock %}

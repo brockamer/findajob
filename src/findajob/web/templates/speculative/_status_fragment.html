@@ -1,0 +1,24 @@
+{% if row.status == 'researching' %}
+  <div class="rounded border p-4 bg-blue-50">
+    <div class="font-semibold">Researching — Perplexity Deep Research takes 1–5 minutes.</div>
+    <div class="text-sm text-gray-600 mt-2">This page auto-refreshes every 5 seconds.</div>
+  </div>
+{% elif row.status == 'ready_for_review' %}
+  <div class="rounded border p-4 bg-green-50">
+    Research complete — redirecting to review page…
+  </div>
+  <script>window.location = "/speculative/review/{{ row.id }}";</script>
+{% elif row.status == 'failed' %}
+  <div class="rounded border p-4 bg-red-50">
+    <div class="font-semibold">Research failed</div>
+    <div class="mt-2 text-sm">{{ row.error_message or "(no error message recorded)" }}</div>
+    <form method="post" action="/speculative/regenerate/{{ row.id }}" class="mt-4">
+      <button type="submit" class="btn btn-primary">Retry</button>
+    </form>
+    <form method="post" action="/speculative/trash/{{ row.id }}" class="mt-2">
+      <button type="submit" class="btn btn-secondary">Trash</button>
+    </form>
+  </div>
+{% else %}
+  <div class="rounded border p-4 bg-gray-50">Status: {{ row.status }}</div>
+{% endif %}

@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-4xl mx-auto p-6">
+  <h1 class="text-2xl font-bold mb-2">Review — {{ row.company }}</h1>
+  <div class="text-sm text-gray-600 mb-4">Submitted {{ row.submitted_at }} · Research completed {{ row.research_completed_at }}</div>
+
+  <details class="mb-6 border rounded p-4">
+    <summary class="font-semibold cursor-pointer">Briefing ({{ row.briefing_md|length }} chars)</summary>
+    <div class="prose mt-4">{{ briefing_html|safe }}</div>
+  </details>
+
+  <h2 class="text-xl font-semibold mb-3">Role cards ({{ cards|length }})</h2>
+  <form method="post" action="/speculative/approve/{{ row.id }}" class="space-y-4">
+    {% for card in cards %}
+      <div class="border rounded p-4">
+        <label class="flex items-start gap-3">
+          <input type="checkbox" name="keep" value="{{ loop.index0 }}" checked class="mt-1">
+          <div class="flex-1">
+            <div class="font-bold text-lg">{{ card.title }}</div>
+            <div class="text-sm text-gray-600 mb-2">
+              {{ card.likely_team_or_org }} · suggested contact: {{ card.suggested_contact_type }}
+            </div>
+            <div class="mb-3 whitespace-pre-line">{{ card.description }}</div>
+            <div class="text-sm bg-gray-50 p-3 rounded">
+              <span class="font-semibold">Why this fits you:</span> {{ card.why_this_fits_candidate }}
+            </div>
+          </div>
+        </label>
+      </div>
+    {% endfor %}
+    <div class="flex gap-3 pt-4">
+      <button type="submit" class="btn btn-primary">Approve kept cards</button>
+      <button type="submit" formaction="/speculative/regenerate/{{ row.id }}" formmethod="post" class="btn btn-secondary">Regenerate</button>
+      <button type="submit" formaction="/speculative/trash/{{ row.id }}" formmethod="post" class="btn btn-warning">Trash</button>
+    </div>
+  </form>
+</div>
+{% endblock %}
