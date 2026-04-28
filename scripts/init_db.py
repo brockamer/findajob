@@ -120,6 +120,27 @@ CREATE TABLE IF NOT EXISTS duplicate_groups (
     detected_at TEXT DEFAULT (datetime('now')),
     PRIMARY KEY (canonical_fingerprint, duplicate_job_id)
 );
+
+CREATE TABLE IF NOT EXISTS speculative_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    company TEXT NOT NULL,
+    hint TEXT,
+    personal_notes TEXT,
+    status TEXT NOT NULL DEFAULT 'researching',
+    error_message TEXT,
+    briefing_md TEXT,
+    role_cards_json TEXT,
+    briefing_folder TEXT,
+    submitted_at TEXT NOT NULL DEFAULT (datetime('now')),
+    research_completed_at TEXT,
+    approved_at TEXT,
+    approved_role_count INTEGER,
+    briefing_prompt_version TEXT,
+    synth_prompt_version TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_speculative_status ON speculative_requests(status);
+CREATE INDEX IF NOT EXISTS idx_speculative_company_submitted ON speculative_requests(company, submitted_at);
 """)
 conn.close()
 print("Database initialized:", DB_PATH)
