@@ -10,9 +10,21 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-04-28
+
+Minor bump. The headline shipment is **#131 speculative ingest end-to-end** — a new cold-outreach path for companies that aren't currently posting a matching role. Operator submits a company name, the pipeline runs Perplexity Sonar Deep Research and Claude Sonnet 4.6 to synthesize 1–5 plausible role cards, operator approves on a review page, and `[SPEC]`-prefixed `jobs` rows land on the dashboard ready for prep + cold outreach. Schema migration carried in PR #315 (B1 of 4): new `jobs.synthetic` column + new `speculative_requests` table, both apply automatically on first container restart via `init_db.py`. Two operator-facing UX bugfixes (#319 redirect-after-approve, #314 PII-hook silent-fail defense-in-depth) round out the release.
+
 ### Added
 
 - **Speculative ingest end-to-end (#131).** New cold-outreach path for companies that aren't currently posting a matching role. Operator submits a company name through the new **Speculative** tab on `/ingest/`; the pipeline runs Perplexity Sonar Deep Research (`candidate_led_briefing` role) for the briefing, then Claude Sonnet 4.6 (`speculative_roles_synth` role) to synthesize 1–5 plausible role cards aligned to the candidate's master resume. Async UX: form POST returns immediately with a status page that polls every 5s via HTMX until research completes (1–5 min). The review page renders the briefing + role cards with default-checked Keep boxes; **Approve** writes one `[SPEC]`-prefixed `jobs` row per kept card with `synthetic=1` and `source='web_speculative'` (stage `scored`), **Regenerate** re-runs the synth step (preserving briefing for cheap retries), **Trash** drops the submission with no DB rows written. Approved rows can be flagged for prep like real rows; cover letter and outreach drafts auto-detect synthetic mode (via `<<SPECULATIVE_MODE>>` marker injection in `prep_application.py` + `find_contacts.py`) and write cold-outreach framing — opens with explicit acknowledgment that there's no posting, leads with hiring-signal from the briefing, ends with a low-pressure ask. The Dashboard's "Applied" dropdown becomes "Sent Outreach" for synthetic rows (hits the same `/apply` endpoint, but the server reads `jobs.synthetic` and writes `audit_log.changed_by='outreach_button'` for stats — apply-gate query unchanged, so cold outreach counts toward the daily 3/day gate). Synthetic rows are firewalled from scorer training: write-time guard in `handle_rejection` skips `feedback_log` for `synthetic=1`, read-time filter in `_build_feedback_block` LEFT JOINs and excludes synthetic — defense-in-depth so synthesizer hallucinations cannot contaminate the scorer. Watchdog flips `speculative_requests` rows stuck in `status='researching'` >10 min to `failed` (catches silent subprocess deaths so the operator's status page surfaces Retry/Trash instead of polling forever). Schema migration: new `jobs.synthetic` column (default 0) + new `speculative_requests` table with status-enum CHECK constraint. Spec at `docs/superpowers/specs/2026-04-28-speculative-ingest-131-design.md`; closes #131.
+
+### Fixed
+
+- **Speculative review/status forms now follow 303 redirects after Approve/Trash/Regenerate (#319, PR #321).** `base.html` applies `hx-boost="true"` globally, which intercepted the speculative forms' POSTs and swallowed the server's `Location` header. Operator clicked Approve and saw "nothing happen" until manually navigating to `/board/`. Fix is one attribute per form: `hx-boost="false"` on the three speculative forms (review's approve/regen/trash trio + status fragment's retry/trash on `failed`). Browser does normal navigation; status page's HTMX poll is unaffected (it lives on a `<div>`, not a form).
+
+### Security
+
+- **CI-side PII scan + diagnostic line on the local pre-commit hook (#314, PR #322).** During #258 release prep two CHANGELOG additions containing operator's first name committed cleanly despite the local hook's PATTERNS array including `\bBrock\b`. Repro in current env shows the hook fires correctly — most likely a one-time `--no-verify` slip — but the silent-fail mode is real either way. Three layers of defense: (1) new `.github/workflows/pii-scan.yml` runs on every PR, scans the diff against patterns from a GitHub Secret `PII_PATTERNS_REGEX`, fails the check if any pattern matches (matched pattern is logged but the matched line is NOT, to avoid leaking PII to public CI logs); (2) the local hook now prints a one-line stderr diagnostic per run (`pre-commit: PII scan: N patterns × M added lines`), so silent-fail conditions are observable; (3) `docs/setup/configure.md` documents the secret-install recipe. Operator action: set the `PII_PATTERNS_REGEX` GitHub Secret post-deploy per the recipe in the docs.
 
 ### Migration required
 
@@ -383,7 +395,8 @@ from GHCR and deployed via Docker Compose on a shared Docker host.
 - Documentation cleanup — removing `sigoden/aichat` references in favor of
   `blob42/aichat-ng` — is tracked in #70
 
-[Unreleased]: https://github.com/brockamer/findajob/compare/v0.5.2...HEAD
+[Unreleased]: https://github.com/brockamer/findajob/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/brockamer/findajob/releases/tag/v0.6.0
 [0.5.2]: https://github.com/brockamer/findajob/releases/tag/v0.5.2
 [0.5.1]: https://github.com/brockamer/findajob/releases/tag/v0.5.1
 [0.5.0]: https://github.com/brockamer/findajob/releases/tag/v0.5.0
