@@ -1053,6 +1053,4 @@ class TestApplySyntheticBranch:
         ).fetchone()
         conn.close()
         assert row is not None
-        assert row[0] != "outreach_button", (
-            f"real /apply must not use outreach_button changed_by, got {row[0]!r}"
-        )
+        assert row[0] != "outreach_button", f"real /apply must not use outreach_button changed_by, got {row[0]!r}"

@@ -202,9 +202,7 @@ def test_fail_stuck_speculative_marks_failed(db, _patch_log):
     count = watchdog.fail_stuck_speculative(db)
 
     assert count == 1
-    rows = db.execute(
-        "SELECT company, status, error_message FROM speculative_requests ORDER BY id"
-    ).fetchall()
+    rows = db.execute("SELECT company, status, error_message FROM speculative_requests ORDER BY id").fetchall()
     stale, fresh = rows[0], rows[1]
     assert stale["status"] == "failed"
     assert "timed out" in (stale["error_message"] or "").lower()

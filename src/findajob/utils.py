@@ -37,8 +37,7 @@ def write_audit(
 ) -> None:
     if changed_by is not None:
         conn.execute(
-            "INSERT INTO audit_log (job_id, field_changed, old_value, new_value, changed_by) "
-            "VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO audit_log (job_id, field_changed, old_value, new_value, changed_by) VALUES (?, ?, ?, ?, ?)",
             (
                 job_id,
                 field_changed,
