@@ -67,10 +67,12 @@ def _build_feedback_block() -> str:
         conn = sqlite3.connect(DB_PATH, timeout=30)
         conn.row_factory = sqlite3.Row
         rows = conn.execute("""
-            SELECT reject_reason, title, relevance_score
-            FROM feedback_log
-            WHERE reject_reason NOT IN ('Stale/Closed', 'Already Applied', 'Other')
-            ORDER BY reject_reason, title
+            SELECT f.reject_reason, f.title, f.relevance_score
+            FROM feedback_log f
+            LEFT JOIN jobs j ON j.id = f.job_id
+            WHERE f.reject_reason NOT IN ('Stale/Closed', 'Already Applied', 'Other')
+              AND COALESCE(j.synthetic, 0) = 0
+            ORDER BY f.reject_reason, f.title
         """).fetchall()
         conn.close()
     except Exception:

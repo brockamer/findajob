@@ -113,3 +113,53 @@ class TestNormalizeLlmOutput:
         result = json.loads(_normalize_llm_output(raw))
         assert result["relevance_score"] is None
         assert result["interview_likelihood"] is None
+
+
+def test_build_feedback_block_excludes_synthetic(tmp_path, monkeypatch):
+    """The scorer's feedback block must not include rejection history from
+    synthetic jobs. Even if a synthetic-job rejection bypassed the write-time
+    guard (data already in feedback_log from before the guard landed), the
+    read-time filter excludes it."""
+    import sqlite3
+    from findajob import scoring
+
+    db_path = tmp_path / "test_pipeline.db"
+    monkeypatch.setattr(scoring, "DB_PATH", str(db_path))
+
+    conn = sqlite3.connect(str(db_path))
+    conn.executescript("""
+        CREATE TABLE jobs (
+            id TEXT PRIMARY KEY,
+            fingerprint TEXT UNIQUE,
+            title TEXT,
+            company TEXT,
+            synthetic INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE feedback_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            company TEXT NOT NULL,
+            relevance_score INTEGER,
+            reject_reason TEXT NOT NULL,
+            jd_excerpt TEXT DEFAULT '',
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+    """)
+    # Two rejected jobs: one synthetic, one real, same reason.
+    conn.execute("INSERT INTO jobs (id, fingerprint, title, company, synthetic) VALUES (?, ?, ?, ?, ?)",
+                 ("syn1", "fp-syn", "[SPEC] X Eng", "PSI", 1))
+    conn.execute("INSERT INTO jobs (id, fingerprint, title, company, synthetic) VALUES (?, ?, ?, ?, ?)",
+                 ("real1", "fp-real", "Real X Eng", "RealCo", 0))
+    conn.execute("INSERT INTO feedback_log (job_id, title, company, relevance_score, reject_reason) VALUES (?, ?, ?, ?, ?)",
+                 ("syn1", "[SPEC] X Eng", "PSI", 7, "Fit Mismatch"))
+    conn.execute("INSERT INTO feedback_log (job_id, title, company, relevance_score, reject_reason) VALUES (?, ?, ?, ?, ?)",
+                 ("real1", "Real X Eng", "RealCo", 7, "Fit Mismatch"))
+    conn.commit()
+    conn.close()
+
+    block = scoring._build_feedback_block()
+    assert "Real X Eng" in block
+    assert "[SPEC]" not in block, "synthetic rejection title leaked into feedback block"
+    # Should report "1x" (the real one), not "2x"
+    assert '1x "Fit Mismatch"' in block
