@@ -10,6 +10,15 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+## [0.6.1] — 2026-04-28
+
+Patch bump. Two small bugfix PRs against board interactions. Bugfix-only — operators pinned to `:v0.6` pick this up automatically on `docker compose pull && up -d`. No migration required.
+
+### Fixed
+
+- **Speculative job titles now link to a JD viewer instead of a dead `speculative://` URL; ENUM/DATE filter Apply buttons now actually filter; `/materials/{fp}` no longer 404s for in-flight speculative rows (#324).** Three small UI defects surfaced during board exploration. (1) `_job_row.html` rendered every title as `<a href="row.url">` regardless of synthetic-ness, so `[SPEC]` rows produced an unclickable `speculative://...` sentinel. The template now branches on the `[SPEC]` prefix and links to a new `GET /jobs/{fp}/jd` route that renders `jobs.raw_jd_text` (the role-card description) as Markdown. (2) ENUM and DATE filter popovers were silently no-op'ing on Apply because `filters.js` fired `htmx.trigger(hidden, 'change')` against hidden inputs that had no `hx-*` attrs — htmx only reacts to elements it has been wired against. The hidden ENUM input and the date `_from` input now mirror the text/number inputs' HTMX contract. (3) `/materials/{fp}` 404'd for synthetic rows that hadn't been flagged for prep yet (no `prep_folder_path` until then). Synthetic rows now 303-redirect to the JD viewer; real-job 404 path is unchanged. Four regression tests added.
+- **interview_prep treats orphaned sentinels as stale instead of blocking forever (#325, closes #312).** `scripts/interview_prep.py` wrote `.interview_prep_in_progress` at start and removed it in a `try/finally`. A process killed before cleanup (OOM, kill -9, container restart) left the sentinel in place permanently — every future Interviewing click for that job became a silent no-op until the operator manually deleted the file. The existence-check now reads mtime: anything older than `SENTINEL_STALE_AFTER_SECONDS` (600s, well above observed Opus 4.7 generation time of ~2 min) is treated as orphaned, removed in place, and emits an `interview_prep_sentinel_stale_removed` event to `pipeline.jsonl` for auditability. Fresh sentinels still short-circuit as before. Logic factored into `_sentinel_blocks_run()` for isolated unit testing.
+
 ## [0.6.0] — 2026-04-28
 
 Minor bump. The headline shipment is **#131 speculative ingest end-to-end** — a new cold-outreach path for companies that aren't currently posting a matching role. Operator submits a company name, the pipeline runs Perplexity Sonar Deep Research and Claude Sonnet 4.6 to synthesize 1–5 plausible role cards, operator approves on a review page, and `[SPEC]`-prefixed `jobs` rows land on the dashboard ready for prep + cold outreach. Schema migration carried in PR #315 (B1 of 4): new `jobs.synthetic` column + new `speculative_requests` table, both apply automatically on first container restart via `init_db.py`. Two operator-facing UX bugfixes (#319 redirect-after-approve, #314 PII-hook silent-fail defense-in-depth) round out the release.
@@ -395,7 +404,8 @@ from GHCR and deployed via Docker Compose on a shared Docker host.
 - Documentation cleanup — removing `sigoden/aichat` references in favor of
   `blob42/aichat-ng` — is tracked in #70
 
-[Unreleased]: https://github.com/brockamer/findajob/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/brockamer/findajob/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/brockamer/findajob/releases/tag/v0.6.1
 [0.6.0]: https://github.com/brockamer/findajob/releases/tag/v0.6.0
 [0.5.2]: https://github.com/brockamer/findajob/releases/tag/v0.5.2
 [0.5.1]: https://github.com/brockamer/findajob/releases/tag/v0.5.1
