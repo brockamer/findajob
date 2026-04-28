@@ -37,6 +37,9 @@
                {% if field == 'remote_status' %}{{ remote_cell_class(row[field]) }}{% endif %}">
       <div class="cell-text-wrap" title="{{ row[field] if row[field] is not none else '' }}">
       {% if field == 'title' and row.url %}
+        {% if row[field] and row[field].startswith('[SPEC]') %}
+          <span class="inline-block mr-1 px-1.5 py-0.5 text-[10px] font-bold uppercase bg-purple-100 text-purple-800 rounded align-middle">SPEC</span>
+        {% endif %}
         <a class="underline" href="{{ row.url }}" target="_blank" rel="noopener noreferrer">{{ row[field] }}</a>
       {% elif field == 'company' and row.fingerprint and row.stage in folder_stages and materials_base_url %}
         <a class="underline" href="{{ materials_base_url }}/materials/{{ row.fingerprint }}">{{ row[field] }}</a>

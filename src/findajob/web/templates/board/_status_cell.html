@@ -28,7 +28,11 @@
         {% endif %}
         <option value="waitlist">Waitlist</option>
         {% if stage == 'materials_drafted' %}
-          <option value="apply">Applied</option>
+          {% if row.title and row.title.startswith('[SPEC]') %}
+            <option value="apply">Sent Outreach</option>
+          {% else %}
+            <option value="apply">Applied</option>
+          {% endif %}
         {% endif %}
       </select>
     </div>
