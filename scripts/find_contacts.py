@@ -92,11 +92,22 @@ def rank_contacts(contacts):
 
 
 def generate_outreach(
-    contact, company, jd_text, outdir, profile_text, file_prefix, timestamp_fn, candidate_name, voice_samples
+    contact,
+    company,
+    jd_text,
+    outdir,
+    profile_text,
+    file_prefix,
+    timestamp_fn,
+    candidate_name,
+    voice_samples,
+    is_synthetic=False,
 ):
     """Call aichat-ng outreach_drafter role. Profile + voice samples injected directly — no RAG."""
     voice_section = f"VOICE SAMPLES:\n{voice_samples}\n\n" if voice_samples else ""
+    mode_marker = "<<SPECULATIVE_MODE>>\n\n" if is_synthetic else ""
     prompt = (
+        f"{mode_marker}"
         f"CANDIDATE PROFILE:\n{profile_text}\n\n"
         f"{voice_section}"
         f"Draft a LinkedIn outreach message from {candidate_name} to {contact['name']}, "
@@ -125,7 +136,7 @@ def generate_outreach(
 
 def main():
     if len(sys.argv) < 4:
-        print("Usage: find_contacts.py <company> <jd_text> <outdir> [file_prefix] [timestamp_fn]")
+        print("Usage: find_contacts.py <company> <jd_text> <outdir> [file_prefix] [timestamp_fn] [is_synthetic]")
         sys.exit(1)
 
     company = sys.argv[1]
@@ -133,6 +144,7 @@ def main():
     outdir = sys.argv[3]
     file_prefix = sys.argv[4] if len(sys.argv) > 4 else read_file_prefix()
     timestamp_fn = sys.argv[5] if len(sys.argv) > 5 else datetime.now().strftime("%Y%m%d-%H%M%S")
+    is_synthetic = sys.argv[6] == "1" if len(sys.argv) > 6 else False
 
     try:
         with open(PROFILE_PATH) as f:
@@ -156,7 +168,16 @@ def main():
 
     for contact in top:
         generate_outreach(
-            contact, company, jd_text, outdir, profile_text, file_prefix, timestamp_fn, candidate_name, voice_samples
+            contact,
+            company,
+            jd_text,
+            outdir,
+            profile_text,
+            file_prefix,
+            timestamp_fn,
+            candidate_name,
+            voice_samples,
+            is_synthetic=is_synthetic,
         )
 
     print(f"Generated {len(top)} outreach drafts for {company}")

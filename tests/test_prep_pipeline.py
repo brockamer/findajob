@@ -703,3 +703,105 @@ class TestQuarantineStalePrepFolders:
         )
         assert moved == []
         assert (companies / "Acme_Ops_Manager_readme.txt").is_file()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Speculative mode marker injection (B4.T27 + B4.T28 of #131)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class TestSpeculativeModeMarker:
+    """Verify that the <<SPECULATIVE_MODE>> marker is correctly derived from the
+    jobs.synthetic column and injected into the cover_prompt string.
+
+    These tests replicate the logic in prep_application.py without importing it
+    (which would require a full DB + file setup) — same pattern as the fit-score
+    parsing tests above."""
+
+    # ── Helper: replicate the marker-derivation logic from prep_application.py ──
+
+    @staticmethod
+    def _derive_marker(row):
+        """Mirrors prep_application.py:
+        is_synthetic = bool(row["synthetic"]) if row and "synthetic" in row.keys() else False
+        mode_marker  = "<<SPECULATIVE_MODE>>\\n\\n" if is_synthetic else ""
+        """
+        is_synthetic = bool(row["synthetic"]) if row and "synthetic" in row.keys() else False
+        return "<<SPECULATIVE_MODE>>\n\n" if is_synthetic else ""
+
+    def test_synthetic_1_yields_marker(self, db):
+        """jobs.synthetic=1 → mode_marker starts with <<SPECULATIVE_MODE>>."""
+        job_id = insert_job(db, stage="prep_in_progress")
+        db.execute("UPDATE jobs SET synthetic=1 WHERE id=?", (job_id,))
+        db.commit()
+
+        row = db.execute("SELECT raw_jd_text, stage, synthetic FROM jobs WHERE id=?", (job_id,)).fetchone()
+        marker = self._derive_marker(row)
+        assert marker == "<<SPECULATIVE_MODE>>\n\n"
+
+    def test_synthetic_0_yields_empty_marker(self, db):
+        """jobs.synthetic=0 (default) → mode_marker is empty string."""
+        job_id = insert_job(db, stage="prep_in_progress")
+        # synthetic defaults to 0 — no UPDATE needed
+
+        row = db.execute("SELECT raw_jd_text, stage, synthetic FROM jobs WHERE id=?", (job_id,)).fetchone()
+        marker = self._derive_marker(row)
+        assert marker == ""
+
+    def test_marker_prepended_to_cover_prompt(self, db):
+        """When synthetic=1, the cover_prompt starts with <<SPECULATIVE_MODE>>."""
+        job_id = insert_job(db, stage="prep_in_progress")
+        db.execute("UPDATE jobs SET synthetic=1 WHERE id=?", (job_id,))
+        db.commit()
+
+        row = db.execute("SELECT raw_jd_text, stage, synthetic FROM jobs WHERE id=?", (job_id,)).fetchone()
+        mode_marker = self._derive_marker(row)
+
+        profile_text = "Candidate profile here."
+        master_text = "Master resume here."
+        jd_text = "Job description here."
+        briefing_context = "Company briefing here."
+        voice_section = ""
+
+        cover_prompt = (
+            f"{mode_marker}"
+            f"CANDIDATE PROFILE:\n{profile_text}\n\n"
+            f"MASTER RESUME:\n{master_text}\n\n"
+            f"{voice_section}"
+            f"Company: Acme Corp\nTitle: Operations Manager\nDate: April 28, 2026\n\n"
+            f"JD:\n{jd_text}\n\n"
+            f"COMPANY BRIEFING AND FIT ANALYSIS:\n{briefing_context}"
+        )
+
+        assert cover_prompt.startswith("<<SPECULATIVE_MODE>>\n\n")
+        assert "CANDIDATE PROFILE:" in cover_prompt
+
+    def test_no_marker_when_not_synthetic(self, db):
+        """When synthetic=0, the cover_prompt does NOT contain <<SPECULATIVE_MODE>>."""
+        job_id = insert_job(db, stage="prep_in_progress")
+
+        row = db.execute("SELECT raw_jd_text, stage, synthetic FROM jobs WHERE id=?", (job_id,)).fetchone()
+        mode_marker = self._derive_marker(row)
+
+        cover_prompt = (
+            f"{mode_marker}"
+            f"CANDIDATE PROFILE:\nprofile\n\n"
+            f"MASTER RESUME:\nresume\n\n"
+            f"JD:\njd\n\n"
+            f"COMPANY BRIEFING AND FIT ANALYSIS:\nbriefing"
+        )
+
+        assert "<<SPECULATIVE_MODE>>" not in cover_prompt
+        assert cover_prompt.startswith("CANDIDATE PROFILE:")
+
+    def test_find_contacts_synthetic_arg_parsing(self):
+        """sys.argv[6] == '1' → is_synthetic True; '0' or absent → False."""
+
+        # Replicate the arg-parsing logic from find_contacts.py main()
+        def parse_is_synthetic(argv):
+            return argv[6] == "1" if len(argv) > 6 else False
+
+        assert parse_is_synthetic(["fc.py", "Co", "jd", "outdir", "pfx", "ts", "1"]) is True
+        assert parse_is_synthetic(["fc.py", "Co", "jd", "outdir", "pfx", "ts", "0"]) is False
+        assert parse_is_synthetic(["fc.py", "Co", "jd", "outdir", "pfx", "ts"]) is False
+        assert parse_is_synthetic(["fc.py", "Co", "jd", "outdir"]) is False

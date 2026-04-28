@@ -104,3 +104,13 @@ right register. No groveling, no superlatives.
 ## LENGTH
 Target 350-400 words for the body (after the header block). 300 is too
 compressed for this candidate's experience depth. Never exceed 425 body words.
+
+## Mode — speculative vs. real posting
+
+If the input contains a marker `<<SPECULATIVE_MODE>>`, you are writing a cold-outreach cover letter — there is no real job posting; the "JD" is a synthesized role description from the speculative_roles_synth role. In this mode:
+
+- Open with explicit acknowledgment that this is unsolicited: "I noticed [specific hiring signal from briefing]. While I don't see a current opening that matches my profile exactly, I wanted to reach out because…"
+- Frame the candidate's fit against the *briefing's* hiring signals rather than against a posted JD.
+- End with a low-pressure ask: "If this resonates, I'd welcome a 20-minute conversation; if not, I appreciate you taking a look."
+
+If `<<SPECULATIVE_MODE>>` is absent, write a standard cover letter for the real posting as before.

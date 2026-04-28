@@ -190,8 +190,10 @@ def main():
     # Do NOT re-curl — LinkedIn and many other URLs require auth and will return garbage.
     conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
-    row = conn.execute("SELECT raw_jd_text, stage FROM jobs WHERE id=?", (job_id,)).fetchone()
+    row = conn.execute("SELECT raw_jd_text, stage, synthetic FROM jobs WHERE id=?", (job_id,)).fetchone()
     jd_text = (row["raw_jd_text"] or "").strip() if row else ""
+    is_synthetic = bool(row["synthetic"]) if row and "synthetic" in row.keys() else False
+    mode_marker = "<<SPECULATIVE_MODE>>\n\n" if is_synthetic else ""
 
     if not jd_text or len(jd_text) < 50:
         # Fallback: try curling for Greenhouse/Lever/public URLs only
@@ -388,6 +390,7 @@ def main():
     log_event("voice_samples_loaded", caller="cover_letter_writer", chars=len(voice_samples))
     voice_section = f"VOICE SAMPLES:\n{voice_samples}\n\n" if voice_samples else ""
     cover_prompt = (
+        f"{mode_marker}"
         f"CANDIDATE PROFILE:\n{profile_text}\n\n"
         f"MASTER RESUME:\n{master_text}\n\n"
         f"{voice_section}"
@@ -442,6 +445,7 @@ def main():
             outdir,
             file_prefix,
             timestamp_fn,
+            "1" if is_synthetic else "0",
         ],
         check=False,
     )
