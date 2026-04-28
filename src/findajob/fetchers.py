@@ -294,7 +294,11 @@ def fetch_ashby_jobs(feed_urls_path):
     for slug, display_name in feeds:
         api_url = f"https://api.ashbyhq.com/posting-api/job-board/{slug}"
         try:
-            resp = req.get(api_url, headers=headers, timeout=15)
+            try:
+                resp = req.get(api_url, headers=headers, timeout=30)
+            except req.exceptions.Timeout:
+                log_event("ashby_fetch_retry", slug=slug, reason="timeout")
+                resp = req.get(api_url, headers=headers, timeout=30)
             if resp.status_code != 200:
                 log_event("ashby_fetch_skip", slug=slug, status=resp.status_code)
                 continue
