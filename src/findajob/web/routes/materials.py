@@ -55,12 +55,12 @@ def materials_index(request: Request, db: sqlite3.Connection = Depends(get_db)) 
     )
 
 
-@router.get("/materials/{fingerprint}", response_class=HTMLResponse)
+@router.get("/materials/{fingerprint}", response_class=HTMLResponse, response_model=None)
 def folder_view(
     fingerprint: str,
     request: Request,
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
-) -> HTMLResponse:
+) -> HTMLResponse | RedirectResponse:
     root: Path = request.app.state.companies_root
     folder = resolve_folder(fingerprint, db, root)
     if folder is None:
