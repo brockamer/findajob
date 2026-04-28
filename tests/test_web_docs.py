@@ -57,6 +57,7 @@ SETUP_INSTALL_DOCKER_MD = "# Install with Docker\n\nThe primary install path.\n"
 SETUP_INSTALL_LINUX_MD = "# Install on Linux (legacy)\n\nFallback.\n"
 SETUP_CONFIGURE_MD = "# Configure\n\nFile-by-file config walkthrough.\n"
 SETUP_STATE_MIGRATION_MD = "# State migration\n\nMoving from rclone to viewer.\n"
+SETUP_INTERNET_EXPOSURE_MD = "# Exposing findajob to the public internet\n\nBasic auth pattern.\n"
 
 
 @pytest.fixture
@@ -77,6 +78,7 @@ def client(tmp_path: Path) -> TestClient:
     (docs / "setup" / "install-linux.md").write_text(SETUP_INSTALL_LINUX_MD)
     (docs / "setup" / "configure.md").write_text(SETUP_CONFIGURE_MD)
     (docs / "setup" / "state-migration.md").write_text(SETUP_STATE_MIGRATION_MD)
+    (docs / "setup" / "internet-exposure.md").write_text(SETUP_INTERNET_EXPOSURE_MD)
 
     return TestClient(create_app(companies_root=companies, db_path=db, base_root=tmp_path))
 
@@ -126,6 +128,13 @@ def test_setup_subpage_renders(client: TestClient) -> None:
     r = client.get("/docs/setup/install-docker")
     assert r.status_code == 200
     assert "Install with Docker" in r.text
+
+
+def test_internet_exposure_subpage_renders(client: TestClient) -> None:
+    """#327: new pattern doc reachable in-app via the docs viewer's slug allowlist."""
+    r = client.get("/docs/setup/internet-exposure")
+    assert r.status_code == 200
+    assert "Exposing findajob to the public internet" in r.text
 
 
 def test_unknown_slug_404s(client: TestClient) -> None:

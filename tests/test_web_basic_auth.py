@@ -8,6 +8,7 @@ these tests requires a deliberate review.
 from __future__ import annotations
 
 import base64
+import logging
 import sqlite3
 from pathlib import Path
 
@@ -110,22 +111,66 @@ def test_no_env_vars_means_no_auth(open_client: TestClient) -> None:
     assert r.status_code == 200
 
 
-def test_only_user_env_set_means_no_auth(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_only_user_env_set_means_no_auth_with_warning(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Partial config fail-opens but MUST emit a WARNING (silent fail-open is the foot-gun)."""
     monkeypatch.setenv("FINDAJOB_AUTH_USER", "tester")
     monkeypatch.delenv("FINDAJOB_AUTH_PASS", raising=False)
-    app = _make_app(tmp_path)
+    with caplog.at_level(logging.WARNING, logger="findajob.web.auth"):
+        app = _make_app(tmp_path)
     client = TestClient(app)
     r = client.get("/", follow_redirects=False)
     assert r.status_code == 200
+    assert any(
+        rec.levelno == logging.WARNING
+        and "DISABLED" in rec.message
+        and "FINDAJOB_AUTH_USER" in rec.message
+        and "FINDAJOB_AUTH_PASS" in rec.message
+        for rec in caplog.records
+    ), f"expected partial-config WARNING; got {[(r.levelname, r.message) for r in caplog.records]}"
 
 
-def test_only_pass_env_set_means_no_auth(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_only_pass_env_set_means_no_auth_with_warning(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     monkeypatch.delenv("FINDAJOB_AUTH_USER", raising=False)
     monkeypatch.setenv("FINDAJOB_AUTH_PASS", "lonely")
-    app = _make_app(tmp_path)
+    with caplog.at_level(logging.WARNING, logger="findajob.web.auth"):
+        app = _make_app(tmp_path)
     client = TestClient(app)
     r = client.get("/", follow_redirects=False)
     assert r.status_code == 200
+    assert any(rec.levelno == logging.WARNING and "DISABLED" in rec.message for rec in caplog.records)
+
+
+def test_install_logs_enabled_when_both_set(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Operator should be able to grep startup logs for the actual auth state."""
+    monkeypatch.setenv("FINDAJOB_AUTH_USER", "tester")
+    monkeypatch.setenv("FINDAJOB_AUTH_PASS", "s3cret-token-xyz")
+    with caplog.at_level(logging.INFO, logger="findajob.web.auth"):
+        _make_app(tmp_path)
+    assert any("ENABLED" in rec.message and rec.levelno == logging.INFO for rec in caplog.records)
+
+
+def test_install_logs_disabled_when_unset(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.delenv("FINDAJOB_AUTH_USER", raising=False)
+    monkeypatch.delenv("FINDAJOB_AUTH_PASS", raising=False)
+    with caplog.at_level(logging.INFO, logger="findajob.web.auth"):
+        _make_app(tmp_path)
+    assert any("DISABLED (no env vars set)" in rec.message and rec.levelno == logging.INFO for rec in caplog.records)
 
 
 def test_empty_string_env_vars_mean_no_auth(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

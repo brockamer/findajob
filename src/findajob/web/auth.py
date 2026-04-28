@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import base64
 import hmac
+import logging
 import os
 from collections.abc import Awaitable, Callable
 
@@ -21,6 +22,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 from starlette.types import ASGIApp
+
+logger = logging.getLogger(__name__)
 
 _ALLOWLIST_PREFIXES: tuple[str, ...] = ("/static/",)
 _ALLOWLIST_EXACT: frozenset[str] = frozenset({"/healthz", "/favicon.ico"})
@@ -86,10 +89,27 @@ def install_basic_auth(
 
     With no kwargs, reads `FINDAJOB_AUTH_USER` / `FINDAJOB_AUTH_PASS` from the
     environment. Returns True when middleware was installed, False otherwise.
+
+    Always emits one log line so the operator can grep startup logs to confirm
+    the auth state. Partial misconfiguration (only one var set) emits a
+    WARNING — silent fail-open on a typo'd compose.yaml is a real foot-gun for
+    internet-exposed instances and observability is the cheap defense.
     """
     user = username if username is not None else os.environ.get("FINDAJOB_AUTH_USER", "")
     pw = password if password is not None else os.environ.get("FINDAJOB_AUTH_PASS", "")
-    if not user or not pw:
+    if user and pw:
+        app.add_middleware(BasicAuthMiddleware, username=user, password=pw)  # type: ignore[attr-defined]
+        logger.info("basic auth: ENABLED (FINDAJOB_AUTH_USER + FINDAJOB_AUTH_PASS both set)")
+        return True
+    if user or pw:
+        which_set = "FINDAJOB_AUTH_USER" if user else "FINDAJOB_AUTH_PASS"
+        which_missing = "FINDAJOB_AUTH_PASS" if user else "FINDAJOB_AUTH_USER"
+        logger.warning(
+            "basic auth: DISABLED — %s is set but %s is empty. Set both to enable, "
+            "or unset both to silence this warning.",
+            which_set,
+            which_missing,
+        )
         return False
-    app.add_middleware(BasicAuthMiddleware, username=user, password=pw)  # type: ignore[attr-defined]
-    return True
+    logger.info("basic auth: DISABLED (no env vars set)")
+    return False
