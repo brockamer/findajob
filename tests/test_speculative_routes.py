@@ -160,6 +160,9 @@ def test_poll_returns_fragment(tmp_path):
     assert resp.status_code == 200
     assert "Research failed" in resp.text
     assert "budget exceeded" in resp.text
+    # The retry/trash forms on the failed-status fragment must opt out of
+    # hx-boost so the 303 redirect navigates the browser (#319).
+    assert 'hx-boost="false"' in resp.text
 
 
 # ── T23: review page ─────────────────────────────────────────────────────
@@ -197,6 +200,9 @@ def test_get_review_renders_briefing_and_cards(tmp_path):
     assert "SiteOps" in resp.text
     # All cards default-checked (keep on by default)
     assert 'value="0" checked' in resp.text
+    # The form must opt out of hx-boost so the 303 redirect from approve/regenerate/trash
+    # is followed by the browser, not swallowed by HTMX (#319).
+    assert 'hx-boost="false"' in resp.text
 
 
 def test_get_review_redirects_when_not_ready(tmp_path):

@@ -10,7 +10,7 @@
   </details>
 
   <h2 class="text-xl font-semibold mb-3">Role cards ({{ cards|length }})</h2>
-  <form method="post" action="/speculative/approve/{{ row.id }}" class="space-y-4">
+  <form method="post" action="/speculative/approve/{{ row.id }}" class="space-y-4" hx-boost="false">
     {% for card in cards %}
       <div class="border rounded p-4">
         <label class="flex items-start gap-3">

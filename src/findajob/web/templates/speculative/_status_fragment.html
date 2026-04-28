@@ -12,10 +12,10 @@
   <div class="rounded border p-4 bg-red-50">
     <div class="font-semibold">Research failed</div>
     <div class="mt-2 text-sm">{{ row.error_message or "(no error message recorded)" }}</div>
-    <form method="post" action="/speculative/regenerate/{{ row.id }}" class="mt-4">
+    <form method="post" action="/speculative/regenerate/{{ row.id }}" class="mt-4" hx-boost="false">
       <button type="submit" class="btn btn-primary">Retry</button>
     </form>
-    <form method="post" action="/speculative/trash/{{ row.id }}" class="mt-2">
+    <form method="post" action="/speculative/trash/{{ row.id }}" class="mt-2" hx-boost="false">
       <button type="submit" class="btn btn-secondary">Trash</button>
     </form>
   </div>
