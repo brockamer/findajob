@@ -7,6 +7,7 @@ import re
 import shutil
 import sqlite3
 from datetime import UTC, datetime
+from typing import Any
 
 from findajob.paths import BASE
 
@@ -485,6 +486,25 @@ _BOILERPLATE_PATTERNS: list[str] = [
 ]
 
 _BOILERPLATE_RE: re.Pattern[str] = re.compile("|".join(_BOILERPLATE_PATTERNS), re.IGNORECASE | re.MULTILINE)
+
+
+def is_synthetic_job(job: Any) -> bool:
+    """Return True when this row represents a speculative (cold-outreach) job.
+
+    Driven by the ``jobs.synthetic`` column, which is set to 1 by the speculative
+    approver and 0 (default) for all real postings. Treat any truthy value
+    (1, "1") as synthetic; absence or 0 means real.
+    """
+    if not job:
+        return False
+    val = job.get("synthetic") if hasattr(job, "get") else None
+    if val is None:
+        # sqlite3.Row supports __getitem__ but not .get(); fall back.
+        try:
+            val = job["synthetic"]
+        except (KeyError, IndexError, TypeError):
+            return False
+    return bool(int(val)) if val is not None else False
 
 
 def strip_jd_boilerplate(text: str | None) -> str:

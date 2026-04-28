@@ -575,3 +575,28 @@ class TestExtractJsonPayload:
     def test_handles_leading_whitespace(self):
         text = '   \n  {"relevance_score": 7}'
         assert json.loads(extract_json_payload(text)) == {"relevance_score": 7}
+
+
+# ── is_synthetic_job ───────────────────────────────────────────────────────
+
+
+def test_is_synthetic_job_true_for_flag_one():
+    from findajob.utils import is_synthetic_job
+    assert is_synthetic_job({"synthetic": 1}) is True
+
+
+def test_is_synthetic_job_false_for_flag_zero():
+    from findajob.utils import is_synthetic_job
+    assert is_synthetic_job({"synthetic": 0}) is False
+
+
+def test_is_synthetic_job_false_when_key_missing():
+    from findajob.utils import is_synthetic_job
+    # Legacy / partial dicts default to non-synthetic.
+    assert is_synthetic_job({}) is False
+
+
+def test_is_synthetic_job_truthy_string_treated_as_true():
+    from findajob.utils import is_synthetic_job
+    # SQLite returns 1/0 as int but be defensive against driver quirks.
+    assert is_synthetic_job({"synthetic": "1"}) is True
