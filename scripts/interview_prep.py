@@ -18,6 +18,7 @@ import re
 import sqlite3
 import subprocess
 import sys
+import time
 from datetime import datetime
 
 from findajob.paths import AICHAT, BASE, PANDOC
@@ -33,6 +34,40 @@ PROFILE_PATH = f"{BASE}/candidate_context/profile.md"
 MASTER_RESUME_PATH = f"{BASE}/candidate_context/master_resume.md"
 
 SENTINEL_NAME = ".interview_prep_in_progress"
+# Treat any sentinel older than this as orphaned from a killed run.
+# Well above typical Opus 4.7 generation time (~2 min observed) but well below
+# the operator-noticing threshold for a stuck Interviewing button.
+SENTINEL_STALE_AFTER_SECONDS = 600
+
+
+def _sentinel_blocks_run(sentinel_path: str, *, log_kwargs: dict[str, object]) -> bool:
+    """Return True iff a fresh in-flight sentinel exists at ``sentinel_path``.
+
+    A sentinel older than ``SENTINEL_STALE_AFTER_SECONDS`` is treated as
+    orphaned from a killed run: removed in place and a
+    ``interview_prep_sentinel_stale_removed`` event logged so the recovery
+    is auditable in pipeline.jsonl. Returns False after removal so the
+    caller proceeds.
+    """
+    if not os.path.exists(sentinel_path):
+        return False
+    try:
+        age = time.time() - os.path.getmtime(sentinel_path)
+    except OSError:
+        return False
+    if age < SENTINEL_STALE_AFTER_SECONDS:
+        return True
+    log_event(
+        "interview_prep_sentinel_stale_removed",
+        age_seconds=int(age),
+        **log_kwargs,
+    )
+    try:
+        os.remove(sentinel_path)
+    except OSError:
+        pass
+    return False
+
 
 load_env()
 
@@ -141,16 +176,16 @@ def main() -> None:
         notify(f"INTERVIEW PREP SKIPPED: {company} — {title}\nNo prep folder; apply was likely manual.")
         return
 
-    # ── Concurrency guard: refuse if a run is already in flight for this folder ──
+    # ── Concurrency guard: refuse if a fresh run is already in flight for this folder ──
     sentinel = os.path.join(prep_folder, SENTINEL_NAME)
-    if os.path.exists(sentinel):
-        log_event(
-            "interview_prep_skipped_in_flight",
-            job_id=job_id,
-            company=company,
-            title=title,
-            folder=prep_folder,
-        )
+    log_kwargs: dict[str, object] = {
+        "job_id": job_id,
+        "company": company,
+        "title": title,
+        "folder": prep_folder,
+    }
+    if _sentinel_blocks_run(sentinel, log_kwargs=log_kwargs):
+        log_event("interview_prep_skipped_in_flight", **log_kwargs)
         return
 
     # Touch sentinel; remove on exit.
