@@ -154,7 +154,7 @@ def test_approve_rejects_non_ready_status():
         approve_request(conn, request_id=req_id, kept_indices=[0])
 
 
-def test_approve_propagates_briefing_folder_to_jobs(tmp_path):
+def test_approve_propagates_briefing_folder_to_jobs():
     """#320: approver copies speculative_requests.briefing_folder onto each new
     jobs row's speculative_briefing_folder column. prep_application.py reads
     that column to reuse the deep-research briefing instead of regenerating
