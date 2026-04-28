@@ -185,8 +185,8 @@ def test_fail_stuck_speculative_marks_failed(db, _patch_log):
             submitted_at TEXT NOT NULL
         );
     """)
-    # 11 min ago — past the 10-min cutoff
-    stale_at = (datetime.now(UTC) - timedelta(minutes=11)).strftime("%Y-%m-%d %H:%M:%S")
+    # 16 min ago — past the 15-min cutoff
+    stale_at = (datetime.now(UTC) - timedelta(minutes=16)).strftime("%Y-%m-%d %H:%M:%S")
     db.execute(
         "INSERT INTO speculative_requests (company, status, submitted_at) VALUES (?, 'researching', ?)",
         ("PSIQuantum", stale_at),

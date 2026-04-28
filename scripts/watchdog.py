@@ -19,7 +19,7 @@ from findajob.utils import log_event
 
 DB_PATH = f"{BASE}/data/pipeline.db"
 STALE_PREP_MINUTES = 60
-STALE_RESEARCH_MINUTES = 10
+STALE_RESEARCH_MINUTES = 15
 
 
 def run_watchdog(conn: sqlite3.Connection) -> int:
