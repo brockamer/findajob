@@ -244,6 +244,39 @@ The hook should block it. Then unstage and delete the file.
 redact) and retry the commit. Do NOT use `--no-verify` to bypass except in emergencies —
 it defeats the whole purpose.
 
+**Diagnostic output:** As of #314, every hook run prints a one-line stderr summary
+(`pre-commit: PII scan: N patterns × M added lines`). If a commit lands without that
+line appearing — check `git config core.hooksPath`, that the hook is executable, and
+whether `--no-verify` was passed. The line is the canary for silent-fail conditions.
+
+### CI-side defense (defense-in-depth, #314)
+
+The local hook can fail silently (wrong git env, `--no-verify` slip, malformed
+PATTERNS). The `.github/workflows/pii-scan.yml` workflow scans every PR diff against
+the same patterns from a GitHub Secret, so a defect in the local hook doesn't leave
+the repo unprotected.
+
+**Install (one-time):** copy your local PATTERNS array into a GitHub Secret named
+`PII_PATTERNS_REGEX`. One regex per line, no quotes, no shell escaping:
+
+```bash
+# Extract just the pattern strings from your local hook (skip blank/comment lines):
+grep -E '^\s*"' .git/hooks/pre-commit | sed -E 's/^\s*"//;s/"\s*$//' > /tmp/pii-patterns.txt
+gh secret set PII_PATTERNS_REGEX < /tmp/pii-patterns.txt
+rm /tmp/pii-patterns.txt
+```
+
+**When unset:** the workflow logs a warning and passes (so external/fork PRs that
+can't access secrets aren't blocked — they shouldn't have operator PII anyway).
+
+**When set and any pattern matches:** the workflow fails the PR check; the matched
+pattern is printed in the run log (the matched line itself is NOT printed to avoid
+leaking the PII to public CI logs). Find the line locally, fix, push.
+
+**Updating patterns:** when you add a new beta tester or a new personal service
+handle to the local hook, re-run the install command above to push the updated
+list to the secret.
+
 See also `docs/GENERALIZATION.md` for the broader tracking of domain-specific content that
 should not land in tracked files.
 

@@ -52,6 +52,13 @@ PATTERNS=(
 # ── Check staged content ──────────────────────────────────────────────────────
 STAGED=$(git diff --cached --diff-filter=ACMR -U0 | grep '^+' | grep -v '^+++' || true)
 
+# Diagnostic line — makes silent failures visible (#314). If a commit with PII
+# ever slips through, check whether this line printed at all in your terminal
+# (or whether --no-verify was used). The line is the canary for silent-fail
+# conditions.
+ADDED_LINE_COUNT=$(echo -n "$STAGED" | grep -c '^+' || true)
+echo "pre-commit: PII scan: ${#PATTERNS[@]} patterns × ${ADDED_LINE_COUNT:-0} added lines" >&2
+
 FOUND=0
 for pattern in "${PATTERNS[@]}"; do
     # Skip empty patterns (all commented out is fine)

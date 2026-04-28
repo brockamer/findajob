@@ -1,0 +1,79 @@
+name: PII Scan
+
+# Defense-in-depth complement to the local pre-commit hook (#314). The local
+# hook can fail silently — wrong git env, --no-verify, malformed patterns
+# array. This workflow scans the PR diff against patterns from a GitHub
+# Secret, so a defect in the local hook doesn't leave us unprotected.
+#
+# The secret PII_PATTERNS_REGEX holds one regex per line — same format as
+# the local hook's PATTERNS array (sans bash quoting). When unset (e.g. on
+# fork PRs that don't get repo secrets), the workflow logs a warning and
+# passes — failing closed on missing secrets would block external
+# contributions, and external contributors shouldn't have operator PII
+# anyway.
+#
+# Security note: the only ${{ }} interpolation in this file is
+# `${{ secrets.PII_PATTERNS_REGEX }}` which is passed via `env:` to the
+# shell rather than substituted into a run: command directly. No untrusted
+# input from event payloads (PR title/body/etc.) is used in any shell
+# command.
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Diff PR against main
+        id: diff
+        run: |
+          set -euo pipefail
+          git fetch origin main:main 2>/dev/null || true
+          git diff origin/main...HEAD --diff-filter=ACMR -U0 \
+            | grep '^+' \
+            | grep -v '^+++' \
+            > /tmp/pr_added_lines.txt || true
+          line_count=$(wc -l < /tmp/pr_added_lines.txt)
+          echo "Scanning $line_count added lines"
+
+      - name: Scan against PII patterns
+        env:
+          PATTERNS: ${{ secrets.PII_PATTERNS_REGEX }}
+        run: |
+          set -euo pipefail
+          if [ -z "${PATTERNS:-}" ]; then
+            echo "::warning::PII_PATTERNS_REGEX secret not set — skipping scan."
+            echo "::warning::Install per docs/setup/configure.md or this guard is inert."
+            exit 0
+          fi
+
+          if [ ! -s /tmp/pr_added_lines.txt ]; then
+            echo "No added lines in PR diff — nothing to scan."
+            exit 0
+          fi
+
+          found=0
+          while IFS= read -r pattern; do
+            [ -z "$pattern" ] && continue
+            case "$pattern" in '#'*) continue ;; esac
+
+            if grep -qiE "$pattern" /tmp/pr_added_lines.txt; then
+              echo "::error::PR diff matches PII pattern: $pattern"
+              found=1
+            fi
+          done <<< "$PATTERNS"
+
+          if [ "$found" -eq 1 ]; then
+            echo ""
+            echo "::error::One or more PII patterns matched. Find and remove the matching content."
+            echo "::error::To audit your branch locally: bash .git/hooks/pre-commit (after staging)."
+            exit 1
+          fi
+
+          echo "Clean — no PII matches in $(wc -l < /tmp/pr_added_lines.txt) added lines."
