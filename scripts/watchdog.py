@@ -19,6 +19,7 @@ from findajob.utils import log_event
 
 DB_PATH = f"{BASE}/data/pipeline.db"
 STALE_PREP_MINUTES = 60
+STALE_RESEARCH_MINUTES = 10
 
 
 def run_watchdog(conn: sqlite3.Connection) -> int:
@@ -44,14 +45,57 @@ def run_watchdog(conn: sqlite3.Connection) -> int:
     return count
 
 
+def fail_stuck_speculative(conn: sqlite3.Connection) -> int:
+    """Mark speculative_requests rows stuck in 'researching' > STALE_RESEARCH_MINUTES as failed.
+
+    Covers the silent-hang case where the detached run_speculative_research.py
+    subprocess died (OOM, container restart) without updating the row. Without
+    this the operator's status page polls forever.
+
+    submitted_at uses SQLite's datetime('now') format (naïve space-separated)
+    via the column DEFAULT. Cutoff comparison uses the same format so the lex
+    `<` comparison is reliable.
+    """
+    cutoff = (datetime.now(UTC) - timedelta(minutes=STALE_RESEARCH_MINUTES)).strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        stuck = conn.execute(
+            """SELECT id, company FROM speculative_requests
+               WHERE status = 'researching'
+                 AND submitted_at < ?""",
+            (cutoff,),
+        ).fetchall()
+    except sqlite3.OperationalError:
+        # Table absent (legacy stack pre-B1 migration). Gracefully skip.
+        return 0
+    count = 0
+    for sr in stuck:
+        conn.execute(
+            """UPDATE speculative_requests
+               SET status='failed',
+                   error_message=?
+               WHERE id=?""",
+            (f"research timed out (>{STALE_RESEARCH_MINUTES} min) — subprocess likely died", sr["id"]),
+        )
+        log_event(
+            "speculative_research_watchdog_failed",
+            request_id=sr["id"],
+            company=sr["company"],
+        )
+        count += 1
+    if count:
+        conn.commit()
+    return count
+
+
 def main() -> None:
     conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     try:
         count = run_watchdog(conn)
+        spec_failed = fail_stuck_speculative(conn)
     finally:
         conn.close()
-    log_event("watchdog_run", stale_reset=count)
+    log_event("watchdog_run", stale_reset=count, speculative_failed=spec_failed)
 
 
 if __name__ == "__main__":

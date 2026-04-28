@@ -168,3 +168,44 @@ def test_empty_db_emits_zero_count(db, monkeypatch, _patch_log):
     watchdog_events = [e for e in events if e["event"] == "watchdog_run"]
     assert len(watchdog_events) == 1
     assert watchdog_events[0]["stale_reset"] == 0
+
+
+# ── B4.T31: speculative-research watchdog ───────────────────────────────
+
+
+def test_fail_stuck_speculative_marks_failed(db, _patch_log):
+    """Speculative requests stuck in 'researching' >10 min get marked failed.
+    Fresh requests (<10 min) are untouched."""
+    db.executescript("""
+        CREATE TABLE speculative_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'researching',
+            error_message TEXT,
+            submitted_at TEXT NOT NULL
+        );
+    """)
+    # 11 min ago — past the 10-min cutoff
+    stale_at = (datetime.now(UTC) - timedelta(minutes=11)).strftime("%Y-%m-%d %H:%M:%S")
+    db.execute(
+        "INSERT INTO speculative_requests (company, status, submitted_at) VALUES (?, 'researching', ?)",
+        ("PSIQuantum", stale_at),
+    )
+    # 5 min ago — fresh, should not be touched
+    fresh_at = (datetime.now(UTC) - timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M:%S")
+    db.execute(
+        "INSERT INTO speculative_requests (company, status, submitted_at) VALUES (?, 'researching', ?)",
+        ("Recent Co", fresh_at),
+    )
+    db.commit()
+
+    count = watchdog.fail_stuck_speculative(db)
+
+    assert count == 1
+    rows = db.execute(
+        "SELECT company, status, error_message FROM speculative_requests ORDER BY id"
+    ).fetchall()
+    stale, fresh = rows[0], rows[1]
+    assert stale["status"] == "failed"
+    assert "timed out" in (stale["error_message"] or "").lower()
+    assert fresh["status"] == "researching"
