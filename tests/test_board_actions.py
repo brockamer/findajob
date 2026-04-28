@@ -868,7 +868,7 @@ class TestApply:
 
 
 class TestInterview:
-    def test_happy_path_from_applied(self, client: TestClient):
+    def test_happy_path_from_applied(self, client: TestClient, popen_calls):
         response = client.post("/board/jobs/fp_applied/interview")
 
         assert response.status_code == 200
@@ -879,16 +879,29 @@ class TestInterview:
         audit = _fetch_audit(client, "fp_applied")
         assert any(a == ("stage", "applied", "interview") for a in audit)
 
-    def test_idempotent_on_already_interview(self, client: TestClient):
+        # Interview transition launches interview_prep generator (#258).
+        assert len(popen_calls) == 1
+        args = popen_calls[0]
+        assert "interview_prep.py" in args[1]
+        # Subprocess receives company, title, job_id (no URL — JD comes from DB).
+        assert args[2:] == ["Acme Corp", "Senior Ops", "id_applied"]
+
+    def test_reclick_regenerates(self, client: TestClient, popen_calls):
+        """Re-clicking 'Interviewing' on an already-interview job re-launches
+        interview_prep so the operator can refresh after a recruiter sends
+        panel info. No audit row written for the no-op stage transition."""
         response = client.post("/board/jobs/fp_interview/interview")
 
         assert response.status_code == 200
         assert _fetch_stage(client, "fp_interview") == "interview"
         assert _fetch_audit(client, "fp_interview") == []
+        assert len(popen_calls) == 1
+        assert "interview_prep.py" in popen_calls[0][1]
 
-    def test_404_on_unknown_fingerprint(self, client: TestClient):
+    def test_404_on_unknown_fingerprint(self, client: TestClient, popen_calls):
         response = client.post("/board/jobs/fp_nonexistent/interview")
         assert response.status_code == 404
+        assert popen_calls == []
 
 
 # ── /offer handler ────────────────────────────────────────────────────────

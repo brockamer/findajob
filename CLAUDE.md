@@ -84,6 +84,7 @@ file. If you're refactoring an old hardcoded section, add a note to `docs/GENERA
 | `fit_analyst` | `openrouter:perplexity/sonar-reasoning-pro` — appended to company briefing |
 | `resume_change_reviewer` / `network_analyst` | `openrouter:google/gemini-3-flash-preview` |
 | `recruiter_critic` | `openrouter:anthropic/claude-opus-4.7`, `max_tokens: 1024` — sees company, title, JD, tailored resume, cover; NOT profile/briefing/fit |
+| `interview_prep` | `openrouter:anthropic/claude-opus-4.7`, `max_tokens: 4096` — generated on `applied → interview` board transition (not at apply time). Reads existing prep folder (briefing, tailored resume, cover, optional critique) and EXPANDS briefing's `❓ Likely Interview Questions` + `💡 Stories from Your Background` sections rather than re-deriving. Five-section output: lead-with-this opener, elevator pitch, STAR expansions, tough Qs, questions to ask. |
 | Job ingestion | jobs-api14 (RapidAPI) — LinkedIn only (`datePosted: 'day'`; Indeed slot dropped #274 due to 0.08% application rate); direct Greenhouse/Ashby/Lever JSON; Gmail OAuth2 (LinkedIn + Indeed alerts) |
 | Package manager | `uv sync` for dev deps; `uv run` prefix for pytest/ruff/mypy/uvicorn |
 | Path resolution | `src/findajob/paths.py` — reads `config/paths.env`; BASE derived from `__file__` |
@@ -284,6 +285,10 @@ Every STATUS and REJECT_REASON transition runs through a POST handler in
 `sync_sheet.py` never reads from Sheets. Do not add new transition logic to
 `watchdog.py` or to any Sheet-reading path — every new action is a new web
 handler + a new `findajob.actions` helper.
+
+Some transitions also spawn detached generator subprocesses:
+- `POST /board/jobs/{fp}/prep` and `/regenerate` → `scripts/prep_application.py` (briefing, tailored resume, cover, recruiter critique, outreach drafts)
+- `POST /board/jobs/{fp}/interview` → `scripts/interview_prep.py` (interview prep artifact). Always (re)launches on each click — re-clicking is the regenerate mechanism after a recruiter sends panel info; a sentinel file `.interview_prep_in_progress` in the prep folder guards against concurrent runs.
 
 ### Path Resolution
 All binary paths (AICHAT, PANDOC) come from `findajob.paths` (`src/findajob/paths.py`), which reads `config/paths.env`.

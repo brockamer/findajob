@@ -71,6 +71,22 @@ def _launch_prep_subprocess(job: sqlite3.Row) -> None:
     )
 
 
+def _launch_interview_prep_subprocess(job: sqlite3.Row) -> None:
+    """Spawn the interview_prep generator. Script handles its own concurrency
+    guard via a sentinel file in the prep folder, so re-clicks during a run
+    are safely no-op'd. Jobs with no prep folder log + skip inside the script."""
+    subprocess.Popen(
+        [
+            sys.executable,
+            f"{BASE}/scripts/interview_prep.py",
+            job["company"],
+            job["title"],
+            job["id"],
+        ],
+        start_new_session=True,
+    )
+
+
 _DASHBOARD_ROW_SQL = (
     "SELECT fingerprint, title, company, location, remote_status, known_contacts, "
     "comp_estimate, ai_notes, relevance_score, fit_score, probability_score, "
@@ -317,6 +333,9 @@ def interview(
         raise HTTPException(status_code=404, detail="Job not found")
     if job["stage"] != "interview":
         _transition_stage(db, job, "interview", event_name="web_interview")
+    # Re-clicking "Interviewing" regenerates the interview-prep artifact.
+    # Subprocess guards against concurrent runs via a sentinel file in the prep folder.
+    _launch_interview_prep_subprocess(job)
     updated = _fetch_applied_row(db, fingerprint)
     assert updated is not None
     return _render_applied_row(request, updated)
