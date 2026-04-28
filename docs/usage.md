@@ -194,6 +194,36 @@ Three ways to get here:
 - Click a materials-folder name directly in the URL bar.
 - `/materials/` root → index of every folder ever created.
 
+---
+
+## Submitting a speculative company (cold outreach without a JD)
+
+When you want to reach out to a company that isn't currently posting a matching role, use the speculative submission path. The pipeline researches the company via Perplexity Deep Research, synthesizes 1–5 plausible role cards aligned to your background, and produces cover-letter and outreach drafts framed as cold outreach.
+
+1. Go to **`/ingest/`**. The page now has two tabs at the top — **Real posting** and **Speculative**. Click **Speculative**.
+2. Fill in:
+   - **Company** (required) — the target company name.
+   - **Hint** (optional) — narrows the research to a specific function or team (e.g. "data center team", "ML platform org", "talent acquisition").
+   - **Connection notes** (optional) — anything about prior contacts, mutual connections, or context worth surfacing in outreach.
+3. Click **Submit speculative.** You'll be redirected to a status page that polls every 5 seconds. Research takes **1–5 minutes** (Perplexity Deep Research runs many search calls under the hood).
+4. When research completes, the status page auto-redirects to the **review page** at `/speculative/review/{id}`. Here you'll see:
+   - The full briefing markdown (collapsed by default — expand if you want to read it).
+   - 1–5 synthesized role cards. Each has a **Keep** checkbox (default checked); uncheck cards that don't look right.
+5. Three actions:
+   - **Approve kept cards** — each kept card becomes a `[SPEC]`-prefixed row on the dashboard, ready for prep. Trashed cards are dropped silently.
+   - **Regenerate** — re-runs the synthesizer (briefing is preserved on retries to save the expensive Deep Research call). Status page polls again.
+   - **Trash** — drops the whole submission. No `jobs` rows are written.
+6. Approved rows show on the **Dashboard** with a small purple **SPEC** badge and the `[SPEC]` title prefix. Flag them for prep just like a real row. The cover letter and outreach draft will be written in cold-outreach mode automatically (acknowledges no posting exists, leads with hiring-signal from the briefing, ends with a low-pressure ask).
+7. Send the outreach. Then click **Sent Outreach** on that row (replaces the **Applied** dropdown option for speculative rows). The transition counts toward the apply-gate the same way a normal application does.
+
+**Costs:** ~$0.25–$0.75 per speculative submission (Perplexity Deep Research is more expensive than the regular `sonar-reasoning-pro`). The form soft-warns you if you've already submitted today; there's no hard cap.
+
+**Failure modes:**
+- If research fails (LLM error, rate limit), the status page shows the error with **Retry** and **Trash** buttons. Retry skips the briefing call if it already succeeded; only the cheap synth step re-runs.
+- If the subprocess dies silently (OOM, container restart), the watchdog flips rows stuck in `researching` for >10 minutes to `failed` so the status page surfaces the retry option instead of polling forever.
+
+**Synthetic rows are firewalled from the scorer:** rejecting a `[SPEC]` row never writes to `feedback_log`, so synthesizer hallucinations cannot drift the scorer's training history. The guard is enforced at write time (`handle_rejection`) and read time (scorer feedback loader).
+
 Each folder renders its Markdown files inline and offers `.docx` downloads. The JD is linked back to the original posting URL. All served locally — no Drive sync, no rclone.
 
 ---
