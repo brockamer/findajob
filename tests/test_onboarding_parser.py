@@ -10,13 +10,16 @@ def _wrap(name: str, body: str) -> str:
 
 
 _CLEAN_BLOCKS = {
-    "profile.md": "# Profile\nAlice Doe\n",
-    "master_resume.md": "# Resume\n## Contact\nAlice Doe\n",
+    "profile.md": "# Profile\nalice\n",
+    "master_resume.md": "# Resume\n## Contact\nalice\n",
     "target_companies.md": "## Tier 1 — Active Focus\n- Acme\n- Example Corp\n",
     "business_sector_employers_reference.md": "## Categories\n### Foo\n",
     "jsearch_queries.txt": "senior backend engineer\n",
     "prefilter_rules.yaml": "hard_rejects:\n  spam:\n    - '\\bspam\\b'\n",
     "in_domain_patterns.yaml": "positive:\n  - '\\bbackend\\s+engineer\\b'\n",
+    "display_name.txt": "Test Operator",
+    "timezone.txt": "America/Los_Angeles",
+    "ntfy_topic.txt": "tester-jobsearch-2026-17",
 }
 
 
@@ -24,12 +27,13 @@ def _clean_emission() -> str:
     return "\n\n".join(_wrap(n, b) for n, b in _CLEAN_BLOCKS.items())
 
 
-def test_allowed_filenames_are_exactly_seven() -> None:
-    assert len(ALLOWED_FILENAMES) == 7
+def test_allowed_filenames_are_exactly_ten() -> None:
+    """#328 added display_name.txt, timezone.txt, ntfy_topic.txt (was 7, now 10)."""
+    assert len(ALLOWED_FILENAMES) == 10
     assert set(ALLOWED_FILENAMES) == set(_CLEAN_BLOCKS)
 
 
-def test_clean_emission_all_seven_found() -> None:
+def test_clean_emission_all_required_found() -> None:
     result = parse_emission(_clean_emission())
     assert set(result.found) == set(_CLEAN_BLOCKS)
     assert result.missing == []
@@ -53,7 +57,7 @@ def test_missing_block_is_reported() -> None:
     blob = "\n\n".join(_wrap(n, b) for n, b in partial_blocks.items())
     result = parse_emission(blob)
     assert "in_domain_patterns.yaml" in result.missing
-    assert len(result.found) == 6
+    assert len(result.found) == len(_CLEAN_BLOCKS) - 1
 
 
 def test_duplicate_last_wins() -> None:

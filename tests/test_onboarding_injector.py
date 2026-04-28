@@ -37,11 +37,18 @@ _MIN_FILES = {
     "jsearch_queries.txt": "senior backend engineer\n",
     "prefilter_rules.yaml": "hard_rejects:\n  spam:\n    - '\\bspam\\b'\n",
     "in_domain_patterns.yaml": "positive:\n  - '\\bbackend\\b'\n",
+    "display_name.txt": "Test Operator",
+    "timezone.txt": "America/Los_Angeles",
+    "ntfy_topic.txt": "tester-jobsearch-2026-17",
 }
 
 
-def test_all_destinations_map_seven_filenames(tmp_path: Path) -> None:
-    assert set(_ALL_DESTINATIONS.keys()) == set(_MIN_FILES.keys())
+def test_all_destinations_map_required_filenames(tmp_path: Path) -> None:
+    """Every plain-file ALLOWED_FILENAMES key has a destination — except env-merge ones."""
+    from findajob.onboarding.injector import _ENV_MERGE_FILENAMES
+
+    plain_files = {n for n in _MIN_FILES if n not in _ENV_MERGE_FILENAMES}
+    assert set(_ALL_DESTINATIONS.keys()) == plain_files
 
 
 def test_sentinel_and_companies_paths_are_stable() -> None:
@@ -128,14 +135,14 @@ def test_backup_copies_existing_destinations(tmp_path: Path) -> None:
 # ---- inject ---------------------------------------------------------------
 
 
-def test_inject_writes_seven_files_and_sentinel_and_derivation(tmp_path: Path) -> None:
-    result = inject(tmp_path, _MIN_FILES)
+def test_inject_writes_required_files_and_sentinel_and_derivation(tmp_path: Path) -> None:
+    result = inject(tmp_path, _MIN_FILES, skip_smoke_check=True)
     assert result.backup_dir is not None  # returns the (possibly empty) backup dir
     # Discovery is exercised in the discoverer's own tests; here we only
     # confirm the result is shaped correctly. Discovery will fail in this
     # test environment because aichat-ng isn't on PATH, which is expected.
     assert result.discovery.success in (True, False)
-    # Seven canonical files
+    # Original seven canonical files
     assert (tmp_path / "candidate_context" / "profile.md").read_text() == _MIN_FILES["profile.md"]
     assert (tmp_path / "candidate_context" / "master_resume.md").read_text() == _MIN_FILES["master_resume.md"]
     assert (tmp_path / "config" / "target_companies.md").read_text() == _MIN_FILES["target_companies.md"]
@@ -145,6 +152,12 @@ def test_inject_writes_seven_files_and_sentinel_and_derivation(tmp_path: Path) -
     assert (tmp_path / "config" / "jsearch_queries.txt").read_text() == _MIN_FILES["jsearch_queries.txt"]
     assert (tmp_path / "config" / "prefilter_rules.yaml").read_text() == _MIN_FILES["prefilter_rules.yaml"]
     assert (tmp_path / "config" / "in_domain_patterns.yaml").read_text() == _MIN_FILES["in_domain_patterns.yaml"]
+    # New three: display_name, timezone, ntfy_topic — #328
+    assert (tmp_path / "candidate_context" / "display_name.txt").read_text() == _MIN_FILES["display_name.txt"]
+    assert (tmp_path / "data" / "timezone").read_text() == _MIN_FILES["timezone.txt"]
+    # ntfy_topic.txt merges into data/.env, not a standalone file
+    env_content = (tmp_path / "data" / ".env").read_text()
+    assert "NTFY_TOPIC=tester-jobsearch-2026-17" in env_content
     # Derived companies_of_interest
     coi = (tmp_path / "config" / "companies_of_interest.txt").read_text()
     assert "Acme Corp" in coi
@@ -180,7 +193,7 @@ def test_inject_staging_failure_rolls_back(tmp_path: Path) -> None:
 
     with patch.object(inj_mod.tempfile, "mkstemp", side_effect=flaky_mkstemp):
         with pytest.raises(OSError):
-            inject(tmp_path, _MIN_FILES)
+            inject(tmp_path, _MIN_FILES, skip_smoke_check=True)
 
     # profile.md unchanged
     assert (tmp_path / "candidate_context" / "profile.md").read_text() == original
@@ -198,7 +211,7 @@ def test_inject_staging_failure_rolls_back(tmp_path: Path) -> None:
 
 def test_inject_creates_parent_dirs(tmp_path: Path) -> None:
     # Fresh base with no subdirs — inject must mkdir them
-    inject(tmp_path, _MIN_FILES)
+    inject(tmp_path, _MIN_FILES, skip_smoke_check=True)
     assert (tmp_path / "candidate_context").is_dir()
     assert (tmp_path / "config").is_dir()
     assert (tmp_path / "data").is_dir()
@@ -207,7 +220,7 @@ def test_inject_creates_parent_dirs(tmp_path: Path) -> None:
 def test_inject_raises_on_missing_file_in_parsed(tmp_path: Path) -> None:
     partial = {k: v for k, v in _MIN_FILES.items() if k != "profile.md"}
     with pytest.raises(ValueError, match="profile.md"):
-        inject(tmp_path, partial)
+        inject(tmp_path, partial, skip_smoke_check=True)
 
 
 # ── voice-samples.md handling (#262) ────────────────────────────────────────
@@ -219,7 +232,7 @@ def _full_files_with_voice(voice_body: str) -> dict[str, str]:
 
 def test_inject_omits_voice_samples_when_absent(tmp_path: Path) -> None:
     """No voice-samples.md → file is never created on disk, no error."""
-    inject(tmp_path, _MIN_FILES)
+    inject(tmp_path, _MIN_FILES, skip_smoke_check=True)
     voice_dest = tmp_path / "candidate_context" / "voice_samples" / "voice-samples.md"
     assert not voice_dest.exists()
 
@@ -230,7 +243,7 @@ def test_inject_writes_voice_samples_when_present(tmp_path: Path) -> None:
     with patch("findajob.onboarding.injector.process_voice_samples") as mock_process:
         # Bypass LLM redaction in tests; return cleaned identity
         mock_process.return_value = (voice_body, True)
-        inject(tmp_path, _full_files_with_voice(voice_body))
+        inject(tmp_path, _full_files_with_voice(voice_body), skip_smoke_check=True)
     voice_dest = tmp_path / "candidate_context" / "voice_samples" / "voice-samples.md"
     assert voice_dest.exists()
     assert voice_dest.read_text(encoding="utf-8") == voice_body
@@ -241,7 +254,12 @@ def test_inject_runs_process_voice_samples_with_redact_flag(tmp_path: Path) -> N
     voice_body = "Some prose here."
     with patch("findajob.onboarding.injector.process_voice_samples") as mock_process:
         mock_process.return_value = ("processed text", True)
-        inject(tmp_path, _full_files_with_voice(voice_body), redact_voice_samples=False)
+        inject(
+            tmp_path,
+            _full_files_with_voice(voice_body),
+            redact_voice_samples=False,
+            skip_smoke_check=True,
+        )
         mock_process.assert_called_once_with(voice_body, redact=False)
 
 
@@ -250,7 +268,7 @@ def test_inject_skips_voice_write_when_processing_returns_empty(tmp_path: Path) 
     voice_body = "# Just A Header\n\n---"
     with patch("findajob.onboarding.injector.process_voice_samples") as mock_process:
         mock_process.return_value = ("", True)
-        inject(tmp_path, _full_files_with_voice(voice_body))
+        inject(tmp_path, _full_files_with_voice(voice_body), skip_smoke_check=True)
     voice_dest = tmp_path / "candidate_context" / "voice_samples" / "voice-samples.md"
     assert not voice_dest.exists()
 
@@ -260,7 +278,7 @@ def test_inject_creates_voice_samples_parent_dir(tmp_path: Path) -> None:
     voice_body = "Real prose."
     with patch("findajob.onboarding.injector.process_voice_samples") as mock_process:
         mock_process.return_value = (voice_body, True)
-        inject(tmp_path, _full_files_with_voice(voice_body))
+        inject(tmp_path, _full_files_with_voice(voice_body), skip_smoke_check=True)
     voice_dir = tmp_path / "candidate_context" / "voice_samples"
     assert voice_dir.is_dir()
 
@@ -274,7 +292,7 @@ def test_inject_backs_up_existing_voice_samples_file(tmp_path: Path) -> None:
 
     with patch("findajob.onboarding.injector.process_voice_samples") as mock_process:
         mock_process.return_value = ("NEW voice content.", True)
-        inject(tmp_path, _full_files_with_voice("anything"))
+        inject(tmp_path, _full_files_with_voice("anything"), skip_smoke_check=True)
 
     # Final state: new content
     assert existing.read_text(encoding="utf-8") == "NEW voice content."
@@ -289,7 +307,7 @@ def test_inject_backs_up_existing_voice_samples_file(tmp_path: Path) -> None:
 
 def test_inject_discovery_hook_soft_fails_when_aichat_missing(tmp_path: Path, monkeypatch) -> None:
     """When aichat-ng isn't available, inject() returns success=True for the
-    seven-file commit but discovery.success=False. Sentinel is still written.
+    file commit but discovery.success=False. Sentinel is still written.
     """
     # Force the discoverer's subprocess call to fail
     import findajob.discoverer.runner as run_mod
@@ -299,9 +317,152 @@ def test_inject_discovery_hook_soft_fails_when_aichat_missing(tmp_path: Path, mo
 
     monkeypatch.setattr(run_mod.subprocess, "run", boom)
 
-    result = inject(tmp_path, _MIN_FILES)
+    result = inject(tmp_path, _MIN_FILES, skip_smoke_check=True)
     # Sentinel was written (onboarding succeeded)
     assert (tmp_path / "data" / ".onboarding-complete").is_file()
     # Discovery soft-failed
     assert result.discovery.success is False
     assert result.discovery.error is not None
+
+
+# ── #328: env merge + smoke check + new collected fields ───────────────────
+
+
+def test_merge_env_content_replaces_existing_keys() -> None:
+    """Existing KEY=value lines get their value replaced; everything else preserved."""
+    from findajob.onboarding.injector import merge_env_content
+
+    existing = (
+        "# header comment\nOPENROUTER_API_KEY=old-key\nRAPIDAPI_KEY=should-stay\n\n# section\nNTFY_TOPIC=old-topic\n"
+    )
+    merged = merge_env_content(existing, "", {"OPENROUTER_API_KEY": "new-key", "NTFY_TOPIC": "new-topic"})
+    assert "OPENROUTER_API_KEY=new-key" in merged
+    assert "NTFY_TOPIC=new-topic" in merged
+    assert "RAPIDAPI_KEY=should-stay" in merged
+    assert "old-key" not in merged
+    assert "old-topic" not in merged
+    # Comments and blank lines preserved
+    assert "# header comment" in merged
+    assert "# section" in merged
+
+
+def test_merge_env_content_appends_new_keys() -> None:
+    """Keys that aren't in existing get appended at the end."""
+    from findajob.onboarding.injector import merge_env_content
+
+    existing = "RAPIDAPI_KEY=keep-me\n"
+    merged = merge_env_content(existing, "", {"OPENROUTER_API_KEY": "fresh"})
+    assert "RAPIDAPI_KEY=keep-me" in merged
+    assert merged.rstrip().endswith("OPENROUTER_API_KEY=fresh")
+
+
+def test_merge_env_content_uses_example_when_existing_empty() -> None:
+    """Fresh install: no .env yet, use .env.example as the starting template."""
+    from findajob.onboarding.injector import merge_env_content
+
+    example = "OPENROUTER_API_KEY=your_key_here\nRAPIDAPI_KEY=your_key_here\n"
+    merged = merge_env_content("", example, {"OPENROUTER_API_KEY": "real-key"})
+    assert "OPENROUTER_API_KEY=real-key" in merged
+    assert "RAPIDAPI_KEY=your_key_here" in merged  # placeholder for unrelated key preserved
+
+
+def test_inject_with_openrouter_key_writes_to_env(tmp_path: Path) -> None:
+    """The form-field key lands in data/.env as OPENROUTER_API_KEY=..."""
+    inject(tmp_path, _MIN_FILES, openrouter_api_key="sk-or-v1-test", skip_smoke_check=True)
+    env_content = (tmp_path / "data" / ".env").read_text()
+    assert "OPENROUTER_API_KEY=sk-or-v1-test" in env_content
+
+
+def test_inject_env_file_has_chmod_600(tmp_path: Path) -> None:
+    """data/.env is sensitive — must be 0600 after write."""
+    import stat as stat_mod
+
+    inject(tmp_path, _MIN_FILES, openrouter_api_key="sk-or-v1-test", skip_smoke_check=True)
+    env_path = tmp_path / "data" / ".env"
+    mode = env_path.stat().st_mode & 0o777
+    assert mode == 0o600, f"expected 0o600, got {stat_mod.filemode(env_path.stat().st_mode)}"
+
+
+def test_inject_smoke_check_failure_raises_and_skips_sentinel(tmp_path: Path, monkeypatch) -> None:
+    """When verify_openrouter_key returns (False, error), inject raises
+    OnboardingSmokeCheckFailed and the sentinel is NOT written. Files have
+    already been committed (next paste-back will overwrite cleanly)."""
+    import findajob.onboarding.injector as inj_mod
+    from findajob.onboarding import OnboardingSmokeCheckFailed
+
+    def fake_verify(_key):
+        return False, "simulated 401 from OpenRouter"
+
+    monkeypatch.setattr(inj_mod, "verify_openrouter_key", fake_verify)
+
+    with pytest.raises(OnboardingSmokeCheckFailed) as excinfo:
+        inject(tmp_path, _MIN_FILES, openrouter_api_key="bad-key")
+    assert "simulated 401" in excinfo.value.user_message
+    # Files committed; sentinel is NOT
+    assert (tmp_path / "candidate_context" / "profile.md").exists()
+    assert not (tmp_path / "data" / ".onboarding-complete").exists()
+
+
+def test_inject_smoke_check_pass_writes_sentinel(tmp_path: Path, monkeypatch) -> None:
+    """When verify_openrouter_key returns (True, None), sentinel is written."""
+    import findajob.onboarding.injector as inj_mod
+
+    def fake_verify(_key):
+        return True, None
+
+    monkeypatch.setattr(inj_mod, "verify_openrouter_key", fake_verify)
+
+    inject(tmp_path, _MIN_FILES, openrouter_api_key="sk-or-v1-good")
+    assert (tmp_path / "data" / ".onboarding-complete").is_file()
+
+
+def test_inject_writes_display_name_file(tmp_path: Path) -> None:
+    """display_name.txt → candidate_context/display_name.txt (single line)."""
+    inject(tmp_path, _MIN_FILES, skip_smoke_check=True)
+    assert (tmp_path / "candidate_context" / "display_name.txt").read_text() == "Test Operator"
+
+
+def test_inject_writes_timezone_file(tmp_path: Path) -> None:
+    """timezone.txt → data/timezone (no extension; matches Unix convention)."""
+    inject(tmp_path, _MIN_FILES, skip_smoke_check=True)
+    assert (tmp_path / "data" / "timezone").read_text() == "America/Los_Angeles"
+
+
+def test_inject_ntfy_topic_strips_key_prefix(tmp_path: Path) -> None:
+    """Body 'NTFY_TOPIC=foo-bar' yields just 'foo-bar' in data/.env."""
+    files = {**_MIN_FILES, "ntfy_topic.txt": "NTFY_TOPIC=judy-jobsearch-2026-17"}
+    inject(tmp_path, files, skip_smoke_check=True)
+    env_content = (tmp_path / "data" / ".env").read_text()
+    assert "NTFY_TOPIC=judy-jobsearch-2026-17" in env_content
+    # No nested NTFY_TOPIC=NTFY_TOPIC=... shape
+    assert "NTFY_TOPIC=NTFY_TOPIC" not in env_content
+
+
+def test_inject_ntfy_topic_accepts_bare_value(tmp_path: Path) -> None:
+    """Body 'just-the-topic' (no KEY= prefix) works too."""
+    files = {**_MIN_FILES, "ntfy_topic.txt": "judy-jobsearch-2026-17"}
+    inject(tmp_path, files, skip_smoke_check=True)
+    env_content = (tmp_path / "data" / ".env").read_text()
+    assert "NTFY_TOPIC=judy-jobsearch-2026-17" in env_content
+
+
+def test_inject_ntfy_topic_empty_body_raises(tmp_path: Path) -> None:
+    """An empty ntfy_topic.txt fails loudly rather than silently writing nothing."""
+    files = {**_MIN_FILES, "ntfy_topic.txt": "   \n  \n"}
+    with pytest.raises(ValueError, match="ntfy_topic"):
+        inject(tmp_path, files, skip_smoke_check=True)
+
+
+def test_inject_preserves_other_env_keys(tmp_path: Path) -> None:
+    """A pre-existing .env (with RAPIDAPI_KEY etc.) is preserved across the merge."""
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    (data_dir / ".env").write_text(
+        "OPENROUTER_API_KEY=old-shared-key\nRAPIDAPI_KEY=preserve-me\nGOOGLE_API_KEY=preserve-me-too\n"
+    )
+    inject(tmp_path, _MIN_FILES, openrouter_api_key="user-own-key", skip_smoke_check=True)
+    env_content = (data_dir / ".env").read_text()
+    assert "OPENROUTER_API_KEY=user-own-key" in env_content
+    assert "old-shared-key" not in env_content
+    assert "RAPIDAPI_KEY=preserve-me" in env_content
+    assert "GOOGLE_API_KEY=preserve-me-too" in env_content

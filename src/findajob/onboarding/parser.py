@@ -22,6 +22,9 @@ ALLOWED_FILENAMES: tuple[str, ...] = (
     "jsearch_queries.txt",
     "prefilter_rules.yaml",
     "in_domain_patterns.yaml",
+    "display_name.txt",
+    "timezone.txt",
+    "ntfy_topic.txt",
 )
 
 # Recognized but not required. If present in an emission, the injector

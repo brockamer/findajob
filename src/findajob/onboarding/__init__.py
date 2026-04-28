@@ -19,12 +19,14 @@ from findajob.onboarding.injector import (
     is_complete,
     mark_complete,
 )
+from findajob.onboarding.openrouter_smoke import OnboardingSmokeCheckFailed
 from findajob.onboarding.parser import ALLOWED_FILENAMES, ParsedEmission, parse_emission
 
 __all__ = [
     "ALLOWED_FILENAMES",
     "DiscoveryStatus",
     "InjectResult",
+    "OnboardingSmokeCheckFailed",
     "ParsedEmission",
     "inject",
     "is_complete",

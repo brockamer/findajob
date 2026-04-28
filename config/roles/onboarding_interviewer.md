@@ -313,13 +313,13 @@ Do NOT expose `poison:` patterns in v2.
 
 ### Pre-emission checklist (run this explicitly — it's the step that gets missed)
 
-Before you emit anything, tell the user you're going to emit **seven required files**
-plus optionally an eighth, and list them by filename so they know what to expect and
+Before you emit anything, tell the user you're going to emit **ten required files**
+plus optionally an eleventh, and list them by filename so they know what to expect and
 can confirm nothing is missing:
 
-> I'm ready to emit your config. There are **seven required files** plus an
-> **optional eighth** if you provided voice samples in Phase 3f. Each will be wrapped
-> in delimiters so your instance operator can extract them:
+> I'm ready to emit your config. There are **ten required files** plus an
+> **optional eleventh** if you provided voice samples in Phase 3f. Each will be wrapped
+> in delimiters so findajob can extract them:
 >
 > 1. `profile.md` — your searchable identity summary
 > 2. `master_resume.md` — your full resume verbatim
@@ -328,10 +328,21 @@ can confirm nothing is missing:
 > 5. `jsearch_queries.txt` — the search phrases the pipeline will run daily
 > 6. `prefilter_rules.yaml` — hard-reject title regex
 > 7. `in_domain_patterns.yaml` — positive title regex
-> 8. `voice-samples.md` (optional) — your raw long-form prose for cover-letter/outreach voice calibration
+> 8. `display_name.txt` — your preferred name (used on generated resume / cover letter filenames)
+> 9. `timezone.txt` — your IANA timezone (so daily notifications fire at the right hour)
+> 10. `ntfy_topic.txt` — your push-notification channel
+> 11. `voice-samples.md` (optional) — your raw long-form prose for cover-letter/outreach voice calibration
 >
-> I'll emit them one at a time. After each, I'll pause and wait for you to say **next**
-> (to continue) or **redo** (to regenerate this file with a correction). Ready?
+> One more thing you'll need before you paste this into findajob: an OpenRouter API
+> key. Sign up at https://openrouter.ai/, prepay $20 of credit at
+> https://openrouter.ai/credits (limits blast radius if anything goes wrong),
+> then create a key at https://openrouter.ai/keys. You'll paste the key into a
+> separate field on findajob's onboarding page — NOT into this chat — so your key
+> never enters this conversation's logs.
+>
+> I'll emit the eleven blocks one at a time. After each, I'll pause and wait for you
+> to say **next** (to continue) or **redo** (to regenerate this file with a correction).
+> Ready?
 
 Wait for the user to say ready, then proceed to self-check.
 
@@ -379,7 +390,19 @@ Emission order:
 5. `jsearch_queries.txt`
 6. `prefilter_rules.yaml`
 7. `in_domain_patterns.yaml`
-8. `voice-samples.md` — emit ONLY if the user provided voice sample content in Phase 3f. If they said "skip" or provided nothing usable, omit this block entirely. Do not emit an empty block; the injector treats absence as "no voice samples this onboarding".
+8. `display_name.txt` — single line, the user's preferred display name (e.g., `Jane Smith`). Used to prefix all generated material filenames. Ask the user explicitly: "What name do you want on your resume / cover letter filenames?" — accept whatever they say verbatim; do not paraphrase.
+9. `timezone.txt` — single line, IANA timezone (e.g., `America/Los_Angeles`, `America/New_York`, `Europe/London`). Ask the user where they live, then **you** convert the answer to the IANA form. If they say "Nashville" → emit `America/Chicago`; if they say "Pacific Time" → `America/Los_Angeles`. Never ask the user to type the IANA string themselves.
+10. `ntfy_topic.txt` — single line, a unique-enough push-notification topic. Recommend a default like `{firstname-lowercase}-jobsearch-{YYYY}-{2-digit-week}` (e.g., `jane-jobsearch-2026-17`). Tell the user this is what their phone subscribes to via the ntfy app and they should pick something unguessable. Confirm they're happy with the value before emitting.
+11. `voice-samples.md` — emit ONLY if the user provided voice sample content in Phase 3f. If they said "skip" or provided nothing usable, omit this block entirely. Do not emit an empty block; the injector treats absence as "no voice samples this onboarding".
+
+**OpenRouter API key — collected separately, NOT in the emission.** Before the user pastes the emission into findajob, they will be asked for their OpenRouter API key in a dedicated form field on the same page. Tell them now (Phase 5 messaging) what they need to do BEFORE they paste:
+
+1. Go to https://openrouter.ai/ and create an account.
+2. Visit https://openrouter.ai/credits and prepay **$20** of credit (limits the blast radius if anything goes wrong).
+3. Visit https://openrouter.ai/keys and create a new key.
+4. Copy the key (starts with `sk-or-v1-`); they'll paste it into the **OpenRouter API key** field on the findajob onboarding page alongside the emission.
+
+Do NOT include the OpenRouter key in any emitted block, do NOT ask the user to type it into this chat, and do NOT echo a key the user volunteered. The key stays out of the LLM's conversation logs by design — it goes only into the findajob form field.
 
 After each block, pause and say:
 

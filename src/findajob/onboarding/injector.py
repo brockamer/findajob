@@ -26,10 +26,18 @@ from typing import NamedTuple
 # discoverer side, and to keep this module importable even when the
 # discoverer package isn't yet on the path during unit tests of unrelated
 # subsystems.
+from findajob.onboarding.openrouter_smoke import (
+    OnboardingSmokeCheckFailed,
+    verify_openrouter_key,
+)
 from findajob.onboarding.parser import ALLOWED_FILENAMES
 from findajob.onboarding.voice_processor import process_voice_samples
 
 # Maps emission filename -> destination relative path (relative to base_root).
+# Plain-file destinations: emission body is written verbatim to this file.
+# (The three single-line additions — display_name.txt and timezone.txt — also
+# live here because they're plain-file writes; ntfy_topic.txt is special-cased
+# below because it merges into data/.env rather than overwriting a whole file.)
 _ALL_DESTINATIONS: dict[str, str] = {
     "profile.md": "candidate_context/profile.md",
     "master_resume.md": "candidate_context/master_resume.md",
@@ -38,7 +46,15 @@ _ALL_DESTINATIONS: dict[str, str] = {
     "jsearch_queries.txt": "config/jsearch_queries.txt",
     "prefilter_rules.yaml": "config/prefilter_rules.yaml",
     "in_domain_patterns.yaml": "config/in_domain_patterns.yaml",
+    "display_name.txt": "candidate_context/display_name.txt",
+    "timezone.txt": "data/timezone",
 }
+
+# Filenames whose body is parsed and merged into data/.env rather than written
+# as a whole file. Body shape per filename is documented inline.
+_ENV_MERGE_FILENAMES: tuple[str, ...] = ("ntfy_topic.txt",)
+_ENV_FILE_RELPATH = "data/.env"
+_ENV_EXAMPLE_RELPATH = "data/.env.example"
 
 # Optional emission filenames -> destination relative path. Processed if
 # present in the emission, silently skipped if absent. Backed up the same as
@@ -96,7 +112,68 @@ def _backup_relpaths() -> list[str]:
     paths.extend(_OPTIONAL_DESTINATIONS.values())
     paths.append(_COMPANIES_OF_INTEREST_DEST)
     paths.append(_SENTINEL_RELPATH)
+    paths.append(_ENV_FILE_RELPATH)  # data/.env is mutated via merge — must back up
     return paths
+
+
+def merge_env_content(existing: str, example: str, updates: dict[str, str]) -> str:
+    """Compute the new ``data/.env`` content after merging ``updates``.
+
+    Strategy:
+      - If ``existing`` is empty, start from ``example`` (the .env.example
+        template baked into the repo). Otherwise start from ``existing``.
+      - Walk lines preserving blank lines, comments, and unrelated keys.
+      - For each line matching ``KEY=...`` whose KEY is in ``updates``, replace
+        with the new value. Keys that didn't appear get appended at the end.
+
+    Pure function — does no I/O. Tests can verify exact line-level output.
+    """
+    base = existing if existing else example
+    new_lines: list[str] = []
+    handled: set[str] = set()
+    for line in base.splitlines(keepends=True):
+        stripped = line.lstrip()
+        if not stripped.strip() or stripped.startswith("#"):
+            new_lines.append(line)
+            continue
+        m = re.match(r"^([A-Z_][A-Z0-9_]*)\s*=", stripped)
+        if m and m.group(1) in updates:
+            key = m.group(1)
+            new_lines.append(f"{key}={updates[key]}\n")
+            handled.add(key)
+        else:
+            new_lines.append(line)
+    # Append any keys that didn't already appear in the file
+    for key, value in updates.items():
+        if key not in handled:
+            if new_lines and not new_lines[-1].endswith("\n"):
+                new_lines.append("\n")
+            new_lines.append(f"{key}={value}\n")
+    return "".join(new_lines)
+
+
+def _parse_ntfy_topic_body(body: str) -> str:
+    """Parse the ``ntfy_topic.txt`` emission body into the bare topic string.
+
+    Tolerates either of:
+      - ``NTFY_TOPIC=judy-jobsearch-2026`` (key=value form)
+      - ``judy-jobsearch-2026`` (bare value form)
+    Returns the trimmed value. Empty result raises ValueError so onboarding
+    fails loudly rather than writing an empty topic that silently misroutes.
+    """
+    text = body.strip()
+    if not text:
+        raise ValueError("ntfy_topic.txt is empty")
+    # Strip a leading `NTFY_TOPIC=` if present
+    m = re.match(r"^NTFY_TOPIC\s*=\s*(.+)$", text, re.IGNORECASE)
+    if m:
+        text = m.group(1).strip()
+    # Strip optional surrounding quotes
+    if len(text) >= 2 and text[0] == text[-1] and text[0] in "\"'":
+        text = text[1:-1]
+    if not text:
+        raise ValueError("ntfy_topic.txt yielded empty value after stripping prefix/quotes")
+    return text
 
 
 def backup_existing(base_root: Path, stamp: str) -> Path:
@@ -146,17 +223,37 @@ def derive_companies_of_interest(target_companies_md: str) -> str:
     return "\n".join(companies) + "\n"
 
 
-def inject(base_root: Path, found: dict[str, str], redact_voice_samples: bool = True) -> InjectResult:
-    """Backup, stage, commit, then run the discovery hook. Returns :class:`InjectResult`.
+def inject(
+    base_root: Path,
+    found: dict[str, str],
+    *,
+    openrouter_api_key: str = "",
+    redact_voice_samples: bool = True,
+    skip_smoke_check: bool = False,
+) -> InjectResult:
+    """Backup, stage, commit, smoke-check, then run the discovery hook.
 
     ``found`` must contain every filename in :data:`ALLOWED_FILENAMES`;
     otherwise raises :class:`ValueError` without touching disk.
+
+    ``openrouter_api_key`` is the user-supplied key collected from a separate
+    form field on ``/onboarding/`` (kept out of the LLM-driven emission so it
+    never enters the user's chat-LLM logs). It's merged into ``data/.env`` as
+    ``OPENROUTER_API_KEY=...`` and verified with a 1-token completion against
+    OpenRouter before the sentinel is written. An invalid or unreachable key
+    raises :class:`OnboardingSmokeCheckFailed` AFTER files are committed but
+    BEFORE the sentinel, so the user re-pastes with a corrected key and the
+    second attempt overwrites the first cleanly. Pass an empty string only in
+    contexts where ``skip_smoke_check=True`` (tests; legacy callers).
 
     Optional filenames (currently ``voice-samples.md``) are processed if
     present and silently skipped if absent. When voice-samples.md is present,
     its body is run through ``process_voice_samples`` (clean + LLM-redact)
     before staging; ``redact_voice_samples=False`` skips the LLM step and
     writes only the structurally-cleaned text.
+
+    ``skip_smoke_check=True`` skips the OpenRouter verification step. Tests
+    use this to avoid network calls; production callers must NOT set this.
 
     On any staging or commit error, all tempfiles and the backup dir
     created this run are removed, and the exception propagates.
@@ -165,11 +262,26 @@ def inject(base_root: Path, found: dict[str, str], redact_voice_samples: bool = 
     if missing:
         raise ValueError(f"inject(): parsed emission is missing: {missing}")
 
+    # Compute the merged data/.env content from collected updates.
+    env_updates: dict[str, str] = {}
+    if openrouter_api_key.strip():
+        env_updates["OPENROUTER_API_KEY"] = openrouter_api_key.strip()
+    if "ntfy_topic.txt" in found:
+        env_updates["NTFY_TOPIC"] = _parse_ntfy_topic_body(found["ntfy_topic.txt"])
+
+    env_path = base_root / _ENV_FILE_RELPATH
+    env_example_path = base_root / _ENV_EXAMPLE_RELPATH
+    existing_env = env_path.read_text(encoding="utf-8") if env_path.is_file() else ""
+    example_env = env_example_path.read_text(encoding="utf-8") if env_example_path.is_file() else ""
+    new_env_content = merge_env_content(existing_env, example_env, env_updates) if env_updates else None
+
     # Ensure target directories exist (required + any optional that was provided)
     parent_relpaths: list[str] = list(_ALL_DESTINATIONS.values()) + [_COMPANIES_OF_INTEREST_DEST]
     for opt_name, opt_relpath in _OPTIONAL_DESTINATIONS.items():
         if opt_name in found:
             parent_relpaths.append(opt_relpath)
+    if new_env_content is not None:
+        parent_relpaths.append(_ENV_FILE_RELPATH)
     for relpath in parent_relpaths:
         (base_root / relpath).parent.mkdir(parents=True, exist_ok=True)
     (base_root / _SENTINEL_RELPATH).parent.mkdir(parents=True, exist_ok=True)
@@ -178,9 +290,13 @@ def inject(base_root: Path, found: dict[str, str], redact_voice_samples: bool = 
     backup_dir = backup_existing(base_root, stamp)
 
     tempfiles: list[tuple[str, Path]] = []  # (tmp_name, final_dest)
+    env_tmp_name: str | None = None
     try:
-        # Stage the seven required parsed files
+        # Stage every required parsed file (whole-file destinations only —
+        # env-merge filenames are handled separately below).
         for name in ALLOWED_FILENAMES:
+            if name in _ENV_MERGE_FILENAMES:
+                continue
             dest = base_root / _ALL_DESTINATIONS[name]
             fd, tmp_name = tempfile.mkstemp(prefix=dest.name + ".", suffix=".tmp", dir=str(dest.parent))
             with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
@@ -205,13 +321,35 @@ def inject(base_root: Path, found: dict[str, str], redact_voice_samples: bool = 
             fh.write(coi_body)
         tempfiles.append((tmp_name, coi_dest))
 
+        # Stage the merged data/.env if there are any env updates
+        if new_env_content is not None:
+            fd, env_tmp_name = tempfile.mkstemp(prefix=env_path.name + ".", suffix=".tmp", dir=str(env_path.parent))
+            with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
+                fh.write(new_env_content)
+            os.chmod(env_tmp_name, 0o600)
+            tempfiles.append((env_tmp_name, env_path))
+
         # Commit: os.replace every staged tempfile into place
         for tmp_name, dest in tempfiles:
             os.replace(tmp_name, dest)
         tempfiles = []  # all committed
 
+        # Smoke-check the OpenRouter key BEFORE writing the sentinel.
+        # If the key fails, files are already committed (next paste-back will
+        # overwrite cleanly). Sentinel stays unwritten — guard keeps the user
+        # on /onboarding/ with the error message until they correct it.
+        if not skip_smoke_check and openrouter_api_key.strip():
+            ok, err = verify_openrouter_key(openrouter_api_key)
+            if not ok:
+                raise OnboardingSmokeCheckFailed(err or "OpenRouter verification failed.")
+
         # Finally, the sentinel
         mark_complete(base_root)
+    except OnboardingSmokeCheckFailed:
+        # Files have been committed; tempfiles list is already empty. Do NOT
+        # delete the backup dir — operator may need it. Just propagate so the
+        # route can render the user-facing message.
+        raise
     except Exception:
         # Roll back: delete any remaining tempfiles + the backup dir created this run
         for tmp_name, _dest in tempfiles:

@@ -1,14 +1,25 @@
 {# Paste form partial — re-rendered by POST /onboarding/inject on parse failure
-   so `paste_content` and `paste_error` preserve the user's input. #}
+   so `paste_content`, `paste_error`, and `openrouter_api_key` preserve user input. #}
 <form method="post" action="/onboarding/inject" class="space-y-3">
   {% if paste_error %}
   <div class="border border-red-300 bg-red-50 text-red-900 px-4 py-3 rounded">
-    <p class="font-medium">Couldn't parse your paste.</p>
+    <p class="font-medium">Couldn't complete onboarding.</p>
     <p class="text-sm mt-1">{{ paste_error }}</p>
   </div>
   {% endif %}
+
+  <label class="block text-sm font-medium" for="openrouter_api_key">
+    Your OpenRouter API key
+    <span class="text-xs font-normal text-slate-600">— from <a href="https://openrouter.ai/" target="_blank" rel="noopener" class="underline">openrouter.ai</a> after prepaying credit. Kept server-side only; never sent to your chat-LLM.</span>
+  </label>
+  <input type="password" name="openrouter_api_key" id="openrouter_api_key"
+         autocomplete="off" spellcheck="false"
+         class="w-full border rounded p-2 font-mono text-xs"
+         placeholder="sk-or-v1-..."
+         value="{{ openrouter_api_key|default('') }}">
+
   <label class="block text-sm font-medium" for="emission">
-    Paste the full chat transcript (or just the seven delimited blocks):
+    Paste the full chat transcript (or just the delimited blocks):
   </label>
   <textarea name="emission" id="emission" rows="20"
             class="w-full border rounded p-2 font-mono text-xs"

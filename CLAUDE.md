@@ -229,13 +229,32 @@ Basic Auth via the `FINDAJOB_AUTH_USER` / `FINDAJOB_AUTH_PASS` env vars (see
 emitted by `config/roles/onboarding_interviewer.md`. A FastAPI dependency on
 the `/board/*`, `/materials/*`, and `/stats/*` router includes redirects to
 `/onboarding/` when `{base_root}/data/.onboarding-complete` is missing. The
-paste-back injector writes seven canonical config files (under
-`candidate_context/` and `config/`) plus a derived
+paste-back injector writes ten canonical config files (under
+`candidate_context/`, `config/`, and `data/`) plus a derived
 `config/companies_of_interest.txt`, and backs up any existing destinations
 to `{base_root}/.backups/{UTC-stamp}/` first. Re-triggerable from `/tools/`
 via `/onboarding/?mode=rerun`. See
 `findajob.onboarding.parser`/`findajob.onboarding.injector`/
 `findajob.web.onboarding_guard` for the implementation boundaries (#148).
+
+The original seven were profile.md, master_resume.md, target_companies.md,
+business_sector_employers_reference.md, jsearch_queries.txt,
+prefilter_rules.yaml, in_domain_patterns.yaml. #328 added three more:
+`candidate_context/display_name.txt` (for deterministic materials-filename
+prefix derivation), `data/timezone` (single-line IANA tz; operator must
+reflect in `compose.yaml`'s `TZ` env var to take effect), and a parsed
+`ntfy_topic.txt` whose value is merged into `data/.env` as `NTFY_TOPIC=...`
+(merge preserves any unrelated keys like `RAPIDAPI_KEY` / `GOOGLE_API_KEY`
+across the write). Plus the user's **OpenRouter API key**, collected via a
+dedicated form field on the `/onboarding/` page rather than the emission
+blob (kept out of the user's chat-LLM logs by design); merged into
+`data/.env` as `OPENROUTER_API_KEY=...`. Before writing the sentinel, the
+injector verifies the key with a 1-token completion against
+`google/gemini-3-flash-preview` via OpenRouter
+(`findajob.onboarding.openrouter_smoke.verify_openrouter_key`); failure
+raises `OnboardingSmokeCheckFailed`, and the route renders the error
+verbatim — files are committed but the sentinel is NOT written, so the
+next paste-back overwrites cleanly with a corrected key.
 
 The interview also accepts an **optional eighth file** — `voice-samples.md`
 — containing the user's pasted long-form prose for cover-letter and outreach

@@ -51,6 +51,11 @@ _FIXTURE = Path(__file__).parent / "fixtures" / "onboarding" / "alice-doe-clean-
 
 
 def test_fresh_stack_end_to_end(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Stub the OpenRouter smoke check — e2e test must not make real network calls.
+    import findajob.onboarding.injector as inj_mod
+
+    monkeypatch.setattr(inj_mod, "verify_openrouter_key", lambda _k: (True, None))
+
     db_path = tmp_path / "pipeline.db"
     conn = sqlite3.connect(db_path)
     conn.executescript(_MINIMAL_SCHEMA)
@@ -76,9 +81,13 @@ def test_fresh_stack_end_to_end(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     r = client.get("/onboarding/")
     assert r.status_code == 200
     assert 'name="emission"' in r.text
+    assert 'name="openrouter_api_key"' in r.text  # #328 — second form field
 
     blob = _FIXTURE.read_text(encoding="utf-8")
-    r = client.post("/onboarding/inject", data={"emission": blob})
+    r = client.post(
+        "/onboarding/inject",
+        data={"emission": blob, "openrouter_api_key": "sk-or-v1-test-key"},
+    )
     assert r.status_code == 200
     assert "Onboarding complete" in r.text
 

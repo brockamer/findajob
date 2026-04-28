@@ -32,6 +32,16 @@ CREATE TABLE audit_log (
 """
 
 
+@pytest.fixture(autouse=True)
+def _stub_openrouter_smoke_check(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Onboarding now smoke-checks the user-supplied OpenRouter key (#328).
+    All web-route tests must stub this to avoid real network calls.
+    """
+    import findajob.onboarding.injector as inj_mod
+
+    monkeypatch.setattr(inj_mod, "verify_openrouter_key", lambda _k: (True, None))
+
+
 @pytest.fixture()
 def client(tmp_path: Path) -> TestClient:
     db_path = tmp_path / "pipeline.db"
@@ -52,6 +62,9 @@ def client(tmp_path: Path) -> TestClient:
         base_root=tmp_path,
     )
     return TestClient(app, follow_redirects=False)
+
+
+_TEST_OPENROUTER_KEY = "sk-or-v1-test-key"
 
 
 def test_onboarding_index_returns_200(client: TestClient) -> None:
@@ -99,7 +112,10 @@ def _read_fixture(name: str) -> str:
 
 def test_inject_clean_emission_renders_completion_page(client: TestClient, tmp_path: _Path) -> None:
     blob = _read_fixture("alice-doe-clean-emission.txt")
-    resp = client.post("/onboarding/inject", data={"emission": blob})
+    resp = client.post(
+        "/onboarding/inject",
+        data={"emission": blob, "openrouter_api_key": _TEST_OPENROUTER_KEY},
+    )
     assert resp.status_code == 200
     assert "Onboarding complete" in resp.text
     # Files on disk under the TestClient's base_root (tmp_path)
@@ -124,7 +140,10 @@ def test_inject_missing_block_rerenders_with_error(client: TestClient, tmp_path:
             skip = False
     broken = "".join(stripped)
 
-    resp = client.post("/onboarding/inject", data={"emission": broken})
+    resp = client.post(
+        "/onboarding/inject",
+        data={"emission": broken, "openrouter_api_key": _TEST_OPENROUTER_KEY},
+    )
     assert resp.status_code == 400
     body = resp.text
     assert "in_domain_patterns.yaml" in body
@@ -137,16 +156,51 @@ def test_inject_missing_block_rerenders_with_error(client: TestClient, tmp_path:
 
 
 def test_inject_empty_paste_rerenders_with_error(client: TestClient, tmp_path: _Path) -> None:
-    resp = client.post("/onboarding/inject", data={"emission": ""})
+    resp = client.post(
+        "/onboarding/inject",
+        data={"emission": "", "openrouter_api_key": _TEST_OPENROUTER_KEY},
+    )
     assert resp.status_code == 400
     body = resp.text
     assert "missing" in body.lower()
     assert not (tmp_path / "data" / ".onboarding-complete").exists()
 
 
+def test_inject_missing_openrouter_key_rerenders_with_error(client: TestClient, tmp_path: _Path) -> None:
+    """#328: posting a clean emission with no API key returns 400 with explanatory message."""
+    blob = _read_fixture("alice-doe-clean-emission.txt")
+    resp = client.post("/onboarding/inject", data={"emission": blob, "openrouter_api_key": ""})
+    assert resp.status_code == 400
+    assert "OpenRouter" in resp.text
+    assert not (tmp_path / "data" / ".onboarding-complete").exists()
+
+
+def test_inject_smoke_check_failure_rerenders_with_error(
+    client: TestClient, tmp_path: _Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#328: when the smoke check rejects the key, render the error and don't write the sentinel."""
+    import findajob.onboarding.injector as inj_mod
+
+    monkeypatch.setattr(inj_mod, "verify_openrouter_key", lambda _k: (False, "401 Unauthorized"))
+
+    blob = _read_fixture("alice-doe-clean-emission.txt")
+    resp = client.post(
+        "/onboarding/inject",
+        data={"emission": blob, "openrouter_api_key": "bad-key"},
+    )
+    assert resp.status_code == 400
+    assert "401 Unauthorized" in resp.text
+    # Files committed (next paste-back will overwrite); sentinel NOT written
+    assert (tmp_path / "candidate_context" / "profile.md").is_file()
+    assert not (tmp_path / "data" / ".onboarding-complete").exists()
+
+
 def test_inject_populates_companies_of_interest_from_tier1(client: TestClient, tmp_path: _Path) -> None:
     blob = _read_fixture("alice-doe-clean-emission.txt")
-    resp = client.post("/onboarding/inject", data={"emission": blob})
+    resp = client.post(
+        "/onboarding/inject",
+        data={"emission": blob, "openrouter_api_key": _TEST_OPENROUTER_KEY},
+    )
     assert resp.status_code == 200
     coi = (tmp_path / "config" / "companies_of_interest.txt").read_text()
     assert "Metro Health Authority" in coi

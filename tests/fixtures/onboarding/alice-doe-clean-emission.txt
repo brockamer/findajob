@@ -202,6 +202,20 @@ positive:
   - '\bcontinuum\s+of\s+care\b'
 <<<END FILE: in_domain_patterns.yaml>>>
 
-That's all seven. Reply **next** for any final check, or let me know if any of them needs a redo.
+Three more for #328 (display name, timezone, ntfy topic):
+
+<<<FILE: display_name.txt>>>
+Alice Doe
+<<<END FILE: display_name.txt>>>
+
+<<<FILE: timezone.txt>>>
+America/Los_Angeles
+<<<END FILE: timezone.txt>>>
+
+<<<FILE: ntfy_topic.txt>>>
+alice-jobsearch-2026-17
+<<<END FILE: ntfy_topic.txt>>>
+
+That's all ten. Reply **next** for any final check, or let me know if any of them needs a redo.
 
 User: thanks, got them.

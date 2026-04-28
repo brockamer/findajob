@@ -7,7 +7,7 @@ from pathlib import Path
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 
-from findajob.onboarding import inject, parse_emission
+from findajob.onboarding import OnboardingSmokeCheckFailed, inject, parse_emission
 
 router = APIRouter()
 
@@ -27,6 +27,7 @@ def onboarding_index(request: Request, mode: str = "") -> HTMLResponse:
             "is_rerun": mode == "rerun",
             "paste_error": None,
             "paste_content": "",
+            "openrouter_api_key": "",
         },
     )
 
@@ -48,10 +49,15 @@ def onboarding_prompt(request: Request) -> PlainTextResponse:
 def onboarding_inject(
     request: Request,
     emission: str = Form(default=""),
+    openrouter_api_key: str = Form(default=""),
 ) -> HTMLResponse | RedirectResponse:
-    """Parse and inject an interview emission; render completion page on success."""
-    result = parse_emission(emission)
+    """Parse and inject an interview emission; render completion page on success.
+
+    The OpenRouter API key arrives in its own form field — kept out of the
+    ``emission`` blob so it never enters the user's chat-LLM logs (#328).
+    """
     templates = request.app.state.templates
+    result = parse_emission(emission)
     if result.missing:
         return templates.TemplateResponse(
             request=request,
@@ -59,6 +65,7 @@ def onboarding_inject(
             context={
                 "is_rerun": False,
                 "paste_content": emission,
+                "openrouter_api_key": openrouter_api_key,
                 "paste_error": (
                     f"Your paste is missing: {', '.join(result.missing)}. "
                     "Scroll through your chat for any <<<FILE: name>>> block "
@@ -67,8 +74,38 @@ def onboarding_inject(
             },
             status_code=400,
         )
+    if not openrouter_api_key.strip():
+        return templates.TemplateResponse(
+            request=request,
+            name="onboarding/index.html",
+            context={
+                "is_rerun": False,
+                "paste_content": emission,
+                "openrouter_api_key": "",
+                "paste_error": (
+                    "OpenRouter API key is required. Paste the key from https://openrouter.ai/ into the API key field."
+                ),
+            },
+            status_code=400,
+        )
     base_root: Path = request.app.state.base_root
-    inject_result = inject(base_root, result.found)
+    try:
+        inject_result = inject(base_root, result.found, openrouter_api_key=openrouter_api_key)
+    except OnboardingSmokeCheckFailed as e:
+        # Files were committed; only the sentinel is missing. The next paste-back
+        # with a corrected key will overwrite cleanly. Render the user-facing
+        # error so they can see what went wrong.
+        return templates.TemplateResponse(
+            request=request,
+            name="onboarding/index.html",
+            context={
+                "is_rerun": False,
+                "paste_content": emission,
+                "openrouter_api_key": openrouter_api_key,
+                "paste_error": (f"OpenRouter key check failed: {e.user_message} Fix the key and re-paste."),
+            },
+            status_code=400,
+        )
     # Clear cached guard state so the next /board/ request passes through
     request.app.state.onboarding_complete = True
     return templates.TemplateResponse(
