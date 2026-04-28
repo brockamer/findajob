@@ -351,6 +351,14 @@ is the canonical data-layer signal.
 - `scripts/watchdog.py` `fail_stuck_speculative()` flips any
   `speculative_requests` row stuck in `status='researching'` for >10 min
   to `status='failed'`. Covers the silent-subprocess-death case.
+- `scripts/prep_application.py` reuses the deep-research briefing from
+  `companies/{folder}/briefing.md` when `jobs.speculative_briefing_folder`
+  is set — skips `company_researcher` + `briefing_writer` entirely (#320).
+  Falls back to the regular `briefing_writer` flow if the column is unset,
+  the folder is missing, or briefing.md is empty/whitespace-only. The
+  approver (`findajob.speculative.approver`) populates the column from
+  `speculative_requests.briefing_folder` at approve time so each per-role
+  prep folder references the same submission-time briefing.
 
 **Folder layout:**
 - Briefing folder: `companies/{Company}_SPECULATIVE_{YYYY-MM-DD}_{HHMMSS}/briefing.md`

@@ -78,10 +78,23 @@ def approve_request(
             """INSERT INTO jobs (id, fingerprint, url, title, company, location, source,
                                   raw_jd_text, relevance_score, score_status,
                                   ai_notes, stage, stage_updated, synthetic,
+                                  speculative_briefing_folder,
                                   created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, '', 'web_speculative', ?, 7, 'scored',
-                       ?, 'scored', ?, 1, ?, ?)""",
-            (job_id, fp, url, title, company, card.description, ai_notes, now, now, now),
+                       ?, 'scored', ?, 1, ?, ?, ?)""",
+            (
+                job_id,
+                fp,
+                url,
+                title,
+                company,
+                card.description,
+                ai_notes,
+                now,
+                row["briefing_folder"],
+                now,
+                now,
+            ),
         )
         write_audit(conn, job_id, "stage", "", "scored")
         fingerprints.append(fp)

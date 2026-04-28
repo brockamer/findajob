@@ -43,7 +43,8 @@ CREATE TABLE jobs (
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now')),
     dupe_of TEXT DEFAULT '',
-    synthetic INTEGER NOT NULL DEFAULT 0
+    synthetic INTEGER NOT NULL DEFAULT 0,
+    speculative_briefing_folder TEXT
 );
 CREATE TABLE speculative_requests (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -151,3 +152,25 @@ def test_approve_rejects_non_ready_status():
 
     with pytest.raises(ValueError, match="status"):
         approve_request(conn, request_id=req_id, kept_indices=[0])
+
+
+def test_approve_propagates_briefing_folder_to_jobs(tmp_path):
+    """#320: approver copies speculative_requests.briefing_folder onto each new
+    jobs row's speculative_briefing_folder column. prep_application.py reads
+    that column to reuse the deep-research briefing instead of regenerating
+    via briefing_writer.
+    """
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript(JOBS_SCHEMA)
+    req_id = _seed_ready(conn, n_cards=2)
+
+    approve_request(conn, request_id=req_id, kept_indices=[0, 1])
+
+    jobs = conn.execute("SELECT * FROM jobs ORDER BY title").fetchall()
+    assert len(jobs) == 2
+    folder = "PSIQuantum_SPECULATIVE_2026-04-28_140000"
+    for j in jobs:
+        assert j["speculative_briefing_folder"] == folder, (
+            f"expected jobs.speculative_briefing_folder={folder!r} on every approved synthetic row"
+        )

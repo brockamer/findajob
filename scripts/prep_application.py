@@ -190,10 +190,16 @@ def main():
     # Do NOT re-curl — LinkedIn and many other URLs require auth and will return garbage.
     conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
-    row = conn.execute("SELECT raw_jd_text, stage, synthetic FROM jobs WHERE id=?", (job_id,)).fetchone()
+    row = conn.execute(
+        "SELECT raw_jd_text, stage, synthetic, speculative_briefing_folder FROM jobs WHERE id=?",
+        (job_id,),
+    ).fetchone()
     jd_text = (row["raw_jd_text"] or "").strip() if row else ""
     is_synthetic = bool(row["synthetic"]) if row and "synthetic" in row.keys() else False
     mode_marker = "<<SPECULATIVE_MODE>>\n\n" if is_synthetic else ""
+    speculative_briefing_folder = (
+        row["speculative_briefing_folder"] if row and "speculative_briefing_folder" in row.keys() else None
+    )
 
     if not jd_text or len(jd_text) < 50:
         # Fallback: try curling for Greenhouse/Lever/public URLs only
@@ -232,27 +238,58 @@ def main():
         return
 
     # ── Step 2: Company briefing FIRST — gives all downstream steps rich context ──
-    brief_prompt = f"Research {company} thoroughly.\nJob title: {title}\nJD:\n{jd_text}"
-    raw_briefing = aichat("company_researcher", brief_prompt)
-
-    # Pass raw research through briefing_writer with candidate context for stories
-    formatted_brief_prompt = (
-        f"Format the following company research into a structured briefing 1-pager "
-        f"for {company}. Job: {title}.\n\n"
-        f"RAW RESEARCH:\n{raw_briefing}\n\n"
-        f"CANDIDATE PROFILE:\n{profile_text}\n\n"
-        f"MASTER RESUME:\n{master_text}\n\n"
-        f"JD:\n{jd_text}"
-    )
-    briefing = aichat("briefing_writer", formatted_brief_prompt)
-
-    # ── Validate: briefing must end with an Overall Recommendation section ──
-    # The role prompt requires this verdict heading; model sometimes drops it.
-    # Retry once; if still missing, let downstream validator fail prep cleanly.
+    # For synthetic rows (#131 speculative), the deep-research briefing was
+    # already generated at submission time and approved by the operator on the
+    # review page. Reuse it instead of regenerating via briefing_writer (#320 —
+    # spec drift fix). Falls back to the regular briefing_writer flow if the
+    # column is unset, the folder is missing, or briefing.md is empty/absent.
     rec_re = re.compile(r"^##[^\n]*Overall Recommendation\s*:", re.MULTILINE)
-    if not briefing or not rec_re.search(briefing):
-        log_event("briefing_missing_recommendation", job_id=job_id, company=company, retry=1)
+    briefing = ""
+    if is_synthetic and speculative_briefing_folder:
+        spec_briefing_path = os.path.join(BASE, "companies", speculative_briefing_folder, "briefing.md")
+        try:
+            with open(spec_briefing_path) as f:
+                briefing = f.read().strip()
+            if briefing:
+                log_event(
+                    "speculative_briefing_reused",
+                    job_id=job_id,
+                    company=company,
+                    folder=speculative_briefing_folder,
+                    chars=len(briefing),
+                )
+        except FileNotFoundError:
+            log_event(
+                "speculative_briefing_missing",
+                job_id=job_id,
+                company=company,
+                folder=speculative_briefing_folder,
+                expected_path=spec_briefing_path,
+            )
+            briefing = ""
+
+    if not briefing:
+        # Real-row flow OR synthetic-fallback when the speculative briefing is missing.
+        brief_prompt = f"Research {company} thoroughly.\nJob title: {title}\nJD:\n{jd_text}"
+        raw_briefing = aichat("company_researcher", brief_prompt)
+
+        # Pass raw research through briefing_writer with candidate context for stories
+        formatted_brief_prompt = (
+            f"Format the following company research into a structured briefing 1-pager "
+            f"for {company}. Job: {title}.\n\n"
+            f"RAW RESEARCH:\n{raw_briefing}\n\n"
+            f"CANDIDATE PROFILE:\n{profile_text}\n\n"
+            f"MASTER RESUME:\n{master_text}\n\n"
+            f"JD:\n{jd_text}"
+        )
         briefing = aichat("briefing_writer", formatted_brief_prompt)
+
+        # ── Validate: briefing must end with an Overall Recommendation section ──
+        # The role prompt requires this verdict heading; model sometimes drops it.
+        # Retry once; if still missing, let downstream validator fail prep cleanly.
+        if not briefing or not rec_re.search(briefing):
+            log_event("briefing_missing_recommendation", job_id=job_id, company=company, retry=1)
+            briefing = aichat("briefing_writer", formatted_brief_prompt)
 
     # Fit analysis: multi-dimensional assessment appended to briefing
     fit_prompt = (

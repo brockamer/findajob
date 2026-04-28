@@ -58,7 +58,8 @@ def _make_db_with_jobs(tmp_path: Path) -> Path:
             source TEXT NOT NULL, raw_jd_text TEXT, relevance_score INTEGER,
             score_status TEXT, ai_notes TEXT, stage TEXT, stage_updated TEXT,
             created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now')),
-            synthetic INTEGER NOT NULL DEFAULT 0
+            synthetic INTEGER NOT NULL DEFAULT 0,
+            speculative_briefing_folder TEXT
         );
         CREATE TABLE audit_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT, job_id TEXT NOT NULL, field_changed TEXT NOT NULL,

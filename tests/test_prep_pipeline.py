@@ -805,3 +805,91 @@ class TestSpeculativeModeMarker:
         assert parse_is_synthetic(["fc.py", "Co", "jd", "outdir", "pfx", "ts", "0"]) is False
         assert parse_is_synthetic(["fc.py", "Co", "jd", "outdir", "pfx", "ts"]) is False
         assert parse_is_synthetic(["fc.py", "Co", "jd", "outdir"]) is False
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Speculative briefing reuse (#320)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class TestSpeculativeBriefingReuse:
+    """#320 invariant: when a synthetic row's speculative_briefing_folder is set
+    AND the briefing.md exists, prep reads it instead of calling briefing_writer.
+    Falls back to the regular briefing_writer flow when the column is unset OR
+    the file is missing.
+
+    Replicates the branch logic from prep_application.py's Step 2 — same pattern
+    as TestSpeculativeModeMarker above (test the invariant, not the I/O wiring).
+    """
+
+    @staticmethod
+    def _resolve_briefing(*, base, is_synthetic, folder):
+        """Mirrors the prep_application.py branch:
+
+        - synthetic row + folder set + briefing.md readable → reuse, no LLM call
+        - otherwise → fall through to briefing_writer flow
+
+        Returns (briefing_text, used_writer: bool).
+        `used_writer=True` means the regular briefing_writer flow would run.
+        """
+        import os
+
+        briefing = ""
+        if is_synthetic and folder:
+            spec_briefing_path = os.path.join(base, "companies", folder, "briefing.md")
+            try:
+                with open(spec_briefing_path) as f:
+                    briefing = f.read().strip()
+            except FileNotFoundError:
+                briefing = ""
+        if not briefing:
+            return ("WROTE_FRESH_BRIEFING", True)
+        return (briefing, False)
+
+    def test_synthetic_with_folder_and_file_reuses_briefing(self, tmp_path):
+        """The whole point: synthetic + folder + briefing.md present → no briefing_writer call."""
+        folder = "PSIQuantum_SPECULATIVE_2026-04-28_140000"
+        spec_dir = tmp_path / "companies" / folder
+        spec_dir.mkdir(parents=True)
+        (spec_dir / "briefing.md").write_text("# Deep research briefing\n\nHiring signals here.\n")
+
+        text, used_writer = self._resolve_briefing(base=str(tmp_path), is_synthetic=True, folder=folder)
+
+        assert used_writer is False, "briefing_writer must NOT be called when speculative briefing is reusable"
+        assert "Deep research briefing" in text
+
+    def test_real_row_runs_briefing_writer(self, tmp_path):
+        """Real (non-synthetic) rows must fall through to briefing_writer regardless of any folder."""
+        text, used_writer = self._resolve_briefing(base=str(tmp_path), is_synthetic=False, folder=None)
+        assert used_writer is True
+        assert text == "WROTE_FRESH_BRIEFING"
+
+    def test_synthetic_without_folder_falls_through(self, tmp_path):
+        """Defensive: if synthetic=1 but speculative_briefing_folder is NULL (legacy
+        rows, edge cases), the regular flow runs rather than crashing."""
+        text, used_writer = self._resolve_briefing(base=str(tmp_path), is_synthetic=True, folder=None)
+        assert used_writer is True
+        assert text == "WROTE_FRESH_BRIEFING"
+
+    def test_synthetic_with_missing_briefing_file_falls_through(self, tmp_path):
+        """If the folder is set but briefing.md is missing, fall through to briefing_writer
+        rather than producing an empty briefing. The fallback preserves prep correctness even
+        if the speculative folder was manually deleted or the FS got out of sync."""
+        folder = "Acme_SPECULATIVE_2026-04-28_140000"
+        # Folder exists, briefing.md does NOT
+        (tmp_path / "companies" / folder).mkdir(parents=True)
+
+        text, used_writer = self._resolve_briefing(base=str(tmp_path), is_synthetic=True, folder=folder)
+        assert used_writer is True
+        assert text == "WROTE_FRESH_BRIEFING"
+
+    def test_synthetic_with_empty_briefing_file_falls_through(self, tmp_path):
+        """An empty/whitespace-only briefing.md is not useful — fall through."""
+        folder = "Acme_SPECULATIVE_2026-04-28_140000"
+        spec_dir = tmp_path / "companies" / folder
+        spec_dir.mkdir(parents=True)
+        (spec_dir / "briefing.md").write_text("   \n\n  \n")
+
+        text, used_writer = self._resolve_briefing(base=str(tmp_path), is_synthetic=True, folder=folder)
+        assert used_writer is True
+        assert text == "WROTE_FRESH_BRIEFING"

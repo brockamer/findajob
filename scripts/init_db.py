@@ -22,6 +22,9 @@ if "jobs" in _existing_tables:
     if "synthetic" not in _jobs_cols:
         conn.execute("ALTER TABLE jobs ADD COLUMN synthetic INTEGER NOT NULL DEFAULT 0")
         conn.commit()
+    if "speculative_briefing_folder" not in _jobs_cols:
+        conn.execute("ALTER TABLE jobs ADD COLUMN speculative_briefing_folder TEXT")
+        conn.commit()
 
 conn.executescript("""
 CREATE TABLE IF NOT EXISTS jobs (
@@ -68,7 +71,8 @@ CREATE TABLE IF NOT EXISTS jobs (
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now')),
     dupe_of TEXT DEFAULT '',
-    synthetic INTEGER NOT NULL DEFAULT 0
+    synthetic INTEGER NOT NULL DEFAULT 0,
+    speculative_briefing_folder TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_jobs_fingerprint ON jobs(fingerprint);
