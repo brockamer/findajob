@@ -10,9 +10,15 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+## [0.5.2] — 2026-04-28
+
+Patch bump. Two substantial Added shipments — the new interview-prep artifact triggered on the board's `applied → interview` transition (#258) and the in-app feedback widget that files GitHub issues per submission (#227) — plus the jobs-api14 Indeed slot drop (#274), three quality bugfixes (#308 Ashby timeout, #302 probability_score visibility, #280 Archive horizontal shift), and two documentation passes (README polish, CLAUDE.md scheduler-row drift fix). One soft-migration marker below for the feedback widget's optional GitHub PAT — the pipeline stays up and only the feedback path degrades if the PAT is unset, so existing operators on `:v0.5` can `docker compose pull && up -d` without reading anything if they don't care about the widget.
+
 ### Added
 
 - **Interview prep artifact generated on the `applied → interview` board transition (#258).** New role `config/roles/interview_prep.md` (Opus 4.7, max_tokens 4096) and entry-point `scripts/interview_prep.py`. Marking a job as **Interviewing** on the Applied tab spawns the generator as a detached subprocess; it reads the existing prep folder (briefing, tailored resume, cover letter, optional recruiter critique) and emits `{Prefix} Interview Prep - {Company} - {Title} - {timestamp}.md` (+ `.docx`) alongside the other artifacts (`{Prefix}` derived from each operator's `profile.md`). Five sections: lead-with-this opener, 30-second elevator pitch, 3–5 STAR expansions of the briefing's existing question/story map, 3–5 tough Qs with draft answers (incl. career-narrative traps and recruiter-critique gaps), and 5 concrete questions to ask the interviewer. Anti-drift contract in the role prompt: STAR section MUST expand the briefing's `❓ Likely Interview Questions` and `💡 Stories from Your Background` sections rather than re-derive them, preventing the parallel-slop failure mode where two prompts produce overlapping question lists with subtly different framings. Re-clicking "Interviewing" on an already-interview job re-launches the generator (refresh mechanism after a recruiter sends panel info); a sentinel file in the prep folder guards against concurrent runs. Trigger lives in `findajob.web.routes.board_actions.interview` rather than `prep_application.py` — the `applied → interview` rate is ~5%, so generating at apply time would waste ~95% of Opus 4.7 tokens on jobs that never reach an interview. Briefing sections 4–5 stay untouched and continue to serve their apply-time decision-preview role.
+
+- **In-app feedback widget files a GitHub issue per submission (#227).** Floating "Feedback" button in the bottom-right corner of every page opens a small modal with a textarea; submission posts to `/feedback/submit` which calls the GitHub Issues API server-side and labels the issue `feedback` (plus an optional per-stack identifier label). New env vars in `state/data/.env`: `GITHUB_FEEDBACK_PAT` (fine-grained PAT scoped to Issues:read+write on the target repo, required), `FEEDBACK_STACK_LABEL` (optional second label, e.g. `from:operator` / `from:alice-doe`), `FEEDBACK_REPO` (defaults to `brockamer/findajob`). The PAT is held server-side and never reaches the browser. No PII guard, no rate limit — testers see what they're typing and the feedback path is internal to the Wireguard perimeter.
 
 ### Changed
 
@@ -31,10 +37,6 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 - **README polish: roadmap section + project board link + reader-approachability pass.** Added an "Is this for you?" expectation-setting block, a "Roadmap" section summarizing the five active milestones with live link to the [project board](https://github.com/users/brockamer/projects/1), reframed "What you get out of it" bullets around felt relief instead of features, collapsed the 12-row docs index behind `<details>` with 4 starter links surfaced above, and added a "Stay in touch / contribute" footer pointing at the project board, issues, in-app feedback widget, and discussions. Tightened the lead so "burnout is the default" lands harder; added explicit "pre-1.0 personal project" framing.
 
 - **CLAUDE.md scheduler-row drift fix.** The Pipeline Context Table's Scheduler row said "systemd user services" but the live deployment uses supercronic in the container (correctly described in the Container Context table 30 lines below). Reconciled.
-
-### Added
-
-- **In-app feedback widget files a GitHub issue per submission (#227).** Floating "Feedback" button in the bottom-right corner of every page opens a small modal with a textarea; submission posts to `/feedback/submit` which calls the GitHub Issues API server-side and labels the issue `feedback` (plus an optional per-stack identifier label). New env vars in `state/data/.env`: `GITHUB_FEEDBACK_PAT` (fine-grained PAT scoped to Issues:read+write on the target repo, required), `FEEDBACK_STACK_LABEL` (optional second label, e.g. `from:operator` / `from:alice-doe`), `FEEDBACK_REPO` (defaults to `brockamer/findajob`). The PAT is held server-side and never reaches the browser. No PII guard, no rate limit — testers see what they're typing and the feedback path is internal to the Wireguard perimeter.
 
 ### Migration required
 
@@ -373,7 +375,8 @@ from GHCR and deployed via Docker Compose on a shared Docker host.
 - Documentation cleanup — removing `sigoden/aichat` references in favor of
   `blob42/aichat-ng` — is tracked in #70
 
-[Unreleased]: https://github.com/brockamer/findajob/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/brockamer/findajob/compare/v0.5.2...HEAD
+[0.5.2]: https://github.com/brockamer/findajob/releases/tag/v0.5.2
 [0.5.1]: https://github.com/brockamer/findajob/releases/tag/v0.5.1
 [0.5.0]: https://github.com/brockamer/findajob/releases/tag/v0.5.0
 [0.4.0]: https://github.com/brockamer/findajob/releases/tag/v0.4.0
