@@ -10,7 +10,13 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-04-29
+
+Minor bump. Three substantive shipments unblock the v0.9 multi-tenancy push: per-tester onboarding now collects each tester's own credentials and identity (#328), the web UI can be gated behind opt-in HTTP Basic Auth for internet-exposed deployments (#327), and the speculative-ingest path reuses its deep-research briefing at prep time instead of regenerating it (#320). One critical proxy-headers bugfix (commit `e6de82d`) that any operator running findajob behind an HTTPS reverse proxy needs — without it, FastAPI's auto trailing-slash redirect leaks the request out of HTTPS into bare HTTP. One soft schema migration carried by #320 (idempotent column add — runs automatically on `docker compose pull && up -d`).
+
 ### Fixed
+
+- **`uvicorn` now trusts upstream `X-Forwarded-Proto` headers (commit `e6de82d`).** Without `--proxy-headers`, FastAPI's auto trailing-slash redirect (e.g., `GET /materials` → `307 Location: /materials/`) emitted absolute Location URLs with `scheme=http` even when the original request arrived via HTTPS at a TLS-terminating reverse proxy. Browsers followed the redirect to bare HTTP; on Synology DSM (and similar setups without an explicit `:80` vhost for the findajob host), the request fell through to the DSM admin redirect on `:5001`, surfacing as a "redirected to hostname:5001" symptom for any internet-exposed instance. Fix is two flags appended to the entrypoint's uvicorn command: `--proxy-headers --forwarded-allow-ips='*'` (the perimeter is the reverse proxy itself; the container only ever receives traffic from trusted upstream nodes — Wireguard mesh + the operator's reverse-proxy box). Reproduced and verified end-to-end on the operator's `findajob.brockbot.com` instance: pre-fix `Location: http://findajob.brockbot.com/materials/` → DSM bounce to `:5001`; post-fix `Location: https://findajob.brockbot.com/materials/` → clean follow.
 
 - **`read_file_prefix()` now consumes `display_name.txt` first (#328 follow-up).** The structured field that #328 added to onboarding was being WRITTEN but not consumed — `findajob.utils.read_file_prefix()` continued to parse profile.md narrative for `File Prefix:` / `Name:` fields, the exact fragile path the structured field was meant to replace. Resolution order is now: `display_name.txt` (last word) → legacy `File Prefix:` line → legacy `Name:` line → `Candidate` fallback. Sibling-of-profile.md path resolution (not BASE-relative), so tests stay deterministic. Pre-#328 deployments without `display_name.txt` keep working via the legacy paths — no migration needed. 12 new tests in `tests/test_read_file_prefix.py` exercising every branch of the resolution order.
 
@@ -420,7 +426,8 @@ from GHCR and deployed via Docker Compose on a shared Docker host.
 - Documentation cleanup — removing `sigoden/aichat` references in favor of
   `blob42/aichat-ng` — is tracked in #70
 
-[Unreleased]: https://github.com/brockamer/findajob/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/brockamer/findajob/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/brockamer/findajob/releases/tag/v0.7.0
 [0.6.1]: https://github.com/brockamer/findajob/releases/tag/v0.6.1
 [0.6.0]: https://github.com/brockamer/findajob/releases/tag/v0.6.0
 [0.5.2]: https://github.com/brockamer/findajob/releases/tag/v0.5.2
