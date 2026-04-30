@@ -259,6 +259,11 @@ def fetch_new_messages(config: GmailConfig, state: GmailState) -> FetchOutcome:
         client.select("INBOX", readonly=True)
 
         uidvalidity_raw = client.untagged_responses.get("UIDVALIDITY", [b"0"])[0]
+        # imaplib types UIDVALIDITY values as bytes | tuple[bytes, bytes], but the
+        # IMAP RFC 3501 spec defines UIDVALIDITY as a single number, so the tuple
+        # form does not occur in practice. Narrow defensively.
+        if isinstance(uidvalidity_raw, tuple):
+            uidvalidity_raw = uidvalidity_raw[0]
         current_uidvalidity = int(uidvalidity_raw) if uidvalidity_raw else 0
 
         cold_start = current_uidvalidity != state.last_uidvalidity
@@ -279,7 +284,7 @@ def fetch_new_messages(config: GmailConfig, state: GmailState) -> FetchOutcome:
                 criteria = f'(SINCE "{since_date}" FROM "{sender}")'
             else:
                 criteria = f'(UID {state.last_uid + 1}:* FROM "{sender}")'
-            typ, search_resp = client.uid("SEARCH", criteria.encode())
+            typ, search_resp = client.uid("SEARCH", criteria)
             if typ != "OK":
                 continue
             uids = _parse_search_uids(search_resp)
@@ -287,7 +292,7 @@ def fetch_new_messages(config: GmailConfig, state: GmailState) -> FetchOutcome:
                 if uid in seen_uids:
                     continue
                 seen_uids.add(uid)
-                fetch_typ, fetch_resp = client.uid("FETCH", str(uid).encode(), b"(BODY.PEEK[])")
+                fetch_typ, fetch_resp = client.uid("FETCH", str(uid), "(BODY.PEEK[])")
                 if fetch_typ != "OK":
                     continue
                 # imaplib FETCH returns [(metadata, raw_bytes), b')'] — first tuple
