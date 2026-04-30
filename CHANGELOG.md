@@ -10,6 +10,10 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Added
+
+- **Discovered-companies surfacing on the Dashboard + ntfy on weekly run (#288).** Two long-standing gaps in the company discoverer (#284) are addressed in one merge. (a) After each successful run of `findajob.discoverer.runner.run()`, a single ntfy fires with the count + top-5 names — title `findajob: discovered N companies`, body `Lightmatter, Lambda Labs, Hyperbolic, ...` (or `(no novel companies surfaced this run)` when zero). The success ntfy is best-effort and does not replace existing failure ntfys (`discovery: timeout`, `discovery: parse error`); both can fire on a high-cost successful run. (b) A small banner on `/board/dashboard` reads the `discovered_companies.json` sidecar and shows count + last-run date (e.g., "🔍 Discoveries: 10 companies (updated 2026-04-26) — view") with a click-through to the file. Five visual states: fresh, this-week-late, stale (>10d, surfaced as "weekly cron may have skipped"), empty-never-run (informative copy for fresh installs), and empty-zero-hits. New `findajob.web.discoveries.load_discoveries_summary()` helper reads JSON, never markdown — with a defensive None return on missing/malformed files so a bad weekly run cannot break the Dashboard. 12 new tests cover the helper edge cases + the 5 visual states. Sections C (weekly diff) and D (promote-to-target affordance) split out as follow-up issues.
+
 ## [0.7.4] — 2026-04-30
 
 Patch bump. Two material-viewer follow-ups land together: (1) per-doc plain-language descriptions that name the role + employer for submission artifacts and flag internal-prep docs as "for your eyes only," and (2) a robust `.docx` download path that survives reverse-proxy header mangling on internet-exposed instances.

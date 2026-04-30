@@ -1,0 +1,21 @@
+{# Discoveries widget — #288 Section B.
+   `discoveries` is a DiscoveriesSummary or None. None renders the never-run state. #}
+<div class="mb-3 px-3 py-2 rounded-sm bg-slate-50 border border-slate-200 text-sm text-slate-700 flex flex-wrap items-center gap-x-2">
+  <span aria-hidden="true">🔍</span>
+  <span class="font-medium">Discoveries:</span>
+  {% if discoveries is none %}
+    <span class="text-slate-600">cron runs weekly Sundays — first results will appear here</span>
+  {% elif discoveries.count == 0 %}
+    <span>0 companies this run</span>
+    <span class="text-slate-500">(updated {{ discoveries.generated_at_date }})</span>
+    <a href="/config/files/candidate_context/discovered_companies.md" class="text-blue-700 hover:underline">view</a>
+  {% elif discoveries.is_stale %}
+    <span>{{ discoveries.count }} companies</span>
+    <span class="text-amber-700">— last run {{ discoveries.generated_at_date }} ({{ discoveries.days_since }}d ago, weekly cron may have skipped)</span>
+    <a href="/config/files/candidate_context/discovered_companies.md" class="text-blue-700 hover:underline">view</a>
+  {% else %}
+    <span>{{ discoveries.count }} companies</span>
+    <span class="text-slate-500">(updated {{ discoveries.generated_at_date }})</span>
+    <a href="/config/files/candidate_context/discovered_companies.md" class="text-blue-700 hover:underline">view</a>
+  {% endif %}
+</div>

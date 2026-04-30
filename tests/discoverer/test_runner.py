@@ -143,3 +143,61 @@ def test_run_does_not_emit_ntfy_when_disabled(tmp_path: Path) -> None:
     ):
         run(tmp_path, ntfy_enabled=False)
     assert not notify_mock.called
+
+
+def test_run_success_emits_summary_ntfy_with_count_and_top_names(tmp_path: Path) -> None:
+    _setup_profile(tmp_path)
+    notify_mock = MagicMock()
+    with (
+        patch("findajob.discoverer.runner.subprocess.run", _stub_subprocess_run(VALID_LLM_OUTPUT)),
+        patch("findajob.discoverer.runner._send_ntfy", notify_mock),
+    ):
+        result = run(tmp_path, ntfy_enabled=True)
+    assert result.success is True
+    titles_bodies = [call.args[:2] for call in notify_mock.call_args_list]
+    success_calls = [(t, b) for t, b in titles_bodies if t.startswith("findajob: discovered")]
+    assert len(success_calls) == 1
+    title, body = success_calls[0]
+    assert title == "findajob: discovered 3 companies"
+    assert "Alpha Co" in body
+    assert "Beta Inc" in body
+    assert "Gamma LLC" in body
+
+
+def test_run_success_ntfy_suppressed_when_disabled(tmp_path: Path) -> None:
+    _setup_profile(tmp_path)
+    notify_mock = MagicMock()
+    with (
+        patch("findajob.discoverer.runner.subprocess.run", _stub_subprocess_run(VALID_LLM_OUTPUT)),
+        patch("findajob.discoverer.runner._send_ntfy", notify_mock),
+    ):
+        result = run(tmp_path, ntfy_enabled=False)
+    assert result.success is True
+    assert not notify_mock.called
+
+
+def test_run_failure_paths_do_not_emit_success_ntfy(tmp_path: Path) -> None:
+    """Existing failure ntfys (timeout / aichat-failure / parse-error) must remain
+    the only signal on the failure path; the new success ntfy must NOT fire there."""
+    _setup_profile(tmp_path)
+    notify_mock = MagicMock()
+    with (
+        patch("findajob.discoverer.runner.subprocess.run", _stub_subprocess_run("", returncode=1)),
+        patch("findajob.discoverer.runner._send_ntfy", notify_mock),
+    ):
+        run(tmp_path, ntfy_enabled=True)
+    titles = [call.args[0] for call in notify_mock.call_args_list]
+    assert not any(t.startswith("findajob: discovered") for t in titles)
+    assert any("aichat" in t for t in titles)
+
+
+def test_send_success_ntfy_zero_count_uses_sentinel_body() -> None:
+    from findajob.discoverer.runner import _send_success_ntfy
+
+    notify_mock = MagicMock()
+    with patch("findajob.discoverer.runner._send_ntfy", notify_mock):
+        _send_success_ntfy([])
+    assert notify_mock.call_count == 1
+    title, body = notify_mock.call_args.args[:2]
+    assert title == "findajob: discovered 0 companies"
+    assert body == "(no novel companies surfaced this run)"

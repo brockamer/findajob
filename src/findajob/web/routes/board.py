@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse
 
 from findajob.web.company_history import build_history_by_fp, fetch_company_history
+from findajob.web.discoveries import load_discoveries_summary
 from findajob.web.filters import ColumnSpec, ParsedFilters, build_filter_clauses, parse_filter_params
 from findajob.web.filters import registry as filter_registry
 from findajob.web.routes.materials import get_db
@@ -96,6 +97,7 @@ def dashboard(
     history_by_fp = build_history_by_fp(rows, fetch_company_history(db))
     materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
     visible = _resolve_visible(specs, parsed)
+    discoveries = load_discoveries_summary(request.app.state.base_root)
     templates = request.app.state.templates
     return templates.TemplateResponse(
         request=request,
@@ -109,6 +111,7 @@ def dashboard(
             "density": _normalize_density(density),
             "tab": "dashboard",
             "materials_base_url": materials_base_url,
+            "discoveries": discoveries,
         },
     )
 

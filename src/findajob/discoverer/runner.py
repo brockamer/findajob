@@ -66,6 +66,21 @@ def _send_ntfy(title: str, body: str) -> None:
         pass
 
 
+def _send_success_ntfy(companies: list) -> None:
+    """Success-path ntfy after a discovery run commits.
+
+    Body lists the top-5 names; an empty run still fires so a silent cron
+    is observable instead of indistinguishable from a stuck schedule.
+    """
+    count = len(companies)
+    title = f"findajob: discovered {count} companies"
+    if count == 0:
+        body = "(no novel companies surfaced this run)"
+    else:
+        body = ", ".join(c.name for c in companies[:5])
+    _send_ntfy(title, body)
+
+
 def _cost_threshold() -> float:
     raw = os.environ.get("DISCOVERY_COST_THRESHOLD_USD", "")
     try:
@@ -142,6 +157,8 @@ def run(
             count=len(parsed.companies),
             cost_usd=cost,
         )
+        if ntfy_enabled:
+            _send_success_ntfy(parsed.companies)
         threshold = _cost_threshold()
         if cost is not None and cost > threshold and ntfy_enabled:
             _send_ntfy(
