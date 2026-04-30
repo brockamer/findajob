@@ -104,7 +104,7 @@ Live status of every issue and milestone is on the **[project board](https://git
 | Company research | Perplexity Sonar Pro |
 | Embeddings (REPL RAG over your own writing) | Gemini Embedding |
 | Storage | SQLite |
-| Job sources | RapidAPI jobs-api14, Greenhouse JSON, Gmail OAuth2 |
+| Job sources | RapidAPI jobs-api14, Greenhouse JSON, Gmail IMAP/app-password (configurable; see [`docs/setup/gmail.md`](docs/setup/gmail.md)) |
 | Web UI | FastAPI + HTMX + Tailwind + Chart.js |
 | Push notifications | [ntfy.sh](https://ntfy.sh) |
 | Scheduler | supercronic (in-container) |

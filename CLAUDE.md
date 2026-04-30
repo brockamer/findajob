@@ -82,7 +82,7 @@ file. If you're refactoring an old hardcoded section, add a note to `docs/GENERA
 | `interview_prep` | `openrouter:anthropic/claude-opus-4.7`, `max_tokens: 4096` — fires on `applied → interview` transition; expands briefing's interview-questions + stories sections. |
 | `candidate_led_briefing` | `openrouter:perplexity/sonar-deep-research` — async (1–5 min); drives the speculative briefing pass via `scripts/run_speculative_research.py`. |
 | `speculative_roles_synth` | `openrouter:anthropic/claude-sonnet-4-6`, `max_tokens: 4096` — synthesizes 1–5 candidate-tailored role cards from the briefing. |
-| Job ingestion | jobs-api14 (RapidAPI) — LinkedIn only (`datePosted: 'day'`); direct Greenhouse/Ashby/Lever JSON; Gmail OAuth2 (LinkedIn + Indeed alerts) |
+| Job ingestion | jobs-api14 (RapidAPI) — LinkedIn only (`datePosted: 'day'`); direct Greenhouse/Ashby/Lever JSON; Gmail IMAP/app-password (LinkedIn + Indeed alerts) — configurable per-stack at /config/gmail/ |
 | Package manager | `uv sync` for dev deps; `uv run` prefix for pytest/ruff/mypy/uvicorn |
 | Path resolution | `src/findajob/paths.py` — reads `config/paths.env`; BASE derived from `__file__` |
 | Roles dir | `config/roles/` |
@@ -143,6 +143,7 @@ When the pipeline runs inside the `ghcr.io/brockamer/findajob` image, paths shif
 <repo>/src/findajob/web/app.py               # FastAPI app factory (create_app)
 <repo>/src/findajob/web/routes/ingest.py     # GET /ingest/ form + POST /ingest/manual handler
 <repo>/src/findajob/web/routes/config.py     # GET /config/, GET/POST /config/files/{path} — in-browser config editor
+<repo>/src/findajob/web/routes/gmail_config.py # GET/POST /config/gmail/ — IMAP/app-password integration setup (#330)
 <repo>/src/findajob/web/routes/tools.py      # GET /tools/ — stub linking to /config/
 <repo>/src/findajob/web/routes/docs.py       # GET /docs/ index + GET /docs/{slug} — user docs viewer
 <repo>/src/findajob/web/markdown.py          # render_markdown() — shared MD→HTML helper for materials + docs viewers
@@ -181,8 +182,8 @@ When the pipeline runs inside the `ghcr.io/brockamer/findajob` image, paths shif
 <repo>/config/scoring_schema.json           # JSON schema for LLM scorer output validation
 <repo>/config/jsearch_queries.txt           # LinkedIn/Indeed search queries (gitignored)
 <repo>/config/feed_urls.txt                 # Greenhouse company slugs (gitignored)
-<repo>/config/gmail_oauth_client.json       # Gmail OAuth2 credentials (gitignored)
-<repo>/config/gmail_token.json              # Gmail token cache (gitignored)
+<repo>/config/gmail.json                    # Gmail IMAP/app-password config (gitignored, chmod 600)
+<repo>/config/gmail_state.json              # Gmail IMAP UID + auth-failure tracker (gitignored)
 <repo>/data/.env                            # API keys (chmod 600; gitignored)
 <repo>/data/pipeline.db                     # SQLite — source of truth
 <repo>/data/connections.csv                 # LinkedIn connections export (gitignored)
@@ -394,6 +395,10 @@ responds in the same request. No poll cycle, no Sheet readback.
 **Stage `prep_in_progress`:** Set by `POST /board/jobs/{fp}/prep` immediately before launching `prep_application.py` as a subprocess. Prevents duplicate prep runs (handler idempotency guard + 3-job concurrency cap). Cleared to `materials_drafted` on success. `scripts/watchdog.py` rolls any job stuck > 60 min back to `scored` so the operator can re-flag.
 
 **Health checks** (`notify.py health-check`): warns if manual_review backlog > 100, a source silently stopped producing jobs, or any target-company job scored 3–6 in last 7 days (potential mis-scores).
+
+### Gmail Integration
+
+Gmail ingestion uses IMAP + app password, configured per-stack at `/config/gmail/`. Transparency contract spelled out in `docs/superpowers/specs/2026-04-30-330-design.md` §4 and codified as executable assertions in `tests/test_transparency_invariants.py` — failures there mean the disclosure banner is lying.
 
 ---
 

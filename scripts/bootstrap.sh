@@ -79,7 +79,6 @@ install_pip_deps() {
   pip3 install --break-system-packages \
     google-api-python-client \
     google-auth-httplib2 \
-    google-auth-oauthlib \
     requests \
     jsonschema \
     beautifulsoup4

@@ -100,14 +100,12 @@ def test_app_password_never_in_audit_log():
     )
 
 
-@pytest.mark.xfail(reason="gitignore patterns added in Task 11")
 def test_gmail_creds_in_gitignore():
     gi = (REPO / ".gitignore").read_text()
     assert "config/gmail.json" in gi, "config/gmail.json missing from .gitignore — violates §4.7."
     assert "config/gmail_state.json" in gi, "config/gmail_state.json missing from .gitignore — violates §4.7."
 
 
-@pytest.mark.xfail(reason="pre-commit hook patterns added in Task 11")
 def test_pre_commit_hook_blocks_gmail_creds():
     """If a pre-commit hook is installed, it must reject staged Gmail creds."""
     hook = REPO / ".git" / "hooks" / "pre-commit"

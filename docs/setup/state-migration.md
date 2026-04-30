@@ -25,8 +25,8 @@ Do NOT decommission the source until you have confirmed a full triage cycle comp
 | API keys | `data/.env` | Copy file, `chmod 600` |
 | Google Sheets credentials | `config/gsheets_creds.json` | Copy file |
 | Sheet ID | `config/sheet_id.txt` | Copy file |
-| Gmail OAuth credentials | `config/gmail_oauth_client.json` | Copy file |
-| Gmail token cache | `config/gmail_token.json` | Copy file (or re-authorize) |
+| Gmail integration config | `config/gmail.json` | Copy file |
+| Gmail integration state  | `config/gmail_state.json` | Copy file |
 | Form response sheet ID | `config/form_responses_sheet_id.txt` | Copy file |
 | Candidate profile | `candidate_context/profile.md` | Copy file |
 | Master resume | `candidate_context/master_resume.md` | Copy file |
@@ -71,8 +71,8 @@ rsync -av \
   data/connections.csv \
   config/gsheets_creds.json \
   config/sheet_id.txt \
-  config/gmail_oauth_client.json \
-  config/gmail_token.json \
+  config/gmail.json \
+  config/gmail_state.json \
   config/form_responses_sheet_id.txt \
   config/jsearch_queries.txt \
   config/feed_urls.txt \
@@ -90,7 +90,8 @@ rsync -av CLAUDE.local.md ${TARGET}:${DEST}/
 ```bash
 chmod 600 ~/findajob/data/.env
 chmod 600 ~/findajob/config/gsheets_creds.json
-chmod 600 ~/findajob/config/gmail_oauth_client.json
+chmod 600 ~/findajob/config/gmail.json
+chmod 600 ~/findajob/config/gmail_state.json
 ```
 
 ### Step 3: Create Target-Side Config
@@ -221,8 +222,8 @@ If you want a fresh sheet (e.g., to experiment on the target without affecting y
 **`ModuleNotFoundError` during triage**
 Pip install was missed. Re-run the pip install from the install guide.
 
-**Gmail OAuth fails on headless machine**
-Run triage once on a machine with a browser to generate `config/gmail_token.json`, then transfer that file. The token is valid for months.
+**Gmail integration not working after migration**
+Re-configure at `/config/gmail/` — the new IMAP/app-password integration is per-stack and the simplest path forward is reconfiguring rather than copying state. See [`gmail.md`](gmail.md).
 
 **`sqlite3.OperationalError: disk I/O error`**
 Usually means a stale WAL file from an interrupted transaction. Remove `data/pipeline.db-wal` and `data/pipeline.db-journal` (only when the pipeline is not running).
@@ -301,7 +302,7 @@ Fresh installs that re-pulled the template on the current tag are unaffected.
    ```
    Typically `http://docker.lan:8090` — match the hostname and port already used for `FINDAJOB_MATERIALS_PORT`.
 
-2. Edit `compose.yaml` — add one line under `environment:` in the `scheduler` service (the `gmail-auth` service is a one-shot OAuth helper and does not need the var):
+2. Edit `compose.yaml` — add one line under `environment:` in the `scheduler` service (the `scheduler` service handles all env vars; there is no separate auth helper):
    ```yaml
    FINDAJOB_MATERIALS_BASE_URL: ${FINDAJOB_MATERIALS_BASE_URL:-}
    ```

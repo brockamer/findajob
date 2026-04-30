@@ -302,3 +302,16 @@ the RAG index uses. Rotate it the same way. `ANTHROPIC_API_KEY` and
 reached through OpenRouter now. Keep rotations staggered — don't
 revoke the old key until the new one has served at least one live
 pipeline run without error.
+
+---
+
+## Pre-commit hook patterns
+
+Each clone runs its own `.git/hooks/pre-commit` to block accidental PII commits. After cloning, extend the `PATTERNS` array in your local hook to cover Gmail integration files (introduced in #330):
+
+```bash
+"\"app_password\":"
+"\"last_uid\":"
+```
+
+These patterns match the JSON keys in the credential files rather than the filenames, so documentation references to `config/gmail.json` don't trigger false positives. Both files are also covered by `.gitignore` — the hook is defense-in-depth in case someone runs `git add -f`.

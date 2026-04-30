@@ -49,3 +49,7 @@ config/prefilter_rules.yaml
 config/in_domain_patterns.yaml
 config/companies_of_interest.txt
 .worktrees/
+
+# Gmail integration credentials and state (#330)
+config/gmail.json
+config/gmail_state.json

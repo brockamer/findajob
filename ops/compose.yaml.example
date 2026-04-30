@@ -53,22 +53,6 @@ services:
     networks:
       - findajob-network
 
-  gmail-auth:
-    image: ghcr.io/brockamer/findajob:${FINDAJOB_IMAGE_TAG:-v0.1}
-    profiles: [setup]
-    env_file: ./state/data/.env
-    environment:
-      TZ: ${FINDAJOB_TZ:-America/New_York}
-      PUID: ${PUID:-1000}
-      PGID: ${PGID:-1000}
-      HOME: /app
-      JSP_BASE: /app
-    volumes:
-      - ./state/config:/app/config
-    command: python3 scripts/gmail_auth.py
-    networks:
-      - findajob-network
-
 networks:
   findajob-network:
     driver: bridge

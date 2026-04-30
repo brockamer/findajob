@@ -13,7 +13,7 @@ This is the install + operations guide for external users running findajob from 
 ## Prerequisites on the Docker host
 
 - Docker Engine 24+ and Docker Compose v2
-- Access to Google Cloud Console to register an OAuth client for Gmail (optional but recommended)
+- (Optional) A Gmail account, if you want to ingest LinkedIn and other job-alert emails. See [gmail.md](gmail.md) for the post-deploy walkthrough.
 - A Google Sheet and service account for the jobs dashboard (see [prerequisites.md](prerequisites.md))
 
 ## Prerequisites for your Claude Code helper (for the admin)
@@ -136,31 +136,9 @@ FINDAJOB_MATERIALS_BASE_URL: ${FINDAJOB_MATERIALS_BASE_URL:-}
 
 Then `docker compose up -d` to restart with the new env. Full migration writeup in [`state-migration.md`](state-migration.md).
 
-## 4. Initial auth: Gmail (optional)
+## 4. Configure Gmail integration (optional)
 
-Gmail ingestion uses a loopback OAuth flow that requires an SSH tunnel — Google's device flow (`google.com/device`) does not support Gmail scopes. If you skip this step, Gmail ingestion is automatically disabled and the pipeline falls back to Greenhouse/Ashby/Lever feeds and RapidAPI.
-
-### Prerequisites
-
-- In [Google Cloud Console](https://console.cloud.google.com/), create an OAuth 2.0 client of type **Desktop app** (not "TVs and Limited Input devices" — that type rejects Gmail scopes). Download the JSON and save it as `state/config/gmail_oauth_client.json`.
-
-### One-time token flow
-
-**Step 1 — open an SSH tunnel** (keep this terminal open):
-
-```bash
-ssh -L 8080:localhost:8080 <your-docker-host>
-```
-
-**Step 2 — in another terminal, run the auth container**:
-
-```bash
-docker compose --profile setup run --rm -p 8080:8080 gmail-auth
-```
-
-**Step 3** — copy the URL printed by the container, open it in your browser, sign in, and grant Gmail.readonly access. The container exits automatically when consent is granted.
-
-Token is saved to `state/config/gmail_token.json` (chmod 600). Close the SSH tunnel once the container exits.
+If you want findajob to ingest LinkedIn (and other) job-alert emails from your Gmail, follow [`gmail.md`](gmail.md) after the stack is up. The pipeline runs cleanly without Gmail integration — Greenhouse / Ashby / Lever direct fetches and RapidAPI LinkedIn search cover most ingestion volume.
 
 ## 5. Deploy
 
@@ -356,8 +334,6 @@ Apply these changes once, per instance:
    - Under `environment:`, add `HOME: /app`.
    - Change the aichat-ng volume from `./state/aichat_ng:/root/.config/aichat_ng` to `./state/aichat_ng:/app/.config/aichat_ng`.
 
-   Apply the same `HOME: /app` change to the `gmail-auth` service.
-
 3. **Fix ownership of `state/aichat_ng/`** in case it was populated under the old path:
    ```bash
    sudo chown -R $(id -u):$(id -g) state/aichat_ng
@@ -400,5 +376,5 @@ A local rollback via `.env` pin doesn't affect other users on `:v0.1`.
 - Container fails to start: `docker compose logs scheduler` usually points at the issue.
 - Supercronic prints "schedule invalid": a crontab syntax error. Check `ops/scheduled-jobs.yaml` for the canonical schedule, or `docker exec <container> cat /app/crontab` for the rendered version after env-var overrides.
 - Container restart-loops with "render_crontab: FATAL": malformed `ops/scheduled-jobs.yaml`, missing required field, or an unrecognized `FINDAJOB_<JOB>_ENABLED` value (must be `true`/`false`/`1`/`0`/`yes`/`no`). Logs name the offending job.
-- Gmail ingestion silently disabled: re-run the token flow from step 4 (`ssh -L 8080:localhost:8080 <host>` + `docker compose --profile setup run --rm -p 8080:8080 gmail-auth`).
+- Gmail ingestion silently disabled: revisit configuration at /config/gmail/ — see [gmail.md](gmail.md).
 - For anything else, open an issue at https://github.com/brockamer/findajob/issues.

@@ -66,7 +66,6 @@ cd ~/findajob
 pip3 install --break-system-packages \
   google-api-python-client \
   google-auth-httplib2 \
-  google-auth-oauthlib \
   requests \
   jsonschema \
   beautifulsoup4
@@ -179,13 +178,9 @@ python3 scripts/setup_sheets.py
 
 ---
 
-## 10. Set Up Gmail OAuth
+## 10. Configure Gmail integration (optional)
 
-```bash
-cp /path/to/gmail_oauth_client.json config/gmail_oauth_client.json
-```
-
-First triage run will trigger browser-based OAuth consent and cache the token at `config/gmail_token.json`. If running headless, see [operations.md](../operations.md) for the headless OAuth flow.
+If you want findajob to ingest LinkedIn (and other) job-alert emails from your Gmail, follow [`gmail.md`](gmail.md) after the stack is up. The pipeline runs cleanly without Gmail integration — Greenhouse / Ashby / Lever direct fetches and RapidAPI LinkedIn search cover most ingestion volume.
 
 ---
 
@@ -278,9 +273,6 @@ python3 scripts/triage.py
 **`aichat-ng: command not found`**
 Verify it's at `/usr/local/bin/aichat-ng`. If installed elsewhere, update `config/paths.env`.
 
-**`ModuleNotFoundError: google.oauth2`**
-Re-run the pip install command from step 4.
-
 **`FileNotFoundError: config/sheet_id.txt`**
 You forgot to create this file. Run: `echo "YOUR_SHEET_ID" > config/sheet_id.txt`
 
@@ -288,5 +280,3 @@ You forgot to create this file. Run: `echo "YOUR_SHEET_ID" > config/sheet_id.txt
 Check: `systemctl --user status findajob-triage.timer`
 Logs: `journalctl --user -u findajob-triage.service -f`
 
-**Gmail OAuth browser won't open (headless machine)**
-Run triage.py from a machine with a browser first to generate the token, then copy `config/gmail_token.json` to the headless machine.
