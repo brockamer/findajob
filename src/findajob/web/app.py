@@ -40,6 +40,7 @@ def create_app(
     templates.env.globals["stage_row_class"] = stage_row_class
     templates.env.globals["filter_remove_qs"] = filter_remove_qs
     templates.env.globals["filter_qs_with"] = filter_qs_with
+    templates.env.globals["operator_mode"] = os.environ.get("FINDAJOB_OPERATOR_MODE") == "1"
 
     static_dir = Path(__file__).parent / "static"
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")

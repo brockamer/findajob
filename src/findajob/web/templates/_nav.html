@@ -3,7 +3,12 @@
    `active_prefix` is the URL prefix that marks the group active — distinct
    from `href` because e.g. the Board link points at /board/dashboard (the
    landing view) but should highlight on every /board/* page. Previously all
-   non-dashboard board pages failed to highlight the Board tab (#138). #}
+   non-dashboard board pages failed to highlight the Board tab (#138).
+
+   When operator_mode is set (FINDAJOB_OPERATOR_MODE=1 in env), the bar
+   renders in rose-700 as an ambient visual cue and the Admin link is
+   shown. Operator mode is operator-only — testers' stacks render the
+   default slate-800 bar with no Admin link. #}
 {% set groups = [
   ("/", "Home", "/"),
   ("/board/dashboard", "Board", "/board/"),
@@ -14,19 +19,29 @@
   ("/config/", "Config", "/config/"),
   ("/docs/", "Docs", "/docs/"),
 ] %}
-<nav class="bg-slate-800 text-slate-100 px-4 py-2 shadow-sm">
+<nav class="{% if operator_mode %}bg-rose-700{% else %}bg-slate-800{% endif %} text-slate-100 px-4 py-2 shadow-sm">
   <ul class="flex gap-4 items-center">
-    <li class="font-bold mr-4">findajob</li>
+    <li class="font-bold mr-4">findajob{% if operator_mode %} <span class="text-xs uppercase tracking-wide opacity-80">operator</span>{% endif %}</li>
     {% for href, label, active_prefix in groups %}
       {% set active = (active_prefix == "/" and request.url.path == "/")
            or (active_prefix != "/" and request.url.path.startswith(active_prefix)) %}
       <li>
         <a href="{{ href }}"
            {% if active %}aria-current="page"{% endif %}
-           class="px-2 py-1 rounded {% if active %}bg-slate-600{% else %}hover:bg-slate-700{% endif %}">
+           class="px-2 py-1 rounded {% if active %}{% if operator_mode %}bg-rose-900{% else %}bg-slate-600{% endif %}{% else %}{% if operator_mode %}hover:bg-rose-800{% else %}hover:bg-slate-700{% endif %}{% endif %}">
           {{ label }}
         </a>
       </li>
     {% endfor %}
+    {% if operator_mode %}
+      {% set admin_active = request.url.path.startswith("/admin/") %}
+      <li class="ml-auto">
+        <a href="/admin/stacks/"
+           {% if admin_active %}aria-current="page"{% endif %}
+           class="px-2 py-1 rounded {% if admin_active %}bg-rose-900{% else %}hover:bg-rose-800{% endif %}">
+          Admin
+        </a>
+      </li>
+    {% endif %}
   </ul>
 </nav>
