@@ -252,6 +252,33 @@ Once the scheduler is running, your daily workflow happens in two places:
 
 Switching between tags is a one-line `.env` edit followed by `docker compose pull && docker compose up -d`.
 
+## Multi-tenant hosts: staggering scheduled jobs
+
+If you run multiple findajob stacks on the same Docker host (one per tester / family member / friend), the daily `triage` cron in every stack defaults to `00:00` in the container's TZ. Same-TZ stacks fire `triage.py` at the *exact same instant*, simultaneously hitting RapidAPI / Gmail / OpenRouter — risking quota exhaustion and host CPU spikes.
+
+The image reads its supercronic schedule from `ops/scheduled-jobs.yaml` (baked into the image). Per-job env-var overrides in your stack's `.env` let you stagger schedules without forking the YAML:
+
+| Override | Effect |
+|---|---|
+| `FINDAJOB_<JOB>_SCHEDULE="<cron>"` | Replace the schedule for one job (e.g., shift triage to 00:30 PT) |
+| `FINDAJOB_<JOB>_ENABLED="false"` | Disable a single job for this stack |
+
+`<JOB>` is the upper-cased YAML key with `-` → `_`. So `triage` reads `FINDAJOB_TRIAGE_SCHEDULE` / `FINDAJOB_TRIAGE_ENABLED`; `notify-apply` reads `FINDAJOB_NOTIFY_APPLY_SCHEDULE` / `FINDAJOB_NOTIFY_APPLY_ENABLED`.
+
+Example for two same-TZ stacks sharing a host (LA-TZ):
+
+```env
+# stack-a/.env — keeps default
+# (no override needed)
+
+# stack-b/.env — shifts triage by 30 min
+FINDAJOB_TRIAGE_SCHEDULE=30 0 * * *
+```
+
+Do the same for any other job that does heavyweight network or LLM work (`discover` is the other big one). Lightweight jobs (`watchdog`, `notify-*`) don't need staggering — they're DB reads + ntfy pushes.
+
+The full job list lives at `ops/scheduled-jobs.yaml` in the repo. To inspect what your running container actually scheduled: `docker exec <container> cat /app/crontab` (the rendered output).
+
 ## Updating
 
 Before running `docker compose pull && docker compose up -d`:
@@ -327,6 +354,7 @@ A local rollback via `.env` pin doesn't affect other users on `:v0.1`.
 ## Troubleshooting
 
 - Container fails to start: `docker compose logs scheduler` usually points at the issue.
-- Supercronic prints "schedule invalid": a crontab syntax error. Check `ops/crontab` for recent changes.
+- Supercronic prints "schedule invalid": a crontab syntax error. Check `ops/scheduled-jobs.yaml` for the canonical schedule, or `docker exec <container> cat /app/crontab` for the rendered version after env-var overrides.
+- Container restart-loops with "render_crontab: FATAL": malformed `ops/scheduled-jobs.yaml`, missing required field, or an unrecognized `FINDAJOB_<JOB>_ENABLED` value (must be `true`/`false`/`1`/`0`/`yes`/`no`). Logs name the offending job.
 - Gmail ingestion silently disabled: re-run the token flow from step 4 (`ssh -L 8080:localhost:8080 <host>` + `docker compose --profile setup run --rm -p 8080:8080 gmail-auth`).
 - For anything else, open an issue at https://github.com/brockamer/findajob/issues.

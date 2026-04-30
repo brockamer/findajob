@@ -1,0 +1,81 @@
+# ops/scheduled-jobs.yaml — declarative manifest of supercronic-scheduled jobs.
+#
+# At container start, scripts/render_crontab.py reads this file plus env-var
+# overrides and writes the rendered crontab to /app/crontab. supercronic then
+# parses and executes it.
+#
+# Per-job env-var overrides (#344):
+#   FINDAJOB_<JOB>_SCHEDULE  — replaces `schedule:` field for that job
+#   FINDAJOB_<JOB>_ENABLED   — "true"/"false"; false drops the line
+#
+# <JOB> = upper-cased job name with hyphens converted to underscores. So
+# the `notify-apply` job key reads from FINDAJOB_NOTIFY_APPLY_SCHEDULE and
+# FINDAJOB_NOTIFY_APPLY_ENABLED. Document any operator-overridden values in
+# the stack's `.env` so multi-tenant hosts don't collide on the same minute.
+#
+# Add a new job: append a top-level entry. Disable permanently: delete it.
+# Disable temporarily: set `enabled: false` (cleaner than deletion, since
+# the YAML still records the canonical schedule for re-enable).
+#
+# All times evaluate against the container's TZ env var (compose `TZ:` slot).
+
+jobs:
+  triage:
+    schedule: "0 0 * * *"
+    command: "timeout ${FINDAJOB_TRIAGE_TIMEOUT:-7200} python3 /app/scripts/triage.py"
+    description: "Daily ingest + scoring (LinkedIn / Greenhouse / Ashby / Lever / Gmail)."
+    enabled: true
+
+  watchdog:
+    schedule: "*/10 * * * *"
+    command: "timeout 900 python3 /app/scripts/watchdog.py"
+    description: "Reset jobs stuck in prep_in_progress > 60 min; fail stuck speculative > 10 min."
+    enabled: true
+
+  notify-apply:
+    schedule: "0 6 * * *"
+    command: "python3 /app/scripts/notify.py apply-reminder"
+    description: "Daily morning apply reminder ntfy."
+    enabled: true
+
+  notify-stats:
+    schedule: "15 6 * * *"
+    command: "python3 /app/scripts/notify.py daily-stats"
+    description: "Daily morning summary ntfy."
+    enabled: true
+
+  notify-health:
+    schedule: "0 7 * * *"
+    command: "python3 /app/scripts/notify.py health-check"
+    description: "Backlog + silent-source warnings (after triage finishes)."
+    enabled: true
+
+  notify-issues:
+    schedule: "0 8 * * 1,3,5"
+    command: "python3 /app/scripts/notify.py issues-ping"
+    description: "Mon/Wed/Fri 08:00 — open-issues nudge."
+    enabled: true
+
+  notify-scoreboard:
+    schedule: "30 8 * * 1"
+    command: "python3 /app/scripts/notify.py scoreboard"
+    description: "Monday 08:30 — weekly issue scoreboard. Disabled until #112 (REST API rewrite) lands."
+    enabled: false
+
+  notify-feedback:
+    schedule: "0 8 * * 0"
+    command: "python3 /app/scripts/notify.py feedback-review"
+    description: "Sunday morning feedback-review push."
+    enabled: true
+
+  discover:
+    schedule: "0 2 * * 0"
+    command: "timeout 600 python3 /app/scripts/discover_companies.py"
+    description: "Sunday 02:00 — competency-driven company discovery (#284)."
+    enabled: true
+
+  rag-rebuild:
+    schedule: "0 3 * * 0"
+    command: "/usr/local/bin/aichat-ng --rag job_search_rag --rebuild-rag"
+    description: "Sunday 03:00 — rebuild candidate-context RAG index."
+    enabled: true

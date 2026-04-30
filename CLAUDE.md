@@ -93,7 +93,7 @@ file. If you're refactoring an old hardcoded section, add a note to `docs/GENERA
 | Board writes | `src/findajob/web/routes/board_actions.py` — every STATUS / REJECT_REASON transition is a POST handler calling `findajob.actions`. Sheet is read-only. |
 | Watchdog | `scripts/watchdog.py` every 10 min — resets jobs stuck in `prep_in_progress` > 60 min. No Sheet reads. |
 | RAG index | `job_search_rag` — never passed to scorer/CL/outreach |
-| Scheduler | supercronic in-container (see Container Context table below) |
+| Scheduler | supercronic in-container; schedules declared in `ops/scheduled-jobs.yaml`, rendered to `/app/crontab` by `scripts/render_crontab.py` at entrypoint. Per-job env overrides: `FINDAJOB_<JOB>_SCHEDULE` / `FINDAJOB_<JOB>_ENABLED` (#344). |
 | ntfy topic | in `data/.env` as `NTFY_TOPIC`; also in `CLAUDE.local.md` |
 | Google Form | URL and response sheet ID in `CLAUDE.local.md` and `config/form_responses_sheet_id.txt` |
 

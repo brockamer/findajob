@@ -118,6 +118,17 @@ fi
 # light back up. Idempotent: no-op when the destination already exists.
 gosu "$PUID:$PGID" python3 /app/scripts/seed_companies_of_interest.py >/dev/null || true
 
+# --- 3e. Render supercronic crontab from ops/scheduled-jobs.yaml (#344) ---
+# YAML at /app/scheduled-jobs.yaml is the source of truth. Per-job env-var
+# overrides (FINDAJOB_<JOB>_SCHEDULE / _ENABLED) let multi-tenant hosts
+# stagger schedules without forking the YAML. Fail-fast: a malformed YAML
+# or unrecognized override exits non-zero so the container restart loop
+# surfaces the problem loudly instead of silently falling back.
+python3 /app/scripts/render_crontab.py \
+    --input /app/scheduled-jobs.yaml \
+    --output /app/crontab
+chmod 0644 /app/crontab
+
 # --- 4. Launch materials viewer (uvicorn) in background -------------------
 # Supercronic stays PID 1 for compose restart tracking. Uvicorn runs as a
 # child process. If it crashes, supercronic keeps running — /healthz is the

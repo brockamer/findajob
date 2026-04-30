@@ -1,9 +1,16 @@
-"""Regression guard (#74): every notify.py subcommand in ops/crontab must be
-a valid key in scripts/notify.py's COMMANDS dispatcher.
+"""Regression guard (#74): every notify.py subcommand referenced in
+ops/scheduled-jobs.yaml must be a valid key in scripts/notify.py's COMMANDS
+dispatcher.
 
 PR #72 shipped three invalid invocations — `stats`, `issues`, `feedback` —
 that silently failed at runtime because supercronic fires the command, the
 process prints a usage line, and exits 1 with no operator-visible signal.
+
+Updated for #344: the source of scheduled jobs moved from `ops/crontab` to
+`ops/scheduled-jobs.yaml`. The check still parses the YAML's command field
+for `notify.py <subcmd>` patterns — covers both enabled and disabled jobs
+(disabled jobs may be re-enabled via env var, so a stale subcommand in a
+disabled job is still a latent bug).
 """
 
 from __future__ import annotations
@@ -12,8 +19,10 @@ import ast
 import pathlib
 import re
 
+import yaml
+
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
-CRONTAB = REPO_ROOT / "ops" / "crontab"
+SCHEDULED_JOBS = REPO_ROOT / "ops" / "scheduled-jobs.yaml"
 NOTIFY = REPO_ROOT / "scripts" / "notify.py"
 
 _CRON_NOTIFY_RE = re.compile(r"notify\.py\s+([a-z0-9-]+)")
@@ -39,13 +48,14 @@ def _notify_commands() -> set[str]:
 
 
 def _crontab_notify_subcommands() -> list[str]:
-    """Extract every `notify.py <subcmd>` invocation from non-comment crontab lines."""
+    """Extract every `notify.py <subcmd>` from the YAML's command fields."""
+    data = yaml.safe_load(SCHEDULED_JOBS.read_text())
     subs: list[str] = []
-    for line in CRONTAB.read_text().splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
+    for spec in data.get("jobs", {}).values():
+        if not isinstance(spec, dict):
             continue
-        subs.extend(m.group(1) for m in _CRON_NOTIFY_RE.finditer(line))
+        cmd = spec.get("command", "")
+        subs.extend(m.group(1) for m in _CRON_NOTIFY_RE.finditer(cmd))
     return subs
 
 

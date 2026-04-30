@@ -65,7 +65,7 @@ COPY scripts/ /app/scripts/
 COPY config/ /opt/findajob/bundled-config/
 COPY docs/ /app/docs/
 COPY ops/aichat-ng/ /opt/findajob/bundled-aichat/
-COPY ops/crontab /app/crontab
+COPY ops/scheduled-jobs.yaml /app/scheduled-jobs.yaml
 COPY ops/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
