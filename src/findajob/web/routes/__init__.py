@@ -9,6 +9,7 @@ from findajob.web.routes import (
     config,
     docs,
     feedback,
+    gmail_config,
     healthz,
     ingest,
     landing,
@@ -31,6 +32,7 @@ router.include_router(ingest.router)
 router.include_router(speculative.router, dependencies=_guard)
 router.include_router(stats.router, dependencies=_guard)
 router.include_router(config.router)
+router.include_router(gmail_config.router)
 router.include_router(tools.router)
 router.include_router(onboarding.router)
 router.include_router(docs.router)

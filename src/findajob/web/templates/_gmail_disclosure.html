@@ -1,0 +1,99 @@
+{# Single source of truth for the Gmail disclosure language. Rendered by
+   /config/gmail/ AND by docs/setup/gmail.md. Edits here propagate to both
+   surfaces; tests/test_gmail_disclosure_sync.py guards against drift. #}
+<div class="rounded-lg border-2 border-slate-300 bg-slate-50 p-4 mb-6">
+  <p class="font-semibold text-slate-900">
+    ⓘ&nbsp; What findajob does — and doesn't do — with your Gmail.
+  </p>
+  <p class="mt-2 text-sm text-slate-700">
+    findajob reads job-alert emails from senders you list (LinkedIn by
+    default) so it can score them and surface them on your board. It
+    <strong>does not</strong> read other mail, send mail, modify labels,
+    or move messages. Your app password lives only on this stack — never
+    on a server we control.
+  </p>
+  <p class="mt-2 text-sm text-slate-700">
+    findajob is open source. You can audit the exact code that touches
+    your mailbox before granting access:
+  </p>
+  <ul class="mt-1 list-disc pl-6 text-sm text-slate-700">
+    <li>
+      <a class="text-blue-700 underline"
+         href="{{ github_blob_url('src/findajob/gmail_imap.py') }}"
+         target="_blank" rel="noopener">
+        src/findajob/gmail_imap.py</a> — IMAP client
+    </li>
+    <li>
+      <a class="text-blue-700 underline"
+         href="{{ github_blob_url('src/findajob/fetchers.py') }}"
+         target="_blank" rel="noopener">
+        src/findajob/fetchers.py:fetch_gmail_jobs</a>
+    </li>
+  </ul>
+
+  <details class="mt-3">
+    <summary class="cursor-pointer text-sm font-medium text-slate-800">
+      ▾ Show full disclosure
+    </summary>
+    <div class="mt-3 space-y-3 text-sm text-slate-700">
+      <div>
+        <p class="font-semibold">1. Exact scope (what we touch)</p>
+        <ul class="list-disc pl-6">
+          <li>IMAP <code>LOGIN</code> to <code>imap.gmail.com:993</code></li>
+          <li>IMAP <code>SEARCH (FROM "&lt;sender&gt;")</code> for each
+            allowlisted sender, with <code>UID &gt; &lt;last seen&gt;</code></li>
+          <li>IMAP <code>FETCH (BODY.PEEK[])</code> of message bodies</li>
+          <li>IMAP <code>LOGOUT</code></li>
+        </ul>
+        <p class="mt-1">
+          That is the entire wire protocol. No <code>STORE</code>, no
+          <code>COPY</code>, no <code>EXPUNGE</code>, no <code>APPEND</code>,
+          no folder traversal beyond INBOX.
+        </p>
+      </div>
+
+      <div>
+        <p class="font-semibold">2. What we can't do</p>
+        <ul class="list-disc pl-6">
+          <li>findajob has no SMTP code path. It cannot send mail.</li>
+          <li>findajob never calls <code>STORE</code>/<code>MOVE</code>/<code>EXPUNGE</code>.
+            It cannot modify, label, or delete your messages.</li>
+          <li>findajob never reads outside your allowlisted senders. The
+            <code>SEARCH FROM</code> filter is applied server-side by Gmail
+            before anything is fetched.</li>
+        </ul>
+      </div>
+
+      <div>
+        <p class="font-semibold">3. Where your credentials live</p>
+        <ul class="list-disc pl-6">
+          <li><code>config/gmail.json</code> on this stack only (chmod 600).
+            Bind-mounted to the host filesystem at
+            <code>state/config/gmail.json</code>. Never transmitted off this
+            machine. Never logged. Never sent to any LLM, scoring service, or
+            external API.</li>
+          <li>Both <code>config/gmail.json</code> and
+            <code>config/gmail_state.json</code> are gitignored — they cannot
+            be accidentally committed.</li>
+        </ul>
+      </div>
+
+      <div>
+        <p class="font-semibold">4. How to revoke access</p>
+        <ul class="list-disc pl-6">
+          <li><strong>At Google (instant, total revocation):</strong>
+            <a class="text-blue-700 underline"
+               href="https://myaccount.google.com/apppasswords"
+               target="_blank" rel="noopener">myaccount.google.com/apppasswords</a>
+            → revoke the app password labeled <code>findajob-&lt;your-handle&gt;</code>.</li>
+          <li><strong>In findajob (instant, this stack only):</strong>
+            click <em>Disconnect Gmail integration</em> below. Wipes both
+            config files. Google-side app password remains valid until
+            separately revoked there.</li>
+          <li><strong>Recommendation:</strong> revoke at Google for any "I
+            want this to stop now" scenario.</li>
+        </ul>
+      </div>
+    </div>
+  </details>
+</div>

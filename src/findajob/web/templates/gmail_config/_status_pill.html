@@ -1,0 +1,12 @@
+{# Status pill. Inputs: status (one of: off, authorized, login_failed,
+   connection_error, saved_untested, unsaved). #}
+{% set palette = {
+  'off':              ('● Off',                  'bg-slate-200 text-slate-700'),
+  'authorized':       ('● Authorized',           'bg-emerald-100 text-emerald-800'),
+  'login_failed':     ('● Login failed',          'bg-rose-100 text-rose-800'),
+  'connection_error': ('● Connection error',      'bg-amber-100 text-amber-800'),
+  'saved_untested':   ('● Saved (not tested)',    'bg-slate-100 text-slate-700'),
+  'unsaved':          ('● Unsaved changes',       'bg-amber-100 text-amber-800'),
+} %}
+{% set label, klass = palette.get(status, palette['off']) %}
+<span class="rounded px-2 py-1 text-sm font-medium {{ klass }}">{{ label }}</span>

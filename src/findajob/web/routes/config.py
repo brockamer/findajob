@@ -18,9 +18,23 @@ from pathlib import Path
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
+from findajob import gmail_imap
 from findajob.web.config_files import list_editable, resolve_editable
 
 router = APIRouter()
+
+
+def _gmail_status() -> str:
+    """Mirror of gmail_config._derive_status, used for the /config/ summary pill."""
+    config = gmail_imap.load_config()
+    if config is None:
+        return "off"
+    state = gmail_imap.load_state()
+    if state.last_error == "auth_failed":
+        return "login_failed"
+    if state.last_login_at:
+        return "authorized"
+    return "saved_untested"
 
 
 @router.get("/config/", response_class=HTMLResponse)
@@ -31,7 +45,10 @@ def config_index(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(
         request=request,
         name="config/index.html",
-        context={"categories": categories},
+        context={
+            "categories": categories,
+            "gmail_status": _gmail_status(),
+        },
     )
 
 

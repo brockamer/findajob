@@ -10,6 +10,18 @@
     Saved files are written straight to disk on the pipeline host.
   </p>
 
+  <section class="mb-6">
+    <h2 class="text-lg font-medium mb-2">Integrations</h2>
+    <ul class="divide-y border rounded bg-white">
+      <li class="flex items-center justify-between px-4 py-2">
+        <a href="/config/gmail/" class="text-blue-600 hover:underline text-sm font-medium">
+          Gmail job-alert ingestion
+        </a>
+        {% with status=gmail_status %}{% include 'gmail_config/_status_pill.html' %}{% endwith %}
+      </li>
+    </ul>
+  </section>
+
   {% for cat in categories %}
     <section class="mb-6">
       <h2 class="text-lg font-medium mb-2">{{ cat.name }}</h2>

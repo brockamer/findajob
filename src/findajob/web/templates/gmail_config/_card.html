@@ -1,0 +1,85 @@
+{# HTMX target for save/test/disconnect responses. Inputs preserve current state. #}
+<div id="gmail-config-card">
+  <div class="flex items-center justify-between">
+    <h1 class="text-2xl font-bold">Gmail Job Alert Ingestion</h1>
+    {% include 'gmail_config/_status_pill.html' %}
+  </div>
+
+  {% include '_gmail_disclosure.html' %}
+
+  {% if validation_error %}
+    <p class="mb-3 rounded bg-rose-50 p-2 text-sm text-rose-800">
+      {{ validation_error }}
+    </p>
+  {% endif %}
+
+  <form>
+    <label class="mb-3 block">
+      <span class="text-sm font-medium">Gmail address</span>
+      <input type="email" name="address" required class="mt-1 block w-full rounded border-slate-300"
+             value="{{ config.address if config else '' }}">
+    </label>
+
+    <label class="mb-3 block" x-data="{show: false}">
+      <span class="text-sm font-medium">App password</span>
+      <input :type="show ? 'text' : 'password'" name="app_password" required
+             class="mt-1 block w-full rounded border-slate-300"
+             value="{{ config.app_password if config else '' }}">
+      <button type="button" @click="show = !show" class="mt-1 text-xs text-blue-700 underline">
+        <span x-text="show ? 'hide' : 'show'"></span>
+      </button>
+      <p class="mt-1 text-xs text-slate-600">
+        16 characters; spaces optional. Generate at
+        <a class="text-blue-700 underline" target="_blank" rel="noopener"
+           href="https://myaccount.google.com/apppasswords">myaccount.google.com/apppasswords</a>
+        (2FA required).
+      </p>
+    </label>
+
+    <label class="mb-3 block">
+      <span class="text-sm font-medium">Senders to ingest</span>
+      <textarea name="sender_allowlist" rows="3"
+                class="mt-1 block w-full rounded border-slate-300 font-mono text-sm">{% if config %}{{ config.sender_allowlist | join('\n') }}{% else %}jobalerts-noreply@linkedin.com{% endif %}</textarea>
+      <p class="mt-1 text-xs text-slate-600">One per line. Max 20.</p>
+    </label>
+
+    <div class="flex gap-2">
+      <button type="button"
+              hx-post="/config/gmail/save"
+              hx-include="closest form"
+              hx-target="#gmail-config-card"
+              hx-swap="outerHTML"
+              class="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-500">
+        Save
+      </button>
+      <button type="button"
+              hx-post="/config/gmail/test"
+              hx-target="#gmail-config-card"
+              hx-swap="outerHTML"
+              class="rounded bg-slate-200 px-4 py-2 hover:bg-slate-300">
+        Test connection
+      </button>
+    </div>
+  </form>
+
+  {% if config %}
+    <hr class="my-4">
+    {% if state %}
+      <p class="text-sm text-slate-700">
+        Last fetched: {{ state.last_fetched_at or 'never' }}
+        {% if state.last_uid %}(UID {{ state.last_uid }}){% endif %}
+      </p>
+      <p class="text-sm text-slate-700">
+        Streak: {{ state.auth_failure_streak }} consecutive failures
+      </p>
+    {% endif %}
+    <button type="button"
+            hx-post="/config/gmail/disconnect"
+            hx-confirm="Disconnect Gmail integration? This will stop ingesting Gmail-delivered alerts. You can reconnect anytime."
+            hx-target="#gmail-config-card"
+            hx-swap="outerHTML"
+            class="mt-3 rounded border border-rose-400 bg-white px-3 py-1 text-sm text-rose-700 hover:bg-rose-50">
+      Disconnect Gmail integration
+    </button>
+  {% endif %}
+</div>
