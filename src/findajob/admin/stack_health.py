@@ -69,12 +69,17 @@ def gather(stack: StackPath, *, now: datetime | None = None) -> StackHealth:
                     row["stage"]: row["n"]
                     for row in conn.execute("SELECT stage, COUNT(*) AS n FROM jobs GROUP BY stage")
                 }
+                # `stage_updated` is the canonical "when did stage last change"
+                # column written by web handlers (and read by scripts/watchdog.py
+                # for the same stuck-prep reset query). The earlier draft used
+                # a fictional `prep_started_at` column — production smoke 2026-04-30
+                # surfaced "no such column".
                 cutoff = (now - timedelta(minutes=60)).isoformat()
                 stuck_prep_count = conn.execute(
                     "SELECT COUNT(*) FROM jobs "
                     "WHERE stage = 'prep_in_progress' "
-                    "AND prep_started_at IS NOT NULL "
-                    "AND prep_started_at < ?",
+                    "AND stage_updated IS NOT NULL "
+                    "AND stage_updated < ?",
                     (cutoff,),
                 ).fetchone()[0]
         except sqlite3.Error as e:

@@ -14,8 +14,7 @@ _JOBS_SCHEMA = """
 CREATE TABLE jobs (
     id TEXT PRIMARY KEY,
     stage TEXT NOT NULL,
-    flagged_at TEXT,
-    prep_started_at TEXT
+    stage_updated TEXT
 );
 """
 
@@ -27,15 +26,17 @@ def build_pipeline_db(
 ) -> None:
     """Build a minimal pipeline.db with just the columns stack_health reads.
 
-    `rows` is a list of dicts with keys: id, stage, prep_started_at (ISO 8601 UTC).
+    `rows` is a list of dicts with keys: id, stage, stage_updated (ISO 8601 UTC).
+    The `stage_updated` field is what scripts/watchdog.py uses to detect stuck
+    prep — same column the production stuck-prep query reads.
     """
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path)
     conn.executescript(_JOBS_SCHEMA)
     for r in rows or []:
         conn.execute(
-            "INSERT INTO jobs (id, stage, prep_started_at) VALUES (?, ?, ?)",
-            (r["id"], r["stage"], r.get("prep_started_at")),
+            "INSERT INTO jobs (id, stage, stage_updated) VALUES (?, ?, ?)",
+            (r["id"], r["stage"], r.get("stage_updated") or r.get("prep_started_at")),
         )
     conn.commit()
     conn.close()
