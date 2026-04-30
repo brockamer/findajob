@@ -99,20 +99,45 @@
             <span x-show="copied === '{{ f.name }}'" class="text-emerald-700">✓ Copied</span>
           </button>
           {% endif %}
-          {# Primary action — green View for inline preview, blue Download for binaries.
-             Server already sets Content-Disposition: attachment + Content-Type: application/octet-stream;
-             `download` attribute is the belt to that suspenders. #}
+          {# Primary action — View for .md/.txt (server-rendered HTML), Blob-download
+             for binaries. The Blob path exists because reverse proxies (Synology in
+             front of internet-exposed instances, see #327) sometimes strip
+             Content-Disposition or rewrite Content-Type, causing browsers to render
+             docx bytes as text on screen. Fetching as a Blob and triggering a
+             download from a local object URL bypasses the proxy's response headers
+             entirely — the browser's only signal is the synthetic <a download>. #}
           {% if f.is_view %}
             <a class="inline-flex items-center px-3 py-1.5 rounded text-sm font-medium bg-emerald-600 hover:bg-emerald-700 text-white"
                href="/materials/{{ fingerprint }}/{{ f.name }}">
               View →
             </a>
           {% else %}
+            {% set dl_url = '/materials/' ~ fingerprint ~ '/' ~ f.name %}
             <a class="inline-flex items-center px-3 py-1.5 rounded text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white"
-               href="/materials/{{ fingerprint }}/{{ f.name }}"
+               href="{{ dl_url }}"
                download="{{ f.name }}"
-               type="application/octet-stream">
-              ↓ Download
+               type="application/octet-stream"
+               x-data="{ busy: false }"
+               :class="busy ? 'opacity-60 pointer-events-none' : ''"
+               @click.prevent="
+                 busy = true;
+                 fetch('{{ dl_url }}', { credentials: 'same-origin' })
+                   .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.blob(); })
+                   .then(blob => {
+                     const url = URL.createObjectURL(blob);
+                     const a = document.createElement('a');
+                     a.href = url;
+                     a.download = '{{ f.name }}';
+                     document.body.appendChild(a);
+                     a.click();
+                     document.body.removeChild(a);
+                     setTimeout(() => URL.revokeObjectURL(url), 1000);
+                   })
+                   .catch(e => alert('Download failed: ' + e.message))
+                   .finally(() => { busy = false });
+               ">
+              <span x-show="!busy">↓ Download</span>
+              <span x-show="busy">Downloading…</span>
             </a>
           {% endif %}
         </div>
