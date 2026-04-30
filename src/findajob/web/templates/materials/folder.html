@@ -29,27 +29,33 @@
   </div>
 </header>
 
-{# Workflow helper — explains the two ways to get content into Google Docs.
-   Two compact lines, low visual weight, dismissible per-tab via Alpine. #}
+{# Workflow helper — how to get .md / .docx into Google Docs. Dismissible. #}
 <aside class="mb-5 text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-md px-3 py-2"
        x-data="{ open: true }" x-show="open">
   <div class="flex items-start gap-2">
     <div class="flex-1">
-      <span class="font-semibold text-slate-700">Get this into Google Docs:</span>
-      <span class="ml-1">click <span class="text-emerald-700 font-medium">Copy MD</span> on any markdown file → paste into a new Google Doc (formatting preserved).</span>
-      <span class="ml-1 text-slate-500">For best-looking resume / cover letter, click <span class="text-blue-700 font-medium">Download</span> on the .docx and drag it onto <span class="font-mono">drive.google.com</span> — it opens in Docs with the original formatting intact.</span>
+      <span class="font-semibold text-slate-700">Want it in Google Docs?</span>
+      <span class="ml-1">For markdown: click <span class="text-emerald-700 font-medium">Copy MD</span> and paste into a new Google Doc (formatting preserved).</span>
+      <span class="ml-1 text-slate-500">For .docx: <span class="text-blue-700 font-medium">Download</span>, then drag onto <span class="font-mono">drive.google.com</span> to open in Docs.</span>
     </div>
     <button type="button" class="text-slate-400 hover:text-slate-700 text-base leading-none" @click="open = false" aria-label="Dismiss">×</button>
   </div>
 </aside>
 
-{# Document-type groups in workflow order: JD → Briefing → Resume → Resume Changes → Cover → Outreach → Critique → Review → Other #}
+{# Document-type groups in workflow order: JD → Briefing → Resume → Resume Changes → Cover → Outreach → Critique → Review → Other.
+   Each group header shows a plain-language description (what it is + when to use it). The per-file row shows
+   the format-specific hint, size/mtime, and the View/Download action. #}
 <div class="space-y-5" x-data="{ copied: '' }">
   {% for g in groups %}
   <section class="border border-slate-200 rounded-lg bg-white overflow-hidden">
-    <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-700 bg-slate-50 px-4 py-2 border-b border-slate-200">
-      {{ g.label }}
-    </h2>
+    <header class="bg-slate-50 px-4 py-2.5 border-b border-slate-200">
+      <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-700">
+        {{ g.label }}
+      </h2>
+      {% if g.description %}
+      <p class="text-xs text-slate-600 mt-1 leading-relaxed">{{ g.description }}</p>
+      {% endif %}
+    </header>
     <ul class="divide-y divide-slate-100">
       {% for f in g.files %}
       <li class="flex items-center justify-between px-4 py-3 hover:bg-slate-50">
@@ -57,28 +63,25 @@
           <div class="flex items-center gap-2">
             {% if f.ext == 'md' %}
               <span class="inline-block px-1.5 py-0.5 text-[10px] font-bold rounded bg-emerald-100 text-emerald-800">MD</span>
-              <span class="text-sm text-slate-700">Markdown — preview in browser, or copy + paste into Google Docs</span>
             {% elif f.ext == 'docx' %}
               <span class="inline-block px-1.5 py-0.5 text-[10px] font-bold rounded bg-blue-100 text-blue-800">DOCX</span>
-              <span class="text-sm text-slate-700">Word document — best for applications; drag to Google Drive to open in Docs</span>
             {% elif f.ext == 'txt' %}
               <span class="inline-block px-1.5 py-0.5 text-[10px] font-bold rounded bg-slate-200 text-slate-700">TXT</span>
-              <span class="text-sm text-slate-700">
-                {% if f.recipient %}Outreach to {{ f.recipient }}{% else %}Plain text — preview in browser{% endif %}
-              </span>
             {% else %}
               <span class="inline-block px-1.5 py-0.5 text-[10px] font-bold rounded bg-slate-200 text-slate-700">{{ f.ext|upper or 'FILE' }}</span>
-              <span class="text-sm text-slate-700">{{ f.name }}</span>
             {% endif %}
+            <span class="text-sm text-slate-700">
+              {% if f.hint %}{{ f.hint }}{% if f.recipient %} ({{ f.recipient }}){% endif -%}
+              {% elif f.recipient %}To {{ f.recipient }}
+              {% else %}{{ f.name }}{% endif %}
+            </span>
           </div>
           <div class="text-xs text-slate-400 mt-0.5">
             {% if f.size %}{{ f.size }}{% endif %}{% if f.size and f.mtime %} · {% endif %}{% if f.mtime %}{{ f.mtime }}{% endif %}
           </div>
         </div>
         <div class="shrink-0 flex items-center gap-2">
-          {# Copy MD button — only for .md (the only ext where source-on-disk is the
-             same content the user wants in their clipboard). Fetches ?raw=1 so the
-             clipboard receives byte-identical bytes to the file on disk. #}
+          {# Copy MD — fetches ?raw=1 for byte-identical clipboard contents. #}
           {% if f.ext == 'md' %}
           {% set raw_url = '/materials/' ~ fingerprint ~ '/' ~ f.name ~ '?raw=1' %}
           <button type="button"
@@ -97,8 +100,8 @@
           </button>
           {% endif %}
           {# Primary action — green View for inline preview, blue Download for binaries.
-             HTML5 `download` attribute on binaries forces save through any reverse-proxy
-             header rewriting (server-side already sets Content-Disposition: attachment). #}
+             Server already sets Content-Disposition: attachment + Content-Type: application/octet-stream;
+             `download` attribute is the belt to that suspenders. #}
           {% if f.is_view %}
             <a class="inline-flex items-center px-3 py-1.5 rounded text-sm font-medium bg-emerald-600 hover:bg-emerald-700 text-white"
                href="/materials/{{ fingerprint }}/{{ f.name }}">
@@ -107,7 +110,8 @@
           {% else %}
             <a class="inline-flex items-center px-3 py-1.5 rounded text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white"
                href="/materials/{{ fingerprint }}/{{ f.name }}"
-               download="{{ f.name }}">
+               download="{{ f.name }}"
+               type="application/octet-stream">
               ↓ Download
             </a>
           {% endif %}

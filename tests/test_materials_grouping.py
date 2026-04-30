@@ -160,3 +160,63 @@ def test_classify_works_across_display_names(filename: str, expected_label: str)
     """display_name is configurable per-tester (#335) — the classifier
     keys on document-type substring, not the leading display_name."""
     assert _classify_file(filename)[0] == expected_label
+
+
+def test_group_description_interpolates_title_and_company(tmp_path: Path):
+    """Resume / Cover descriptions should name the specific role + employer
+    so the user knows at a glance which submission these go with — not a
+    generic 'Word document' blurb."""
+    (tmp_path / "Candidate Resume - Acme - Sr Eng - 20260429-101515.docx").write_text("x")
+    (tmp_path / "Candidate Cover - Acme - Sr Eng - 20260429-101515.docx").write_text("x")
+    groups = _group_files(tmp_path, title="Senior Engineer", company="Acme")
+    descs = {g["label"]: g["description"] for g in groups}
+    assert "Senior Engineer" in descs["Resume"]
+    assert "Acme" in descs["Resume"]
+    assert "submit" in descs["Resume"].lower()
+    assert "Senior Engineer" in descs["Cover Letter"]
+    assert "Acme" in descs["Cover Letter"]
+
+
+def test_briefing_description_does_not_mention_submit(tmp_path: Path):
+    """The briefing is internal prep — it must NOT read like a submission
+    artifact. Regression guard against the prior 'best for applications'
+    blurb that appeared on every .docx including the briefing."""
+    (tmp_path / "Candidate Briefing - Acme - Sr Eng - 20260429-101515.docx").write_text("x")
+    (tmp_path / "Candidate Briefing - Acme - Sr Eng - 20260429-101515.md").write_text("x")
+    groups = _group_files(tmp_path, title="Sr Eng", company="Acme")
+    briefing = next(g for g in groups if g["label"] == "Briefing")
+    assert "submit" not in briefing["description"].lower()
+    assert "for your eyes only" in briefing["description"].lower()
+    # Per-file hints should also not mention "submit" for briefing
+    for f in briefing["files"]:
+        assert "submit" not in f["hint"].lower()
+
+
+def test_internal_prep_groups_marked_for_your_eyes_only(tmp_path: Path):
+    """Resume Changes and Recruiter Critique are internal-only diagnostics
+    that the user should never paste into an application — flag explicitly."""
+    (tmp_path / "Candidate Resume Changes - Acme - Sr Eng - 20260429-101515.md").write_text("x")
+    (tmp_path / "Candidate Critique - Acme - Sr Eng - 20260429-101515.md").write_text("x")
+    groups = {g["label"]: g for g in _group_files(tmp_path, title="Sr Eng", company="Acme")}
+    assert "for your eyes only" in groups["Resume Changes"]["description"].lower()
+    assert "for your eyes only" in groups["Recruiter Critique"]["description"].lower()
+
+
+def test_outreach_hint_mentions_paste_destination(tmp_path: Path):
+    """Outreach .txt rows should tell the user where to paste them — that's
+    the whole point of the file. Generic 'Plain text' isn't useful."""
+    (tmp_path / "Candidate Outreach to Jane Recruiter - Acme - 20260429-101515.txt").write_text("x")
+    groups = _group_files(tmp_path, title="Sr Eng", company="Acme")
+    outreach = next(g for g in groups if g["label"] == "Outreach")
+    f = outreach["files"][0]
+    assert "linkedin" in f["hint"].lower() or "email" in f["hint"].lower()
+
+
+def test_group_files_default_args_still_work(tmp_path: Path):
+    """Title/company are optional kwargs — calling without them should not
+    raise, and descriptions should still render with sensible fallbacks."""
+    (tmp_path / "Candidate Resume - Acme - Sr Eng - 20260429-101515.docx").write_text("x")
+    groups = _group_files(tmp_path)
+    desc = next(g["description"] for g in groups if g["label"] == "Resume")
+    assert desc  # non-empty
+    assert "{title}" not in desc and "{company}" not in desc

@@ -45,6 +45,59 @@ _OTHER_LABEL = "Other"
 _OTHER_ORDER = 99
 _OUTREACH_RECIPIENT_RE = re.compile(r" Outreach to ([^-]+?) - ")
 
+# Plain-language explanation per group: what it is + when to use it. Templates
+# interpolate {title}, {company}, {recipient} where applicable. Goal is to be
+# specific enough that a non-power-user (a beta tester opening this folder for
+# the first time) understands which docs are submission artifacts vs internal
+# prep notes — the latter must NEVER read as "send this to the employer."
+_GROUP_DESCRIPTIONS: dict[str, str] = {
+    "Job Description": "The original posting text. Reference while you tailor — not something you send back.",
+    "Briefing": (
+        "Plain-language brief on {company}, the {title} role, and how your background lines up. "
+        "Read first — it informs the resume, cover letter, and interview prep. For your eyes only."
+    ),
+    "Briefing (speculative)": (
+        "Deep-research brief on {company} for cold outreach. Use as the source for the outreach drafts "
+        "and any conversations you start. Not something you send."
+    ),
+    "Resume": "Your resume tailored to {title} at {company}. The .docx is what you submit with the application.",
+    "Resume Changes": (
+        "Diff-style explanation of how the tailored resume differs from your master resume — "
+        "a sanity check so you know what was emphasized or trimmed before you submit. For your eyes only."
+    ),
+    "Cover Letter": "Cover letter drafted for {title} at {company}. The .docx is what you submit with the application.",
+    "Outreach": (
+        "Short cold-outreach drafts for people who can refer you or surface the role internally. "
+        "Paste into LinkedIn DM or email."
+    ),
+    "Recruiter Critique": (
+        "A simulated recruiter's red-team take on the tailored resume and cover. Read it as a "
+        "'what would a skeptic pick on' pass before submitting. For your eyes only."
+    ),
+    "Review Checklist": (
+        "Pre-flight checklist of things to verify before you submit — formatting, claims, contact info."
+    ),
+}
+
+# Per-(group, ext) one-liner shown on each file row. Tells the user what to
+# *do with this specific file* — distinct from the group description above
+# which tells them what the doc *is*. Empty string means "fall back to the
+# generic ext blurb in the template."
+_FILE_HINTS: dict[tuple[str, str], str] = {
+    ("Resume", "docx"): "MS Word — submit this with the application",
+    ("Resume", "md"): "Markdown source — preview in browser, or Copy MD into Google Docs",
+    ("Cover Letter", "docx"): "MS Word — submit this with the application",
+    ("Cover Letter", "md"): "Markdown source — preview in browser, or Copy MD into Google Docs",
+    ("Briefing", "docx"): "MS Word — printable copy of the briefing",
+    ("Briefing", "md"): "Markdown source — preview in browser",
+    ("Briefing (speculative)", "md"): "Markdown source — preview in browser",
+    ("Outreach", "txt"): "Plain text — paste into LinkedIn DM or email",
+    ("Job Description", "txt"): "Plain text — the original posting",
+    ("Resume Changes", "md"): "Markdown source — preview in browser",
+    ("Recruiter Critique", "md"): "Markdown source — preview in browser",
+    ("Review Checklist", "md"): "Markdown source — preview in browser",
+}
+
 
 def _classify_file(name: str) -> tuple[str, int]:
     """Return (group label, sort order) for a filename. Falls back to 'Other'."""
@@ -73,11 +126,21 @@ def _human_mtime(ts: float) -> str:
     return datetime.fromtimestamp(ts, tz=UTC).strftime("%Y-%m-%d %H:%M UTC")
 
 
-def _group_files(folder: Path) -> list[dict]:
+def _format_description(label: str, title: str, company: str) -> str:
+    """Render the group description with title/company interpolated. Falls
+    back to empty string if no description is registered (e.g. 'Other')."""
+    template = _GROUP_DESCRIPTIONS.get(label, "")
+    if not template:
+        return ""
+    return template.format(title=title or "this role", company=company or "this company")
+
+
+def _group_files(folder: Path, title: str = "", company: str = "") -> list[dict]:
     """Group files in a prep folder by document type, ordered for the
-    natural reading sequence (JD first, Review Checklist last). Each file
-    carries its display affordance — .md/.txt render inline (View),
-    everything else downloads (Download)."""
+    natural reading sequence (JD first, Review Checklist last). Each group
+    carries a plain-language description; each file row carries a
+    per-(group, ext) hint plus its display affordance — .md/.txt render
+    inline (View), everything else downloads (Download)."""
     by_label: dict[str, dict] = {}
     for p in sorted(folder.iterdir()):
         if not p.is_file():
@@ -106,8 +169,17 @@ def _group_files(folder: Path) -> list[dict]:
             "recipient": recipient,
             "size": size,
             "mtime": mtime,
+            "hint": _FILE_HINTS.get((label, ext), ""),
         }
-        by_label.setdefault(label, {"label": label, "order": order, "files": []})
+        by_label.setdefault(
+            label,
+            {
+                "label": label,
+                "order": order,
+                "description": _format_description(label, title, company),
+                "files": [],
+            },
+        )
         by_label[label]["files"].append(entry)
 
     # Within each group, order: .md first (View), then .txt (View),
@@ -176,7 +248,9 @@ def folder_view(
             return RedirectResponse(url=f"/jobs/{fingerprint}/jd", status_code=303)
         raise HTTPException(status_code=404, detail="folder not found")
     row = db.execute("SELECT title, company, stage FROM jobs WHERE fingerprint = ?", (fingerprint,)).fetchone()
-    groups = _group_files(folder)
+    title = row["title"] if row else ""
+    company = row["company"] if row else ""
+    groups = _group_files(folder, title=title, company=company)
     templates = request.app.state.templates
     return templates.TemplateResponse(
         request=request,
@@ -184,8 +258,8 @@ def folder_view(
         context={
             "fingerprint": fingerprint,
             "folder_name": folder.name,
-            "title": row["title"] if row else "",
-            "company": row["company"] if row else "",
+            "title": title,
+            "company": company,
             "stage": row["stage"] if row else "",
             "groups": groups,
         },
