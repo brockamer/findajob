@@ -13,6 +13,11 @@ ARG SUPERCRONIC_VERSION=v0.2.29
 ARG SUPERCRONIC_SHA1SUM=cd48d45c4b10f3f0bfdd3a57d054cd05ac96812b
 ARG SUPERCRONIC_FILE=supercronic-linux-amd64
 
+# Build SHA — baked in at image build time so /config/gmail/ disclosure
+# banner links audit URLs to the exact commit running.
+ARG BUILD_SHA=main
+ENV FINDAJOB_BUILD_SHA=${BUILD_SHA}
+
 # System packages in a single layer. gosu is Debian's drop-privilege helper —
 # used by the entrypoint to exec the scheduler as a non-root user matching
 # the host's PUID:PGID.
