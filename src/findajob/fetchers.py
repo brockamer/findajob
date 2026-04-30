@@ -11,10 +11,6 @@ from findajob.cleaning import clean_company, clean_title, extract_linkedin_job_i
 from findajob.paths import BASE, PANDOC
 from findajob.utils import JD_MAX_CHARS, log_event, strip_jd_boilerplate
 
-GMAIL_CREDS = f"{BASE}/config/gmail_oauth_client.json"
-GMAIL_TOKEN = f"{BASE}/config/gmail_token.json"
-GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
-
 # Per-call throttle to keep morning triage from bursting past the RapidAPI
 # per-minute cap on /v2/linkedin/get. 214-job triage × ~30% LinkedIn ≈ 13s added.
 _LINKEDIN_GET_THROTTLE_SEC = 0.2
@@ -482,31 +478,44 @@ def fetch_jobsapi_jobs(queries_path):
 
 
 # ── Gmail Ingestion ──
-def get_gmail_service():
-    from google.auth.transport.requests import Request
-    from google.oauth2.credentials import Credentials
-    from google_auth_oauthlib.flow import InstalledAppFlow
-    from googleapiclient.discovery import build
 
-    creds = None
-    if os.path.exists(GMAIL_TOKEN):
-        creds = Credentials.from_authorized_user_file(GMAIL_TOKEN, GMAIL_SCOPES)
 
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-            with open(GMAIL_TOKEN, "w") as f:
-                f.write(creds.to_json())
-        else:
-            if not sys.stdin.isatty():
-                log_event("gmail_auth_skipped", reason="No token and no TTY — run triage.py manually once to authorize")
-                return None
-            flow = InstalledAppFlow.from_client_secrets_file(GMAIL_CREDS, GMAIL_SCOPES)
-            creds = flow.run_local_server(port=0)
-            with open(GMAIL_TOKEN, "w") as f:
-                f.write(creds.to_json())
+def _normalize_sender_to_source(sender: str, url: str = "") -> str:
+    """Map an IMAP sender (and fallback URL) to a findajob source string.
 
-    return build("gmail", "v1", credentials=creds)
+    Sender is the direct ground truth from the IMAP envelope; URL is the
+    fallback when the sender domain isn't in the known map. Returns
+    "gmail_unknown" if neither resolves.
+    """
+    sender_lc = (sender or "").lower()
+    if "linkedin.com" in sender_lc:
+        return "gmail_linkedin"
+    if "indeed" in sender_lc:
+        return "gmail_indeed"
+    if "ziprecruiter" in sender_lc:
+        return "gmail_ziprecruiter"
+    if "@google.com" in sender_lc or "careers-noreply" in sender_lc:
+        return "gmail_google"
+    # URL fallback — same patterns the parser uses
+    url_lc = (url or "").lower()
+    if "linkedin.com" in url_lc or "lnkd.in" in url_lc:
+        return "gmail_linkedin"
+    if "indeed.com" in url_lc:
+        return "gmail_indeed"
+    if "ziprecruiter.com" in url_lc:
+        return "gmail_ziprecruiter"
+    if "google.com" in url_lc:
+        return "gmail_google"
+    return "gmail_unknown"
+
+
+def notify_send_raw(text: str) -> None:
+    """Thin wrapper for ntfy notifications. Module-level for monkeypatching in tests."""
+    subprocess.run(
+        [sys.executable, f"{BASE}/scripts/notify.py", "send-raw", text],
+        check=False,
+        timeout=10,
+    )
 
 
 def _extract_jobs_from_html(html_content: str) -> list[dict]:
@@ -662,41 +671,66 @@ def parse_jobs_from_email_imap(message) -> list[dict]:
 
 
 def fetch_gmail_jobs():
-    if not os.path.exists(GMAIL_CREDS):
-        log_event("gmail_skipped", reason="gmail_oauth_client.json not found")
+    """Fetch new job-alert messages via IMAP+app-password and parse to job rows.
+
+    Off state (no config/gmail.json) returns [] silently. Auth failures
+    increment a streak; on the 2→3 transition we ntfy the user. Transient
+    errors (timeouts / SSL) do NOT increment the streak.
+
+    See docs/superpowers/specs/2026-04-30-330-design.md §6 for the full
+    contract.
+    """
+    import email as email_lib
+    from dataclasses import replace
+    from datetime import UTC, datetime
+
+    from findajob import gmail_imap
+
+    config = gmail_imap.load_config()
+    if config is None:
+        log_event("gmail_skipped", reason="not_configured")
         return []
 
-    try:
-        service = get_gmail_service()
-        if service is None:
-            return []
-    except Exception as e:
-        log_event("gmail_error", stage="auth", error=str(e))
+    state = gmail_imap.load_state()
+    outcome = gmail_imap.fetch_new_messages(config, state)
+
+    if outcome.result == gmail_imap.TestResult.AUTH_FAILED:
+        new_streak = state.auth_failure_streak + 1
+        gmail_imap.save_state(replace(state, auth_failure_streak=new_streak, last_error="auth_failed"))
+        log_event("gmail_auth_failed", streak=new_streak)
+        if new_streak == 3:
+            try:
+                notify_send_raw("🔐 Gmail login failed — refresh app password at /config/gmail/")
+            except Exception as e:
+                log_event("gmail_ntfy_send_failed", error=str(e))
         return []
 
-    query = (
-        "(from:jobalerts-noreply@linkedin.com OR from:jobs-noreply@linkedin.com "
-        "OR from:indeedjobs@indeed.com OR from:alert@indeed.com "
-        "OR from:careers-noreply@google.com OR from:alerts@ziprecruiter.com "
-        "OR from:noreply@ziprecruiter.com) newer_than:30d"
+    if outcome.result == gmail_imap.TestResult.CONNECTION_ERROR:
+        log_event("gmail_connection_error")
+        return []
+
+    # SUCCESS
+    now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    gmail_imap.save_state(
+        replace(
+            state,
+            last_uid=outcome.new_uid,
+            last_uidvalidity=outcome.new_uidvalidity,
+            auth_failure_streak=0,
+            last_fetched_at=now,
+            last_login_at=now,
+            last_error=None,
+        )
     )
+    log_event("gmail_messages_found", count=len(outcome.messages))
 
     jobs = []
-    try:
-        results = service.users().messages().list(userId="me", q=query, maxResults=50).execute()
-        messages = results.get("messages", [])
-        log_event("gmail_messages_found", count=len(messages))
-
-        for msg_ref in messages:
-            try:
-                msg = service.users().messages().get(userId="me", id=msg_ref["id"], format="full").execute()
-                extracted = parse_jobs_from_email_imap(msg)  # replaced in Task 6
-                jobs.extend(extracted)
-            except Exception as e:
-                log_event("gmail_parse_error", msg_id=msg_ref["id"], error=str(e))
-
-    except Exception as e:
-        log_event("gmail_error", stage="fetch", error=str(e))
-
-    log_event("gmail_fetched", count=len(jobs))
+    for sender, raw_bytes in outcome.messages:
+        try:
+            msg = email_lib.message_from_bytes(raw_bytes)
+            for job in parse_jobs_from_email_imap(msg):
+                job["source"] = _normalize_sender_to_source(sender, job.get("url", ""))
+                jobs.append(job)
+        except Exception as e:
+            log_event("gmail_parse_error", error=str(e))
     return jobs
