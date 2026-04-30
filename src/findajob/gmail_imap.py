@@ -9,9 +9,13 @@ the full transparency contract.
 
 from __future__ import annotations
 
+import imaplib
 import json
 import os
+import socket
+import ssl
 from dataclasses import asdict, dataclass
+from enum import Enum
 from pathlib import Path
 
 from findajob.paths import BASE
@@ -143,3 +147,75 @@ def save_config(config: GmailConfig) -> None:
         os.fsync(fh.fileno())
     os.replace(tmp_path, GMAIL_CONFIG_PATH)
     os.chmod(GMAIL_CONFIG_PATH, 0o600)
+
+
+class TestResult(Enum):
+    SUCCESS = "success"
+    AUTH_FAILED = "auth_failed"
+    CONNECTION_ERROR = "connection_error"
+    INVALID_CONFIG = "invalid_config"
+
+
+_AUTH_FAIL_MARKERS = (b"AUTHENTICATIONFAILED", b"Invalid credentials")
+
+
+def _classify_error(exc: BaseException) -> TestResult:
+    """Map an IMAP/network exception to a :class:`TestResult`.
+
+    Authentication failures are bytes-matched against known markers in the
+    IMAP error message. Unknown imaplib errors are treated as transient
+    (CONNECTION_ERROR) so a single Gmail hiccup never trips the
+    auth_failure_streak that drives the user-visible ntfy.
+    """
+    if isinstance(exc, imaplib.IMAP4.error):
+        msg = exc.args[0] if exc.args else b""
+        if isinstance(msg, str):
+            msg = msg.encode("utf-8", errors="ignore")
+        if any(marker in msg for marker in _AUTH_FAIL_MARKERS):
+            return TestResult.AUTH_FAILED
+        return TestResult.CONNECTION_ERROR
+    if isinstance(exc, (socket.timeout, socket.gaierror, ConnectionError, ssl.SSLError, OSError)):
+        return TestResult.CONNECTION_ERROR
+    return TestResult.CONNECTION_ERROR
+
+
+def _connect(config: GmailConfig) -> imaplib.IMAP4_SSL:
+    """Return an authenticated IMAP4_SSL client.
+
+    Caller MUST invoke ``.logout()`` in a finally block. Uses a 10-second
+    socket timeout to bound the Test connection button's worst-case
+    response time.
+
+    If ``login()`` raises, the partial socket is cleaned up before re-raising
+    so callers never see a half-open client.
+    """
+    client = imaplib.IMAP4_SSL("imap.gmail.com", 993, timeout=10)
+    try:
+        client.login(config.address, config.app_password)
+    except BaseException:
+        try:
+            client.logout()
+        except Exception:
+            pass
+        raise
+    return client
+
+
+def test_login(config: GmailConfig) -> TestResult:
+    """One-shot LOGIN/LOGOUT against Gmail. Returns the classified result.
+
+    Used by the /config/gmail/test endpoint to surface auth status to the
+    user without performing a fetch.
+    """
+    client = None
+    try:
+        client = _connect(config)
+        return TestResult.SUCCESS
+    except BaseException as exc:  # noqa: BLE001 — narrow inside _classify_error
+        return _classify_error(exc)
+    finally:
+        if client is not None:
+            try:
+                client.logout()
+            except Exception:
+                pass
