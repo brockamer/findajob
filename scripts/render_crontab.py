@@ -78,8 +78,12 @@ def render(jobs_yaml: Mapping, env: Mapping[str, str]) -> str:
             if field not in spec:
                 raise RenderError(f"scheduled-jobs.yaml: job {name!r} missing required field {field!r}")
 
+        # Empty string is treated as "no override" — compose.yaml.example
+        # sets FINDAJOB_<JOB>_* to default-empty so operators only need to
+        # populate the var in .env to take effect. Without this, a missing
+        # .env line would render as "" and break the crontab.
         enabled_env = env.get(_env_var_for(name, "ENABLED"))
-        enabled = _parse_enabled(enabled_env) if enabled_env is not None else bool(spec.get("enabled", True))
+        enabled = _parse_enabled(enabled_env) if enabled_env else bool(spec.get("enabled", True))
 
         description = spec.get("description") or ""
         if not enabled:
@@ -89,7 +93,8 @@ def render(jobs_yaml: Mapping, env: Mapping[str, str]) -> str:
             parts.append("\n")
             continue
 
-        schedule = env.get(_env_var_for(name, "SCHEDULE"), spec["schedule"])
+        schedule_env = env.get(_env_var_for(name, "SCHEDULE"))
+        schedule = schedule_env if schedule_env else spec["schedule"]
         if description:
             parts.append(f"\n# {name}: {description}\n")
         else:

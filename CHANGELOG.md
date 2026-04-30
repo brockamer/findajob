@@ -10,6 +10,26 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+## [0.8.1] — 2026-04-30
+
+Patch bump. Fixes a deployment-time gap in v0.8.0: `ops/compose.yaml.example` did not pass the new `FINDAJOB_<JOB>_SCHEDULE` / `FINDAJOB_<JOB>_ENABLED` env vars from `.env` into the container, so multi-tenant stagger overrides had no effect on existing stacks. Two coupled fixes ship together so a fresh-install operator can stagger schedules without editing compose.yaml by hand.
+
+### Fixed
+
+- **`ops/compose.yaml.example` now passes all 16 `FINDAJOB_<JOB>_*` override vars through to the scheduler service** with default-empty values. Existing operators on v0.8.0 must re-pull `compose.yaml` from `main` (or hand-edit) before per-stack stagger overrides will apply.
+- **`scripts/render_crontab.py` treats empty-string env vars as "no override"** — falls through to the YAML default. Required because compose.yaml.example sets all 16 vars to default-empty; without this, a stack with no overrides set would render an empty schedule and break supercronic.
+
+### Migration required
+
+For operators on `:v0.8.0` who want to use per-stack stagger overrides:
+
+1. Re-pull `compose.yaml` from main: `curl -fsSL -o compose.yaml https://raw.githubusercontent.com/brockamer/findajob/main/ops/compose.yaml.example` (preserve any local customizations like watchtower labels).
+2. Edit `.env` to set `FINDAJOB_TRIAGE_SCHEDULE=...` etc. for each override.
+3. `docker compose pull && docker compose up -d`.
+4. Verify: `docker exec <container> cat /app/crontab` shows the overridden schedule.
+
+For operators on `:v0.8.0` not staggering, no migration needed — defaults preserve all behavior.
+
 ## [0.8.0] — 2026-04-30
 
 Minor bump. Closes the loop on the company discoverer with operator-facing surfacing (Dashboard widget + ntfy push), and replaces the static `ops/crontab` with a declarative YAML manifest that lets multi-tenant hosts stagger same-TZ stacks without forking the image. Both ship clean — no migration steps required for existing operators; defaults preserve all prior behavior.

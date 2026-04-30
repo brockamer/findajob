@@ -136,6 +136,24 @@ def test_env_enabled_accepts_common_truthy_aliases() -> None:
         assert _executable_lines(out) == [("* * * * *", "x")], f"failed for {val!r}"
 
 
+def test_empty_string_env_override_falls_through_to_yaml_default() -> None:
+    """compose.yaml.example sets FINDAJOB_<JOB>_* to default-empty for all
+    16 vars so operators only have to populate .env. Empty string must be
+    treated as 'no override' — otherwise a missing .env line breaks crontab."""
+    yaml_data = {"jobs": {"j": {"schedule": "0 0 * * *", "command": "x"}}}
+    env = {"FINDAJOB_J_SCHEDULE": "", "FINDAJOB_J_ENABLED": ""}
+    out = render(yaml_data, env)
+    assert _executable_lines(out) == [("0 0 * * *", "x")]
+
+
+def test_empty_string_enabled_does_not_raise() -> None:
+    """Empty FINDAJOB_<JOB>_ENABLED falls through to YAML default, doesn't error.
+    YAML's enabled:false wins when env var is empty — empty is 'no override'."""
+    yaml_data = {"jobs": {"j": {"schedule": "* * * * *", "command": "x", "enabled": False}}}
+    out = render(yaml_data, {"FINDAJOB_J_ENABLED": ""})
+    assert _executable_lines(out) == []
+
+
 # ── Fail-fast behavior ────────────────────────────────────────────────────
 
 
