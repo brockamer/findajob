@@ -265,19 +265,19 @@ def test_missing_root_returns_empty(tmp_path: Path) -> None:
 
 def test_finds_findajob_dirs_only(tmp_path: Path) -> None:
     _make_stack(tmp_path, "alice")
-    _make_stack(tmp_path, "brock")
+    _make_stack(tmp_path, "dave")
     (tmp_path / "dozzle").mkdir()
     (tmp_path / "archivebox").mkdir()
     (tmp_path / "watchtower").mkdir()
     out = discover_stacks(tmp_path)
-    assert [s.handle for s in out] == ["alice", "brock"]
+    assert [s.handle for s in out] == ["alice", "dave"]
 
 
 def test_returns_sorted_by_handle(tmp_path: Path) -> None:
-    for h in ("tango", "brock", "alice", "papa"):
+    for h in ("tango", "dave", "alice", "papa"):
         _make_stack(tmp_path, h)
     out = discover_stacks(tmp_path)
-    assert [s.handle for s in out] == ["alice", "brock", "papa", "tango"]
+    assert [s.handle for s in out] == ["alice", "dave", "papa", "tango"]
 
 
 def test_skips_findajob_dir_missing_state(tmp_path: Path) -> None:
@@ -1069,27 +1069,49 @@ def test_route_returns_200_in_operator_mode(operator_app, tmp_path: Path) -> Non
     stacks = tmp_path / "stacks"
     stacks.mkdir()
     _seed_stack(stacks, "alice")
-    _seed_stack(stacks, "brock")
+    _seed_stack(stacks, "dave")
 
     client = TestClient(operator_app)
     r = client.get("/admin/stacks/")
     assert r.status_code == 200
     assert ">alice<" in r.text
-    assert ">brock<" in r.text
+    assert ">dave<" in r.text
 
 
-def test_operator_first_then_alphabetical(operator_app, tmp_path: Path) -> None:
+def test_pure_alphabetical_when_no_operator_handle(operator_app, tmp_path: Path) -> None:
+    """When FINDAJOB_OPERATOR_HANDLE is unset, rows sort pure alphabetical."""
     stacks = tmp_path / "stacks"
     stacks.mkdir()
-    for h in ("tango", "alice", "brock", "papa"):
+    for h in ("tango", "alice", "papa"):
         _seed_stack(stacks, h)
 
     client = TestClient(operator_app)
     r = client.get("/admin/stacks/")
     body = r.text
-    # brock first, then alphabetical: alice, papa, tango.
     pos = lambda s: body.find(s)  # noqa: E731
-    assert pos(">brock<") < pos(">alice<") < pos(">papa<") < pos(">tango<")
+    assert pos(">alice<") < pos(">papa<") < pos(">tango<")
+
+
+def test_operator_handle_floats_to_top(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """When FINDAJOB_OPERATOR_HANDLE=papa, papa renders first; rest alphabetical."""
+    monkeypatch.setenv("FINDAJOB_OPERATOR_MODE", "1")
+    monkeypatch.setenv("FINDAJOB_OPERATOR_HANDLE", "papa")
+    stacks = tmp_path / "stacks"
+    stacks.mkdir()
+    monkeypatch.setenv("FINDAJOB_ADMIN_STACKS_ROOT", str(stacks))
+    for h in ("tango", "alice", "papa", "dave"):
+        _seed_stack(stacks, h)
+    companies = tmp_path / "companies"
+    companies.mkdir()
+    db = tmp_path / "pipeline.db"
+    db.touch()
+    app = create_app(companies_root=companies, db_path=db, base_root=tmp_path)
+    client = TestClient(app)
+    r = client.get("/admin/stacks/")
+    body = r.text
+    pos = lambda s: body.find(s)  # noqa: E731
+    # papa first, then alphabetical: alice, dave, tango.
+    assert pos(">papa<") < pos(">alice<") < pos(">dave<") < pos(">tango<")
 
 
 def test_empty_state_banner_when_no_stacks(operator_app, tmp_path: Path) -> None:
@@ -1155,7 +1177,7 @@ def test_render_under_2s(operator_app, tmp_path: Path) -> None:
 
     stacks = tmp_path / "stacks"
     stacks.mkdir()
-    for h in ("alice", "brock", "dave", "judy", "papa", "tango"):
+    for h in ("alice", "dave", "ed", "judy", "papa", "tango"):
         sp_root = stacks / f"findajob-{h}" / "state"
         rows = [{"id": f"{h}-{i}", "stage": "scored"} for i in range(50)]
         build_pipeline_db(sp_root / "data" / "pipeline.db", rows=rows)
@@ -1232,9 +1254,19 @@ def stacks_index(request: Request) -> HTMLResponse:
 
 
 def _sort_operator_first(rows: list[StackHealth]) -> list[StackHealth]:
-    """Operator's own stack (`brock`) renders first; others alphabetical."""
-    operator = [r for r in rows if r.handle == "brock"]
-    rest = sorted([r for r in rows if r.handle != "brock"], key=lambda r: r.handle)
+    """When `FINDAJOB_OPERATOR_HANDLE` is set in the env, that handle's row
+    renders first; the rest sort alphabetically. When unset, pure
+    alphabetical.
+
+    The handle is read from the env, never hardcoded — keeps tracked
+    code free of operator-specific identifiers per CLAUDE.md PII /
+    domain-neutrality rules.
+    """
+    op = os.environ.get("FINDAJOB_OPERATOR_HANDLE", "").strip()
+    if not op:
+        return sorted(rows, key=lambda r: r.handle)
+    operator = [r for r in rows if r.handle == op]
+    rest = sorted([r for r in rows if r.handle != op], key=lambda r: r.handle)
     return operator + rest
 ```
 
@@ -1408,12 +1440,12 @@ The conditional import — not just the conditional `include_router` — is inte
 - [ ] **Step 6: Run tests; verify they pass.**
 
 Run: `uv run pytest tests/test_admin_stacks_route.py -v`
-Expected: 8 passed.
+Expected: 9 passed.
 
 - [ ] **Step 7: Run the whole admin test suite.**
 
 Run: `uv run pytest tests/test_admin_*.py -v`
-Expected: 32 passed (6 jsonl_tail + 7 stack_discovery + 8 stack_health + 3 nav + 8 route).
+Expected: 33 passed (6 jsonl_tail + 7 stack_discovery + 8 stack_health + 3 nav + 9 route).
 
 - [ ] **Step 8: Lint + type-check.**
 
@@ -1481,6 +1513,12 @@ services:
   scheduler:
     environment:
       FINDAJOB_OPERATOR_MODE: "1"
+      # Optional: float operator's own row to the top of the dashboard.
+      # Value must match the operator's stack handle (the trailing component
+      # of /opt/stacks/findajob-{handle}). When unset, rows render in pure
+      # alphabetical order. The handle is read from the env so tracked code
+      # stays free of operator-specific identifiers.
+      FINDAJOB_OPERATOR_HANDLE: "${YOUR_HANDLE}"
     volumes:
       - /opt/stacks:/opt/stacks:ro
 ```
@@ -1526,6 +1564,7 @@ In the Container Context table, add a row in the "thing → native → container
 ```
 | Cross-stack mount (operator-mode only) | n/a | `/opt/stacks/:/opt/stacks:ro` (added to operator's `compose.yaml` only) |
 | `FINDAJOB_OPERATOR_MODE` env | n/a | `1` on operator's stack only; unset on testers' (#333) |
+| `FINDAJOB_OPERATOR_HANDLE` env (optional) | n/a | Operator's stack handle (e.g. matches the trailing dir component of `/opt/stacks/findajob-{handle}`); when set, that row floats to the top of the `/admin/stacks/` table. Unset = pure alphabetical (#333). |
 ```
 
 - [ ] **Step 3: Update `CLAUDE.local.md`.**
@@ -1564,6 +1603,10 @@ Under `## [Unreleased]`, add a `### Migration required` subsection (creating it 
     scheduler:
       environment:
         FINDAJOB_OPERATOR_MODE: "1"
+        # Optional — match this to your stack handle to float your own
+        # row to the top of the dashboard. When unset, rows render
+        # alphabetically.
+        FINDAJOB_OPERATOR_HANDLE: "<your-handle>"
       volumes:
         - /opt/stacks:/opt/stacks:ro
   ```
@@ -1656,7 +1699,7 @@ After bumping `findajob-brock` to the new image:
 2. `cd /opt/stacks/findajob-brock && docker compose up -d`.
 3. Wait 5s, then `docker logs <scheduler container>` — confirm no errors at startup.
 4. Hit `/admin/stacks/` from a browser (or `curl -u op:secret https://findajob.<operator-domain>/admin/stacks/`).
-5. Verify: page returns 200; nav bar is red; six rows visible (`brock`, `alice`, `dave`, `judy`, `papa`, `tango`); `brock` row first; each row's drill-down recipe matches the handle.
+5. Verify: page returns 200; nav bar is red; one row per `findajob-*` stack on the host; if you set `FINDAJOB_OPERATOR_HANDLE` your row is first, otherwise rows are alphabetical; each row's drill-down recipe matches the handle.
 6. Hit `/board/dashboard` — verify nav bar is red there too (ambient cue applies to every page).
 7. Hit `/admin/stacks/` from one of the tester stacks (e.g. `findajob-alice.<operator-domain>/admin/stacks/`) — verify 404. Verify alice's nav bar is the existing slate-800 (unchanged).
 
