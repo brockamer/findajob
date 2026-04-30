@@ -260,3 +260,133 @@ def test_test_login_uses_imap_gmail_com_993_with_timeout(fake_config):
     with patch("findajob.gmail_imap.imaplib.IMAP4_SSL", return_value=fake_client) as m:
         gmail_imap.test_login(fake_config)
     m.assert_called_once_with("imap.gmail.com", 993, timeout=10)
+
+
+def _select_response(uidvalidity: int):
+    """Build a fake SELECT response that imaplib.IMAP4.untagged_responses uses."""
+    return ("OK", [b"1234"]), {"UIDVALIDITY": [str(uidvalidity).encode()]}
+
+
+def _make_fake_imap_client(*, uidvalidity: int, search_results: dict[str, list[int]], messages: dict[int, bytes]):
+    """Build a MagicMock IMAP client that simulates SELECT/SEARCH/FETCH.
+
+    ``search_results`` maps sender → list of UIDs. ``messages`` maps UID → raw bytes.
+    """
+    client = MagicMock()
+    client.login.return_value = ("OK", [])
+    client.logout.return_value = ("OK", [])
+
+    def select_side_effect(mailbox, **kwargs):
+        client.untagged_responses = {"UIDVALIDITY": [str(uidvalidity).encode()]}
+        return ("OK", [b"1234"])
+
+    client.select = MagicMock(side_effect=select_side_effect)
+
+    def uid_side_effect(verb, *args):
+        if verb == "SEARCH":
+            search_str = " ".join(a.decode() if isinstance(a, bytes) else a for a in args)
+            for sender, uids in search_results.items():
+                if sender in search_str:
+                    return ("OK", [b" ".join(str(u).encode() for u in uids)])
+            return ("OK", [b""])
+        if verb == "FETCH":
+            uid = int(args[0])
+            raw = messages[uid]
+            return ("OK", [(b"1 (UID %d BODY.PEEK[]" % uid, raw)])
+        return ("OK", [])
+
+    client.uid = MagicMock(side_effect=uid_side_effect)
+    return client
+
+
+def test_fetch_uses_uid_search_with_last_uid_plus_one(fake_config, state_path):
+    state = gmail_imap.GmailState(last_uid=12345, last_uidvalidity=67890)
+    fake_client = _make_fake_imap_client(
+        uidvalidity=67890,
+        search_results={"jobalerts-noreply@linkedin.com": []},
+        messages={},
+    )
+    with patch("findajob.gmail_imap.imaplib.IMAP4_SSL", return_value=fake_client):
+        gmail_imap.fetch_new_messages(fake_config, state)
+    search_calls = [c for c in fake_client.uid.call_args_list if c.args[0] == "SEARCH"]
+    assert len(search_calls) == 1
+    args = " ".join(a.decode() if isinstance(a, bytes) else a for a in search_calls[0].args[1:])
+    assert "12346:*" in args
+    assert "jobalerts-noreply@linkedin.com" in args
+
+
+def test_fetch_uses_body_peek_not_body(fake_config, state_path):
+    state = gmail_imap.GmailState(last_uid=0, last_uidvalidity=67890)
+    fake_client = _make_fake_imap_client(
+        uidvalidity=67890,
+        search_results={"jobalerts-noreply@linkedin.com": [100]},
+        messages={100: b"From: jobalerts-noreply@linkedin.com\r\n\r\nbody"},
+    )
+    with patch("findajob.gmail_imap.imaplib.IMAP4_SSL", return_value=fake_client):
+        gmail_imap.fetch_new_messages(fake_config, state)
+    fetch_calls = [c for c in fake_client.uid.call_args_list if c.args[0] == "FETCH"]
+    assert all("BODY.PEEK[]" in str(c.args) for c in fetch_calls)
+    assert not any("BODY[]" in str(c.args) and "PEEK" not in str(c.args) for c in fetch_calls)
+
+
+def test_fetch_iterates_all_senders_in_allowlist(fake_config, state_path):
+    cfg = gmail_imap.GmailConfig(
+        address="user@gmail.com",
+        app_password="abcdefghijklmnop",
+        sender_allowlist=["a@x.com", "b@y.com", "c@z.com"],
+        configured_at="2026-04-30T00:00:00Z",
+    )
+    state = gmail_imap.GmailState(last_uid=0, last_uidvalidity=67890)
+    fake_client = _make_fake_imap_client(
+        uidvalidity=67890,
+        search_results={"a@x.com": [], "b@y.com": [], "c@z.com": []},
+        messages={},
+    )
+    with patch("findajob.gmail_imap.imaplib.IMAP4_SSL", return_value=fake_client):
+        gmail_imap.fetch_new_messages(cfg, state)
+    search_calls = [c for c in fake_client.uid.call_args_list if c.args[0] == "SEARCH"]
+    assert len(search_calls) == 3
+
+
+def test_fetch_logout_called_even_on_exception(fake_config, state_path):
+    fake_client = MagicMock()
+    fake_client.login.return_value = ("OK", [])
+    fake_client.select.side_effect = RuntimeError("boom")
+    with patch("findajob.gmail_imap.imaplib.IMAP4_SSL", return_value=fake_client):
+        outcome = gmail_imap.fetch_new_messages(fake_config, gmail_imap.GmailState())
+    fake_client.logout.assert_called_once()
+    assert outcome.result == gmail_imap.TestResult.CONNECTION_ERROR
+
+
+def test_fetch_returns_messages_with_sender_tuples(fake_config, state_path):
+    state = gmail_imap.GmailState(last_uid=0, last_uidvalidity=67890)
+    raw = b"From: jobalerts-noreply@linkedin.com\r\nSubject: x\r\n\r\nbody"
+    fake_client = _make_fake_imap_client(
+        uidvalidity=67890,
+        search_results={"jobalerts-noreply@linkedin.com": [100, 101]},
+        messages={100: raw, 101: raw},
+    )
+    with patch("findajob.gmail_imap.imaplib.IMAP4_SSL", return_value=fake_client):
+        outcome = gmail_imap.fetch_new_messages(fake_config, state)
+    assert outcome.result == gmail_imap.TestResult.SUCCESS
+    assert len(outcome.messages) == 2
+    assert outcome.messages[0][0] == "jobalerts-noreply@linkedin.com"
+    assert outcome.new_uid == 101
+
+
+def test_fetch_uidvalidity_change_triggers_cold_restart(fake_config, state_path):
+    state = gmail_imap.GmailState(last_uid=12345, last_uidvalidity=11111)
+    fake_client = _make_fake_imap_client(
+        uidvalidity=22222,  # changed
+        search_results={"jobalerts-noreply@linkedin.com": [50, 51]},
+        messages={
+            50: b"From: jobalerts-noreply@linkedin.com\r\n\r\n",
+            51: b"From: jobalerts-noreply@linkedin.com\r\n\r\n",
+        },
+    )
+    with patch("findajob.gmail_imap.imaplib.IMAP4_SSL", return_value=fake_client):
+        outcome = gmail_imap.fetch_new_messages(fake_config, state)
+    search_calls = [c for c in fake_client.uid.call_args_list if c.args[0] == "SEARCH"]
+    args = " ".join(a.decode() if isinstance(a, bytes) else a for a in search_calls[0].args[1:])
+    assert "SINCE" in args  # cold-start fallback uses SINCE
+    assert outcome.new_uidvalidity == 22222

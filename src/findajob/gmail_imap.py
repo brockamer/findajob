@@ -14,7 +14,8 @@ import json
 import os
 import socket
 import ssl
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 from pathlib import Path
 
@@ -213,6 +214,98 @@ def test_login(config: GmailConfig) -> TestResult:
         return TestResult.SUCCESS
     except BaseException as exc:  # noqa: BLE001 — narrow inside _classify_error
         return _classify_error(exc)
+    finally:
+        if client is not None:
+            try:
+                client.logout()
+            except Exception:
+                pass
+
+
+@dataclass(frozen=True)
+class FetchOutcome:
+    result: TestResult
+    messages: list[tuple[str, bytes]] = field(default_factory=list)
+    new_uid: int | None = None
+    new_uidvalidity: int | None = None
+
+
+def _parse_search_uids(response: list) -> list[int]:
+    """imaplib SEARCH returns a list of bytes; parse to a list of ints."""
+    if not response:
+        return []
+    blob = response[0]
+    if not blob:
+        return []
+    if isinstance(blob, bytes):
+        return [int(x) for x in blob.split() if x]
+    return []
+
+
+def fetch_new_messages(config: GmailConfig, state: GmailState) -> FetchOutcome:
+    """Fetch unread-by-us messages from Gmail via incremental UID tracking.
+
+    Behavior:
+      - SELECTs INBOX read-only.
+      - On UIDVALIDITY mismatch: cold-start with ``SEARCH SINCE <7 days ago>``
+        per sender, log ``gmail_uidvalidity_reset``.
+      - Otherwise: ``SEARCH (UID <last_uid+1>:* FROM "<sender>")`` per sender.
+      - Fetches via ``BODY.PEEK[]`` so the \\Seen flag is never set.
+      - Logs out in finally.
+    """
+    client: imaplib.IMAP4_SSL | None = None
+    try:
+        client = _connect(config)
+        client.select("INBOX", readonly=True)
+
+        uidvalidity_raw = client.untagged_responses.get("UIDVALIDITY", [b"0"])[0]
+        current_uidvalidity = int(uidvalidity_raw) if uidvalidity_raw else 0
+
+        cold_start = current_uidvalidity != state.last_uidvalidity
+        if cold_start:
+            log_event(
+                "gmail_uidvalidity_reset",
+                old=state.last_uidvalidity,
+                new=current_uidvalidity,
+            )
+            since_date = (datetime.now(UTC) - timedelta(days=7)).strftime("%d-%b-%Y")
+
+        all_messages: list[tuple[str, bytes]] = []
+        seen_uids: set[int] = set()
+        max_uid = state.last_uid
+
+        for sender in config.sender_allowlist:
+            if cold_start:
+                criteria = f'(SINCE "{since_date}" FROM "{sender}")'
+            else:
+                criteria = f'(UID {state.last_uid + 1}:* FROM "{sender}")'
+            typ, search_resp = client.uid("SEARCH", criteria.encode())
+            if typ != "OK":
+                continue
+            uids = _parse_search_uids(search_resp)
+            for uid in uids:
+                if uid in seen_uids:
+                    continue
+                seen_uids.add(uid)
+                fetch_typ, fetch_resp = client.uid("FETCH", str(uid).encode(), b"(BODY.PEEK[])")
+                if fetch_typ != "OK":
+                    continue
+                # imaplib FETCH returns [(metadata, raw_bytes), b')'] — first tuple
+                for entry in fetch_resp:
+                    if isinstance(entry, tuple) and len(entry) >= 2:
+                        all_messages.append((sender, entry[1]))
+                        if uid > max_uid:
+                            max_uid = uid
+                        break
+
+        return FetchOutcome(
+            result=TestResult.SUCCESS,
+            messages=all_messages,
+            new_uid=max_uid,
+            new_uidvalidity=current_uidvalidity,
+        )
+    except BaseException as exc:  # noqa: BLE001
+        return FetchOutcome(result=_classify_error(exc))
     finally:
         if client is not None:
             try:
