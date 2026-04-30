@@ -53,7 +53,16 @@ def gather(stack: StackPath, *, now: datetime | None = None) -> StackHealth:
 
     if not db_missing:
         try:
-            uri = f"file:{stack.db_path}?mode=ro"
+            # `immutable=1` treats the DB as a fixed snapshot — no journal /
+            # WAL / shm sidecar reads, no locking. Cross-stack reads from the
+            # operator container (uid 1000) against tester DBs owned by host
+            # uid 1001 fail under default mode=ro because the producer's WAL
+            # sidecar is unreadable to the foreign uid (#333 production smoke
+            # 2026-04-30 surfaced "unable to open database file" until
+            # immutable=1 was added). Tradeoff: the dashboard sees a snapshot
+            # at the last checkpoint, missing in-flight WAL writes — fine for
+            # a "is this stack alive" health view.
+            uri = f"file:{stack.db_path}?mode=ro&immutable=1"
             with sqlite3.connect(uri, uri=True) as conn:
                 conn.row_factory = sqlite3.Row
                 stage_counts = {
