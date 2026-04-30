@@ -32,7 +32,15 @@ docker compose exec scheduler /app/scripts/notify.py health-check
 
 **Expected:** no output (silent = healthy), or a list of `WARN` / `ERROR` lines pointing at what's not wired yet. Each alert is documented in [`../troubleshooting.md`](../troubleshooting.md). A freshly-started container with no triage run yet will fire `WARN: pipeline_complete not seen in last 25h` — that's normal; it clears after the first scheduled triage at 00:00 local time.
 
-## 5. What's next
+## 5. Gmail job-alert ingestion (optional) → [`gmail.md`](gmail.md)
+
+If you want LinkedIn (and other) job-alert emails ingested automatically,
+set up the Gmail IMAP integration. The guide walks through generating a
+Google app password and wiring it into `/config/gmail/`. The pipeline runs
+without it — Greenhouse / Ashby / Lever and RapidAPI LinkedIn search still
+cover most ingestion volume.
+
+## 6. What's next
 
 - [`../usage.md`](../usage.md) — the daily workflow: web UI tab by tab.
 - `/config/` in the web UI — edit `profile.md`, `prefilter_rules.yaml`, `jsearch_queries.txt`, and the role prompts without touching disk.
