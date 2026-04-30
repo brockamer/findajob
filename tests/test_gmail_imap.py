@@ -119,3 +119,51 @@ def test_save_config_uses_temp_then_rename(cfg_path):
     src, dst = m.call_args.args
     assert src.endswith(".tmp")
     assert dst == str(cfg_path)
+
+
+@pytest.fixture
+def state_path(tmp_path, monkeypatch):
+    p = tmp_path / "gmail_state.json"
+    monkeypatch.setattr(gmail_imap, "GMAIL_STATE_PATH", str(p))
+    return p
+
+
+def test_load_state_missing_returns_zero_state(state_path):
+    s = gmail_imap.load_state()
+    assert s.last_uid == 0
+    assert s.last_uidvalidity == 0
+    assert s.auth_failure_streak == 0
+    assert s.last_fetched_at is None
+    assert s.last_login_at is None
+    assert s.last_error is None
+
+
+def test_load_state_rejects_unknown_schema_returns_zero_state(state_path):
+    state_path.write_text(json.dumps({"_schema": 99, "last_uid": 1}))
+    s = gmail_imap.load_state()
+    assert s.last_uid == 0  # treats unknown schema as cold start
+
+
+def test_save_state_round_trip(state_path):
+    s = gmail_imap.GmailState(
+        last_uid=12345,
+        last_uidvalidity=67890,
+        auth_failure_streak=2,
+        last_fetched_at="2026-04-30T00:00:00Z",
+        last_login_at="2026-04-30T00:00:00Z",
+        last_error="auth_failed",
+    )
+    gmail_imap.save_state(s)
+    loaded = gmail_imap.load_state()
+    assert loaded == s
+
+
+def test_save_state_atomic_replace(state_path):
+    state_path.write_text("{}")
+    s = gmail_imap.GmailState(last_uid=1)
+    with patch("findajob.gmail_imap.os.replace", wraps=os.replace) as m:
+        gmail_imap.save_state(s)
+    m.assert_called_once()
+    src, dst = m.call_args.args
+    assert src.endswith(".tmp")
+    assert dst == str(state_path)

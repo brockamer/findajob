@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from findajob.paths import BASE
@@ -75,6 +75,54 @@ def load_config() -> GmailConfig | None:
         sender_allowlist=list(payload["sender_allowlist"]),
         configured_at=payload["configured_at"],
     )
+
+
+@dataclass(frozen=True)
+class GmailState:
+    last_uid: int = 0
+    last_uidvalidity: int = 0
+    auth_failure_streak: int = 0
+    last_fetched_at: str | None = None
+    last_login_at: str | None = None
+    last_error: str | None = None
+
+
+def load_state() -> GmailState:
+    """Return :class:`GmailState` or zero-state defaults if missing/unknown."""
+    p = Path(GMAIL_STATE_PATH)
+    if not p.exists():
+        return GmailState()
+    try:
+        payload = json.loads(p.read_text())
+    except json.JSONDecodeError:
+        log_event("gmail_state_invalid", reason="json")
+        return GmailState()
+    if payload.get("_schema") != _SCHEMA_VERSION:
+        log_event("gmail_state_invalid", reason="schema")
+        return GmailState()
+    return GmailState(
+        last_uid=int(payload.get("last_uid", 0)),
+        last_uidvalidity=int(payload.get("last_uidvalidity", 0)),
+        auth_failure_streak=int(payload.get("auth_failure_streak", 0)),
+        last_fetched_at=payload.get("last_fetched_at"),
+        last_login_at=payload.get("last_login_at"),
+        last_error=payload.get("last_error"),
+    )
+
+
+def save_state(state: GmailState) -> None:
+    """Atomically persist :class:`GmailState`."""
+    payload = {"_schema": _SCHEMA_VERSION, **asdict(state)}
+    p = Path(GMAIL_STATE_PATH)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = f"{GMAIL_STATE_PATH}.tmp"
+    with open(tmp_path, "w") as fh:
+        json.dump(payload, fh, indent=2)
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(tmp_path, GMAIL_STATE_PATH)
+    # State is non-secret, but match config posture for consistency.
+    os.chmod(GMAIL_STATE_PATH, 0o600)
 
 
 def save_config(config: GmailConfig) -> None:
