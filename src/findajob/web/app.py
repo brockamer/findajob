@@ -7,13 +7,14 @@ import sqlite3
 from collections.abc import Generator
 from pathlib import Path
 
-from fastapi import Depends, FastAPI  # noqa: F401 — Depends used in Task 6
+from fastapi import Depends, FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from findajob.web.auth import install_basic_auth
 from findajob.web.constants import FOLDER_STAGES
+from findajob.web.onboarding_guard import require_onboarding_complete
 from findajob.web.helpers import (
     applied_age_bucket,
     filter_qs_with,
@@ -70,6 +71,12 @@ def create_app(
 
     app.dependency_overrides.setdefault(_materials_routes.get_db, get_db)
     app.include_router(_aggregated_router)
+    if os.environ.get("FINDAJOB_OPERATOR_MODE") == "1":
+        from findajob.web.routes import admin_stacks
+        app.include_router(
+            admin_stacks.router,
+            dependencies=[Depends(require_onboarding_complete)],
+        )
     install_basic_auth(app)
     return app
 
