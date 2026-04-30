@@ -1,0 +1,79 @@
+From: jobalerts-noreply@linkedin.com
+To: tester@example.com
+Subject: 5 new jobs for you
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="----=_Part_1_2037431.1234567890"
+
+------=_Part_1_2037431.1234567890
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: quoted-printable
+
+Here are your latest job alerts from LinkedIn.
+
+Senior Software Engineer at Acme Corp
+https://www.linkedin.com/jobs/view/3845678901/
+
+Infrastructure Operations Manager at Globex Inc
+https://www.linkedin.com/jobs/view/3912345678/
+
+View All Jobs: https://www.linkedin.com/jobs/
+Unsubscribe: https://www.linkedin.com/jobs/alerts/unsubscribe/
+
+------=_Part_1_2037431.1234567890
+Content-Type: text/html; charset=UTF-8
+Content-Transfer-Encoding: quoted-printable
+
+<!DOCTYPE html>
+<html>
+<head><title>LinkedIn Job Alerts</title></head>
+<body>
+<table>
+  <tr>
+    <td>
+      <a href="https://www.linkedin.com/jobs/view/3845678901/">
+        Senior Software Engineer
+        <br>Acme Corp
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      <a href="https://www.linkedin.com/jobs/view/3912345678/">
+        Infrastructure Operations Manager
+        <br>Globex Inc
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      <a href="https://www.linkedin.com/jobs/view/3999887766/">
+        Data Center Technician
+        <br>Initech Solutions
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      <a href="https://www.linkedin.com/jobs/">View All Jobs</a>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      <a href="https://www.linkedin.com/jobs/view/3845678901/apply">Apply Now</a>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      <a href="https://www.linkedin.com/jobs/alerts/unsubscribe/">Unsubscribe</a>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      <a href="https://www.linkedin.com/jobs/view/3845678901/view">View Job</a>
+    </td>
+  </tr>
+</table>
+</body>
+</html>
+
+------=_Part_1_2037431.1234567890--

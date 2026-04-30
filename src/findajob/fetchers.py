@@ -509,31 +509,22 @@ def get_gmail_service():
     return build("gmail", "v1", credentials=creds)
 
 
-def parse_jobs_from_email(msg):
-    import base64
+def _extract_jobs_from_html(html_content: str) -> list[dict]:
+    """Shared HTML→jobs extractor. Used by parse_jobs_from_email_imap.
 
+    Handles BeautifulSoup parsing, anchor extraction, SKIP_LABELS filtering,
+    JOB_URL_PATTERNS source tagging, title/company heuristics, and URL
+    deduplication. The Gmail-API variant of this function was deleted in #330
+    — IMAP is now the only source of email-derived jobs.
+    """
     from bs4 import BeautifulSoup
 
-    html_content = ""
-
-    def extract_parts(part):
-        nonlocal html_content
-        mime = part.get("mimeType", "")
-        if mime == "text/html":
-            data = part.get("body", {}).get("data", "")
-            if data:
-                padded = data + "=" * (4 - len(data) % 4)
-                html_content += base64.urlsafe_b64decode(padded).decode("utf-8", errors="ignore")
-        for subpart in part.get("parts", []):
-            extract_parts(subpart)
-
-    extract_parts(msg.get("payload", {}))
     if not html_content:
         return []
 
     soup = BeautifulSoup(html_content, "html.parser")
-    jobs = []
-    seen_urls = set()
+    jobs: list[dict] = []
+    seen_urls: set[str] = set()
 
     SKIP_LABELS = {
         "view job",
@@ -639,6 +630,37 @@ def parse_jobs_from_email(msg):
     return jobs
 
 
+def parse_jobs_from_email_imap(message) -> list[dict]:
+    """Walk an :class:`email.message.Message` and extract job rows.
+
+    Iterates the MIME tree for ``text/html`` parts, decodes them, and hands
+    the concatenated HTML to :func:`_extract_jobs_from_html`. Plain-text-only
+    messages return an empty list.
+    """
+    html_parts: list[str] = []
+    if message.is_multipart():
+        for part in message.walk():
+            if part.get_content_type() == "text/html":
+                payload = part.get_payload(decode=True)
+                if payload:
+                    charset = part.get_content_charset() or "utf-8"
+                    try:
+                        html_parts.append(payload.decode(charset, errors="ignore"))
+                    except (LookupError, UnicodeDecodeError):
+                        html_parts.append(payload.decode("utf-8", errors="ignore"))
+    else:
+        if message.get_content_type() == "text/html":
+            payload = message.get_payload(decode=True)
+            if payload:
+                charset = message.get_content_charset() or "utf-8"
+                try:
+                    html_parts.append(payload.decode(charset, errors="ignore"))
+                except (LookupError, UnicodeDecodeError):
+                    html_parts.append(payload.decode("utf-8", errors="ignore"))
+
+    return _extract_jobs_from_html("".join(html_parts))
+
+
 def fetch_gmail_jobs():
     if not os.path.exists(GMAIL_CREDS):
         log_event("gmail_skipped", reason="gmail_oauth_client.json not found")
@@ -668,7 +690,7 @@ def fetch_gmail_jobs():
         for msg_ref in messages:
             try:
                 msg = service.users().messages().get(userId="me", id=msg_ref["id"], format="full").execute()
-                extracted = parse_jobs_from_email(msg)
+                extracted = parse_jobs_from_email_imap(msg)  # replaced in Task 6
                 jobs.extend(extracted)
             except Exception as e:
                 log_event("gmail_parse_error", msg_id=msg_ref["id"], error=str(e))
