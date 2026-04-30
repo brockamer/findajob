@@ -14,7 +14,6 @@ from fastapi.templating import Jinja2Templates
 
 from findajob.web.auth import install_basic_auth
 from findajob.web.constants import FOLDER_STAGES
-from findajob.web.onboarding_guard import require_onboarding_complete
 from findajob.web.helpers import (
     applied_age_bucket,
     filter_qs_with,
@@ -22,6 +21,7 @@ from findajob.web.helpers import (
     remote_cell_class,
     stage_row_class,
 )
+from findajob.web.onboarding_guard import require_onboarding_complete
 from findajob.web.routes import materials as _materials_routes
 from findajob.web.routes import router as _aggregated_router
 
@@ -73,6 +73,7 @@ def create_app(
     app.include_router(_aggregated_router)
     if os.environ.get("FINDAJOB_OPERATOR_MODE") == "1":
         from findajob.web.routes import admin_stacks
+
         app.include_router(
             admin_stacks.router,
             dependencies=[Depends(require_onboarding_complete)],

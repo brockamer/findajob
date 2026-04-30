@@ -68,7 +68,8 @@
     <div x-data="{copied:false}" class="flex items-center gap-2">
       <code class="text-xs bg-slate-100 px-2 py-1 rounded">{{ cmd }}</code>
       <button type="button"
-              @click="navigator.clipboard.writeText('{{ cmd }}'); copied=true; setTimeout(()=>copied=false,1500)"
+              data-cmd="{{ cmd }}"
+              @click="navigator.clipboard.writeText($event.currentTarget.dataset.cmd); copied=true; setTimeout(()=>copied=false,1500)"
               class="text-xs text-slate-600 hover:text-slate-900">
         <span x-show="!copied">copy</span>
         <span x-show="copied" class="text-emerald-700">✓</span>
