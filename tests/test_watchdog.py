@@ -207,3 +207,121 @@ def test_fail_stuck_speculative_marks_failed(db, _patch_log):
     assert stale["status"] == "failed"
     assert "timed out" in (stale["error_message"] or "").lower()
     assert fresh["status"] == "researching"
+
+
+# ── sweep_orphan_folders ──────────────────────────────────────────────────
+
+
+def test_sweep_orphan_folders_moves_untracked_old_folder(db, tmp_path, monkeypatch):
+    """Folder on disk with no jobs row pointing at it AND mtime > 2h → moved to .stale/."""
+    monkeypatch.setattr(watchdog, "BASE", str(tmp_path))
+    companies = tmp_path / "companies"
+    companies.mkdir()
+    orphan = companies / "Acme_Director_Of_Ops_2026-04-23_120000"
+    orphan.mkdir()
+    # backdate mtime to 3h ago
+    old_ts = (datetime.now(UTC) - timedelta(hours=3)).timestamp()
+    import os
+
+    os.utime(orphan, (old_ts, old_ts))
+
+    count = watchdog.sweep_orphan_folders(db)
+
+    assert count == 1
+    assert not orphan.exists()
+    assert (companies / ".stale" / orphan.name).is_dir()
+
+
+def test_sweep_orphan_folders_skips_in_flight_prep(db, tmp_path, monkeypatch):
+    """Fresh folder (mtime < 2h) is left alone — could be an in-flight prep."""
+    monkeypatch.setattr(watchdog, "BASE", str(tmp_path))
+    companies = tmp_path / "companies"
+    companies.mkdir()
+    fresh = companies / "Acme_In_Flight_2026-04-30_120000"
+    fresh.mkdir()
+    # mtime is current time (just created) — well within the 2h grace
+
+    count = watchdog.sweep_orphan_folders(db)
+
+    assert count == 0
+    assert fresh.is_dir()
+    assert not (companies / ".stale").exists()
+
+
+def test_sweep_orphan_folders_skips_db_tracked_folder(db, tmp_path, monkeypatch):
+    """Folder whose path appears in jobs.prep_folder_path is NOT swept."""
+    monkeypatch.setattr(watchdog, "BASE", str(tmp_path))
+    companies = tmp_path / "companies"
+    companies.mkdir()
+    tracked = companies / "Acme_Tracked_2026-04-23_120000"
+    tracked.mkdir()
+    old_ts = (datetime.now(UTC) - timedelta(hours=3)).timestamp()
+    import os
+
+    os.utime(tracked, (old_ts, old_ts))
+
+    db.execute(
+        "INSERT INTO jobs (id, fingerprint, url, title, company, stage, prep_folder_path) "
+        "VALUES (?, 'fp1', 'http://x', 'Director', 'Acme', 'materials_drafted', ?)",
+        (str(uuid.uuid4()), str(tracked)),
+    )
+    db.commit()
+
+    count = watchdog.sweep_orphan_folders(db)
+
+    assert count == 0
+    assert tracked.is_dir()
+
+
+def test_sweep_orphan_folders_ignores_underscore_and_dot_dirs(db, tmp_path, monkeypatch):
+    """_applied/, _rejected/, .stale/ etc. are stage holders — never swept."""
+    monkeypatch.setattr(watchdog, "BASE", str(tmp_path))
+    companies = tmp_path / "companies"
+    companies.mkdir()
+    for name in ("_applied", "_rejected", "_waitlisted", ".stale"):
+        (companies / name).mkdir()
+        old_ts = (datetime.now(UTC) - timedelta(hours=3)).timestamp()
+        import os
+
+        os.utime(companies / name, (old_ts, old_ts))
+
+    count = watchdog.sweep_orphan_folders(db)
+
+    assert count == 0
+    for name in ("_applied", "_rejected", "_waitlisted", ".stale"):
+        assert (companies / name).is_dir()
+
+
+def test_sweep_orphan_folders_does_not_clobber_existing_stale_entry(db, tmp_path, monkeypatch):
+    """If .stale/ already has a folder with the same name (sweep ran before),
+    don't overwrite — log and skip."""
+    monkeypatch.setattr(watchdog, "BASE", str(tmp_path))
+    companies = tmp_path / "companies"
+    companies.mkdir()
+    name = "Acme_Dup_2026-04-23_120000"
+    orphan = companies / name
+    orphan.mkdir()
+    (orphan / "marker_new.txt").write_text("new")
+    old_ts = (datetime.now(UTC) - timedelta(hours=3)).timestamp()
+    import os
+
+    os.utime(orphan, (old_ts, old_ts))
+    # Pre-existing .stale entry with the same name
+    stale_existing = companies / ".stale" / name
+    stale_existing.mkdir(parents=True)
+    (stale_existing / "marker_old.txt").write_text("old")
+
+    count = watchdog.sweep_orphan_folders(db)
+
+    assert count == 0  # skipped, not moved
+    assert orphan.is_dir()
+    # Existing .stale entry unchanged
+    assert (stale_existing / "marker_old.txt").read_text() == "old"
+    assert not (stale_existing / "marker_new.txt").exists()
+
+
+def test_sweep_orphan_folders_handles_missing_companies_dir(db, tmp_path, monkeypatch):
+    """If companies/ doesn't exist, return 0 without raising."""
+    monkeypatch.setattr(watchdog, "BASE", str(tmp_path))
+    # companies/ deliberately not created
+    assert watchdog.sweep_orphan_folders(db) == 0

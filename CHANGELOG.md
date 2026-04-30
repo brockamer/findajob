@@ -10,6 +10,14 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+## [0.8.2] — 2026-04-30
+
+Patch bump. Closes a longstanding orphan-folder leak in the prep-application pipeline by adding a watchdog sweep, complementing the existing `quarantine_stale_prep_folders` (#174) which only fires on the *next* prep attempt for the same job.
+
+### Fixed
+
+- **Watchdog now sweeps orphan prep folders into `companies/.stale/` (#TBD).** Top-level subdirectories of `companies/` that have no `jobs.prep_folder_path` pointing at them AND mtime older than `ORPHAN_FOLDER_MIN_AGE_MIN=120` (2h) are moved to `.stale/` on each watchdog cycle. Caused-by paths covered: (a) `prep_application.py`'s bare-except handler clears `prep_folder_path` from the DB but doesn't `shutil.rmtree` the partial folder; (b) `watchdog.run_watchdog`'s `reset_prep_to_scored` call doesn't have `outdir` info to clean up; (c) container OOM/SIGKILL during prep — process never wrote `prep_folder_path` to DB. The 2h grace prevents sweeping a folder mid-prep. Discovered when two stacks on a multi-tenant host accumulated stale folders from regenerate failures and various process kills; both stacks cleaned up at deploy time. 6 new unit tests cover the happy path, in-flight grace, db-tracked exclusion, underscore/dot exclusion, dst-collision skip, and missing-dir tolerance.
+
 ## [0.8.1] — 2026-04-30
 
 Patch bump. Fixes a deployment-time gap in v0.8.0: `ops/compose.yaml.example` did not pass the new `FINDAJOB_<JOB>_SCHEDULE` / `FINDAJOB_<JOB>_ENABLED` env vars from `.env` into the container, so multi-tenant stagger overrides had no effect on existing stacks. Two coupled fixes ship together so a fresh-install operator can stagger schedules without editing compose.yaml by hand.
