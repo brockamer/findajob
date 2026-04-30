@@ -112,6 +112,9 @@ When the pipeline runs inside the `ghcr.io/brockamer/findajob` image, paths shif
 | `candidate_context/` | `<repo>/candidate_context/` | `/app/candidate_context/` (bind-mount) |
 | `discovered_companies.md/.json` | `<repo>/candidate_context/discovered_companies.{md,json}` (gitignored, generated) | `/app/candidate_context/discovered_companies.{md,json}` (generated into bind-mount) |
 | `companies/` | `<repo>/companies/` | `/app/companies/` (bind-mount) |
+| Cross-stack mount (operator-mode only) | n/a | `/opt/stacks/:/opt/stacks:ro` (added to operator's `compose.yaml` only) |
+| `FINDAJOB_OPERATOR_MODE` env | n/a | `1` on operator's stack only; unset on testers' (#333) |
+| `FINDAJOB_OPERATOR_HANDLE` env (optional) | n/a | Operator's stack handle (e.g. matches the trailing dir component of `/opt/stacks/findajob-{handle}`); when set, that row floats to the top of the `/admin/stacks/` table. Unset = pure alphabetical (#333). |
 | Onboarding sentinel | `<repo>/data/.onboarding-complete` | `/app/data/.onboarding-complete` (bind-mount from `./state/data/`) |
 | Onboarding backups | `<repo>/.backups/{UTC-stamp}/` | `/app/.backups/` (bind-mount from `./state/.backups/`) |
 | `aichat-ng` | `/usr/local/bin/aichat-ng` | `/usr/local/bin/aichat-ng` (blob42/aichat-ng prebuilt) |
@@ -149,6 +152,7 @@ When the pipeline runs inside the `ghcr.io/brockamer/findajob` image, paths shif
 <repo>/src/findajob/onboarding/parser.py    # parse interview emission into files to inject
 <repo>/src/findajob/onboarding/injector.py  # atomic write + backup + Tier-1 derivation + sentinel
 <repo>/src/findajob/discoverer/                # company discovery library — prompt, parser, runner, writer
+<repo>/src/findajob/web/routes/admin_stacks.py # GET /admin/stacks/ — operator-only multi-tenant stack health (#333; loaded iff FINDAJOB_OPERATOR_MODE=1)
 <repo>/src/findajob/web/routes/healthz.py    # GET /healthz
 <repo>/src/findajob/web/routes/materials.py  # GET /materials/ — candidate materials viewer (uses folder_resolver)
 <repo>/src/findajob/web/folder_resolver.py   # stage→filesystem resolver with path-traversal guards
@@ -216,6 +220,14 @@ Foundational decisions (from `docs/superpowers/specs/2026-04-21-web-frontend-14b
 **`/onboarding/`** — first-run NUX + paste-back injector for the interview emitted by `config/roles/onboarding_interviewer.md`. The `findajob.web.onboarding_guard` dependency redirects `/board/*`, `/materials/*`, `/stats/*` to `/onboarding/` when `data/.onboarding-complete` is missing. Re-triggerable via `/onboarding/?mode=rerun`. The injector parses the interview blob, atomically writes ~10 canonical files under `candidate_context/`/`config/`/`data/`, backs up existing destinations to `.backups/{UTC-stamp}/`, optionally processes pasted `voice-samples.md` (markdown-strip + PII-generalization), verifies the operator's OpenRouter key with a 1-token live call, and only then writes the sentinel. See `findajob.onboarding.{parser,injector,voice_processor,openrouter_smoke}` for boundaries.
 
 **`/docs/`** — renders `docs/usage.md`, `docs/troubleshooting.md`, `docs/setup/*` inline in the web UI. Slug allowlist in `findajob.web.routes.docs`; rendering via `findajob.web.markdown.render_markdown()` (handles `.md` cross-link rewriting + `target="_blank"` on external links).
+
+**Operator mode** — gated by `FINDAJOB_OPERATOR_MODE=1` (operator's stack only;
+never set on testers'). Adds `/admin/stacks/` route and renders the top nav in
+red on every page. The route is the **only** code path that reads cross-stack
+state from inside `findajob.web` — invariant: read-only, no POST handlers, all
+SQLite handles open with `mode=ro` URI. See `findajob.admin.{stack_discovery,
+stack_health,jsonl_tail}` and `docs/setup/install-docker.md` "Operator mode"
+subsection.
 
 ### Per-column filter framework
 

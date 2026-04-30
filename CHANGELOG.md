@@ -10,6 +10,34 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Added
+
+- **`/admin/stacks/` multi-tenant operator dashboard (#333).** When
+  `FINDAJOB_OPERATOR_MODE=1` is set on the operator's stack, a new route
+  surfaces last-triage time, stage distribution, stuck-prep count, and
+  last-failure timestamp for every `findajob-*` stack on the host. Top nav
+  bar renders red on every page as an ambient cue that operator mode is
+  active. Tester stacks unaffected — no flag, no route, no visual change.
+  Auth inherits the existing `FINDAJOB_AUTH_USER`/`PASS` Basic Auth.
+
+### Migration required
+
+- **Operator mode (#333) — operator's stack only.** If you want the
+  `/admin/stacks/` dashboard, edit operator's `compose.yaml` to add:
+  ```yaml
+  services:
+    scheduler:
+      environment:
+        FINDAJOB_OPERATOR_MODE: "1"
+        # Optional — match this to your stack handle to float your own
+        # row to the top of the dashboard. When unset, rows render
+        # alphabetically.
+        FINDAJOB_OPERATOR_HANDLE: "<your-handle>"
+      volumes:
+        - /opt/stacks:/opt/stacks:ro
+  ```
+  Apply with `docker compose up -d`. Tester stacks: leave both unset.
+
 ## [0.8.2] — 2026-04-30
 
 Patch bump. Closes a longstanding orphan-folder leak in the prep-application pipeline by adding a watchdog sweep, complementing the existing `quarantine_stale_prep_folders` (#174) which only fires on the *next* prep attempt for the same job.
