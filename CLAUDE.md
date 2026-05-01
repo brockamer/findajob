@@ -150,8 +150,11 @@ When the pipeline runs inside the `ghcr.io/brockamer/findajob` image, paths shif
 <repo>/src/findajob/web/config_files.py      # allowlist + resolve_editable() for /config/ editor
 <repo>/src/findajob/web/onboarding_guard.py # NUX guard dependency — 307s /board,/materials,/stats to /onboarding when sentinel missing
 <repo>/src/findajob/web/routes/onboarding.py # GET /onboarding/, GET /onboarding/prompt, POST /onboarding/inject
+<repo>/src/findajob/web/routes/onboarding_interview.py # In-app interview routes (#336): /onboarding/interview/start | /turn | /{sid} | /{sid}/finalize. Conditionally registered on OPENROUTER_OPERATOR_KEY.
 <repo>/src/findajob/onboarding/parser.py    # parse interview emission into files to inject
 <repo>/src/findajob/onboarding/injector.py  # atomic write + backup + Tier-1 derivation + sentinel
+<repo>/src/findajob/onboarding/session_store.py # onboarding_sessions CRUD (history/captured_blocks/find_active)
+<repo>/src/findajob/onboarding/interview_runner.py # Multi-turn OpenRouter chat-completions client (Sonnet 4.6 pinned)
 <repo>/src/findajob/discoverer/                # company discovery library — prompt, parser, runner, writer
 <repo>/src/findajob/web/routes/admin_stacks.py # GET /admin/stacks/ — operator-only multi-tenant stack health (#333; loaded iff FINDAJOB_OPERATOR_MODE=1)
 <repo>/src/findajob/web/routes/healthz.py    # GET /healthz
@@ -218,7 +221,12 @@ Foundational decisions (from `docs/superpowers/specs/2026-04-21-web-frontend-14b
 
 **`/config/`** — in-browser editor for editable pipeline config; allowlist in `findajob.web.config_files`. No per-user authorization inside findajob — perimeter is the boundary. Default perimeter is Wireguard; internet-exposed instances additionally require HTTP Basic Auth via `FINDAJOB_AUTH_USER` / `FINDAJOB_AUTH_PASS` (see `findajob.web.auth` and `docs/setup/internet-exposure.md`).
 
-**`/onboarding/`** — first-run NUX + paste-back injector for the interview emitted by `config/roles/onboarding_interviewer.md`. The `findajob.web.onboarding_guard` dependency redirects `/board/*`, `/materials/*`, `/stats/*` to `/onboarding/` when `data/.onboarding-complete` is missing. Re-triggerable via `/onboarding/?mode=rerun`. The injector parses the interview blob, atomically writes ~10 canonical files under `candidate_context/`/`config/`/`data/`, backs up existing destinations to `.backups/{UTC-stamp}/`, optionally processes pasted `voice-samples.md` (markdown-strip + PII-generalization), verifies the operator's OpenRouter key with a 1-token live call, and only then writes the sentinel. See `findajob.onboarding.{parser,injector,voice_processor,openrouter_smoke}` for boundaries.
+**`/onboarding/`** — first-run NUX. Two onboarding paths now coexist (#336):
+
+- **In-app interview** (#336, opt-in via `OPENROUTER_OPERATOR_KEY`): tester runs the entire interview as a chat inside findajob's UI. Server-side persistent — close the tab and reload to resume. Routes live in `findajob.web.routes.onboarding_interview` and are conditionally registered in `create_app()` only when the env var is set; when unset the affordance does not render. Operator-funded (~$1 per onboarding for Sonnet 4.6). See `docs/setup/configure.md` for opt-in details.
+- **Paste-back** (#148): tester opens another LLM in a new tab, runs the same interview prompt, and pastes the emission back into findajob. This is the default path and the fallback for outbound-blocked deployments.
+
+Both paths share: parser (`<<<FILE: name>>>` block protocol), injector (atomic file writes + backup + sentinel), and the `findajob.web.onboarding_guard` dependency that redirects `/board/*`, `/materials/*`, `/stats/*` to `/onboarding/` when `data/.onboarding-complete` is missing. Re-triggerable via `/onboarding/?mode=rerun`. The injector parses the interview blob, atomically writes ~10 canonical files under `candidate_context/`/`config/`/`data/`, backs up existing destinations to `.backups/{UTC-stamp}/`, optionally processes pasted `voice-samples.md` (markdown-strip + PII-generalization), verifies the operator's OpenRouter key with a 1-token live call, and only then writes the sentinel. See `findajob.onboarding.{parser,injector,voice_processor,openrouter_smoke,session_store,interview_runner}` for boundaries.
 
 **`/docs/`** — renders `docs/usage.md`, `docs/troubleshooting.md`, `docs/setup/*` inline in the web UI. Slug allowlist in `findajob.web.routes.docs`; rendering via `findajob.web.markdown.render_markdown()` (handles `.md` cross-link rewriting + `target="_blank"` on external links).
 

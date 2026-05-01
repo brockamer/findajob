@@ -116,6 +116,55 @@ Protect this file: `chmod 600 data/.env`
 
 ---
 
+## OPENROUTER_OPERATOR_KEY (in-app onboarding interview, optional)
+
+Operator-only opt-in. Set this in the stack's compose `.env` (separate from
+the per-tester `OPENROUTER_API_KEY` which lives in `data/.env`) to enable
+the in-app onboarding interview path: testers run the entire interview as
+a chat inside findajob's UI, instead of opening another tab to an LLM and
+copy-pasting the emission back.
+
+**How to enable:**
+
+1. Add to the stack's compose `.env` (`/opt/stacks/findajob-<handle>/.env`):
+   ```
+   OPENROUTER_OPERATOR_KEY=sk-or-v1-...
+   ```
+   This key is **operator-funded** — findajob bills your OpenRouter account
+   for the interview, then collects the tester's own key at the end (used
+   only for the post-onboarding pipeline).
+
+2. Restart the stack: `docker compose -f /opt/stacks/findajob-<handle>/compose.yaml up -d`.
+
+3. Visit `/onboarding/` — a "Run interview here" affordance now sits above
+   the existing paste-back form. Paste-back stays as the fallback.
+
+**What it costs:** ~$1 per onboarding (Sonnet 4.6 at ~$3 per 1M output
+tokens × ~30k output tokens per interview). Cheaper if you pin a smaller
+model in the runner. Verify your spend on
+[openrouter.ai/credits](https://openrouter.ai/credits).
+
+**What happens if unset:** the route module isn't registered and the
+"Run interview here" affordance doesn't render. `/onboarding/` falls
+back to paste-back-only (the v0.x.x default). Existing testers who
+already onboarded are unaffected.
+
+**Operational notes:**
+
+- One key per stack. Don't share `OPENROUTER_OPERATOR_KEY` across stacks
+  — usage shows up in your OpenRouter dashboard mixed otherwise.
+- 401 / 402 / 429 errors mid-interview surface a kind-specific banner
+  inside the chat with a link to the relevant OpenRouter dashboard
+  (keys / credits) so the operator can fix and the tester can retry.
+- Errors are logged to `pipeline.jsonl` as
+  `onboarding_interview_error` events with `error_kind` and
+  `status_code` fields — grep there to triage.
+
+See `docs/superpowers/plans/2026-05-01-336-in-app-onboarding-interview.md`
+for design details.
+
+---
+
 ## aichat-ng config.yaml
 
 Located at `~/.config/aichat_ng/config.yaml`.

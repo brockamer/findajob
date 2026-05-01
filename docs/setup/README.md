@@ -14,9 +14,15 @@ What you need to have before touching the stack: a Linux host, Docker + Compose,
 
 Create `/opt/stacks/findajob-<you>/`, drop `compose.yaml`, start the container. The guide explains each mount, each env var, and what happens on first boot. Docker is the supported install path; the [legacy native install](install-linux.md) remains in-repo as a fallback.
 
-## 3. Configure → two paths
+## 3. Configure → three paths
 
-**Fastest (recommended):** After the container is up, open `http://<your-host>:${FINDAJOB_MATERIALS_PORT}/onboarding/` in a browser. It prompts you with an LLM-facing interview designed for your favorite chat tool. You paste the prompt into ChatGPT / Claude / Gemini, answer its questions in conversation, then paste the structured output back. findajob writes seven config files (profile, resume, prefilter rules, search queries, and more), backs up anything it replaces, and clears the onboarding sentinel on success.
+After the container is up, open `http://<your-host>:${FINDAJOB_MATERIALS_PORT}/onboarding/` in a browser. There are now two interview paths and a manual escape hatch:
+
+**In-app interview (operator opt-in, easiest for testers):** When the operator sets `OPENROUTER_OPERATOR_KEY` on the stack, `/onboarding/` shows a "Run interview here" button. Click it and the entire interview happens inside findajob as a chat — no tab-switching, no copy-paste. Server-side persistent: close the tab and reload the page to see a "Resume your interview" affordance and pick up where you left off. findajob bills the operator's OpenRouter key (~$1 per onboarding for Sonnet 4.6); your own key is collected at the end and used for the post-onboarding pipeline. See [`configure.md`](configure.md#openrouter_operator_key-in-app-onboarding-interview-optional) for opt-in details.
+
+**Paste-back (the original path, always available):** You paste the interview prompt into ChatGPT / Claude / Gemini in another tab, answer its questions in conversation, then paste the structured output back. Works for outbound-blocked deployments and for operators who haven't opted into the in-app path. The "I already ran the interview elsewhere" section on `/onboarding/` collapses this option when the in-app path is enabled.
+
+Both interview paths produce the same emission protocol and write the same config files (profile, resume, prefilter rules, search queries, and more), back up anything they replace, and clear the onboarding sentinel on success.
 
 **Manual:** Edit the config files by hand. See [`configure.md`](configure.md) for the file-by-file walkthrough — which fields matter most, which have sensible defaults, and which you can safely leave blank.
 
