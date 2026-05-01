@@ -766,3 +766,111 @@ def test_start_error_emits_log_event(
     assert err_events[0]["route"] == "start"
     assert err_events[0]["error_kind"] == "upstream"
     assert err_events[0]["status_code"] == 503
+
+
+# ── Tab-close-resume (#336 Task 8) ────────────────────────────────────────
+
+
+def _age_session_last_turn(base_root: Path, session_id: str, sql_offset: str) -> None:
+    """Override last_turn_at via raw SQL so we can simulate stale sessions."""
+    conn = sqlite3.connect(base_root / "data" / "pipeline.db")
+    try:
+        conn.execute(
+            f"UPDATE onboarding_sessions SET last_turn_at = datetime('now', '{sql_offset}') WHERE id = ?",
+            (session_id,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_resume_index_no_affordance_when_no_session(client_with_key: TestClient) -> None:
+    """Fresh stack with no in-progress session → no resume banner."""
+    resp = client_with_key.get("/onboarding/")
+    assert resp.status_code == 200
+    body = resp.text
+    assert 'id="resume-banner"' not in body
+    assert "/onboarding/interview/" not in body or "/onboarding/interview/start" in body
+
+
+def test_resume_index_shows_affordance_when_active_session_exists(client_with_key: TestClient, base_root: Path) -> None:
+    """An un-completed session with recent activity surfaces a resume link."""
+    from findajob.onboarding.session_store import append_turn
+
+    sid = _create_session_directly(base_root)
+    conn = sqlite3.connect(base_root / "data" / "pipeline.db")
+    try:
+        append_turn(conn, sid, "user", "kickoff")
+        append_turn(conn, sid, "assistant", "first question?")
+    finally:
+        conn.close()
+
+    resp = client_with_key.get("/onboarding/")
+    assert resp.status_code == 200
+    body = resp.text
+    assert 'id="resume-banner"' in body
+    assert f"/onboarding/interview/{sid}" in body
+    assert "Resume" in body or "resume" in body
+    assert "minute" in body.lower() or "just now" in body.lower() or "hour" in body.lower()
+
+
+def test_resume_link_lands_on_chat_with_full_history(client_with_key: TestClient, base_root: Path) -> None:
+    """Click resume → chat page renders the full persisted history."""
+    from findajob.onboarding.session_store import append_turn
+
+    sid = _create_session_directly(base_root)
+    conn = sqlite3.connect(base_root / "data" / "pipeline.db")
+    try:
+        append_turn(conn, sid, "user", "MARK_USER_RESUME")
+        append_turn(conn, sid, "assistant", "MARK_ASSISTANT_RESUME")
+    finally:
+        conn.close()
+
+    resp = client_with_key.get(f"/onboarding/interview/{sid}")
+    assert resp.status_code == 200
+    body = resp.text
+    assert "MARK_USER_RESUME" in body
+    assert "MARK_ASSISTANT_RESUME" in body
+
+
+def test_resume_index_excludes_completed_sessions(client_with_key: TestClient, base_root: Path) -> None:
+    """A finalized session must NOT show a resume affordance — onboarding is done."""
+    from findajob.onboarding.session_store import mark_complete
+
+    sid = _create_session_directly(base_root)
+    conn = sqlite3.connect(base_root / "data" / "pipeline.db")
+    try:
+        mark_complete(conn, sid)
+    finally:
+        conn.close()
+
+    resp = client_with_key.get("/onboarding/")
+    assert resp.status_code == 200
+    assert 'id="resume-banner"' not in resp.text
+
+
+def test_resume_index_excludes_stale_sessions(client_with_key: TestClient, base_root: Path) -> None:
+    """A session whose last activity was > 24h ago should NOT surface."""
+    sid = _create_session_directly(base_root)
+    _age_session_last_turn(base_root, sid, "-25 hours")
+
+    resp = client_with_key.get("/onboarding/")
+    assert resp.status_code == 200
+    assert 'id="resume-banner"' not in resp.text
+
+
+def test_resume_index_no_affordance_when_operator_key_unset(client_no_key: TestClient, base_root: Path) -> None:
+    """When the operator hasn't opted in, surfacing a resume affordance
+    would point at a router that isn't even registered. Suppress it."""
+    sid = _create_session_directly(base_root)
+    from findajob.onboarding.session_store import append_turn
+
+    conn = sqlite3.connect(base_root / "data" / "pipeline.db")
+    try:
+        append_turn(conn, sid, "user", "kickoff")
+    finally:
+        conn.close()
+
+    resp = client_no_key.get("/onboarding/")
+    assert resp.status_code == 200
+    assert 'id="resume-banner"' not in resp.text

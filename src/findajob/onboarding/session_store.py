@@ -107,3 +107,42 @@ def set_error(db: sqlite3.Connection, session_id: str, message: str) -> None:
         (message, session_id),
     )
     db.commit()
+
+
+def find_active(db: sqlite3.Connection, *, max_age_hours: int = 24) -> Session | None:
+    """Return the most recently active un-completed session, or ``None``.
+
+    Used by the ``/onboarding/`` index handler (#336 Task 8) to surface a
+    "Resume your interview" affordance when the user closes the tab and
+    comes back. Filters:
+
+    - ``completed_at IS NULL`` — finalized sessions don't need resuming
+    - ``last_turn_at >= now - max_age_hours`` — stale sessions are dropped
+      so a tester who walked away days ago doesn't see an outdated affordance
+
+    Sessions with ``error_state`` set are still returned: the user can
+    retry from the chat page. Empty-history sessions are also returned —
+    they may have a /start error worth seeing.
+    """
+    cutoff = "datetime('now', ?)"
+    row = db.execute(
+        f"""SELECT id, history_json, captured_blocks_json, started_at,
+                   last_turn_at, completed_at, error_state
+            FROM onboarding_sessions
+            WHERE completed_at IS NULL
+              AND last_turn_at >= {cutoff}
+            ORDER BY last_turn_at DESC
+            LIMIT 1""",
+        (f"-{max_age_hours} hours",),
+    ).fetchone()
+    if row is None:
+        return None
+    return Session(
+        id=row[0],
+        history=json.loads(row[1]),
+        captured_blocks=json.loads(row[2]),
+        started_at=row[3],
+        last_turn_at=row[4],
+        completed_at=row[5],
+        error_state=row[6],
+    )

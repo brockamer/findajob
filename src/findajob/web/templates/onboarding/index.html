@@ -17,6 +17,21 @@
   </div>
   {% endif %}
 
+  {% if active_session_id %}
+  <div id="resume-banner" class="border-2 border-amber-300 bg-amber-50 rounded p-4 space-y-2"
+       data-session-id="{{ active_session_id }}">
+    <h2 class="font-semibold text-amber-900">Resume your interview</h2>
+    <p class="text-sm text-amber-900">
+      You have an in-progress in-app interview from <strong>{{ active_session_age }}</strong>.
+      Pick up where you left off — your history is preserved server-side.
+    </p>
+    <a href="/onboarding/interview/{{ active_session_id }}"
+       class="inline-block px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700">
+      Resume interview
+    </a>
+  </div>
+  {% endif %}
+
   <section class="bg-white border rounded p-4 space-y-3">
     <h2 class="font-semibold">How this works</h2>
     <ol class="list-decimal list-inside space-y-1 text-sm">

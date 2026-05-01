@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import os
+import sqlite3
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Form, Request
@@ -9,8 +12,60 @@ from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 
 from findajob.onboarding import OnboardingSmokeCheckFailed, inject, parse_emission
 from findajob.onboarding.parser import ALLOWED_FILENAMES
+from findajob.onboarding.session_store import Session, find_active
 
 router = APIRouter()
+
+
+def _humanize_minutes_ago(iso_utc: str) -> str:
+    """Render a friendly "X minutes ago" / "X hours ago" string for the
+    resume affordance (#336 Task 8). Input is the session's ``last_turn_at``
+    value, written by session_store as ``YYYY-MM-DDTHH:MM:SSZ``.
+
+    Tolerates parse failures by returning a generic "earlier today" — the
+    affordance still works, it just loses precision.
+    """
+    try:
+        last = datetime.strptime(iso_utc, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+    except (ValueError, TypeError):
+        return "earlier today"
+    delta = datetime.now(UTC) - last
+    minutes = int(delta.total_seconds() // 60)
+    if minutes < 1:
+        return "just now"
+    if minutes < 60:
+        return f"{minutes} minute{'s' if minutes != 1 else ''} ago"
+    hours = minutes // 60
+    return f"{hours} hour{'s' if hours != 1 else ''} ago"
+
+
+def _active_session_for_index(request: Request) -> Session | None:
+    """Look up a resumable in-app interview session for the index page.
+
+    Returns ``None`` when:
+    - operator hasn't opted in (``OPENROUTER_OPERATOR_KEY`` unset)
+    - DB unavailable or schema doesn't include ``onboarding_sessions``
+    - no recent un-completed session exists
+
+    Failures are silent — the resume affordance is a convenience, not a
+    correctness requirement, and failing the index render over a session
+    lookup glitch would break the whole onboarding entry point.
+    """
+    if not (os.environ.get("OPENROUTER_OPERATOR_KEY") or "").strip():
+        return None
+    db_path: Path | None = getattr(request.app.state, "db_path", None)
+    if db_path is None:
+        return None
+    try:
+        conn = sqlite3.connect(str(db_path), timeout=5)
+    except sqlite3.Error:
+        return None
+    try:
+        return find_active(conn)
+    except sqlite3.Error:
+        return None
+    finally:
+        conn.close()
 
 
 def _interview_prompt_path(base_root: Path) -> Path:
@@ -78,6 +133,7 @@ def _format_parse_error(
 def onboarding_index(request: Request, mode: str = "") -> HTMLResponse:
     """Landing page. ``mode=rerun`` flips on the backup warning."""
     templates = request.app.state.templates
+    active = _active_session_for_index(request)
     return templates.TemplateResponse(
         request=request,
         name="onboarding/index.html",
@@ -86,6 +142,8 @@ def onboarding_index(request: Request, mode: str = "") -> HTMLResponse:
             "paste_error": None,
             "paste_content": "",
             "openrouter_api_key": "",
+            "active_session_id": active.id if active else None,
+            "active_session_age": _humanize_minutes_ago(active.last_turn_at) if active else None,
         },
     )
 

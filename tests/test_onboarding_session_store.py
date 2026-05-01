@@ -239,3 +239,98 @@ def test_history_json_is_canonical_after_create(db):
     # And the parsed values are the empty containers.
     assert json.loads(raw[0]) == []
     assert json.loads(raw[1]) == {}
+
+
+# ── find_active (#336 Task 8) ─────────────────────────────────────────────
+
+
+def _set_last_turn_at(db, session_id: str, sql_expr: str) -> None:
+    """Override last_turn_at via a raw SQL expression so tests can age sessions."""
+    db.execute(f"UPDATE onboarding_sessions SET last_turn_at = {sql_expr} WHERE id = ?", (session_id,))
+    db.commit()
+
+
+def test_find_active_returns_none_when_no_sessions(db):
+    from findajob.onboarding.session_store import find_active
+
+    assert find_active(db) is None
+
+
+def test_find_active_returns_recent_uncompleted_session(db):
+    from findajob.onboarding.session_store import find_active
+
+    sid = create_session(db)
+    sess = find_active(db)
+    assert sess is not None
+    assert sess.id == sid
+
+
+def test_find_active_excludes_completed_sessions(db):
+    from findajob.onboarding.session_store import find_active
+
+    sid = create_session(db)
+    mark_complete(db, sid)
+    assert find_active(db) is None
+
+
+def test_find_active_excludes_stale_sessions_older_than_24h(db):
+    """Sessions whose last_turn_at is > 24h ago should be excluded."""
+    from findajob.onboarding.session_store import find_active
+
+    sid = create_session(db)
+    _set_last_turn_at(db, sid, "datetime('now', '-25 hours')")
+    assert find_active(db) is None
+
+
+def test_find_active_returns_most_recently_active_when_multiple(db):
+    """When multiple un-completed sessions exist, the most recent wins."""
+    from findajob.onboarding.session_store import find_active
+
+    older = create_session(db)
+    newer = create_session(db)
+    _set_last_turn_at(db, older, "datetime('now', '-2 hours')")
+    _set_last_turn_at(db, newer, "datetime('now', '-30 minutes')")
+
+    sess = find_active(db)
+    assert sess is not None
+    assert sess.id == newer
+
+
+def test_find_active_skips_completed_in_favor_of_uncompleted(db):
+    """A completed session should not block an older but un-completed one."""
+    from findajob.onboarding.session_store import find_active
+
+    finished = create_session(db)
+    pending = create_session(db)
+    mark_complete(db, finished)
+    _set_last_turn_at(db, pending, "datetime('now', '-3 hours')")
+
+    sess = find_active(db)
+    assert sess is not None
+    assert sess.id == pending
+
+
+def test_find_active_includes_errored_sessions(db):
+    """An error'd but un-completed session is still resumable — the user
+    can retry from the chat page."""
+    from findajob.onboarding.session_store import find_active, set_error
+
+    sid = create_session(db)
+    set_error(db, sid, "boom")
+
+    sess = find_active(db)
+    assert sess is not None
+    assert sess.id == sid
+    assert sess.error_state == "boom"
+
+
+def test_find_active_max_age_hours_parameter_works(db):
+    """max_age_hours=1 excludes 2h-old sessions."""
+    from findajob.onboarding.session_store import find_active
+
+    sid = create_session(db)
+    _set_last_turn_at(db, sid, "datetime('now', '-2 hours')")
+
+    assert find_active(db, max_age_hours=1) is None
+    assert find_active(db, max_age_hours=24) is not None
+    assert find_active(db, max_age_hours=24).id == sid
