@@ -10,6 +10,10 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Applied → Not Selected mobile stall: defensive hardening + visible error surfacing (#361).** Move the two-cell pending-action handoff from `tr.dataset.pendingAction` to `rejectSel.dataset.pendingAction` — mobile Chrome was a likely loser of row-level dataset between cell focus events, and the active select element is the most stable carrier. Wire a global `htmx:responseError` / `htmx:sendError` listener (new `static/htmx_errors.js`) so silent 4xx/5xx responses surface as a transient toast instead of an apparently-dead button. Add `log_event("board_not_selected", ...)` server-side so the next mobile attempt yields evidence in `pipeline.jsonl`. New rendering tests pin the JS contract; root-cause confirmation deferred until the operator's next mobile attempt produces logs.
+
 ## [0.9.1] — 2026-05-01
 
 Patch bump. Widens the Gmail IMAP cold-start window from 7 to 30 days. Mirrors the v0.8.4 datePosted recall fix: a brand-new tester authorizing fresh on a long-lived inbox needs more than a 7-day window to seed the board with useful signal, especially when the inbox has years of LinkedIn / Indeed / ZipRecruiter alerts. Steady-state UID-incremental fetch is unchanged.

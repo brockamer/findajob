@@ -6,8 +6,9 @@
 
   On change, dispatches a POST with the selected reason as form data. Routes
   to /reject by default; if the status cell flagged the row for Not Selected
-  (applied tab only), routes to /not-selected instead. The flag is carried on
-  tr.dataset.pendingAction to avoid an Alpine dependency.
+  (applied tab only), routes to /not-selected instead. The flag is carried
+  on this select's own dataset so it survives any row-level DOM repaints —
+  mobile Chrome was losing the row-level dataset between cell focus events.
 #}
 {% set fp = row.fingerprint %}
 <td class="px-3 py-1 align-top text-sm whitespace-nowrap">
@@ -16,10 +17,11 @@
     data-fp="{{ fp }}"
     onchange="if(this.value){
       const tr=this.closest('tr');
-      const action=tr.dataset.pendingAction==='not-selected'?'not-selected':'reject';
+      const action=this.dataset.pendingAction==='not-selected'?'not-selected':'reject';
       htmx.ajax('POST',`/board/jobs/{{ fp }}/${action}`,{target:tr,swap:'outerHTML',values:{reason:this.value}});
       this.value='';
-      delete tr.dataset.pendingAction;
+      delete this.dataset.pendingAction;
+      this.classList.remove('ring-2','ring-amber-400','animate-pulse');
     }">
     <option value="">— No reason —</option>
     <option value="Too Senior">Too Senior</option>

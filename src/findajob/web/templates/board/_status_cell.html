@@ -48,13 +48,18 @@
         const rejectSel=this.closest('td').nextElementSibling && this.closest('td').nextElementSibling.querySelector('select');
         const hint=this.parentElement.querySelector('.js-status-hint');
         if(this.value==='not-selected'){
-          tr.dataset.pendingAction='not-selected';
+          if(rejectSel){
+            rejectSel.dataset.pendingAction='not-selected';
+            rejectSel.classList.add('ring-2','ring-amber-400','animate-pulse');
+            rejectSel.focus();
+          }
           if(hint)hint.textContent='Pick a reason →';
-          if(rejectSel){rejectSel.classList.add('ring-2','ring-amber-400','animate-pulse');rejectSel.focus();}
         } else {
-          delete tr.dataset.pendingAction;
+          if(rejectSel){
+            delete rejectSel.dataset.pendingAction;
+            rejectSel.classList.remove('ring-2','ring-amber-400','animate-pulse');
+          }
           if(hint)hint.textContent='';
-          if(rejectSel)rejectSel.classList.remove('ring-2','ring-amber-400','animate-pulse');
           htmx.ajax('POST',`/board/jobs/{{ fp }}/${this.value}`,{target:tr,swap:'outerHTML'});
           this.value='';
         }">

@@ -487,6 +487,12 @@ def not_selected(
         )
     handle_not_selected(db, job, (reason or "").strip() or "Company passed")
     notify_waitlist_resurface(db, job["company"])
+    log_event(
+        "board_not_selected",
+        fingerprint=fingerprint,
+        reason=(reason or "").strip() or "Company passed",
+        prior_stage=job["stage"],
+    )
     return HTMLResponse("")
 
 

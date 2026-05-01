@@ -9,9 +9,11 @@
   <script src="https://unpkg.com/htmx.org@2" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/alpinejs@3/dist/cdn.min.js" defer></script>
   <script src="/static/filters.js" defer></script>
+  <script src="/static/htmx_errors.js" defer></script>
   <link rel="stylesheet" href="/static/app.css">
 </head>
 <body class="bg-slate-50 text-slate-900" hx-boost="true">
+  <div id="htmx-error-toast" class="fixed top-4 right-4 z-50 hidden max-w-sm rounded bg-red-600 px-4 py-3 text-sm text-white shadow-lg"></div>
   {% block nav %}{% include "_nav.html" %}{% endblock %}
   <main class="{% block main_classes %}max-w-6xl mx-auto px-4 py-6{% endblock %}">
     {% if _rendered_md is defined and _rendered_md %}<div class="prose prose-slate max-w-none">{{ _rendered_md | safe }}</div>{% endif %}

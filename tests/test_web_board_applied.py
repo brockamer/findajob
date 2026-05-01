@@ -88,3 +88,28 @@ def test_applied_recruiter_flow_captures_interview_as_applied_date(client: TestC
     # bucket class would render on this row.
     assert "Principal Eng" in r.text
     assert "row-applied-fresh" in r.text
+
+
+def test_applied_status_cell_writes_pending_action_to_reject_select(client: TestClient) -> None:
+    """#361 regression — pending-action lives on the reject select's own dataset,
+    not the parent <tr>. Mobile Chrome was losing the row-level dataset between
+    cell focus events and routing the reject pick to /reject instead of
+    /not-selected. Asserts the JS contract end-to-end on the rendered HTML."""
+    r = client.get("/board/applied")
+    assert r.status_code == 200
+    # Status cell must set the pending action on the reject select directly.
+    assert "rejectSel.dataset.pendingAction='not-selected'" in r.text
+    # Reject cell must read from its own dataset (this.dataset), not tr.dataset.
+    assert "this.dataset.pendingAction==='not-selected'" in r.text
+    # Defensive: the old tr.dataset.pendingAction pattern must NOT reappear.
+    assert "tr.dataset.pendingAction" not in r.text
+
+
+def test_base_template_surfaces_htmx_response_errors(client: TestClient) -> None:
+    """#361 — silent htmx failures (4xx/5xx no-swap) used to leave the row
+    unchanged with no user-visible feedback. The base template wires a global
+    listener (in /static/htmx_errors.js) that renders the toast container."""
+    r = client.get("/board/applied")
+    assert r.status_code == 200
+    assert "htmx-error-toast" in r.text
+    assert "/static/htmx_errors.js" in r.text
