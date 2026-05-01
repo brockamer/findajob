@@ -1,5 +1,12 @@
 {# Paste form partial — re-rendered by POST /onboarding/inject on parse failure
-   so `paste_content`, `paste_error`, and `openrouter_api_key` preserve user input. #}
+   so `paste_content`, `paste_error`, and `openrouter_api_key` preserve user input.
+
+   #339: when credentials were collected at Step 1 (`keys_collected=True`),
+   the OpenRouter input is hidden behind a `***last4` masked display and the
+   form-supplied value is irrelevant — the inject handler reads from the
+   credentials session. The "Change keys" link in the Step 1 panel is the
+   only way to update the OpenRouter value once it's collected.
+#}
 <form method="post" action="/onboarding/inject" class="space-y-3" hx-boost="false">
   {% if paste_error %}
   <div class="border border-red-300 bg-red-50 text-red-900 px-4 py-3 rounded">
@@ -8,6 +15,13 @@
   </div>
   {% endif %}
 
+  {% if keys_collected %}
+  <div class="text-xs text-slate-600 bg-slate-50 border rounded p-2">
+    Using OpenRouter key from Step 1
+    {% if openrouter_last4 %}(<code>***{{ openrouter_last4 }}</code>){% endif %}.
+    To change it, use the "Change keys" link in Step 1 above.
+  </div>
+  {% else %}
   <label class="block text-sm font-medium" for="openrouter_api_key">
     Your OpenRouter API key
     <span class="text-xs font-normal text-slate-600">— from <a href="https://openrouter.ai/" target="_blank" rel="noopener" class="underline">openrouter.ai</a> after prepaying credit. Kept server-side only; never sent to your chat-LLM.</span>
@@ -17,6 +31,7 @@
          class="w-full border rounded p-2 font-mono text-xs"
          placeholder="sk-or-v1-..."
          value="{{ openrouter_api_key|default('') }}">
+  {% endif %}
 
   <label class="block text-sm font-medium" for="emission">
     Paste the full chat transcript (or just the delimited blocks):

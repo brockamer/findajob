@@ -397,6 +397,11 @@ def onboarding_inject(
 
     The OpenRouter API key arrives in its own form field — kept out of the
     ``emission`` blob so it never enters the user's chat-LLM logs (#328).
+
+    #339: when credentials were collected via Step 1, prefer those values
+    over the form's OpenRouter input (which is rendered as a masked
+    "***last4" display in that case, not an editable field) and merge the
+    optional RapidAPI / Google keys into ``data/.env`` alongside.
     """
     templates = request.app.state.templates
     result = parse_emission(emission)
@@ -413,7 +418,18 @@ def onboarding_inject(
             },
             status_code=400,
         )
-    if not openrouter_api_key.strip():
+
+    # #339: pull credentials from the Step 1 session if present and let them
+    # override form-supplied values. The paste-back form's OpenRouter input
+    # is read-only when credentials exist, but a direct POST (e.g. from an
+    # integration test) is still a supported entry point — fall back to the
+    # form value for that legacy path.
+    creds = _credentials_for_index(request)
+    resolved_or = (creds.openrouter_api_key if creds and creds.openrouter_api_key else openrouter_api_key).strip()
+    resolved_rapid = (creds.rapidapi_key if creds and creds.rapidapi_key else "").strip()
+    resolved_google = (creds.google_api_key if creds and creds.google_api_key else "").strip()
+
+    if not resolved_or:
         return templates.TemplateResponse(
             request=request,
             name="onboarding/index.html",
@@ -433,24 +449,43 @@ def onboarding_inject(
         )
     base_root: Path = request.app.state.base_root
     try:
-        inject_result = inject(base_root, result.found, openrouter_api_key=openrouter_api_key)
+        inject_result = inject(
+            base_root,
+            result.found,
+            openrouter_api_key=resolved_or,
+            rapidapi_key=resolved_rapid,
+            google_api_key=resolved_google,
+        )
     except OnboardingSmokeCheckFailed as e:
         # Files were committed; only the sentinel is missing. The next paste-back
         # with a corrected key will overwrite cleanly. Render the user-facing
         # error so they can see what went wrong. e.user_message is already a
         # specific, actionable string — surface it without further wrapping.
+        # When credentials came from Step 1 (creds is not None), the form's
+        # OpenRouter input is read-only and the user fixes the key by clicking
+        # "Change keys" — surface that path explicitly in the error message.
+        if creds and creds.openrouter_api_key:
+            error_msg = (
+                "OpenRouter rejected the key when we tried to verify it. "
+                f"{e.user_message} Use 'Change keys' at the top of the page to "
+                "re-supply your key — your paste content is preserved above."
+            )
+            preserve_input = ""
+        else:
+            error_msg = (
+                "OpenRouter rejected the key when we tried to verify it. "
+                f"{e.user_message} "
+                "Fix the key and click Inject again — your paste content is preserved above."
+            )
+            preserve_input = openrouter_api_key
         return templates.TemplateResponse(
             request=request,
             name="onboarding/index.html",
             context={
                 "is_rerun": False,
                 "paste_content": emission,
-                "openrouter_api_key": openrouter_api_key,
-                "paste_error": (
-                    "OpenRouter rejected the key when we tried to verify it. "
-                    f"{e.user_message} "
-                    "Fix the key and click Inject again — your paste content is preserved above."
-                ),
+                "openrouter_api_key": preserve_input,
+                "paste_error": error_msg,
             },
             status_code=400,
         )
