@@ -10,6 +10,10 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-05-01
+
+Minor bump. Lands two onboarding feature shipments that together unlock self-deploy multi-tenancy for testers: the in-app onboarding interview (#336) and per-tester API key isolation at onboarding (#339). Both items carry migration markers — read the **Migration required** section below before pulling. Operator's stack and `findajob-test` need NO change. Existing tester stacks (alice, papa, dave, judy, tango) are unaffected on routine pulls; daily pipeline behavior is byte-identical to pre-#339.
+
 ### Added
 
 - **In-app onboarding interview (#336).** Tester runs the full onboarding interview as a chat surface inside findajob — no tab-switching to claude.ai / ChatGPT, no copy-paste of the emission. Server-side persistent sessions (`onboarding_sessions` SQLite table): close the tab and reload `/onboarding/` to see a "Resume your interview (X minutes ago)" affordance and pick up where you left off. Operator-funded via the new `OPENROUTER_OPERATOR_KEY` env var (~$1 per onboarding for Sonnet 4.6 × ~30k output tokens); the tester's own OpenRouter key is collected at finalize and used for the post-onboarding pipeline as before. Conditionally registered: when `OPENROUTER_OPERATOR_KEY` is unset, the affordance does not render and `/onboarding/` falls back to paste-back-only — the existing paste-back flow is preserved verbatim as the escape hatch for outbound-blocked deployments and operators who prefer it. Mid-interview errors (401 / 402 / 429 / 5xx / network) surface a kind-specific banner inside the chat with a link to the relevant OpenRouter dashboard (keys / credits) so the operator can fix and the tester can retry without losing input. All errors emit structured `onboarding_interview_error` events to `pipeline.jsonl` with `error_kind` and `status_code` fields for triage. New module surface: `findajob.onboarding.{session_store,interview_runner}`, `findajob.web.routes.onboarding_interview`, templates `onboarding/{interview,_turn,_turn_bubble,_turn_error}.html`. End-to-end integration test in `tests/test_onboarding_interview_integration.py` exercises the full flow with mocked `urlopen`. Documentation: `docs/setup/configure.md` describes opt-in + cost; `docs/setup/README.md` describes the three configure paths; `CLAUDE.md` updated with the two-path onboarding architecture.
@@ -601,7 +605,12 @@ from GHCR and deployed via Docker Compose on a shared Docker host.
 - Documentation cleanup — removing `sigoden/aichat` references in favor of
   `blob42/aichat-ng` — is tracked in #70
 
-[Unreleased]: https://github.com/brockamer/findajob/compare/v0.8.3...HEAD
+[Unreleased]: https://github.com/brockamer/findajob/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/brockamer/findajob/releases/tag/v0.10.0
+[0.9.2]: https://github.com/brockamer/findajob/releases/tag/v0.9.2
+[0.9.1]: https://github.com/brockamer/findajob/releases/tag/v0.9.1
+[0.9.0]: https://github.com/brockamer/findajob/releases/tag/v0.9.0
+[0.8.4]: https://github.com/brockamer/findajob/releases/tag/v0.8.4
 [0.8.3]: https://github.com/brockamer/findajob/releases/tag/v0.8.3
 [0.8.2]: https://github.com/brockamer/findajob/releases/tag/v0.8.2
 [0.8.1]: https://github.com/brockamer/findajob/releases/tag/v0.8.1
