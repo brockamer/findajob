@@ -157,33 +157,60 @@ curl http://<docker-host>:<FINDAJOB_MATERIALS_PORT>/healthz
 If `/healthz` returns `ok`, the container is up. The pipeline isn't
 producing notifications yet — that needs step 7.
 
-## 7. First-run onboarding interview
+## 7. First-run onboarding
 
-The first time you open the web UI you'll be redirected to `/onboarding/`
-(#148). This page hosts the paste-back step that turns an LLM-conducted
-interview into the ten config files findajob needs to run your pipeline.
+The first time you open the web UI — even at the bare URL — you'll be
+redirected to `/onboarding/`. This page now uses a two-step layout:
 
-1. Open the `/onboarding/` page in a browser. It will display a button labelled
-   "Copy Onboarding Prompt" and instructions.
-2. Click the button to copy the interviewer prompt, paste it into your
-   preferred LLM (Claude.ai with Opus 4.7 + Extended Thinking is the
-   recommended default; ChatGPT and Gemini also work — see the prompt for
-   per-platform upload instructions). Attach your resume + any
-   performance reviews / 360s / writing samples you have.
-3. Run the interview end-to-end (~90 min). When done, copy the entire
-   emitted block of text the LLM gives you.
-4. Back on `/onboarding/`, paste the block into the main text box.
-5. Paste your **OpenRouter API key** (sign up at https://openrouter.ai and
-   prepay $10–$20 — covers a long time of use) into the dedicated key
-   field. Each user funds their own OpenRouter usage.
-6. Click submit. The injector validates the emission, runs a 1-token
-   smoke check against OpenRouter to verify the key, atomically writes
-   the ten config files plus a derived `companies_of_interest.txt`, and
-   marks onboarding complete. Any errors are surfaced verbatim — fix and
-   resubmit.
+**Step 1 — API keys.** Provide your own keys before either interview
+path enables. You'll need three:
 
-After paste-back lands, the next scheduled triage run (00:00 in your
+| Key | Required? | What it funds | Free tier? |
+|---|---|---|---|
+| **OpenRouter** | Yes | All pipeline LLM calls + the in-app interview itself | Pay-as-you-go from $0; ~$0.05–$0.10 per fully-prepped job |
+| **RapidAPI (jobs-api14)** | Optional | LinkedIn + Indeed search ingestion | 150 requests/month BASIC (no credit card) |
+| **Google AI Studio (Gemini)** | Optional | Embeddings for the optional RAG index | Free tier; no billing setup |
+
+Skipping RapidAPI means LinkedIn + Indeed search is inactive, but
+Greenhouse / Ashby / Lever feeds and Gmail alert ingestion still work.
+Skipping Google means the REPL-only RAG index won't rebuild — the daily
+pipeline runs identically. Full sign-up walk-throughs:
+[`docs/setup/api-keys.md`](api-keys.md) — also reachable in-app at
+`/docs/setup/api-keys`.
+
+**Step 2 — Pick how you want to onboard.** Two paths:
+
+- **In-app interview** (recommended where outbound network is allowed).
+  Click "Start interview" — findajob runs the interview as a chat surface
+  on the same site, server-side persistent across tab close. Funded by
+  your OpenRouter key from Step 1.
+- **Paste-back.** Use this if your environment can't reach OpenRouter
+  directly, or if you'd rather run the interview in claude.ai / ChatGPT /
+  Gemini and paste the emission. Click "I'll run the interview elsewhere
+  and paste back," copy the prompt, and paste the emission when you're
+  done.
+
+Either way, the injector validates the emission, runs a 1-token smoke
+check against OpenRouter to re-verify the key, atomically writes the
+config files plus a derived `companies_of_interest.txt`, and marks
+onboarding complete. Errors are surfaced verbatim — fix and resubmit.
+
+After onboarding lands, the next scheduled triage run (00:00 in your
 configured `TZ`) ingests its first batch of jobs.
+
+### Operator-funded fallback (optional)
+
+To run the in-app interview on the operator's wallet — used by
+`findajob-test` and operator-deployed-for-tester scenarios — set
+`OPENROUTER_OPERATOR_KEY=sk-or-v1-…` in the stack's compose `.env` and
+restart. The Step 2 in-app affordance enables even before Step 1 keys
+are collected; the tester's key still gets collected at Step 1 and
+written to the per-stack `data/.env` for the post-onboarding pipeline.
+
+When `OPENROUTER_OPERATOR_KEY` is unset and Step 1 keys haven't been
+collected, the in-app affordance is disabled and surfaces a 503 if
+posted directly. Self-deploy testers always have a working path
+(supply own keys at Step 1).
 
 ## 8. Send a test notification
 
@@ -300,6 +327,40 @@ to manage.
 
 **Read-only invariant:** the dashboard cannot modify any tester state. All
 SQLite reads use `mode=ro` URI; `/opt/stacks` is mounted read-only.
+
+## Operating an existing stack
+
+### Rotating an API key
+
+To replace the OpenRouter, RapidAPI, or Google API key on an already-onboarded
+stack, you have two options:
+
+**Option A — Web UI (recommended):**
+
+1. Visit `/onboarding/?mode=rerun` in a browser.
+2. Use Step 1's "Change keys" affordance to clear and re-enter the values.
+3. Click **Save keys**. The new values smoke-check against the provider
+   and overwrite the stack's `data/.env` atomically.
+
+The injector backs up the existing `data/.env` to `.backups/{UTC-stamp}/`
+before overwriting.
+
+**Option B — SSH (operator-side):**
+
+Useful when the tester is unavailable and you need to rotate on their
+behalf, or when the web UI is unreachable. Edit `data/.env` server-side
+and bounce the stack:
+
+```bash
+ssh docker.lan
+cd /opt/stacks/findajob-<handle>/
+sudo sed -i 's|^OPENROUTER_API_KEY=.*|OPENROUTER_API_KEY=sk-or-v1-NEW...|' state/data/.env
+sudo docker compose restart scheduler
+```
+
+Per the project memory `feedback_never_print_secrets`, never `cat` or
+echo the `.env` to your terminal — copy + edit server-side only.
+Repeat for `RAPIDAPI_KEY` / `GOOGLE_API_KEY` as needed.
 
 ## Updating
 
