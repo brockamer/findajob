@@ -68,6 +68,24 @@ def create_app(
     app.state.base_root = base_root if base_root is not None else Path(os.environ.get("JSP_BASE", "/app"))
     app.state.templates = templates
 
+    # Idempotent schema migration for #339 credential columns. Existing tester
+    # stacks have the onboarding_sessions table but lack the new credential
+    # columns; this ALTERs them in place on startup. Pre-#336 stacks have no
+    # onboarding_sessions table at all — the migration is a no-op there because
+    # PRAGMA table_info returns no rows. Wrapped in try/except so a corrupt or
+    # missing DB doesn't crash app startup; the routes that need the columns
+    # will surface a clearer error than "app failed to start."
+    try:
+        from findajob.onboarding.session_store import migrate_schema as _migrate_sessions
+
+        _conn = sqlite3.connect(str(db_path))
+        try:
+            _migrate_sessions(_conn)
+        finally:
+            _conn.close()
+    except sqlite3.Error:
+        pass
+
     def get_db() -> Generator[sqlite3.Connection, None, None]:
         conn = sqlite3.connect(str(db_path))
         conn.row_factory = sqlite3.Row

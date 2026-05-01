@@ -1,4 +1,11 @@
-"""Onboarding NUX: landing page + prompt endpoint + paste-back inject (#148)."""
+"""Onboarding NUX: landing page + prompt endpoint + paste-back inject (#148).
+
+#339 added the keys-collection layer: ``POST /onboarding/keys`` collects
+the tester's own OpenRouter / RapidAPI / Google credentials before either
+interview path enables. The credentials live in a session row created (or
+updated, on retry) by that handler and persisted across tab-close-resume
+via the ``onboarding_sessions`` table's credential columns.
+"""
 
 from __future__ import annotations
 
@@ -11,8 +18,22 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 
 from findajob.onboarding import OnboardingSmokeCheckFailed, inject, parse_emission
+from findajob.onboarding.key_validation import (
+    validate_google_format,
+    validate_openrouter_format,
+    validate_rapidapi_format,
+)
+from findajob.onboarding.openrouter_smoke import verify_openrouter_key
 from findajob.onboarding.parser import ALLOWED_FILENAMES
-from findajob.onboarding.session_store import Session, find_active
+from findajob.onboarding.session_store import (
+    Credentials,
+    Session,
+    create_session,
+    find_active,
+    find_credentials_only,
+    get_credentials,
+    set_credentials,
+)
 
 router = APIRouter()
 
@@ -39,19 +60,51 @@ def _humanize_minutes_ago(iso_utc: str) -> str:
     return f"{hours} hour{'s' if hours != 1 else ''} ago"
 
 
+def _has_in_app_interview_capability(request: Request) -> bool:
+    """True iff the in-app interview can be started right now.
+
+    Either the tester collected their own credentials (#339 Step 1) or the
+    operator opted in via ``OPENROUTER_OPERATOR_KEY`` (#336 fallback). The
+    runtime check matches the precedence in
+    :func:`findajob.web.routes.onboarding_interview._resolved_chat_key`.
+    """
+    if (os.environ.get("OPENROUTER_OPERATOR_KEY") or "").strip():
+        return True
+    db_path: Path | None = getattr(request.app.state, "db_path", None)
+    if db_path is None:
+        return False
+    try:
+        conn = sqlite3.connect(str(db_path), timeout=5)
+    except sqlite3.Error:
+        return False
+    try:
+        return find_credentials_only(conn) is not None
+    except sqlite3.Error:
+        return False
+    finally:
+        conn.close()
+
+
 def _active_session_for_index(request: Request) -> Session | None:
     """Look up a resumable in-app interview session for the index page.
 
     Returns ``None`` when:
-    - operator hasn't opted in (``OPENROUTER_OPERATOR_KEY`` unset)
+    - In-app interview is unavailable on this stack (neither tester
+      credentials collected nor ``OPENROUTER_OPERATOR_KEY`` set)
     - DB unavailable or schema doesn't include ``onboarding_sessions``
     - no recent un-completed session exists
 
     Failures are silent — the resume affordance is a convenience, not a
     correctness requirement, and failing the index render over a session
     lookup glitch would break the whole onboarding entry point.
+
+    Updated in #339 to gate on the same precedence as
+    :func:`_has_in_app_interview_capability` (was: env var only). Without
+    this, a self-deploy stack with tester credentials but no operator env
+    var would never surface the resume affordance — a tester who closes
+    their tab mid-interview would have to start over.
     """
-    if not (os.environ.get("OPENROUTER_OPERATOR_KEY") or "").strip():
+    if not _has_in_app_interview_capability(request):
         return None
     db_path: Path | None = getattr(request.app.state, "db_path", None)
     if db_path is None:
@@ -66,6 +119,40 @@ def _active_session_for_index(request: Request) -> Session | None:
         return None
     finally:
         conn.close()
+
+
+def _credentials_for_index(request: Request) -> Credentials | None:
+    """Look up the credentials-only session's keys, or ``None`` if no row.
+
+    Returns ``None`` on any failure path (DB missing, schema older than
+    #339) so the index render can degrade gracefully. The Step 2
+    affordance is gated on ``_has_in_app_interview_capability`` which
+    handles its own DB-failure path; callers don't need to differentiate
+    "no credentials row" from "DB unreachable."
+    """
+    db_path: Path | None = getattr(request.app.state, "db_path", None)
+    if db_path is None:
+        return None
+    try:
+        conn = sqlite3.connect(str(db_path), timeout=5)
+    except sqlite3.Error:
+        return None
+    try:
+        sess = find_credentials_only(conn)
+        if sess is None:
+            return None
+        return get_credentials(conn, sess.id)
+    except sqlite3.Error:
+        return None
+    finally:
+        conn.close()
+
+
+def _last4(value: str | None) -> str:
+    """Render the last 4 chars of a key for masked display, '' on None."""
+    if not value:
+        return ""
+    return value[-4:]
 
 
 def _interview_prompt_path(base_root: Path) -> Path:
@@ -134,6 +221,8 @@ def onboarding_index(request: Request, mode: str = "") -> HTMLResponse:
     """Landing page. ``mode=rerun`` flips on the backup warning."""
     templates = request.app.state.templates
     active = _active_session_for_index(request)
+    creds = _credentials_for_index(request)
+    keys_collected = creds is not None and (creds.openrouter_api_key is not None)
     return templates.TemplateResponse(
         request=request,
         name="onboarding/index.html",
@@ -144,8 +233,145 @@ def onboarding_index(request: Request, mode: str = "") -> HTMLResponse:
             "openrouter_api_key": "",
             "active_session_id": active.id if active else None,
             "active_session_age": _humanize_minutes_ago(active.last_turn_at) if active else None,
+            "keys_collected": keys_collected,
+            "openrouter_last4": _last4(creds.openrouter_api_key) if creds else "",
+            "rapidapi_last4": _last4(creds.rapidapi_key) if creds else "",
+            "google_last4": _last4(creds.google_api_key) if creds else "",
+            "keys_error": None,
+            "rapidapi_input": "",
+            "google_input": "",
         },
     )
+
+
+def _render_keys_error(
+    request: Request,
+    *,
+    error: str,
+    rapidapi_input: str = "",
+    google_input: str = "",
+) -> HTMLResponse:
+    """Re-render the index page with a Step 1 error, preserving optional inputs.
+
+    OpenRouter input is intentionally NOT preserved — when verification fails
+    the user typically re-pastes from the provider's key page rather than
+    correcting in place, and reflowing a password-class field across requests
+    invites confusion. RapidAPI / Google are preserved because the user may
+    only need to fix one of them.
+    """
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request=request,
+        name="onboarding/index.html",
+        context={
+            "is_rerun": False,
+            "paste_error": None,
+            "paste_content": "",
+            "openrouter_api_key": "",
+            "active_session_id": None,
+            "active_session_age": None,
+            "keys_collected": False,
+            "openrouter_last4": "",
+            "rapidapi_last4": "",
+            "google_last4": "",
+            "keys_error": error,
+            "rapidapi_input": rapidapi_input,
+            "google_input": google_input,
+        },
+        status_code=400,
+    )
+
+
+@router.post("/onboarding/keys", response_model=None)
+def onboarding_keys(
+    request: Request,
+    openrouter_api_key: str = Form(default=""),
+    rapidapi_key: str = Form(default=""),
+    google_api_key: str = Form(default=""),
+    reset: str = Form(default=""),
+) -> HTMLResponse | RedirectResponse:
+    """Step 1 of #339: collect three API keys; persist to the credentials session.
+
+    Idempotent on retry: ``UPDATE``s the existing credentials-only session
+    when present rather than creating a new one. Format / smoke-check
+    failures DO NOT write to the DB — the user re-renders Step 1 with a
+    preserved-input form, and the credentials row (if any) is unchanged.
+
+    Reset path: a POST with ``reset=1`` clears the existing credentials and
+    sends the user back to a blank Step 1. The chat session, if any, is
+    intentionally left intact — the next chat turn will pick up whatever
+    OpenRouter key the user re-supplies via Step 1.
+    """
+    db_path: Path = request.app.state.db_path
+    conn = sqlite3.connect(str(db_path), timeout=5)
+    try:
+        if reset == "1":
+            existing = find_credentials_only(conn)
+            if existing is not None:
+                set_credentials(
+                    conn,
+                    existing.id,
+                    openrouter_api_key="",
+                    rapidapi_key="",
+                    google_api_key="",
+                )
+            return RedirectResponse(url="/onboarding/", status_code=303)
+
+        ok, err = validate_openrouter_format(openrouter_api_key)
+        if not ok:
+            return _render_keys_error(
+                request,
+                error=err,
+                rapidapi_input=rapidapi_key,
+                google_input=google_api_key,
+            )
+        ok, err = validate_rapidapi_format(rapidapi_key)
+        if not ok:
+            return _render_keys_error(
+                request,
+                error=err,
+                rapidapi_input=rapidapi_key,
+                google_input=google_api_key,
+            )
+        ok, err = validate_google_format(google_api_key)
+        if not ok:
+            return _render_keys_error(
+                request,
+                error=err,
+                rapidapi_input=rapidapi_key,
+                google_input=google_api_key,
+            )
+
+        smoke_ok, smoke_err = verify_openrouter_key(openrouter_api_key.strip())
+        if not smoke_ok:
+            return _render_keys_error(
+                request,
+                error=(
+                    "OpenRouter rejected the key when we tried to verify it. "
+                    f"{smoke_err or ''} Fix the key and click Save again."
+                ).strip(),
+                rapidapi_input=rapidapi_key,
+                google_input=google_api_key,
+            )
+
+        # All validations passed — UPDATE existing credentials session, or
+        # INSERT a fresh one. This prevents orphan-row accumulation when a
+        # user paste-typos several times before getting it right.
+        existing = find_credentials_only(conn)
+        if existing is not None:
+            session_id = existing.id
+        else:
+            session_id = create_session(conn)
+        set_credentials(
+            conn,
+            session_id,
+            openrouter_api_key=openrouter_api_key.strip(),
+            rapidapi_key=rapidapi_key.strip(),
+            google_api_key=google_api_key.strip(),
+        )
+        return RedirectResponse(url="/onboarding/", status_code=303)
+    finally:
+        conn.close()
 
 
 @router.get("/onboarding/prompt", response_class=PlainTextResponse)

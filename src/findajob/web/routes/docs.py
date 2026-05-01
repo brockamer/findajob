@@ -28,6 +28,7 @@ _PAGES: dict[str, str] = {
     "setup/state-migration": "setup/state-migration.md",
     "setup/internet-exposure": "setup/internet-exposure.md",
     "setup/gmail": "setup/gmail.md",
+    "setup/api-keys": "setup/api-keys.md",
 }
 
 _INDEX_GUIDES = [
