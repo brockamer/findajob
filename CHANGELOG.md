@@ -10,20 +10,22 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+## [0.8.3] — 2026-05-01
+
+Patch bump. Fixes two onboarding bugs that surfaced when the second beta tester (#337 papa wave) tried to paste back his interview emission. The first click silently no-op'd because the body-level `hx-boost` was intercepting the form submit and HTMX was dropping the 400 response. The second click 500'd because `/app/.backups/` wasn't bind-mounted — the install-docker.md mkdir command and `ops/compose.yaml.example` volumes block both omitted it. Both fixes ship together so a fresh install on this tag onboards cleanly end-to-end.
+
+### Fixed
+
+- **Onboarding paste form opts out of `hx-boost` so 400 responses render natively (#364).** `base.html` has body-level `<body hx-boost="true">`, which converts every form submit to AJAX. HTMX, by default, does not swap responses with a non-2xx status — so the 400 returned on validation failure (missing paste blocks, missing OpenRouter key, OpenRouter smoke-check failed) was silently dropped, leaving the page unchanged with no user feedback. Clicking the Inject button looked like nothing happened. Mirrors the existing pattern in `speculative/_status_fragment.html` and `speculative/review.html`. Validated at production scale: papa's stack logged 15+ silent 400s before the patch landed. While here, replaces the single "Your paste is missing: X, Y, Z" error message with three diagnostic shapes (empty paste, no blocks parsed at all, partial paste with N-of-10 + which blocks) and tightens the OpenRouter empty-key + smoke-check messages so the underlying specific error (401/402/429/network) reads cleanly without a generic preamble. Regression test asserts `hx-boost="false"` literally on the form opening tag.
+- **`backup_existing` short-circuits when nothing to back up + adds the `.backups` bind mount to template (#365, #366).** First-onboarding click was returning `PermissionError: [Errno 13] '/app/.backups'` because `backup_existing()` unconditionally called `mkdir(parents=True, exist_ok=True)` even on first runs with no existing state to preserve. The mkdir failed because `/app/` is root-owned in the image and `/app/.backups` was not bind-mounted. Two complementary fixes: (a) `ops/compose.yaml.example` adds `./state/.backups:/app/.backups` to the scheduler service volumes; `docs/setup/install-docker.md` step 1 adds `.backups` to the brace expansion. (b) Defense-in-depth: `backup_existing()` now walks the candidate sources first and returns the dest path without mkdir if none are extant — first runs never touch the path at all. The bind mount is only required on `?mode=rerun`, where there's actual state to preserve. Existing regression test renamed and reshaped to assert the new contract.
+
 ### Added
 
-- **`/admin/stacks/` multi-tenant operator dashboard (#333).** When
-  `FINDAJOB_OPERATOR_MODE=1` is set on the operator's stack, a new route
-  surfaces last-triage time, stage distribution, stuck-prep count, and
-  last-failure timestamp for every `findajob-*` stack on the host. Top nav
-  bar renders red on every page as an ambient cue that operator mode is
-  active. Tester stacks unaffected — no flag, no route, no visual change.
-  Auth inherits the existing `FINDAJOB_AUTH_USER`/`PASS` Basic Auth.
+- **`/admin/stacks/` multi-tenant operator dashboard (#333, #355, #356, #357).** When `FINDAJOB_OPERATOR_MODE=1` is set on the operator's stack, a new route surfaces last-triage time, stage distribution, stuck-prep count, and last-failure timestamp for every `findajob-*` stack on the host. Top nav bar renders red on every page as an ambient cue that operator mode is active. Tester stacks unaffected — no flag, no route, no visual change. Auth inherits the existing `FINDAJOB_AUTH_USER`/`PASS` Basic Auth. Two follow-up fixes ship in the same release: cross-stack SQLite reads now use `?mode=ro&immutable=1` (foreign-uid reader against another stack's `pipeline.db` requires the immutable hint, not just `mode=ro`, because WAL/shm sidecar perms break the default), and the stuck-prep query reads `stage_updated` instead of an invented `prep_started_at` column.
 
 ### Migration required
 
-- **Operator mode (#333) — operator's stack only.** If you want the
-  `/admin/stacks/` dashboard, edit operator's `compose.yaml` to add:
+- **Operator mode (#333) — operator's stack only.** If you want the `/admin/stacks/` dashboard, edit operator's `compose.yaml` to add:
   ```yaml
   services:
     scheduler:
@@ -37,6 +39,14 @@ changes may land in minor version bumps; patch releases are bugfix-only.
         - /opt/stacks:/opt/stacks:ro
   ```
   Apply with `docker compose up -d`. Tester stacks: leave both unset.
+
+- **`.backups` bind mount (#365, #366) — every existing stack.** Add `./state/.backups:/app/.backups` to the scheduler service volumes block in your `compose.yaml`, and `mkdir -p ./state/.backups && sudo chown lad:lad ./state/.backups` on the host. Without this, first-run onboarding works (defense-in-depth covers it), but `?mode=rerun` would still 500 on the next attempt. The simplest path is to re-pull the compose template:
+  ```bash
+  cd /opt/stacks/findajob-<handle>
+  curl -fsSL -o compose.yaml https://raw.githubusercontent.com/brockamer/findajob/main/ops/compose.yaml.example
+  mkdir -p state/.backups && sudo chown lad:lad state/.backups
+  docker compose pull && docker compose up -d
+  ```
 
 ## [0.8.2] — 2026-04-30
 
@@ -540,7 +550,11 @@ from GHCR and deployed via Docker Compose on a shared Docker host.
 - Documentation cleanup — removing `sigoden/aichat` references in favor of
   `blob42/aichat-ng` — is tracked in #70
 
-[Unreleased]: https://github.com/brockamer/findajob/compare/v0.7.4...HEAD
+[Unreleased]: https://github.com/brockamer/findajob/compare/v0.8.3...HEAD
+[0.8.3]: https://github.com/brockamer/findajob/releases/tag/v0.8.3
+[0.8.2]: https://github.com/brockamer/findajob/releases/tag/v0.8.2
+[0.8.1]: https://github.com/brockamer/findajob/releases/tag/v0.8.1
+[0.8.0]: https://github.com/brockamer/findajob/releases/tag/v0.8.0
 [0.7.4]: https://github.com/brockamer/findajob/releases/tag/v0.7.4
 [0.7.3]: https://github.com/brockamer/findajob/releases/tag/v0.7.3
 [0.7.2]: https://github.com/brockamer/findajob/releases/tag/v0.7.2
