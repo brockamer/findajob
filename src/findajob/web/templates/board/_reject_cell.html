@@ -1,27 +1,30 @@
 {#
-  Reject reason dropdown for Dashboard / Applied / Review / Waitlist tabs.
-  Inputs:
+  Reject reason dropdown. Inputs:
     row — a sqlite3.Row (or dict)
     tab — "dashboard" | "applied" | "review" | "waitlist"
 
-  On change, dispatches a POST with the selected reason as form data. Routes
-  to /reject by default; if the status cell flagged the row for Not Selected
-  (applied tab only), routes to /not-selected instead. The flag is carried
-  on this select's own dataset so it survives any row-level DOM repaints —
-  mobile Chrome was losing the row-level dataset between cell focus events.
+  On Dashboard / Review / Waitlist: dropdown POSTs the selected reason to
+  /reject (user rejection — writes feedback_log, moves to _rejected/).
+
+  On Applied: rendered inert. As of #391 every transition off the Applied
+  tab is one-click via the status cell (Not Selected fires /not-selected
+  immediately with default reason "Company passed"; Withdrew fires
+  /withdraw). The previous two-step flow — pick Not Selected, then pick
+  a reason in this cell — was a UX trap and has been removed along with
+  the dataset.pendingAction coordination, focus pulse, and hint span.
 #}
 {% set fp = row.fingerprint %}
 <td class="px-3 py-1 align-top text-sm whitespace-nowrap">
+  {% if tab == 'applied' %}
+    <span class="text-xs text-slate-400" title="On Applied, status changes are one-click — pick from the STATUS column.">—</span>
+  {% else %}
   <select
     class="block rounded border-slate-300 bg-white px-2 py-1 text-xs"
     data-fp="{{ fp }}"
     onchange="if(this.value){
       const tr=this.closest('tr');
-      const action=this.dataset.pendingAction==='not-selected'?'not-selected':'reject';
-      htmx.ajax('POST',`/board/jobs/{{ fp }}/${action}`,{target:tr,swap:'outerHTML',values:{reason:this.value}});
+      htmx.ajax('POST',`/board/jobs/{{ fp }}/reject`,{target:tr,swap:'outerHTML',values:{reason:this.value}});
       this.value='';
-      delete this.dataset.pendingAction;
-      this.classList.remove('ring-2','ring-amber-400','animate-pulse');
     }">
     <option value="">— No reason —</option>
     <option value="Too Senior">Too Senior</option>
@@ -36,4 +39,5 @@
     <option value="Already Applied">Already Applied</option>
     <option value="Other">Other</option>
   </select>
+  {% endif %}
 </td>

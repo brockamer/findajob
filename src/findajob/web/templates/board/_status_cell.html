@@ -40,36 +40,26 @@
     {% if stage == 'not_selected' %}
       <span class="text-xs text-slate-500">Not Selected</span>
     {% else %}
+    {# #391: every status pick on Applied is a one-click action — picking
+       "Not Selected" fires /not-selected immediately with empty reason
+       (handler defaults to "Company passed"). The earlier two-step flow
+       that required the user to also pick a reason was a UX trap; the
+       reject-cell coordination + hint span + dataset.pendingAction logic
+       are gone. The reject cell on Applied is rendered as an inert dash
+       (see _reject_cell.html). #}
     <select
       class="block rounded border-slate-300 bg-white px-2 py-1 text-xs"
       data-fp="{{ fp }}"
       onchange="if(!this.value)return;
         const tr=this.closest('tr');
-        const rejectSel=this.closest('td').nextElementSibling && this.closest('td').nextElementSibling.querySelector('select');
-        const hint=this.parentElement.querySelector('.js-status-hint');
-        if(this.value==='not-selected'){
-          if(rejectSel){
-            rejectSel.dataset.pendingAction='not-selected';
-            rejectSel.classList.add('ring-2','ring-amber-400','animate-pulse');
-            rejectSel.focus();
-          }
-          if(hint)hint.textContent='Pick a reason →';
-        } else {
-          if(rejectSel){
-            delete rejectSel.dataset.pendingAction;
-            rejectSel.classList.remove('ring-2','ring-amber-400','animate-pulse');
-          }
-          if(hint)hint.textContent='';
-          htmx.ajax('POST',`/board/jobs/{{ fp }}/${this.value}`,{target:tr,swap:'outerHTML'});
-          this.value='';
-        }">
+        htmx.ajax('POST',`/board/jobs/{{ fp }}/${this.value}`,{target:tr,swap:'outerHTML'});
+        this.value='';">
       <option value="">— Change status —</option>
       {% if stage != 'interview' %}<option value="interview">Interviewing</option>{% endif %}
       {% if stage != 'offer' %}<option value="offer">Offer</option>{% endif %}
       <option value="withdraw">Withdrew</option>
       <option value="not-selected">Not Selected</option>
     </select>
-    <span class="js-status-hint ml-2 text-xs font-medium text-amber-700"></span>
     {% endif %}
   {% elif tab == 'review' %}
     <button type="button"

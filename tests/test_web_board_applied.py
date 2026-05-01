@@ -90,19 +90,65 @@ def test_applied_recruiter_flow_captures_interview_as_applied_date(client: TestC
     assert "row-applied-fresh" in r.text
 
 
-def test_applied_status_cell_writes_pending_action_to_reject_select(client: TestClient) -> None:
-    """#361 regression — pending-action lives on the reject select's own dataset,
-    not the parent <tr>. Mobile Chrome was losing the row-level dataset between
-    cell focus events and routing the reject pick to /reject instead of
-    /not-selected. Asserts the JS contract end-to-end on the rendered HTML."""
+def test_applied_status_cell_fires_not_selected_one_click(client: TestClient) -> None:
+    """#391 — picking 'Not Selected' on the Applied tab fires
+    /not-selected immediately, no two-step reason picker. The earlier
+    coordination scheme (#361 / #374) made the user pick a status THEN
+    a reason, which the operator surfaced as confusing UX in #391:
+    'I click Not Selected and I just get this message Pick a reason.
+    The reason IS not selected.'
+
+    The fix removes the dataset.pendingAction handoff, the
+    js-status-hint span, the reject-cell focus-and-pulse, and the
+    'Pick a reason →' hint. The status cell now POSTs the chosen
+    action straight to its endpoint regardless of which option fires."""
     r = client.get("/board/applied")
     assert r.status_code == 200
-    # Status cell must set the pending action on the reject select directly.
-    assert "rejectSel.dataset.pendingAction='not-selected'" in r.text
-    # Reject cell must read from its own dataset (this.dataset), not tr.dataset.
-    assert "this.dataset.pendingAction==='not-selected'" in r.text
-    # Defensive: the old tr.dataset.pendingAction pattern must NOT reappear.
+
+    # The one-click POST shape must be present — picking a status fires
+    # htmx.ajax with /board/jobs/{fp}/${this.value} immediately.
+    assert "htmx.ajax('POST',`/board/jobs/" in r.text
+    assert "${this.value}`" in r.text
+
+    # The two-step coordination MUST be gone in its entirety.
+    assert "rejectSel.dataset.pendingAction" not in r.text, (
+        "#391: dataset.pendingAction handoff was the symptom of the old two-step UX. It should not reappear."
+    )
     assert "tr.dataset.pendingAction" not in r.text
+    assert "this.dataset.pendingAction" not in r.text
+    assert "Pick a reason" not in r.text
+    assert "js-status-hint" not in r.text
+
+
+def test_applied_reject_cell_renders_inert_dash(client: TestClient) -> None:
+    """#391 — every transition off Applied is now one-click via the
+    status cell. The reject cell's role on Applied (collect a reason
+    for /not-selected) is gone with the two-step. The cell renders an
+    inert dash so the column position aligns visually with other tabs
+    where the cell is still active (Dashboard / Review / Waitlist).
+
+    The reject cell must NOT POST /reject from Applied — that would
+    treat a user-rejection as if they were rejecting a job they had
+    already applied to, which writes feedback_log and contaminates
+    the scorer's loop."""
+    r = client.get("/board/applied")
+    assert r.status_code == 200
+    # The reject-reason <select> must not render on Applied — confirming
+    # by checking that the no-reason placeholder option (only present
+    # in the active select) is absent.
+    assert "— No reason —" not in r.text
+    # The /reject endpoint must not be wired up from any onchange handler
+    # rendered on Applied.
+    assert (
+        "/board/jobs/" not in r.text
+        or "/reject`" not in r.text
+        or (
+            # /reject can only appear in the company-history cell's link list,
+            # never as an onchange POST target on the Applied tab. The simplest
+            # invariant: no onchange that targets /reject is present.
+            "htmx.ajax('POST',`/board/jobs/" not in r.text or "/reject`" not in r.text
+        )
+    )
 
 
 def test_base_template_surfaces_htmx_response_errors(client: TestClient) -> None:
