@@ -575,7 +575,7 @@ def _extract_jobs_from_html(html_content: str) -> list[dict]:
     ]
 
     for a in soup.find_all("a", href=True):
-        href = a["href"]
+        href = str(a["href"])
         # LinkedIn/Indeed emails often pack "Title\nCompany" in one <a> tag.
         # Split on newline first so company doesn't get concatenated into title.
         raw_text = a.get_text(separator="\n", strip=True)
@@ -630,7 +630,7 @@ def _extract_jobs_from_html(html_content: str) -> list[dict]:
         job_dict = {"title": title, "company": company, "url": href, "location": "", "source": source}
         # For LinkedIn URLs, extract job ID so fetch_jd can use the API path
         if source == "gmail_linkedin":
-            api_id = extract_linkedin_job_id(str(href))
+            api_id = extract_linkedin_job_id(href)
             if api_id:
                 job_dict["api_id"] = api_id
         jobs.append(job_dict)
@@ -709,7 +709,9 @@ def fetch_gmail_jobs():
         log_event("gmail_connection_error")
         return []
 
-    # SUCCESS
+    # SUCCESS — fetch_new_messages always populates new_uid/new_uidvalidity on
+    # success (gmail_imap.py:306-310); narrow for mypy.
+    assert outcome.new_uid is not None and outcome.new_uidvalidity is not None
     now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     gmail_imap.save_state(
         replace(
