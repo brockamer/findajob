@@ -1,4 +1,4 @@
-"""Unit tests for findajob.onboarding.session_store (#336 Task 2)."""
+"""Unit tests for findajob.onboarding.session_store (#336 Task 2, #339 Task 1)."""
 
 from __future__ import annotations
 
@@ -14,11 +14,16 @@ from pathlib import Path
 import pytest
 
 from findajob.onboarding.session_store import (
+    Credentials,
     Session,
     append_turn,
     create_session,
+    find_credentials_only,
+    get_credentials,
     get_session,
     mark_complete,
+    migrate_schema,
+    set_credentials,
     set_error,
     update_captured_blocks,
 )
@@ -334,3 +339,164 @@ def test_find_active_max_age_hours_parameter_works(db):
     assert find_active(db, max_age_hours=1) is None
     assert find_active(db, max_age_hours=24) is not None
     assert find_active(db, max_age_hours=24).id == sid
+
+
+# ── migrate_schema + credentials (#339 Task 1) ────────────────────────────────
+
+
+def test_migrate_schema_is_idempotent(db):
+    """Calling migrate_schema twice raises no error and all columns exist."""
+    migrate_schema(db)
+    migrate_schema(db)
+    cols = {row[1] for row in db.execute("PRAGMA table_info(onboarding_sessions)").fetchall()}
+    assert "tester_openrouter_key" in cols
+    assert "tester_rapidapi_key" in cols
+    assert "tester_google_key" in cols
+
+
+def test_migrate_schema_on_table_without_credential_columns(tmp_path):
+    """ALTER TABLE adds credential columns to a pre-existing table that lacks them."""
+    # Build a minimal DB with the original onboarding_sessions schema (no cred cols).
+    db_path = tmp_path / "pipeline.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.execute(
+        """CREATE TABLE onboarding_sessions (
+               id TEXT PRIMARY KEY,
+               history_json TEXT NOT NULL,
+               captured_blocks_json TEXT NOT NULL DEFAULT '{}',
+               started_at TEXT NOT NULL,
+               last_turn_at TEXT NOT NULL,
+               completed_at TEXT,
+               error_state TEXT
+           )"""
+    )
+    conn.commit()
+
+    # Confirm columns are absent before migration.
+    cols_before = {row[1] for row in conn.execute("PRAGMA table_info(onboarding_sessions)").fetchall()}
+    assert "tester_openrouter_key" not in cols_before
+
+    migrate_schema(conn)
+
+    cols_after = {row[1] for row in conn.execute("PRAGMA table_info(onboarding_sessions)").fetchall()}
+    assert "tester_openrouter_key" in cols_after
+    assert "tester_rapidapi_key" in cols_after
+    assert "tester_google_key" in cols_after
+    conn.close()
+
+
+def test_set_and_get_credentials_round_trip(db):
+    """set_credentials stores values; get_credentials returns them intact."""
+    migrate_schema(db)
+    sid = create_session(db)
+    set_credentials(
+        db,
+        sid,
+        openrouter_api_key="sk-or-test-abc123",
+        rapidapi_key="rapi-test-xyz",
+        google_api_key="AIza-test-google",
+    )
+    creds = get_credentials(db, sid)
+    assert creds is not None
+    assert creds.openrouter_api_key == "sk-or-test-abc123"
+    assert creds.rapidapi_key == "rapi-test-xyz"
+    assert creds.google_api_key == "AIza-test-google"
+
+
+def test_set_credentials_blank_strings_stored_as_null(db):
+    """Blank strings must be coerced to NULL, not persisted as empty strings."""
+    migrate_schema(db)
+    sid = create_session(db)
+    set_credentials(
+        db,
+        sid,
+        openrouter_api_key="  ",  # whitespace only → NULL
+        rapidapi_key="rapi-test",
+        google_api_key="",  # empty → NULL
+    )
+    creds = get_credentials(db, sid)
+    assert creds is not None
+    assert creds.openrouter_api_key is None
+    assert creds.rapidapi_key == "rapi-test"
+    assert creds.google_api_key is None
+
+    # Verify at the raw SQL level too.
+    row = db.execute(
+        "SELECT tester_openrouter_key, tester_google_key FROM onboarding_sessions WHERE id = ?",
+        (sid,),
+    ).fetchone()
+    assert row[0] is None
+    assert row[1] is None
+
+
+def test_set_credentials_all_blank_get_returns_none(db):
+    """When all three are blank, get_credentials must return None (not collected)."""
+    migrate_schema(db)
+    sid = create_session(db)
+    set_credentials(db, sid, openrouter_api_key="", rapidapi_key="", google_api_key="")
+    assert get_credentials(db, sid) is None
+
+
+def test_set_credentials_raises_for_unknown_session(db):
+    """set_credentials must raise KeyError when session_id doesn't exist."""
+    migrate_schema(db)
+    with pytest.raises(KeyError):
+        set_credentials(
+            db,
+            "nonexistent-id",
+            openrouter_api_key="key",
+            rapidapi_key="key",
+            google_api_key="key",
+        )
+
+
+def test_find_credentials_only_returns_credentialed_no_history_session(db):
+    """find_credentials_only should return the session with creds and no chat history."""
+    migrate_schema(db)
+    sid = create_session(db)
+    set_credentials(db, sid, openrouter_api_key="sk-or-x", rapidapi_key="rapi-x", google_api_key="g-x")
+    result = find_credentials_only(db)
+    assert result is not None
+    assert result.id == sid
+
+
+def test_find_credentials_only_excludes_session_with_chat_history(db):
+    """A session that already has chat turns must NOT be returned."""
+    migrate_schema(db)
+    sid = create_session(db)
+    set_credentials(db, sid, openrouter_api_key="sk-or-x", rapidapi_key="", google_api_key="")
+    append_turn(db, sid, "assistant", "Welcome!")
+    assert find_credentials_only(db) is None
+
+
+def test_find_credentials_only_returns_most_recent_of_multiple(db):
+    """When multiple credentialed no-history sessions exist, the most recent wins."""
+    migrate_schema(db)
+    sid_older = create_session(db)
+    sid_newer = create_session(db)
+    set_credentials(db, sid_older, openrouter_api_key="sk-or-old", rapidapi_key="", google_api_key="")
+    set_credentials(db, sid_newer, openrouter_api_key="sk-or-new", rapidapi_key="", google_api_key="")
+    # Age the older session.
+    db.execute(
+        "UPDATE onboarding_sessions SET last_turn_at = datetime('now', '-2 hours') WHERE id = ?",
+        (sid_older,),
+    )
+    db.commit()
+
+    result = find_credentials_only(db)
+    assert result is not None
+    assert result.id == sid_newer
+
+
+def test_find_credentials_only_returns_none_when_no_credentialed_sessions(db):
+    """Returns None when no session has any credential set."""
+    migrate_schema(db)
+    _sid = create_session(db)  # no credentials set
+    assert find_credentials_only(db) is None
+
+
+def test_credentials_dataclass_is_frozen():
+    """Credentials must be frozen so callers can't accidentally mutate them."""
+    creds = Credentials(openrouter_api_key="x", rapidapi_key=None, google_api_key=None)
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        creds.openrouter_api_key = "mutated"  # type: ignore[misc]

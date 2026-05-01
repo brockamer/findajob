@@ -32,6 +32,37 @@ class Session:
     error_state: str | None
 
 
+@dataclass(frozen=True)
+class Credentials:
+    """Per-tester API credentials collected during onboarding (#339)."""
+
+    openrouter_api_key: str | None
+    rapidapi_key: str | None
+    google_api_key: str | None
+
+
+# Credential columns added in #339; absent on DBs initialised before that
+# migration.  _ensure_credential_columns() is idempotent and runs at import
+# time via migrate_schema().
+_CREDENTIAL_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("tester_openrouter_key", "TEXT DEFAULT NULL"),
+    ("tester_rapidapi_key", "TEXT DEFAULT NULL"),
+    ("tester_google_key", "TEXT DEFAULT NULL"),
+)
+
+
+def migrate_schema(db: sqlite3.Connection) -> None:
+    """Add credential columns to onboarding_sessions if they don't exist yet.
+
+    Safe to call on every app start — skips columns that are already present.
+    """
+    existing = {row[1] for row in db.execute("PRAGMA table_info(onboarding_sessions)").fetchall()}
+    for col_name, col_def in _CREDENTIAL_COLUMNS:
+        if col_name not in existing:
+            db.execute(f"ALTER TABLE onboarding_sessions ADD COLUMN {col_name} {col_def}")
+    db.commit()
+
+
 def _utcnow_iso() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -134,6 +165,107 @@ def find_active(db: sqlite3.Connection, *, max_age_hours: int = 24) -> Session |
             ORDER BY last_turn_at DESC
             LIMIT 1""",
         (f"-{max_age_hours} hours",),
+    ).fetchone()
+    if row is None:
+        return None
+    return Session(
+        id=row[0],
+        history=json.loads(row[1]),
+        captured_blocks=json.loads(row[2]),
+        started_at=row[3],
+        last_turn_at=row[4],
+        completed_at=row[5],
+        error_state=row[6],
+    )
+
+
+# ── Per-tester credentials (#339) ────────────────────────────────────────────
+
+
+def set_credentials(
+    db: sqlite3.Connection,
+    session_id: str,
+    *,
+    openrouter_api_key: str,
+    rapidapi_key: str,
+    google_api_key: str,
+) -> None:
+    """Persist API credentials on an existing session row.
+
+    Blank strings are coerced to ``None`` (stored as SQL NULL) so the DB
+    never holds empty-string sentinels.  Raises :exc:`KeyError` when
+    ``session_id`` doesn't exist.
+    """
+    if get_session(db, session_id) is None:
+        raise KeyError(session_id)
+    db.execute(
+        """UPDATE onboarding_sessions
+           SET tester_openrouter_key = ?,
+               tester_rapidapi_key   = ?,
+               tester_google_key     = ?
+           WHERE id = ?""",
+        (
+            openrouter_api_key.strip() or None,
+            rapidapi_key.strip() or None,
+            google_api_key.strip() or None,
+            session_id,
+        ),
+    )
+    db.commit()
+
+
+def get_credentials(db: sqlite3.Connection, session_id: str) -> Credentials | None:
+    """Return the stored credentials for a session, or ``None`` if all are NULL.
+
+    A ``Credentials`` instance is returned whenever at least one field is
+    non-NULL.  Returns ``None`` when all three columns are NULL (i.e. not
+    yet collected).
+    """
+    row = db.execute(
+        """SELECT tester_openrouter_key, tester_rapidapi_key, tester_google_key
+           FROM onboarding_sessions WHERE id = ?""",
+        (session_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    or_key, rapi_key, g_key = row
+    if or_key is None and rapi_key is None and g_key is None:
+        return None
+    return Credentials(
+        openrouter_api_key=or_key,
+        rapidapi_key=rapi_key,
+        google_api_key=g_key,
+    )
+
+
+def find_credentials_only(db: sqlite3.Connection) -> Session | None:
+    """Return the most recent session that has credentials but no chat history.
+
+    Used by the ``/onboarding/`` index handler to surface a
+    "Keys collected — ready to start interview" affordance.  Returns
+    ``None`` when no such session exists.
+
+    Conditions:
+    - At least one credential column is non-NULL
+    - ``history_json`` is the empty-list literal ``'[]'`` (no turns yet)
+    - ``completed_at IS NULL``
+
+    Return type matches :func:`find_active` so the index handler can swap
+    between the two affordances without branching.
+    """
+    row = db.execute(
+        """SELECT id, history_json, captured_blocks_json, started_at,
+                  last_turn_at, completed_at, error_state
+           FROM onboarding_sessions
+           WHERE completed_at IS NULL
+             AND history_json = '[]'
+             AND (
+                   tester_openrouter_key IS NOT NULL
+                OR tester_rapidapi_key   IS NOT NULL
+                OR tester_google_key     IS NOT NULL
+             )
+           ORDER BY last_turn_at DESC
+           LIMIT 1"""
     ).fetchone()
     if row is None:
         return None
