@@ -80,8 +80,10 @@ def configured_client(tmp_path: Path) -> TestClient:
 # ---- Gated routes redirect when unconfigured ----
 
 
-@pytest.mark.parametrize("path", ["/board/dashboard", "/materials/", "/stats/funnel"])
+@pytest.mark.parametrize("path", ["/", "/board/dashboard", "/materials/", "/stats/funnel"])
 def test_gated_routes_redirect_without_sentinel(unconfigured_client: TestClient, path: str) -> None:
+    """`/` joined the gated set in #339 Task 9 — a fresh stack drops the
+    visitor straight into onboarding instead of the marketing landing page."""
     resp = unconfigured_client.get(path)
     assert resp.status_code == 307
     assert resp.headers["location"] == "/onboarding/"
@@ -90,7 +92,7 @@ def test_gated_routes_redirect_without_sentinel(unconfigured_client: TestClient,
 # ---- Gated routes pass through when configured ----
 
 
-@pytest.mark.parametrize("path", ["/board/dashboard", "/stats/funnel"])
+@pytest.mark.parametrize("path", ["/", "/board/dashboard", "/stats/funnel"])
 def test_gated_routes_pass_with_sentinel(configured_client: TestClient, path: str) -> None:
     resp = configured_client.get(path)
     # 200 or a different redirect — anything NOT a 307 to /onboarding/
@@ -100,7 +102,7 @@ def test_gated_routes_pass_with_sentinel(configured_client: TestClient, path: st
 # ---- Ungated routes are always reachable ----
 
 
-@pytest.mark.parametrize("path", ["/", "/healthz", "/config/", "/tools/", "/ingest/"])
+@pytest.mark.parametrize("path", ["/healthz", "/config/", "/tools/", "/ingest/"])
 def test_ungated_routes_reachable_without_sentinel(unconfigured_client: TestClient, path: str) -> None:
     resp = unconfigured_client.get(path)
     assert not (resp.status_code == 307 and resp.headers.get("location") == "/onboarding/")

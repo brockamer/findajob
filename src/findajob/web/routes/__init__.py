@@ -25,7 +25,14 @@ _guard = [Depends(require_onboarding_complete)]
 router = APIRouter()
 router.include_router(materials.router, dependencies=_guard)
 router.include_router(healthz.router)
-router.include_router(landing.router)
+# #339 Task 9: landing route is now guarded so a fresh stack — where the
+# user lands by typing the bare URL — redirects directly into onboarding
+# instead of rendering the marketing-style landing page with no signal
+# that onboarding is the next step. The redirect is exitable: once on
+# /onboarding/ the user can navigate freely via the top nav to /tools/,
+# /docs/, etc. The cached app.state.onboarding_complete flag makes the
+# redirect zero-cost on every request after the first post-onboarding hit.
+router.include_router(landing.router, dependencies=_guard)
 router.include_router(board.router, dependencies=_guard)
 router.include_router(board_actions.router, dependencies=_guard)
 router.include_router(ingest.router)
