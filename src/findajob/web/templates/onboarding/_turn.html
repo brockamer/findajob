@@ -1,0 +1,28 @@
+{# Single-turn HTMX partial (#336 Task 4 stub).
+
+   Stub template — Task 5 replaces with role-styled message bubbles + the
+   captured/required progress badge. Tests assert on the assistant message
+   content appearing in the response, so this minimal version covers them.
+#}
+<div class="border rounded p-3" data-role="user">
+  <div class="text-xs uppercase text-slate-500">user</div>
+  <div class="whitespace-pre-wrap">{{ user_message }}</div>
+</div>
+<div class="border rounded p-3" data-role="assistant">
+  <div class="text-xs uppercase text-slate-500">assistant</div>
+  <div class="whitespace-pre-wrap">{{ assistant_message }}</div>
+</div>
+<p class="text-xs text-slate-500" data-captured-count="{{ captured_count }}" data-required-count="{{ required_count }}">
+  Captured {{ captured_count }} of {{ required_count }} required blocks.
+</p>
+{% if finalize_ready %}
+<form action="/onboarding/interview/{{ session_id }}/finalize" method="post" hx-boost="false"
+      hx-swap-oob="true" id="finalize-form" class="border-t pt-4 space-y-2 mt-4">
+  <h2 class="text-lg font-medium">Finalize</h2>
+  <label class="block text-sm">
+    Your OpenRouter API key
+    <input type="text" name="openrouter_api_key" required class="w-full border rounded p-2 mt-1">
+  </label>
+  <button type="submit" class="px-4 py-2 bg-green-600 text-white rounded">Finalize</button>
+</form>
+{% endif %}

@@ -78,6 +78,14 @@ def create_app(
             admin_stacks.router,
             dependencies=[Depends(require_onboarding_complete)],
         )
+    # In-app onboarding interview routes (#336): only registered when the
+    # operator opts in by setting OPENROUTER_OPERATOR_KEY. When unset, the
+    # in-app interview is unavailable and /onboarding/ falls back to
+    # paste-back only — no broken affordance (acceptance criterion #6).
+    if (os.environ.get("OPENROUTER_OPERATOR_KEY") or "").strip():
+        from findajob.web.routes import onboarding_interview
+
+        app.include_router(onboarding_interview.router)
     install_basic_auth(app)
     return app
 

@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{# In-app onboarding interview chat surface (#336 Task 4 stub).
+
+   Stub template — Task 5 replaces this with the full Tailwind/HTMX UI.
+   Renders just enough to verify route behavior in tests:
+   - the session_id (so HTMX form posts can target /interview/turn)
+   - the message history (so resume tests can find their markers)
+   - captured_count / required_count
+   - error banner when set
+   - finalize form when finalize_ready
+#}
+
+{% block title %}Onboarding interview — findajob{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto p-6 space-y-4" data-session-id="{{ session_id }}">
+  <h1 class="text-2xl font-semibold">Onboarding interview</h1>
+
+  {% if error %}
+  <div class="border border-red-300 bg-red-50 text-red-900 px-4 py-3 rounded">
+    <p class="font-medium">Something went wrong</p>
+    <p class="text-sm mt-1">{{ error }}</p>
+  </div>
+  {% endif %}
+
+  <p class="text-sm text-slate-600">
+    Captured {{ captured_count }} of {{ required_count }} required blocks.
+  </p>
+
+  <div id="messages" class="space-y-3">
+    {% for turn in history %}
+    <div class="border rounded p-3" data-role="{{ turn.role }}">
+      <div class="text-xs uppercase text-slate-500">{{ turn.role }}</div>
+      <div class="whitespace-pre-wrap">{{ turn.content }}</div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <form action="/onboarding/interview/turn" method="post" hx-boost="false">
+    <input type="hidden" name="session_id" value="{{ session_id }}">
+    <textarea name="message" rows="3" required
+              class="w-full border rounded p-2"
+              placeholder="Type your reply..."></textarea>
+    <button type="submit" class="mt-2 px-4 py-2 bg-blue-600 text-white rounded">Send</button>
+  </form>
+
+  {% if finalize_ready %}
+  <form action="/onboarding/interview/{{ session_id }}/finalize" method="post" hx-boost="false"
+        class="border-t pt-4 space-y-2">
+    <h2 class="text-lg font-medium">Finalize</h2>
+    <label class="block text-sm">
+      Your OpenRouter API key (starts with <code>sk-or-v1-</code>)
+      <input type="text" name="openrouter_api_key" required class="w-full border rounded p-2 mt-1">
+    </label>
+    <button type="submit" class="px-4 py-2 bg-green-600 text-white rounded">Finalize</button>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}
