@@ -1,28 +1,39 @@
-{# Single-turn HTMX partial (#336 Task 4 stub).
+{# Per-turn HTMX partial (#336 Task 5).
 
-   Stub template — Task 5 replaces with role-styled message bubbles + the
-   captured/required progress badge. Tests assert on the assistant message
-   content appearing in the response, so this minimal version covers them.
+   Returned by POST /onboarding/interview/turn and appended into #messages
+   via HTMX `hx-swap="beforeend"`. Renders BOTH the user's just-sent message
+   AND the assistant's reply, each as a `_turn_bubble.html` (single role-
+   styled bubble) — so the user's input stays visible after the swap.
+
+   When the latest captured-blocks count satisfies ALLOWED_FILENAMES, an OOB
+   swap injects the finalize block into #finalize-slot in interview.html.
 #}
-<div class="border rounded p-3" data-role="user">
-  <div class="text-xs uppercase text-slate-500">user</div>
-  <div class="whitespace-pre-wrap">{{ user_message }}</div>
-</div>
-<div class="border rounded p-3" data-role="assistant">
-  <div class="text-xs uppercase text-slate-500">assistant</div>
-  <div class="whitespace-pre-wrap">{{ assistant_message }}</div>
-</div>
-<p class="text-xs text-slate-500" data-captured-count="{{ captured_count }}" data-required-count="{{ required_count }}">
-  Captured {{ captured_count }} of {{ required_count }} required blocks.
-</p>
+{% set turn = {"role": "user", "content": user_message} %}
+{% include "onboarding/_turn_bubble.html" %}
+{% set turn = {"role": "assistant", "content": assistant_message} %}
+{% include "onboarding/_turn_bubble.html" %}
+
 {% if finalize_ready %}
-<form action="/onboarding/interview/{{ session_id }}/finalize" method="post" hx-boost="false"
-      hx-swap-oob="true" id="finalize-form" class="border-t pt-4 space-y-2 mt-4">
-  <h2 class="text-lg font-medium">Finalize</h2>
-  <label class="block text-sm">
-    Your OpenRouter API key
-    <input type="text" name="openrouter_api_key" required class="w-full border rounded p-2 mt-1">
-  </label>
-  <button type="submit" class="px-4 py-2 bg-green-600 text-white rounded">Finalize</button>
-</form>
+<section id="finalize-block" hx-swap-oob="true"
+         class="border border-green-300 bg-green-50 rounded p-4 space-y-3 mt-4">
+  <h2 class="font-semibold text-green-900">Finalize onboarding</h2>
+  <p class="text-sm text-green-900">
+    All required blocks have been emitted. Provide your personal OpenRouter
+    API key to complete onboarding.
+  </p>
+  <form action="/onboarding/interview/{{ session_id }}/finalize"
+        method="post"
+        hx-boost="false"
+        class="space-y-2">
+    <label class="block text-sm">
+      OpenRouter API key (starts with <code>sk-or-v1-</code>)
+      <input type="text" name="openrouter_api_key" required
+             class="w-full border rounded p-2 mt-1 font-mono text-sm"
+             placeholder="sk-or-v1-...">
+    </label>
+    <button type="submit" class="px-4 py-2 bg-green-700 text-white rounded hover:bg-green-800">
+      Finalize
+    </button>
+  </form>
+</section>
 {% endif %}

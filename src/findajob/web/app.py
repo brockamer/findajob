@@ -42,6 +42,13 @@ def create_app(
     templates.env.globals["filter_remove_qs"] = filter_remove_qs
     templates.env.globals["filter_qs_with"] = filter_qs_with
     templates.env.globals["operator_mode"] = os.environ.get("FINDAJOB_OPERATOR_MODE") == "1"
+    # True iff the operator opted in to the in-app onboarding interview by
+    # setting OPENROUTER_OPERATOR_KEY. Same condition as the route module's
+    # registration below — single-sourced from env so the affordance and the
+    # backing routes are turned on together (#336 acceptance #6).
+    templates.env.globals["operator_mode_interview_enabled"] = bool(
+        (os.environ.get("OPENROUTER_OPERATOR_KEY") or "").strip()
+    )
 
     static_dir = Path(__file__).parent / "static"
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
