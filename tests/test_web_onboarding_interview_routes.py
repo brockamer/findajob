@@ -156,11 +156,78 @@ def _read_session(base_root: Path, session_id: str) -> tuple[str, str, str | Non
 # ── Conditional registration ──────────────────────────────────────────────
 
 
-def test_router_not_registered_when_operator_key_unset(client_no_key: TestClient) -> None:
-    """Acceptance #6: when OPENROUTER_OPERATOR_KEY is unset, the in-app
-    interview is unavailable — routes return 404 (not registered)."""
+def test_routes_register_but_503_when_no_chat_key_resolved(client_no_key: TestClient) -> None:
+    """#339 changed gating from import-time to per-request.
+
+    With no OPENROUTER_OPERATOR_KEY env AND no tester credentials collected
+    via /onboarding/ Step 1, the route is registered (no 404) but resolves
+    to a 503 with a pointer back to /onboarding/. This is the self-deploy
+    failure mode — the previous import-time 404 was the wrong shape because
+    a self-deploy stack with tester credentials NEEDS the route to register.
+    """
     resp = client_no_key.post("/onboarding/interview/start")
-    assert resp.status_code == 404
+    assert resp.status_code == 503
+    assert "onboarding" in resp.text.lower()
+
+
+def test_start_uses_tester_credentials_when_collected(
+    client_no_key: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    base_root: Path,
+) -> None:
+    """#339: with no operator env but tester credentials collected, in-app
+    chat funded by the tester's own OpenRouter key (not the operator's)."""
+    # Stub the smoke check used by /onboarding/keys so we can plant credentials.
+    monkeypatch.setattr(
+        "findajob.web.routes.onboarding.verify_openrouter_key",
+        lambda _k: (True, None),
+    )
+    tester_key = "sk-or-v1-tester-self-deploy"
+    r = client_no_key.post("/onboarding/keys", data={"openrouter_api_key": tester_key})
+    assert r.status_code == 303
+
+    calls = _stub_run_turn(monkeypatch, "Hi! What's your name?")
+    resp = client_no_key.post("/onboarding/interview/start")
+    # 303 → redirect to chat page; route registered + chat key resolved.
+    assert resp.status_code == 303
+    assert len(calls) == 1
+    # The chat-runner was invoked with the TESTER's key, not the operator's.
+    assert calls[0]["operator_key"] == tester_key
+
+
+def test_start_uses_operator_key_when_no_credentials(
+    client_with_key: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#339: operator-funded fallback path. No tester credentials collected,
+    OPENROUTER_OPERATOR_KEY env is set — chat runs on the operator's key."""
+    calls = _stub_run_turn(monkeypatch, "Hi!")
+    resp = client_with_key.post("/onboarding/interview/start")
+    assert resp.status_code == 303
+    assert len(calls) == 1
+    assert calls[0]["operator_key"] == _OPERATOR_KEY
+
+
+def test_start_tester_credentials_win_over_operator_env(
+    client_with_key: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#339 precedence: tester credentials always beat operator env var."""
+    monkeypatch.setattr(
+        "findajob.web.routes.onboarding.verify_openrouter_key",
+        lambda _k: (True, None),
+    )
+    tester_key = "sk-or-v1-tester-priority"
+    r = client_with_key.post("/onboarding/keys", data={"openrouter_api_key": tester_key})
+    assert r.status_code == 303
+
+    calls = _stub_run_turn(monkeypatch, "Hi!")
+    resp = client_with_key.post("/onboarding/interview/start")
+    assert resp.status_code == 303
+    assert len(calls) == 1
+    # Tester's key wins, not the operator's env value.
+    assert calls[0]["operator_key"] == tester_key
+    assert calls[0]["operator_key"] != _OPERATOR_KEY
 
 
 def test_paste_back_path_still_available_when_operator_key_unset(client_no_key: TestClient) -> None:
@@ -429,12 +496,21 @@ def test_finalize_calls_inject_and_marks_complete(
 
     inject_calls: list[dict[str, Any]] = []
 
-    def _fake_inject(base_root, parsed_files, *, openrouter_api_key):  # type: ignore[no-untyped-def]
+    def _fake_inject(  # type: ignore[no-untyped-def]
+        base_root,
+        parsed_files,
+        *,
+        openrouter_api_key,
+        rapidapi_key="",
+        google_api_key="",
+    ):
         inject_calls.append(
             {
                 "base_root": base_root,
                 "parsed_files": dict(parsed_files),
                 "openrouter_api_key": openrouter_api_key,
+                "rapidapi_key": rapidapi_key,
+                "google_api_key": google_api_key,
             }
         )
         return InjectResult(

@@ -42,10 +42,13 @@ def create_app(
     templates.env.globals["filter_remove_qs"] = filter_remove_qs
     templates.env.globals["filter_qs_with"] = filter_qs_with
     templates.env.globals["operator_mode"] = os.environ.get("FINDAJOB_OPERATOR_MODE") == "1"
-    # True iff the operator opted in to the in-app onboarding interview by
-    # setting OPENROUTER_OPERATOR_KEY. Same condition as the route module's
-    # registration below — single-sourced from env so the affordance and the
-    # backing routes are turned on together (#336 acceptance #6).
+    # True iff the operator-funded fallback for the in-app interview chat is
+    # available on this stack (used by findajob-test and operator-deployed-
+    # for-tester scenarios). Tester credentials collected at /onboarding/
+    # Step 1 (#339) are an independent path — both flow into
+    # ``_resolved_chat_key`` in onboarding_interview.py with tester
+    # credentials taking precedence. Templates use this flag to render the
+    # Step 2 affordance even before Step 1 keys are collected.
     templates.env.globals["operator_mode_interview_enabled"] = bool(
         (os.environ.get("OPENROUTER_OPERATOR_KEY") or "").strip()
     )
@@ -103,14 +106,17 @@ def create_app(
             admin_stacks.router,
             dependencies=[Depends(require_onboarding_complete)],
         )
-    # In-app onboarding interview routes (#336): only registered when the
-    # operator opts in by setting OPENROUTER_OPERATOR_KEY. When unset, the
-    # in-app interview is unavailable and /onboarding/ falls back to
-    # paste-back only — no broken affordance (acceptance criterion #6).
-    if (os.environ.get("OPENROUTER_OPERATOR_KEY") or "").strip():
-        from findajob.web.routes import onboarding_interview
+    # In-app onboarding interview routes (#336 + #339): registered
+    # unconditionally. The runtime gate is per-request via
+    # ``_resolved_chat_key`` — either the tester collected their own key at
+    # /onboarding/ Step 1 (#339) or ``OPENROUTER_OPERATOR_KEY`` is set
+    # (operator-funded fallback). When neither is available the routes
+    # surface a 503 with a pointer back to /onboarding/. The previous
+    # import-time gate (which 404'd on stacks with no operator key) made
+    # self-deploy impossible.
+    from findajob.web.routes import onboarding_interview
 
-        app.include_router(onboarding_interview.router)
+    app.include_router(onboarding_interview.router)
     install_basic_auth(app)
     return app
 

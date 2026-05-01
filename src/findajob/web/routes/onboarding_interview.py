@@ -1,18 +1,22 @@
-"""In-app onboarding interview routes (#336 Task 4).
+"""In-app onboarding interview routes (#336 + #339).
 
 Wires session_store + interview_runner + parser + injector into a chat
 surface so non-technical testers can complete onboarding without leaving
-findajob's UI. Conditionally registered in :func:`findajob.web.app.create_app`
-only when ``OPENROUTER_OPERATOR_KEY`` is set — when unset, the in-app
-interview is unavailable and ``/onboarding/`` falls back to paste-back only
-(acceptance criterion #6 of #336).
+findajob's UI.
+
+Routes always register (#339); the in-app affordance is gated at runtime
+on either tester credentials being collected (Step 1 of /onboarding/) OR
+``OPENROUTER_OPERATOR_KEY`` being set (the operator-funded fallback used
+by ``findajob-test`` and operator-deployed-for-tester scenarios). When
+neither is available the routes return 503 with an actionable error
+pointing the user back to /onboarding/ Step 1.
 
 Cross-task constraints (from #336 Session 2026-05-01):
 - Emission detection runs against the cumulative assistant transcript on every
   turn, driven by :data:`findajob.onboarding.parser.ALLOWED_FILENAMES` (NEVER
   hardcoded counts) so #212 / #283 changes land cleanly.
-- Finalize collects the user's OpenRouter key in a section structured to accept
-  RapidAPI + Google fields later (#339).
+- Finalize reads the user's OpenRouter key from collected credentials when
+  available (#339); the form-supplied key is a legacy safety net only.
 """
 
 from __future__ import annotations
@@ -30,6 +34,8 @@ from findajob.onboarding.parser import ALLOWED_FILENAMES, parse_emission
 from findajob.onboarding.session_store import (
     append_turn,
     create_session,
+    find_credentials_only,
+    get_credentials,
     get_session,
     mark_complete,
     set_error,
@@ -46,6 +52,52 @@ _KICKOFF_USER_MESSAGE = "Begin the interview."
 
 def _operator_key() -> str:
     return (os.environ.get(OPERATOR_KEY_ENV) or "").strip()
+
+
+def _resolved_chat_key(conn: sqlite3.Connection, session_id: str | None) -> str:
+    """Return the OpenRouter key for chat-runner calls, in precedence order:
+
+    1. The tester's own key on the given session (if session_id provided
+       and credentials set on it).
+    2. The most-recent credentials-only session's OpenRouter key (when
+       called from /start before a chat session exists).
+    3. The operator-funded env var (``OPENROUTER_OPERATOR_KEY``) when set.
+    4. Empty string — caller surfaces a 503 with link back to /onboarding/.
+
+    The two-phase lookup (session-specific then credentials-only) is what
+    lets a tester start an interview, supply credentials in the same UI,
+    and not need them re-attached to every chat session row that exists.
+    Once a chat session is created the credentials are bound to that
+    session via :func:`session_store.set_credentials` so subsequent turns
+    don't need to re-resolve from credentials_only.
+    """
+    if session_id is not None:
+        creds = get_credentials(conn, session_id)
+        if creds is not None and creds.openrouter_api_key:
+            return creds.openrouter_api_key
+    fallback_session = find_credentials_only(conn)
+    if fallback_session is not None:
+        creds = get_credentials(conn, fallback_session.id)
+        if creds is not None and creds.openrouter_api_key:
+            return creds.openrouter_api_key
+    return _operator_key()
+
+
+def _unavailable_503() -> HTTPException:
+    """Consistent 503 surface for "in-app interview unavailable" cases.
+
+    Detail message points the user at /onboarding/ Step 1 — the only path
+    out of this state is to either supply tester credentials or set
+    ``OPENROUTER_OPERATOR_KEY`` on the stack.
+    """
+    return HTTPException(
+        status_code=503,
+        detail=(
+            "In-app interview unavailable: no OpenRouter key resolved for this stack. "
+            "Visit /onboarding/ to provide your API keys, or have the operator set "
+            "OPENROUTER_OPERATOR_KEY for an operator-funded interview."
+        ),
+    )
 
 
 def _conn(request: Request) -> sqlite3.Connection:
@@ -144,21 +196,35 @@ def _render_chat(
 def start_interview(request: Request) -> HTMLResponse | RedirectResponse:
     """Create a session, run the synthetic kickoff turn, redirect to the chat page.
 
-    The router is registered only when ``OPENROUTER_OPERATOR_KEY`` is set, but
-    we re-check here so the failure mode is a 503 rather than a 500 if env
-    state shifts mid-process (and so this module is safe to import in tests
-    that monkeypatch env after app construction).
-    """
-    operator_key = _operator_key()
-    if not operator_key:
-        raise HTTPException(status_code=503, detail="In-app interview unavailable on this deployment")
+    Resolution path (#339):
 
+    - Look up the credentials-only session to "promote" into an active
+      interview if one exists. This binds the tester's collected
+      OpenRouter key to the same session row that gets the chat history.
+    - If no credentials-only session exists but ``OPENROUTER_OPERATOR_KEY``
+      is set, create a fresh session and use the operator-funded key. The
+      session has no credentials attached — finalize will collect the
+      OpenRouter key as a paste-back-style safety net.
+    - If neither, 503 with a pointer back to /onboarding/.
+    """
     conn = _conn(request)
     try:
-        session_id = create_session(conn)
+        # Promote credentials-only session into the active interview when
+        # present, so the chat history attaches to the same row that holds
+        # the tester's key. Fresh-create otherwise.
+        cred_session = find_credentials_only(conn)
+        if cred_session is not None:
+            session_id = cred_session.id
+        else:
+            session_id = create_session(conn)
+
+        chat_key = _resolved_chat_key(conn, session_id)
+        if not chat_key:
+            raise _unavailable_503()
+
         try:
             assistant_text, _usage = run_turn(
-                operator_key=operator_key,
+                operator_key=chat_key,
                 system_prompt=_system_prompt(request),
                 history=[],
                 user_message=_KICKOFF_USER_MESSAGE,
@@ -201,19 +267,19 @@ def post_turn(
     message: str = Form(...),
 ) -> HTMLResponse:
     """Append a user turn, call ``run_turn``, persist + scan the assistant reply."""
-    operator_key = _operator_key()
-    if not operator_key:
-        raise HTTPException(status_code=503, detail="In-app interview unavailable on this deployment")
-
     conn = _conn(request)
     try:
         sess = get_session(conn, session_id)
         if sess is None:
             raise HTTPException(status_code=404, detail="session not found")
 
+        chat_key = _resolved_chat_key(conn, session_id)
+        if not chat_key:
+            raise _unavailable_503()
+
         try:
             assistant_text, _usage = run_turn(
-                operator_key=operator_key,
+                operator_key=chat_key,
                 system_prompt=_system_prompt(request),
                 history=sess.history,
                 user_message=message,
@@ -280,8 +346,19 @@ def finalize_interview(
     request: Request,
     session_id: str,
     openrouter_api_key: str = Form(default=""),
+    rapidapi_key: str = Form(default=""),
+    google_api_key: str = Form(default=""),
 ) -> HTMLResponse | RedirectResponse:
-    """Validate captured blocks, run :func:`inject`, mark session complete."""
+    """Validate captured blocks, run :func:`inject`, mark session complete.
+
+    Resolution path for the keys passed to :func:`inject` (#339):
+
+    - Prefer credentials already collected on this session via Step 1.
+    - Form-supplied values are a legacy safety net used when credentials
+      were never collected (e.g. operator-funded path with no Step 1).
+    - Whichever source wins, the values flow into the per-stack
+      ``data/.env`` merge.
+    """
     conn = _conn(request)
     try:
         sess = get_session(conn, session_id)
@@ -303,7 +380,13 @@ def finalize_interview(
                 status_code=400,
             )
 
-        if not openrouter_api_key.strip():
+        # #339: prefer collected credentials over form-supplied values.
+        creds = get_credentials(conn, session_id)
+        resolved_or = (creds.openrouter_api_key if creds and creds.openrouter_api_key else openrouter_api_key).strip()
+        resolved_rapid = (creds.rapidapi_key if creds and creds.rapidapi_key else rapidapi_key).strip()
+        resolved_google = (creds.google_api_key if creds and creds.google_api_key else google_api_key).strip()
+
+        if not resolved_or:
             return _render_chat(
                 request,
                 session_id=session_id,
@@ -320,7 +403,13 @@ def finalize_interview(
 
         base_root: Path = request.app.state.base_root
         try:
-            inject_result = inject(base_root, sess.captured_blocks, openrouter_api_key=openrouter_api_key)
+            inject_result = inject(
+                base_root,
+                sess.captured_blocks,
+                openrouter_api_key=resolved_or,
+                rapidapi_key=resolved_rapid,
+                google_api_key=resolved_google,
+            )
         except OnboardingSmokeCheckFailed as e:
             return _render_chat(
                 request,
