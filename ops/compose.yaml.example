@@ -50,6 +50,7 @@ services:
       - ./state/companies:/app/companies
       - ./state/logs:/app/logs
       - ./state/aichat_ng:/app/.config/aichat_ng
+      - ./state/.backups:/app/.backups
     networks:
       - findajob-network
 

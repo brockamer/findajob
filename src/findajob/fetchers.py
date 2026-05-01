@@ -369,6 +369,28 @@ def fetch_lever_jobs(feed_urls_path):
     return jobs
 
 
+_NEW_INSTALL_DAYS = 30
+
+
+def _date_posted_for_install() -> str:
+    """LinkedIn `datePosted` value for this install.
+
+    During the first 30 days after onboarding completion, widen from `day` to
+    `month` so a brand-new tester has enough volume to populate the board. The
+    jobs-api14 LinkedIn endpoint accepts only `any|day|week|month` — there is
+    no `2weeks` value, so `month` is the closest over-recall option (the
+    scorer correctly filters the additional volume).
+
+    Anchor: mtime of `data/.onboarding-complete` sentinel. Falls back to `day`
+    if the sentinel is missing (pre-onboarding stacks shouldn't be triaging).
+    """
+    try:
+        age_days = (time.time() - os.path.getmtime(f"{BASE}/data/.onboarding-complete")) / 86400
+    except OSError:
+        return "day"
+    return "month" if age_days < _NEW_INSTALL_DAYS else "day"
+
+
 def fetch_jobsapi_jobs(queries_path):
     """
     Fetch jobs via Jobs API (jobs-api14, RapidAPI).
@@ -395,6 +417,9 @@ def fetch_jobsapi_jobs(queries_path):
         "Content-Type": "application/json",
     }
 
+    date_posted = _date_posted_for_install()
+    log_event("jobsapi_date_posted", value=date_posted)
+
     sources = [
         {
             "name": "linkedin",
@@ -402,7 +427,7 @@ def fetch_jobsapi_jobs(queries_path):
             "params": lambda q: {
                 "query": q,
                 "location": "United States",
-                "datePosted": "day",
+                "datePosted": date_posted,
                 "employmentTypes": "fulltime",
                 "experienceLevels": "midSenior;director",
             },

@@ -111,11 +111,31 @@ def test_mark_and_is_complete_roundtrip(tmp_path: Path) -> None:
 # ---- backup_existing ------------------------------------------------------
 
 
-def test_backup_on_empty_base_creates_empty_dir(tmp_path: Path) -> None:
+def test_backup_on_empty_base_short_circuits_no_mkdir(tmp_path: Path) -> None:
+    """First onboarding on a fresh stack must NOT mkdir into .backups (#365).
+
+    If the operator forgot the ``./state/.backups:/app/.backups`` bind mount,
+    an unconditional mkdir would fail with EPERM (the parent ``/app`` is
+    root-owned in the image). Short-circuiting when there's nothing to
+    back up means first runs never touch that path — the bind mount is
+    only required on re-runs, where there's actual existing state to
+    preserve.
+    """
     dest = backup_existing(tmp_path, "20260423T120000Z")
+    # Returned path matches the contract, but is NOT created on disk
+    # when the source set is empty.
     assert dest == tmp_path / ".backups" / "20260423T120000Z"
+    assert not dest.exists()
+    assert not (tmp_path / ".backups").exists()
+
+
+def test_backup_when_only_one_source_exists_creates_dir(tmp_path: Path) -> None:
+    """Single existing destination triggers normal backup flow."""
+    (tmp_path / "candidate_context").mkdir()
+    (tmp_path / "candidate_context" / "profile.md").write_text("p\n")
+    dest = backup_existing(tmp_path, "20260423T120000Z")
     assert dest.is_dir()
-    assert list(dest.rglob("*")) == []
+    assert (dest / "candidate_context" / "profile.md").read_text() == "p\n"
 
 
 def test_backup_copies_existing_destinations(tmp_path: Path) -> None:

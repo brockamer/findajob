@@ -76,6 +76,34 @@ def test_onboarding_index_returns_200(client: TestClient) -> None:
     assert "copy the prompt" in body.lower() or "Copy the prompt" in body
 
 
+def test_paste_form_opts_out_of_hx_boost(client: TestClient) -> None:
+    """Paste form must opt out of base.html's body-level hx-boost.
+
+    The /onboarding/inject route returns 400 on validation errors
+    (missing paste blocks, missing API key, OpenRouter smoke-check failed).
+    HTMX by default does NOT swap 4xx responses — silently drops them — so
+    a boosted form on a 400 leaves the page unchanged with no user feedback.
+    Native form submit handles 4xx HTML responses correctly.
+    """
+    resp = client.get("/onboarding/")
+    assert resp.status_code == 200
+    # The exact form tag must contain hx-boost="false". A loose substring
+    # check would pass if the attribute lived anywhere on the page; this
+    # constrains it to the form opening tag.
+    import re
+
+    form_tag = re.search(
+        r'<form\s+[^>]*action="/onboarding/inject"[^>]*>',
+        resp.text,
+    )
+    assert form_tag is not None, "paste form not found"
+    assert 'hx-boost="false"' in form_tag.group(0), (
+        'Paste form must include hx-boost="false" so 400 responses from '
+        "/onboarding/inject render natively. Without this, HTMX silently "
+        "drops 4xx responses and the user sees no feedback."
+    )
+
+
 def test_rerun_mode_shows_backup_warning(client: TestClient) -> None:
     resp = client.get("/onboarding/?mode=rerun")
     assert resp.status_code == 200

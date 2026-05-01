@@ -1,6 +1,6 @@
 {# Paste form partial — re-rendered by POST /onboarding/inject on parse failure
    so `paste_content`, `paste_error`, and `openrouter_api_key` preserve user input. #}
-<form method="post" action="/onboarding/inject" class="space-y-3">
+<form method="post" action="/onboarding/inject" class="space-y-3" hx-boost="false">
   {% if paste_error %}
   <div class="border border-red-300 bg-red-50 text-red-900 px-4 py-3 rounded">
     <p class="font-medium">Couldn't complete onboarding.</p>

@@ -82,7 +82,7 @@ file. If you're refactoring an old hardcoded section, add a note to `docs/GENERA
 | `interview_prep` | `openrouter:anthropic/claude-opus-4.7`, `max_tokens: 4096` — fires on `applied → interview` transition; expands briefing's interview-questions + stories sections. |
 | `candidate_led_briefing` | `openrouter:perplexity/sonar-deep-research` — async (1–5 min); drives the speculative briefing pass via `scripts/run_speculative_research.py`. |
 | `speculative_roles_synth` | `openrouter:anthropic/claude-sonnet-4-6`, `max_tokens: 4096` — synthesizes 1–5 candidate-tailored role cards from the briefing. |
-| Job ingestion | jobs-api14 (RapidAPI) — LinkedIn only (`datePosted: 'day'`); direct Greenhouse/Ashby/Lever JSON; Gmail IMAP/app-password (LinkedIn + Indeed alerts) — configurable per-stack at /config/gmail/ |
+| Job ingestion | jobs-api14 (RapidAPI) — LinkedIn only (`datePosted: 'day'`, widened to `'month'` during the first 30d after onboarding via `_date_posted_for_install()`); direct Greenhouse/Ashby/Lever JSON; Gmail IMAP/app-password (LinkedIn + Indeed alerts) — configurable per-stack at /config/gmail/ |
 | Package manager | `uv sync` for dev deps; `uv run` prefix for pytest/ruff/mypy/uvicorn |
 | Path resolution | `src/findajob/paths.py` — reads `config/paths.env`; BASE derived from `__file__` |
 | Roles dir | `config/roles/` |
