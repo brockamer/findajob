@@ -11,7 +11,7 @@ credit card to get started.
 
 | Key | What findajob uses it for | Cost on free tier | Required? |
 |---|---|---|---|
-| **OpenRouter** | All LLM calls (scoring, briefings, resume tailoring, cover letters, outreach drafts, in-app interview) | Pay-as-you-go from $0; no monthly minimum. Typical full pipeline run < $0.10/job. | **Yes** — pipeline cannot score or generate materials without it |
+| **OpenRouter** | All LLM calls (scoring, briefings, resume tailoring, cover letters, outreach drafts, in-app interview) | Pay-as-you-go from $0; no monthly minimum. ~$0.50/day triage-only; $1.50–3.00 per fully-prepped job (Claude Opus dominates that bill). | **Yes** — pipeline cannot score or generate materials without it |
 | **RapidAPI (jobs-api14)** | LinkedIn + Indeed job search ingestion | BASIC plan: 150 requests/month free | Optional — paste-back from Gmail LinkedIn alerts works without it |
 | **Google AI Studio (Gemini)** | Embeddings for the optional RAG index over your candidate context (REPL-only feature) | Free tier on Gemini embeddings; no billing setup needed | Optional — only used by the REPL workflow; pipeline is fully functional without it |
 
@@ -33,8 +33,10 @@ bill instead of holding direct accounts with five vendors.
 1. Go to <https://openrouter.ai>.
 2. Click **Sign In** (top right). Sign up with Google, GitHub, or email.
 3. Add credit to your account: **Settings** → **Credits** → **Buy
-   credits**. $5–$10 is a comfortable starter; the pipeline burns roughly
-   $0.05–$0.10 per job that gets a full briefing + resume + cover letter.
+   credits**. $20–$30 is a comfortable starter; the pipeline burns roughly
+   $1.50–$3.00 per job that gets a full briefing + tailored resume +
+   cover letter + recruiter critique + outreach drafts (Claude Opus
+   dominates that bill).
 4. Create an API key: **Settings** → **Keys** → **Create Key**. Give it
    a name like "findajob" so you can find it later. Copy the key — it
    starts with `sk-or-v1-` and is shown to you only once.
@@ -60,7 +62,7 @@ under "Pipeline Context Table."
 |---|---|
 | Score one job (no JD fetch) | < $0.001 |
 | Score one job (with JD + fit analysis) | $0.01–$0.05 |
-| Full prep package (briefing + tailored resume + cover letter + recruiter critique + outreach drafts) | $0.05–$0.10 |
+| Full prep package (briefing + tailored resume + cover letter + recruiter critique + outreach drafts) | $1.50–$3.00 (Claude Opus dominates) |
 | In-app onboarding interview, end to end | ~$1 |
 | Weekly company-discovery cron | ~$0.10 |
 

@@ -14,13 +14,13 @@ LinkedIn, Indeed, Greenhouse, and Gmail flow in; a local LLM filters out the noi
 
 The pipeline narrows the funnel at every step where a human would otherwise waste attention — LLM triage on the way in, human triage on the way to prep, prep only for jobs worth applying to. Thirty days on the operator's instance looks like this:
 
-| Stage (30 days) | Count | Pass rate |
+| Funnel snapshot (30 days, except where noted) | Count | Conversion at this step |
 |---|---:|---:|
 | Listings ingested | **12,824** | — |
 | Scored ≥7 (surfaced to operator) | 393 | 3.1% of ingested |
 | Prepped (resume + cover letter + briefing) | 160 | 41% of surfaced |
 | Applications sent | **60** | 38% of prepped |
-| Interviews (lifetime) | 6 | 10% of applied |
+| Interviews (lifetime, not 30d) | 6 | — |
 
 ```
 Pass rate at each step:
@@ -61,7 +61,9 @@ Live status of every issue and milestone is on the **[project board](https://git
 
 ## How it works
 
-**1. Daily triage** (00:00, scheduler-driven) — fetches 100–500 listings from RapidAPI (LinkedIn), direct ATS feeds (Greenhouse, Ashby, Lever), and Gmail job alerts (LinkedIn + Indeed); cleans + deduplicates; enriches with JD text; scores each against your `profile.md` using an LLM. Results land in SQLite.
+**0. Onboarding** (one-time, on first visit to the web UI) — produces your candidate profile, target-companies list, prefilter rules, and search queries from a structured interview. See [Quick start](#quick-start) below for the two onboarding paths and what you'll need.
+
+**1. Daily triage** (00:00, scheduler-driven) — fetches 100–500 listings from RapidAPI (LinkedIn), direct ATS feeds (Greenhouse, Ashby, Lever), and Gmail job alerts (LinkedIn + Indeed); cleans + deduplicates; enriches with JD text; scores each against your candidate profile (the `profile.md` produced in step 0) using an LLM. Results land in SQLite.
 
 **2. Dashboard triage** — the web UI shows every scored job that cleared the threshold, with relevance/fit/probability scores, known contacts, and AI notes. You flag the ones worth prepping.
 
@@ -119,13 +121,13 @@ The pipeline ships as `ghcr.io/brockamer/findajob` pulled via Docker Compose.
 
 Three API keys before you start. Sign-up walkthroughs + cost expectations are in [`docs/setup/api-keys.md`](docs/setup/api-keys.md):
 
-| Provider | Required? | Free tier | What findajob uses it for |
+| Provider | Required? | What you'll spend | What findajob uses it for |
 |---|---|---|---|
-| **OpenRouter** | yes | pay-as-you-go from $0; ~$0.05–0.10 per fully-prepped job | All LLM calls + the in-app onboarding interview |
-| **RapidAPI (jobs-api14)** | optional | 150 req/month BASIC, no credit card | LinkedIn + Indeed search ingestion |
+| **OpenRouter** | yes | pay-as-you-go from $0; ~$0.50/day triage-only, $1.50–3.00 per fully-prepped job, ~$1 per in-app onboarding interview | All LLM calls (scoring, prep writing, in-app onboarding) |
+| **RapidAPI (jobs-api14)** | optional | BASIC plan: 150 req/month free, no credit card | LinkedIn + Indeed search ingestion |
 | **Google AI Studio (Gemini)** | optional | free tier; no billing setup needed | Embeddings for the optional REPL RAG index |
 
-Skipping the optional two means LinkedIn/Indeed search is inactive (Greenhouse/Ashby/Lever feeds and Gmail alerts still work) and the REPL RAG rebuild is inactive — the daily pipeline runs identically without them. You collect all three on the onboarding page once your container is up.
+Skipping the optional two means LinkedIn/Indeed search is inactive (Greenhouse/Ashby/Lever feeds and Gmail alerts still work) and the REPL RAG rebuild is inactive — the daily pipeline runs identically without them. The "What it costs to run" section near the bottom of this README breaks the OpenRouter spend down by component if you want a more granular budget. You collect all three keys on the onboarding page once your container is up.
 
 ### Deploy
 
