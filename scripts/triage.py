@@ -17,6 +17,7 @@ import traceback
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 from findajob.cleaning import fingerprint, is_coarse_location, loose_fingerprint, normalize
 from findajob.cost_tracking import log_call
@@ -30,6 +31,7 @@ from findajob.fetchers import (
     get_linkedin_rate_limit_stats,
     reset_linkedin_rate_limit_stats,
 )
+from findajob.onboarding import is_complete as _onboarding_is_complete
 from findajob.paths import BASE
 from findajob.scoring import _build_feedback_block, score_job
 from findajob.utils import (
@@ -186,6 +188,14 @@ def find_contacts(company):
 
 # ── Main Pipeline ──
 def main():
+    # Don't crash on stacks where the operator hasn't completed onboarding —
+    # cron fires every day regardless. Sentinel-driven no-op keeps
+    # pipeline.jsonl clean (was: pipeline_crash on missing profile.md every
+    # tick, see #371).
+    if not _onboarding_is_complete(Path(BASE)):
+        log_event("triage_skipped", reason="not_onboarded")
+        return
+
     log_event("pipeline_started")
     reset_linkedin_rate_limit_stats()
 

@@ -11,7 +11,9 @@ import sys
 from pathlib import Path
 
 from findajob.discoverer import run as run_discovery
+from findajob.onboarding import is_complete as _onboarding_is_complete
 from findajob.paths import BASE
+from findajob.utils import log_event
 
 
 def main() -> int:
@@ -31,6 +33,9 @@ def main() -> int:
     )
     args = parser.parse_args()
     base_root = Path(BASE)
+    if not _onboarding_is_complete(base_root):
+        log_event("discovery_skipped", reason="not_onboarded")
+        return 0
     result = run_discovery(base_root, profile_path=args.profile, ntfy_enabled=args.ntfy)
     if result.success:
         print(f"discovery: wrote {result.count} companies (cost={result.cost_usd or 'unknown'})")

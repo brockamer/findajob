@@ -17,6 +17,7 @@ from pathlib import Path
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
+from findajob.onboarding import is_complete as _onboarding_is_complete
 from findajob.paths import BASE
 from findajob.utils import load_env, log_event
 from findajob.web.constants import FOLDER_STAGES as _CANONICAL_FOLDER_STAGES
@@ -25,8 +26,17 @@ load_env()
 
 DB_PATH = f"{BASE}/data/pipeline.db"
 SA_FILE = f"{BASE}/config/gsheets_creds.json"
-with open(f"{BASE}/config/sheet_id.txt") as f:
-    SHEET_ID = f.read().strip()
+SHEET_ID_PATH = f"{BASE}/config/sheet_id.txt"
+
+# Read at import for back-compat with any callers that import SHEET_ID
+# directly. Module-level read is tolerant of missing config — main() does
+# the actual gating, so importing doesn't crash on a stack that never
+# configured Sheets (#371).
+try:
+    with open(SHEET_ID_PATH) as _f:
+        SHEET_ID = _f.read().strip()
+except FileNotFoundError:
+    SHEET_ID = ""
 
 # Base URL for the materials viewer that hyperlinks company cells into.
 # Set per stack (e.g., http://docker.lan:8090 matching FINDAJOB_MATERIALS_PORT).
@@ -562,6 +572,22 @@ def sync_rejected_apps(svc, conn):
 
 
 def main():
+    # Skip cleanly when the stack hasn't completed onboarding or hasn't
+    # configured a Sheet — the cron fires regardless and used to crash on
+    # missing sheet_id.txt with `triage_sync_failed: returncode 1`. Sheet
+    # integration is optional, so emit a structured event and exit 0
+    # (#371). Onboarding-not-complete shadows missing-sheet because triage
+    # itself won't run on those stacks anyway.
+    if not _onboarding_is_complete(Path(BASE)):
+        log_event("sync_skipped", reason="not_onboarded")
+        return
+    if not SHEET_ID:
+        log_event("sync_skipped", reason="sheet_not_configured")
+        return
+    if not os.path.exists(SA_FILE):
+        log_event("sync_skipped", reason="gsheets_creds_missing")
+        return
+
     creds = service_account.Credentials.from_service_account_file(SA_FILE, scopes=SCOPES)
     svc = build("sheets", "v4", credentials=creds)
     conn = sqlite3.connect(DB_PATH, timeout=30)
