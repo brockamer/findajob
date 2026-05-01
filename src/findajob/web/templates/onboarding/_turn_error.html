@@ -1,0 +1,65 @@
+{# Per-turn error partial (#336 Task 7).
+
+   Returned by POST /onboarding/interview/turn when the runner raises
+   InterviewRunnerError. Appended into #messages via HTMX so the chat
+   surface keeps the prior history intact and just adds an error bubble
+   the user can act on (Try Again button posts the same turn).
+
+   Context:
+     session_id     — for the retry form
+     last_message   — the user's just-sent message, replayed by the retry form
+     error_kind     — "auth" | "payment" | "rate_limit" | "upstream" |
+                       "network" | "malformed" | "config" | "unknown"
+     error_message  — the runner's user_message rendered verbatim
+     status_code    — when present, the HTTP status from OpenRouter
+#}
+<div class="border border-red-300 bg-red-50 rounded p-3" data-role="error" data-error-kind="{{ error_kind }}">
+  <div class="flex items-start justify-between gap-3">
+    <div class="space-y-1 flex-1">
+      <div class="text-xs uppercase tracking-wide text-red-600 font-semibold">
+        {% if error_kind == "auth" %}Operator key rejected
+        {% elif error_kind == "payment" %}Operator credit exhausted
+        {% elif error_kind == "rate_limit" %}Rate-limited
+        {% elif error_kind == "upstream" %}OpenRouter / model error
+        {% elif error_kind == "network" %}Network error
+        {% elif error_kind == "malformed" %}Unexpected response shape
+        {% elif error_kind == "config" %}Configuration error
+        {% else %}Error
+        {% endif %}
+        {% if status_code %}<span class="ml-1 text-red-500">({{ status_code }})</span>{% endif %}
+      </div>
+      <p class="text-sm text-red-900 whitespace-pre-wrap">{{ error_message }}</p>
+
+      {% if error_kind == "auth" or error_kind == "payment" %}
+      <p class="text-xs text-red-800 mt-2">
+        This is on the operator's side, not yours. The administrator of this
+        findajob deployment can fix it at
+        <a class="underline" target="_blank"
+           href="{% if error_kind == 'payment' %}https://openrouter.ai/credits{% else %}https://openrouter.ai/keys{% endif %}">
+          openrouter.ai/{% if error_kind == 'payment' %}credits{% else %}keys{% endif %}</a>.
+      </p>
+      {% endif %}
+
+      {% if error_kind == "rate_limit" %}
+      <p class="text-xs text-red-800 mt-2"
+         data-auto-retry-seconds="10"
+         x-data="{ s: 10 }"
+         x-init="setInterval(() => { if (s > 0) s--; }, 1000)">
+        We'll retry automatically in <span x-text="s">10</span> seconds.
+        Or click Retry now.
+      </p>
+      {% endif %}
+    </div>
+    <form hx-post="/onboarding/interview/turn"
+          hx-target="#messages"
+          hx-swap="beforeend"
+          class="shrink-0">
+      <input type="hidden" name="session_id" value="{{ session_id }}">
+      <input type="hidden" name="message" value="{{ last_message }}">
+      <button type="submit"
+              class="px-3 py-1.5 bg-red-700 text-white rounded text-sm hover:bg-red-800">
+        Try again
+      </button>
+    </form>
+  </div>
+</div>

@@ -125,9 +125,15 @@ def _stub_run_turn(monkeypatch: pytest.MonkeyPatch, assistant_text: str) -> list
     return calls
 
 
-def _stub_run_turn_error(monkeypatch: pytest.MonkeyPatch, message: str) -> None:
+def _stub_run_turn_error(
+    monkeypatch: pytest.MonkeyPatch,
+    message: str,
+    *,
+    kind: str = "unknown",
+    status_code: int | None = None,
+) -> None:
     def _fake(*_args, **_kwargs):
-        raise InterviewRunnerError(message)
+        raise InterviewRunnerError(message, kind=kind, status_code=status_code)
 
     monkeypatch.setattr("findajob.web.routes.onboarding_interview.run_turn", _fake)
 
@@ -497,3 +503,266 @@ def test_finalize_404_for_unknown_session(client_with_key: TestClient) -> None:
         data={"openrouter_api_key": _USER_KEY},
     )
     assert resp.status_code == 404
+
+
+# ── Multi-turn emission tracking (#336 Task 6) ────────────────────────────
+
+
+def test_emission_split_across_turns_captures_after_close(
+    client_with_key: TestClient, base_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A `<<<FILE: ...>>> ... <<<END FILE: ...>>>` block whose markers
+    straddle two assistant turns must be captured.
+
+    LLMs sometimes split blocks across turns mid-stream. The route's
+    `_captured_from_history` joins assistant turns with `\\n\\n` and re-runs
+    `parse_emission` over the full transcript so the regex can match
+    across turn boundaries — this test pins that behavior.
+    """
+    sid = _create_session_directly(base_root)
+
+    # Turn 1: open marker only — parse_emission on this single turn returns nothing
+    turn1_text = "Here is your profile, splitting across turns:\n<<<FILE: profile.md>>>\nname: Test\nrole: alpha"
+    # Turn 2: close marker only
+    turn2_text = "second half of the body\n<<<END FILE: profile.md>>>\nNext question?"
+
+    # First /turn — captured_blocks stays empty
+    monkeypatch.setattr(
+        "findajob.web.routes.onboarding_interview.run_turn",
+        lambda *a, **kw: (turn1_text, {}),
+    )
+    resp1 = client_with_key.post(
+        "/onboarding/interview/turn",
+        data={"session_id": sid, "message": "ready for first half"},
+    )
+    assert resp1.status_code == 200
+    _h, captured_json_after_turn1, _c, _e = _read_session(base_root, sid)
+    import json as _json
+
+    assert _json.loads(captured_json_after_turn1) == {}
+
+    # Second /turn — cumulative-transcript parse now finds the complete block
+    monkeypatch.setattr(
+        "findajob.web.routes.onboarding_interview.run_turn",
+        lambda *a, **kw: (turn2_text, {}),
+    )
+    resp2 = client_with_key.post(
+        "/onboarding/interview/turn",
+        data={"session_id": sid, "message": "ready for second half"},
+    )
+    assert resp2.status_code == 200
+
+    _h, captured_json_after_turn2, _c, _e = _read_session(base_root, sid)
+    captured = _json.loads(captured_json_after_turn2)
+    assert "profile.md" in captured
+    body = captured["profile.md"]
+    assert "name: Test" in body
+    assert "second half of the body" in body
+
+
+# ── Error UX (#336 Task 7) ────────────────────────────────────────────────
+
+
+def test_error_turn_renders_partial_not_full_page(
+    client_with_key: TestClient, base_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`/turn` errors return an HTMX-friendly partial (no <html> wrapper)
+    so the chat surface keeps the prior history and just appends an
+    error bubble. /start errors render the full page (no chat to splice
+    into yet)."""
+    sid = _create_session_directly(base_root)
+    _stub_run_turn_error(monkeypatch, "boom", kind="upstream", status_code=503)
+
+    resp = client_with_key.post(
+        "/onboarding/interview/turn",
+        data={"session_id": sid, "message": "any"},
+    )
+    assert resp.status_code == 200
+    body = resp.text
+    # Partial — no full-document wrappers
+    assert "<html" not in body.lower()
+    assert "<body" not in body.lower()
+    # Error bubble present, distinguishable in the DOM
+    assert 'data-role="error"' in body
+    assert 'data-error-kind="upstream"' in body
+
+
+def test_error_kind_auth_surfaces_openrouter_keys_link(
+    client_with_key: TestClient, base_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """401 → keys page link (operator-side fix), distinct from per-tester
+    smoke-check finalize message which references the user's own key."""
+    sid = _create_session_directly(base_root)
+    _stub_run_turn_error(
+        monkeypatch,
+        "OpenRouter rejected the operator key (401 Unauthorized).",
+        kind="auth",
+        status_code=401,
+    )
+    resp = client_with_key.post(
+        "/onboarding/interview/turn",
+        data={"session_id": sid, "message": "any"},
+    )
+    assert resp.status_code == 200
+    body = resp.text
+    assert 'data-error-kind="auth"' in body
+    assert "openrouter.ai/keys" in body
+    assert "401" in body
+
+
+def test_error_kind_payment_surfaces_credits_link(
+    client_with_key: TestClient, base_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """402 → credits page link."""
+    sid = _create_session_directly(base_root)
+    _stub_run_turn_error(
+        monkeypatch,
+        "Operator's OpenRouter account is out of credit (402).",
+        kind="payment",
+        status_code=402,
+    )
+    resp = client_with_key.post(
+        "/onboarding/interview/turn",
+        data={"session_id": sid, "message": "any"},
+    )
+    assert resp.status_code == 200
+    body = resp.text
+    assert 'data-error-kind="payment"' in body
+    assert "openrouter.ai/credits" in body
+
+
+def test_error_kind_rate_limit_includes_auto_retry_hint(
+    client_with_key: TestClient, base_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """429 → countdown hint + Try Again button (manual override)."""
+    sid = _create_session_directly(base_root)
+    _stub_run_turn_error(
+        monkeypatch,
+        "OpenRouter rate-limited the request (429).",
+        kind="rate_limit",
+        status_code=429,
+    )
+    resp = client_with_key.post(
+        "/onboarding/interview/turn",
+        data={"session_id": sid, "message": "any"},
+    )
+    assert resp.status_code == 200
+    body = resp.text
+    assert 'data-error-kind="rate_limit"' in body
+    assert "data-auto-retry-seconds" in body
+    # Manual retry affordance still present so the user can override the wait
+    assert "/onboarding/interview/turn" in body  # retry form posts here
+
+
+def test_error_kind_upstream_renders_status_code(
+    client_with_key: TestClient, base_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """5xx → render the specific status code so the operator can grep logs."""
+    sid = _create_session_directly(base_root)
+    _stub_run_turn_error(
+        monkeypatch,
+        "OpenRouter or the upstream model returned a server error (504).",
+        kind="upstream",
+        status_code=504,
+    )
+    resp = client_with_key.post(
+        "/onboarding/interview/turn",
+        data={"session_id": sid, "message": "any"},
+    )
+    body = resp.text
+    assert 'data-error-kind="upstream"' in body
+    assert "504" in body
+
+
+def test_error_kind_network_renders_friendly_message(
+    client_with_key: TestClient, base_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """URLError → kind=network, no OpenRouter dashboard link."""
+    sid = _create_session_directly(base_root)
+    _stub_run_turn_error(
+        monkeypatch,
+        "Could not reach OpenRouter (timed out). Check the deployment's network connectivity.",
+        kind="network",
+    )
+    resp = client_with_key.post(
+        "/onboarding/interview/turn",
+        data={"session_id": sid, "message": "any"},
+    )
+    body = resp.text
+    assert 'data-error-kind="network"' in body
+    assert "openrouter.ai/keys" not in body  # no dashboard link for network errors
+    assert "openrouter.ai/credits" not in body
+
+
+def test_error_retry_replays_user_message(
+    client_with_key: TestClient, base_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The Try Again form must carry the user's just-sent message so a
+    retry replays the same turn rather than losing input."""
+    sid = _create_session_directly(base_root)
+    _stub_run_turn_error(
+        monkeypatch,
+        "OpenRouter rate-limited (429).",
+        kind="rate_limit",
+        status_code=429,
+    )
+    resp = client_with_key.post(
+        "/onboarding/interview/turn",
+        data={"session_id": sid, "message": "the user's important reply"},
+    )
+    body = resp.text
+    # The hidden input replays the original message
+    assert 'name="message"' in body
+    assert "the user&#39;s important reply" in body or "the user's important reply" in body
+
+
+def test_error_emits_log_event(
+    client_with_key: TestClient,
+    base_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Every InterviewRunnerError emits a structured pipeline.jsonl entry."""
+    import json as _json
+
+    log_calls: list[dict[str, object]] = []
+
+    def _fake_log(event_type: str, **kwargs: object) -> None:
+        log_calls.append({"event": event_type, **kwargs})
+
+    monkeypatch.setattr("findajob.web.routes.onboarding_interview.log_event", _fake_log)
+
+    sid = _create_session_directly(base_root)
+    _stub_run_turn_error(monkeypatch, "boom", kind="auth", status_code=401)
+    client_with_key.post(
+        "/onboarding/interview/turn",
+        data={"session_id": sid, "message": "anything"},
+    )
+
+    err_events = [c for c in log_calls if c["event"] == "onboarding_interview_error"]
+    assert len(err_events) == 1
+    assert err_events[0]["session_id"] == sid
+    assert err_events[0]["route"] == "turn"
+    assert err_events[0]["error_kind"] == "auth"
+    assert err_events[0]["status_code"] == 401
+    # Just exercise the JSON shape — don't assert on serialization specifics
+    _json.dumps(err_events[0])
+
+
+def test_start_error_emits_log_event(
+    client_with_key: TestClient, base_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """/start errors also log via the same channel — different route value."""
+    log_calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        "findajob.web.routes.onboarding_interview.log_event",
+        lambda evt, **kwargs: log_calls.append({"event": evt, **kwargs}),
+    )
+    _stub_run_turn_error(monkeypatch, "boom", kind="upstream", status_code=503)
+    client_with_key.post("/onboarding/interview/start")
+
+    err_events = [c for c in log_calls if c["event"] == "onboarding_interview_error"]
+    assert len(err_events) == 1
+    assert err_events[0]["route"] == "start"
+    assert err_events[0]["error_kind"] == "upstream"
+    assert err_events[0]["status_code"] == 503

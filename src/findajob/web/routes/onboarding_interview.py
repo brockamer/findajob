@@ -35,6 +35,7 @@ from findajob.onboarding.session_store import (
     set_error,
     update_captured_blocks,
 )
+from findajob.utils import log_event
 
 router = APIRouter()
 
@@ -69,6 +70,49 @@ def _captured_from_history(history: list[dict[str, str]]) -> dict[str, str]:
     """
     transcript = "\n\n".join(turn["content"] for turn in history if turn.get("role") == "assistant")
     return parse_emission(transcript).found
+
+
+def _log_runner_error(*, session_id: str, route: str, err: InterviewRunnerError) -> None:
+    """Emit a structured pipeline.jsonl event for every runner failure.
+
+    Failure modes here are upstream (operator credit, rate limit, network)
+    — surfacing them in the same log used for triage / scoring lets the
+    operator correlate "interview died at 14:02" with other infra signals.
+    """
+    log_event(
+        "onboarding_interview_error",
+        session_id=session_id,
+        route=route,
+        error_kind=err.kind,
+        status_code=err.status_code,
+    )
+
+
+def _render_error_partial(
+    request: Request,
+    *,
+    session_id: str,
+    last_message: str,
+    err: InterviewRunnerError,
+) -> HTMLResponse:
+    """Render the per-turn error partial (HTMX-appended into #messages).
+
+    Status code is intentionally 200: HTMX's default config silently
+    drops 4xx/5xx responses — using 200 lets the swap go through and the
+    user sees the actionable error bubble + Try Again button.
+    """
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request=request,
+        name="onboarding/_turn_error.html",
+        context={
+            "session_id": session_id,
+            "last_message": last_message,
+            "error_kind": err.kind,
+            "error_message": err.user_message,
+            "status_code": err.status_code,
+        },
+    )
 
 
 def _render_chat(
@@ -121,13 +165,17 @@ def start_interview(request: Request) -> HTMLResponse | RedirectResponse:
             )
         except InterviewRunnerError as e:
             set_error(conn, session_id, e.user_message)
+            _log_runner_error(session_id=session_id, route="start", err=e)
+            # /start is the very first turn — no chat to splice an error
+            # bubble into yet, so render the full chat page seeded with
+            # the error banner. /turn renders the OOB partial instead.
             return _render_chat(
                 request,
                 session_id=session_id,
                 history=[],
                 captured={},
                 error=e.user_message,
-                status_code=502,
+                status_code=200,
             )
 
         append_turn(conn, session_id, "user", _KICKOFF_USER_MESSAGE)
@@ -172,13 +220,12 @@ def post_turn(
             )
         except InterviewRunnerError as e:
             set_error(conn, session_id, e.user_message)
-            return _render_chat(
+            _log_runner_error(session_id=session_id, route="turn", err=e)
+            return _render_error_partial(
                 request,
                 session_id=session_id,
-                history=sess.history,
-                captured=sess.captured_blocks,
-                error=e.user_message,
-                status_code=502,
+                last_message=message,
+                err=e,
             )
 
         append_turn(conn, session_id, "user", message)

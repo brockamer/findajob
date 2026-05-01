@@ -28,11 +28,23 @@ class InterviewRunnerError(Exception):
     """Raised by :func:`run_turn` on any non-success path.
 
     ``user_message`` is rendered verbatim in the chat UI's error banner.
+    ``kind`` classifies the failure so the route layer (#336 Task 7) can
+    pick a UX variant (auth/payment/rate-limit/upstream/network/malformed/
+    config) without re-parsing the message string. ``status_code`` is the
+    HTTP status from OpenRouter when available.
     """
 
-    def __init__(self, user_message: str) -> None:
+    def __init__(
+        self,
+        user_message: str,
+        *,
+        kind: str = "unknown",
+        status_code: int | None = None,
+    ) -> None:
         super().__init__(user_message)
         self.user_message = user_message
+        self.kind = kind
+        self.status_code = status_code
 
 
 def run_turn(
@@ -66,7 +78,8 @@ def run_turn(
             "Operator's OpenRouter key is missing. The administrator of this "
             "findajob deployment must set OPENROUTER_OPERATOR_KEY before the "
             "in-app interview is available. You can still use the paste-back "
-            "option from the onboarding page."
+            "option from the onboarding page.",
+            kind="config",
         )
 
     messages: list[dict[str, str]] = [{"role": "system", "content": system_prompt}]
@@ -105,44 +118,74 @@ def run_turn(
             raise InterviewRunnerError(
                 "OpenRouter rejected the operator key (401 Unauthorized). The "
                 "administrator of this deployment needs to update "
-                "OPENROUTER_OPERATOR_KEY."
+                "OPENROUTER_OPERATOR_KEY.",
+                kind="auth",
+                status_code=401,
             ) from e
         if e.code == 402:
             raise InterviewRunnerError(
                 "Operator's OpenRouter account is out of credit (402 Payment "
                 "Required). The administrator needs to add prepaid credit at "
-                "https://openrouter.ai/credits."
+                "https://openrouter.ai/credits.",
+                kind="payment",
+                status_code=402,
             ) from e
         if e.code == 429:
-            raise InterviewRunnerError("OpenRouter rate-limited the request (429). Wait a moment and try again.") from e
+            raise InterviewRunnerError(
+                "OpenRouter rate-limited the request (429). Wait a moment and try again.",
+                kind="rate_limit",
+                status_code=429,
+            ) from e
         if 500 <= e.code < 600:
             raise InterviewRunnerError(
                 f"OpenRouter or the upstream model returned a server error "
-                f"({e.code}). Try again in a moment; the issue is on their side."
+                f"({e.code}). Try again in a moment; the issue is on their side.",
+                kind="upstream",
+                status_code=e.code,
             ) from e
-        raise InterviewRunnerError(f"OpenRouter returned HTTP {e.code}: {error_body[:200]}") from e
+        raise InterviewRunnerError(
+            f"OpenRouter returned HTTP {e.code}: {error_body[:200]}",
+            kind="upstream",
+            status_code=e.code,
+        ) from e
     except urllib.error.URLError as e:
         raise InterviewRunnerError(
-            f"Could not reach OpenRouter ({e.reason}). Check the deployment's network connectivity and try again."
+            f"Could not reach OpenRouter ({e.reason}). Check the deployment's network connectivity and try again.",
+            kind="network",
         ) from e
     except Exception as e:  # noqa: BLE001
-        raise InterviewRunnerError(f"Unexpected error talking to OpenRouter: {type(e).__name__}: {str(e)[:200]}") from e
+        raise InterviewRunnerError(
+            f"Unexpected error talking to OpenRouter: {type(e).__name__}: {str(e)[:200]}",
+            kind="unknown",
+        ) from e
 
     try:
         data = json.loads(body)
     except json.JSONDecodeError as e:
-        raise InterviewRunnerError(f"OpenRouter returned non-JSON response: {body[:200]}") from e
+        raise InterviewRunnerError(
+            f"OpenRouter returned non-JSON response: {body[:200]}",
+            kind="malformed",
+        ) from e
 
     if not isinstance(data, dict) or not data.get("choices"):
-        raise InterviewRunnerError(f"OpenRouter returned unexpected response shape: {body[:200]}")
+        raise InterviewRunnerError(
+            f"OpenRouter returned unexpected response shape: {body[:200]}",
+            kind="malformed",
+        )
 
     try:
         assistant_text = data["choices"][0]["message"]["content"]
     except (KeyError, IndexError, TypeError) as e:
-        raise InterviewRunnerError(f"Could not parse assistant content from OpenRouter response: {body[:200]}") from e
+        raise InterviewRunnerError(
+            f"Could not parse assistant content from OpenRouter response: {body[:200]}",
+            kind="malformed",
+        ) from e
 
     if not isinstance(assistant_text, str):
-        raise InterviewRunnerError(f"Assistant content was not a string: {type(assistant_text).__name__}")
+        raise InterviewRunnerError(
+            f"Assistant content was not a string: {type(assistant_text).__name__}",
+            kind="malformed",
+        )
 
     usage_raw = data.get("usage")
     usage: dict = usage_raw if isinstance(usage_raw, dict) else {}
