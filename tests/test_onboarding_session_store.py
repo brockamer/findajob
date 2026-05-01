@@ -1,0 +1,241 @@
+"""Unit tests for findajob.onboarding.session_store (#336 Task 2)."""
+
+from __future__ import annotations
+
+import dataclasses
+import json
+import os
+import sqlite3
+import subprocess
+import sys
+import uuid
+from pathlib import Path
+
+import pytest
+
+from findajob.onboarding.session_store import (
+    Session,
+    append_turn,
+    create_session,
+    get_session,
+    mark_complete,
+    set_error,
+    update_captured_blocks,
+)
+
+
+@pytest.fixture
+def db(tmp_path):
+    """Initialize a fresh pipeline.db via init_db.py and yield a connection."""
+    base = tmp_path / "repo"
+    (base / "data").mkdir(parents=True)
+    (base / "src" / "findajob").mkdir(parents=True)
+    (base / "src" / "findajob" / "__init__.py").write_text("")
+    (base / "src" / "findajob" / "paths.py").write_text(f'BASE = r"{base}"\n')
+
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(base / "src")
+    repo_root = Path(__file__).resolve().parents[1]
+    init_db = repo_root / "scripts" / "init_db.py"
+    result = subprocess.run([sys.executable, str(init_db)], env=env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+
+    conn = sqlite3.connect(str(base / "data" / "pipeline.db"))
+    yield conn
+    conn.close()
+
+
+def test_create_session_returns_uuid_and_persists_row(db):
+    sid = create_session(db)
+    # Validates UUID4 format.
+    parsed = uuid.UUID(sid)
+    assert parsed.version == 4
+
+    row = db.execute(
+        "SELECT id, history_json, captured_blocks_json, started_at, last_turn_at, "
+        "completed_at, error_state FROM onboarding_sessions WHERE id = ?",
+        (sid,),
+    ).fetchone()
+    assert row is not None
+    assert row[0] == sid
+    assert row[1] == "[]"
+    assert row[2] == "{}"
+    assert row[3] is not None and row[3].endswith("Z")
+    assert row[4] == row[3]
+    assert row[5] is None
+    assert row[6] is None
+
+
+def test_create_session_writes_commit_visible_to_fresh_connection(db, tmp_path):
+    """A second connection to the same DB sees the row immediately."""
+    sid = create_session(db)
+    db_path = tmp_path / "repo" / "data" / "pipeline.db"
+    other = sqlite3.connect(str(db_path))
+    try:
+        row = other.execute("SELECT id FROM onboarding_sessions WHERE id = ?", (sid,)).fetchone()
+        assert row is not None
+    finally:
+        other.close()
+
+
+def test_get_session_roundtrip_returns_frozen_session(db):
+    sid = create_session(db)
+    sess = get_session(db, sid)
+    assert isinstance(sess, Session)
+    assert sess.id == sid
+    assert sess.history == []
+    assert sess.captured_blocks == {}
+    assert sess.completed_at is None
+    assert sess.error_state is None
+    # Frozen dataclass — direct attribute mutation must fail.
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        sess.id = "mutated"  # type: ignore[misc]
+
+
+def test_get_session_returns_none_for_unknown_id(db):
+    assert get_session(db, "nonexistent-uuid") is None
+
+
+def test_append_turn_extends_history_in_order(db):
+    sid = create_session(db)
+    append_turn(db, sid, "assistant", "Welcome — what role are you targeting?")
+    append_turn(db, sid, "user", "Data center operations.")
+    append_turn(db, sid, "assistant", "Got it. Tell me about your last team.")
+    sess = get_session(db, sid)
+    assert sess is not None
+    assert sess.history == [
+        {"role": "assistant", "content": "Welcome — what role are you targeting?"},
+        {"role": "user", "content": "Data center operations."},
+        {"role": "assistant", "content": "Got it. Tell me about your last team."},
+    ]
+
+
+def test_append_turn_updates_last_turn_at(db):
+    sid = create_session(db)
+    sess0 = get_session(db, sid)
+    assert sess0 is not None
+    initial_last = sess0.last_turn_at
+    # Force a clock tick by patching the helper. Otherwise sub-second precision
+    # collapses both timestamps to the same second-resolution string.
+    import findajob.onboarding.session_store as store
+
+    real_utcnow = store._utcnow_iso
+    store._utcnow_iso = lambda: "2099-01-01T00:00:00Z"
+    try:
+        append_turn(db, sid, "assistant", "next turn")
+    finally:
+        store._utcnow_iso = real_utcnow
+    sess1 = get_session(db, sid)
+    assert sess1 is not None
+    assert sess1.last_turn_at == "2099-01-01T00:00:00Z"
+    assert sess1.last_turn_at != initial_last
+
+
+def test_append_turn_rejects_bad_role(db):
+    sid = create_session(db)
+    with pytest.raises(ValueError, match="role must be"):
+        append_turn(db, sid, "system", "not allowed")
+
+
+def test_append_turn_raises_keyerror_for_unknown_session(db):
+    with pytest.raises(KeyError):
+        append_turn(db, "nonexistent", "user", "hi")
+
+
+def test_update_captured_blocks_replaces_map(db):
+    sid = create_session(db)
+    update_captured_blocks(db, sid, {"profile.md": "# profile\n"})
+    sess1 = get_session(db, sid)
+    assert sess1 is not None
+    assert sess1.captured_blocks == {"profile.md": "# profile\n"}
+    # Replacement, not merge.
+    update_captured_blocks(db, sid, {"master_resume.md": "# resume\n"})
+    sess2 = get_session(db, sid)
+    assert sess2 is not None
+    assert sess2.captured_blocks == {"master_resume.md": "# resume\n"}
+
+
+def test_update_captured_blocks_serializes_unicode(db):
+    sid = create_session(db)
+    update_captured_blocks(db, sid, {"profile.md": "# Bröck — naïve résumé"})
+    sess = get_session(db, sid)
+    assert sess is not None
+    assert sess.captured_blocks["profile.md"] == "# Bröck — naïve résumé"
+
+
+def test_mark_complete_sets_completed_at(db):
+    sid = create_session(db)
+    mark_complete(db, sid)
+    sess = get_session(db, sid)
+    assert sess is not None
+    assert sess.completed_at is not None
+    assert sess.completed_at.endswith("Z")
+
+
+def test_set_error_persists_message(db):
+    sid = create_session(db)
+    set_error(db, sid, "OpenRouter 429 — rate limit; retry in 30s")
+    sess = get_session(db, sid)
+    assert sess is not None
+    assert sess.error_state == "OpenRouter 429 — rate limit; retry in 30s"
+    # Empty string clears.
+    set_error(db, sid, "")
+    sess2 = get_session(db, sid)
+    assert sess2 is not None
+    assert sess2.error_state == ""
+
+
+def test_history_json_round_trips_complex_content(db):
+    """Multi-line content with quotes + escapes survives JSON round-trip."""
+    sid = create_session(db)
+    tricky = 'She said "I\'m here" and the LLM\nsaid:\n```python\nprint("x")\n```'
+    append_turn(db, sid, "user", tricky)
+    sess = get_session(db, sid)
+    assert sess is not None
+    assert sess.history[0]["content"] == tricky
+
+
+def test_session_dataclass_is_frozen():
+    """Session must be frozen so callers can't accidentally mutate persisted state."""
+    s = Session(
+        id="x",
+        history=[],
+        captured_blocks={},
+        started_at="2026-05-01T00:00:00Z",
+        last_turn_at="2026-05-01T00:00:00Z",
+        completed_at=None,
+        error_state=None,
+    )
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        s.id = "mutated"  # type: ignore[misc]
+
+
+def test_get_session_history_is_a_list_not_string(db):
+    """Defends against accidentally returning the raw json string."""
+    sid = create_session(db)
+    append_turn(db, sid, "assistant", "hello")
+    sess = get_session(db, sid)
+    assert sess is not None
+    assert isinstance(sess.history, list)
+    assert isinstance(sess.captured_blocks, dict)
+
+
+def test_create_session_ids_are_unique(db):
+    """Two consecutive create_session calls produce distinct ids."""
+    sid1 = create_session(db)
+    sid2 = create_session(db)
+    assert sid1 != sid2
+
+
+def test_history_json_is_canonical_after_create(db):
+    """create_session must write '[]' / '{}' literals so the dataclass parses cleanly."""
+    sid = create_session(db)
+    raw = db.execute(
+        "SELECT history_json, captured_blocks_json FROM onboarding_sessions WHERE id = ?",
+        (sid,),
+    ).fetchone()
+    assert raw[0] == "[]"
+    assert raw[1] == "{}"
+    # And the parsed values are the empty containers.
+    assert json.loads(raw[0]) == []
+    assert json.loads(raw[1]) == {}
