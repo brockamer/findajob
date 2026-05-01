@@ -12,6 +12,10 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ### Added
 
+- **In-app onboarding interview — multi-turn LLM client (#336 Task 3).** New `findajob.onboarding.interview_runner` extends the `openrouter_smoke.py` urllib pattern to multi-turn chat completions. `run_turn(operator_key, system_prompt, history, user_message) -> (assistant_text, usage)` posts the full prior history + new user turn to OpenRouter's chat-completions endpoint, pinned to `anthropic/claude-sonnet-4-6`. Every non-success path raises `InterviewRunnerError` with a `user_message` attribute suitable for verbatim render in the chat UI's error banner — never a generic exception. Pure stdlib; no new deps. Used by upcoming Task 4 routes.
+
+### Added
+
 - **In-app onboarding interview — schema foundation (#336 Task 1).** New `onboarding_sessions` SQLite table persists multi-turn LLM conversations server-side so the upcoming embedded chat UI can survive tab close + reload. Pure-additive migration via `init_db.py`'s idempotent `CREATE TABLE IF NOT EXISTS` pattern; no behavior change in this commit.
 - **In-app onboarding interview — session_store CRUD (#336 Task 2).** New `findajob.onboarding.session_store` module wraps the `onboarding_sessions` table with a frozen `Session` dataclass + six CRUD helpers (`create_session`, `get_session`, `append_turn`, `update_captured_blocks`, `mark_complete`, `set_error`). Pure DB layer — no FastAPI, no LLM client; routes own connection lifecycle. No user-visible behavior change; foundation for Tasks 3+.
 
