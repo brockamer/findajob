@@ -311,6 +311,41 @@ def test_inject_uses_credentials_from_step1_when_present(
     assert inject_calls[0]["google_api_key"] == _VALID_GOOGLE
 
 
+def test_already_onboarded_hint_renders_when_sentinel_present_no_keys(client: TestClient, base_root: Path) -> None:
+    """Advisor follow-up to #339: an already-onboarded stack (sentinel
+    present) where Step 1 hasn't been used renders a soft hint rather
+    than asking the tester for keys they've never seen this UI ask for."""
+    sentinel = base_root / "data" / ".onboarding-complete"
+    sentinel.write_text("2026-04-29T00:00:00Z\n")
+    r = client.get("/onboarding/")
+    assert r.status_code == 200
+    assert "You've already onboarded" in r.text
+
+
+def test_already_onboarded_hint_suppressed_in_rerun_mode(client: TestClient, base_root: Path) -> None:
+    """Hint is for accidental visits. In ?mode=rerun the user is here
+    on purpose — show the rerun banner, not the soft hint."""
+    sentinel = base_root / "data" / ".onboarding-complete"
+    sentinel.write_text("2026-04-29T00:00:00Z\n")
+    r = client.get("/onboarding/?mode=rerun")
+    assert r.status_code == 200
+    assert "You've already onboarded" not in r.text
+    assert "Re-running onboarding" in r.text
+
+
+def test_already_onboarded_hint_suppressed_when_keys_collected(client: TestClient, base_root: Path) -> None:
+    """If the tester has already used Step 1, they're past the
+    accidentally-confused state — the keys-collected layout takes
+    over and the hint is unnecessary."""
+    sentinel = base_root / "data" / ".onboarding-complete"
+    sentinel.write_text("2026-04-29T00:00:00Z\n")
+    client.post("/onboarding/keys", data={"openrouter_api_key": _VALID_OR})
+    r = client.get("/onboarding/")
+    assert r.status_code == 200
+    assert "You've already onboarded" not in r.text
+    assert "Change keys" in r.text
+
+
 def test_paste_form_hides_openrouter_input_when_keys_collected(client: TestClient, base_root: Path) -> None:
     """#339 Task 6: paste-back form's OpenRouter input is hidden behind a
     masked display when Step 1 credentials are present."""

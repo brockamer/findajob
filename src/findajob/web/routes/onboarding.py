@@ -218,11 +218,24 @@ def _format_parse_error(
 
 @router.get("/onboarding/", response_class=HTMLResponse)
 def onboarding_index(request: Request, mode: str = "") -> HTMLResponse:
-    """Landing page. ``mode=rerun`` flips on the backup warning."""
+    """Landing page. ``mode=rerun`` flips on the backup warning.
+
+    When the stack is already onboarded (sentinel file present) AND no
+    Step 1 credentials have been collected yet AND the user is not in
+    rerun mode, surface a brief "you've already onboarded" hint so an
+    already-configured tester who lands here from a stale link or out
+    of curiosity doesn't think findajob has forgotten them. (#339
+    advisor follow-up.)
+    """
     templates = request.app.state.templates
     active = _active_session_for_index(request)
     creds = _credentials_for_index(request)
     keys_collected = creds is not None and (creds.openrouter_api_key is not None)
+
+    base_root: Path = request.app.state.base_root
+    is_already_onboarded = (base_root / "data" / ".onboarding-complete").is_file()
+    show_already_onboarded_hint = is_already_onboarded and not keys_collected and mode != "rerun"
+
     return templates.TemplateResponse(
         request=request,
         name="onboarding/index.html",
@@ -240,6 +253,7 @@ def onboarding_index(request: Request, mode: str = "") -> HTMLResponse:
             "keys_error": None,
             "rapidapi_input": "",
             "google_input": "",
+            "show_already_onboarded_hint": show_already_onboarded_hint,
         },
     )
 
@@ -277,6 +291,7 @@ def _render_keys_error(
             "keys_error": error,
             "rapidapi_input": rapidapi_input,
             "google_input": google_input,
+            "show_already_onboarded_hint": False,
         },
         status_code=400,
     )

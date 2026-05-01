@@ -17,6 +17,23 @@
   </div>
   {% endif %}
 
+  {% if show_already_onboarded_hint %}
+  {# #339 advisor follow-up: render a soft hint when an already-onboarded
+     stack lands here without credentials in the new schema, so the tester
+     doesn't think findajob has forgotten them. #}
+  <div class="border border-emerald-300 bg-emerald-50 text-emerald-900 px-4 py-3 rounded">
+    <p class="font-medium">You've already onboarded.</p>
+    <p class="text-sm mt-1">
+      Your existing keys live in this stack's <code>data/.env</code> from your
+      original onboarding. Step 1 below is for collecting (or rotating) keys
+      under findajob's per-stack key isolation —
+      <a class="underline" href="/board/dashboard">go to your dashboard</a>
+      if you didn't mean to land here, or use <a class="underline" href="/onboarding/?mode=rerun">rerun mode</a>
+      if you intend to redo onboarding from scratch.
+    </p>
+  </div>
+  {% endif %}
+
   {% if active_session_id %}
   <div id="resume-banner" class="border-2 border-amber-300 bg-amber-50 rounded p-4 space-y-2"
        data-session-id="{{ active_session_id }}">
