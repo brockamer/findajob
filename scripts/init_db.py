@@ -147,6 +147,18 @@ CREATE TABLE IF NOT EXISTS speculative_requests (
 
 CREATE INDEX IF NOT EXISTS idx_speculative_status ON speculative_requests(status);
 CREATE INDEX IF NOT EXISTS idx_speculative_company_submitted ON speculative_requests(company, submitted_at);
+
+CREATE TABLE IF NOT EXISTS onboarding_sessions (
+    id TEXT PRIMARY KEY,
+    history_json TEXT NOT NULL,
+    captured_blocks_json TEXT NOT NULL DEFAULT '{}',
+    started_at TEXT NOT NULL,
+    last_turn_at TEXT NOT NULL,
+    completed_at TEXT,
+    error_state TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_onboarding_sessions_completed ON onboarding_sessions(completed_at);
 """)
 conn.close()
 print("Database initialized:", DB_PATH)
