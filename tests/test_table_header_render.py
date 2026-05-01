@@ -42,8 +42,9 @@ def test_table_header_renders_filter_row(tmp_path) -> None:
         visible={"title", "relevance_score", "stage"},
         leading_cols=[("Status", ""), ("Reject", "")],
     )
-    # Sort link includes column name and a flip-direction querystring.
-    assert "?sort=relevance_score&desc=0" in rendered
+    # Sort link is anchored to the canonical page path so a post-filter
+    # /rows URL bar (#340) doesn't poison relative resolution.
+    assert "/board/dashboard?sort=relevance_score&desc=0" in rendered
     # Active filter shows ● indicator on title and relevance_score columns.
     assert rendered.count("●") >= 2
     # Inline TEXT input present and pre-filled.
@@ -95,3 +96,34 @@ def test_enum_hidden_input_has_htmx_change_trigger(tmp_path) -> None:
     chunk = rendered[max(0, start - 400) : start + 400]
     assert 'hx-trigger="change"' in chunk
     assert 'hx-get="/board/applied/rows"' in chunk
+
+
+def test_sort_link_uses_canonical_page_path_when_on_rows_endpoint(tmp_path) -> None:
+    """#340 — after a filter input fires hx-push-url='true', the address bar
+    sits on /board/dashboard/rows. A subsequent sort click on a relative
+    href would resolve to the rows endpoint and return raw <tr> rows that
+    hx-boost dumps into <body> ('all rows expand'). Sort links must use the
+    canonical page path so resolution works regardless of the URL bar."""
+    from findajob.web.app import create_app
+
+    app = create_app(
+        companies_root=tmp_path / "companies",
+        db_path=tmp_path / "pipeline.db",
+    )
+    templates = app.state.templates
+
+    specs = (ColumnSpec(name="company", label="Company", kind=Kind.TEXT),)
+    parsed = ParsedFilters()
+
+    class _StubReq:
+        class url:
+            path = "/board/dashboard/rows"
+
+    rendered = templates.get_template("_table_header.html").render(
+        request=_StubReq, specs=specs, parsed=parsed, visible={"company"}, leading_cols=[]
+    )
+    # Sort anchor must point at /board/dashboard, not /board/dashboard/rows.
+    assert 'href="/board/dashboard?sort=company' in rendered
+    assert 'href="/board/dashboard/rows?sort=company' not in rendered
+    # Filter inputs still target the rows fragment endpoint.
+    assert 'hx-get="/board/dashboard/rows"' in rendered
