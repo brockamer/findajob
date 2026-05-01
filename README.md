@@ -4,7 +4,7 @@ Self-hosted infrastructure for a sane job search.
 
 The modern job search grinds people down — hundreds of listings per day, most irrelevant; the same cover letter rewritten at midnight; no memory of which companies went silent weeks ago; no signal about whether the rejections mean "wrong skill," "wrong level," or "wrong field."
 
-Burnout is the default. findajob absorbs the triage, the tailoring, and the tracking so your attention goes to the few applications actually worth sending. It's a pre-1.0 personal project — used daily by one operator and one beta tester, not a polished product yet.
+Burnout is the default. findajob absorbs the triage, the tailoring, and the tracking so your attention goes to the few applications actually worth sending. It's a pre-1.0 personal project — used daily by the operator and a small wave of beta testers, not a polished product yet.
 
 LinkedIn, Indeed, Greenhouse, and Gmail flow in; a local LLM filters out the noise; a web UI lets you triage, prep, and track. Runs as a Docker container on any Linux host. ~$0.50–2/day in API usage.
 
@@ -115,6 +115,20 @@ Live status of every issue and milestone is on the **[project board](https://git
 
 The pipeline ships as `ghcr.io/brockamer/findajob` pulled via Docker Compose.
 
+### What you'll need
+
+Three API keys before you start. Sign-up walkthroughs + cost expectations are in [`docs/setup/api-keys.md`](docs/setup/api-keys.md):
+
+| Provider | Required? | Free tier | What findajob uses it for |
+|---|---|---|---|
+| **OpenRouter** | yes | pay-as-you-go from $0; ~$0.05–0.10 per fully-prepped job | All LLM calls + the in-app onboarding interview |
+| **RapidAPI (jobs-api14)** | optional | 150 req/month BASIC, no credit card | LinkedIn + Indeed search ingestion |
+| **Google AI Studio (Gemini)** | optional | free tier; no billing setup needed | Embeddings for the optional REPL RAG index |
+
+Skipping the optional two means LinkedIn/Indeed search is inactive (Greenhouse/Ashby/Lever feeds and Gmail alerts still work) and the REPL RAG rebuild is inactive — the daily pipeline runs identically without them. You collect all three on the onboarding page once your container is up.
+
+### Deploy
+
 ```bash
 # On your Docker host
 sudo mkdir -p /opt/stacks/findajob-<you>/state/{data,config,candidate_context,companies,logs,aichat_ng}
@@ -124,10 +138,18 @@ cd /opt/stacks/findajob-<you>
 curl -fsSL -o compose.yaml https://raw.githubusercontent.com/brockamer/findajob/main/ops/compose.yaml.example
 curl -fsSL -o .env         https://raw.githubusercontent.com/brockamer/findajob/main/ops/stack.env.example
 
-# Populate state/ with API keys, personal config, candidate profile
-# (templates + walkthrough in the install guide)
+# Edit .env (timezone, port, basic-auth password if internet-exposed)
 docker compose up -d
 ```
+
+### First-run onboarding
+
+Open `http://<your-host>:<port>/` in a browser. A fresh stack redirects you straight into onboarding — no need to know to navigate via Tools → Onboarding. Two paths:
+
+- **In-app interview (recommended where outbound network works).** Step 1 collects your three API keys; Step 2 runs a chat-based interview right inside findajob, server-side persistent so you can close the tab and resume. Funded by your own OpenRouter key from Step 1.
+- **Paste-back.** For environments that can't reach OpenRouter directly, or if you'd rather run the interview in claude.ai / ChatGPT / Gemini and paste the emission. Same Step 1 keys collection; Step 2 hands you the prompt and a paste box.
+
+Either way, the injector validates the emission, smoke-checks your OpenRouter key, atomically writes the config files findajob needs, and marks onboarding complete. The next scheduled triage run (00:00 in your `TZ`) ingests its first batch of jobs.
 
 Full walkthrough → [`docs/setup/install-docker.md`](docs/setup/install-docker.md) (or start at [`docs/setup/README.md`](docs/setup/README.md) for the guided sequence). Native-host install remains as a legacy fallback → [`docs/setup/install-linux.md`](docs/setup/install-linux.md).
 
@@ -154,7 +176,8 @@ Start here:
 | [docs/setup/prerequisites.md](docs/setup/prerequisites.md) | API keys, accounts, tools you need |
 | [docs/setup/install-docker.md](docs/setup/install-docker.md) | Docker Compose setup (recommended) |
 | [docs/setup/install-linux.md](docs/setup/install-linux.md) | Legacy native install (Ubuntu + systemd) |
-| [docs/setup/configure.md](docs/setup/configure.md) | Profile, resume, search queries, API keys |
+| [docs/setup/api-keys.md](docs/setup/api-keys.md) | Getting your three API keys (OpenRouter, RapidAPI, Google AI Studio) |
+| [docs/setup/configure.md](docs/setup/configure.md) | Profile, resume, search queries, advanced config |
 | [docs/setup/state-migration.md](docs/setup/state-migration.md) | Moving an existing pipeline to a new host |
 | [docs/operations.md](docs/operations.md) | Operator reference: manual commands, monitoring |
 | [docs/notifications.md](docs/notifications.md) | ntfy.sh setup and notification schedule |
