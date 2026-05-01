@@ -10,6 +10,14 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+## [0.10.1] — 2026-05-01
+
+Patch bump. One UX fix on the Applied tab — Not Selected is now one-click. No migration required; bind mounts, schema, crontab, and compose unchanged. Operators on `:latest` and testers on `:v0.10` both pull and recreate.
+
+### Fixed
+
+- **Applied → Not Selected: one-click; remove the two-step trap (#391).** Picking Not Selected on the Applied tab now POSTs `/not-selected` immediately with the handler's default reason ("Company passed"). The previous two-step flow — pick a status, then pick a reason in the REJECT cell — was a UX trap the operator surfaced as "I click Not Selected and I just get this message Pick a reason. The reason IS not selected." Junk code retired from #361 / #374's hardening attempts (they targeted dataset stability when the actual problem was the design): the `dataset.pendingAction` handoff between status and reject cells, the `js-status-hint` span and "Pick a reason →" prompt, the focus-pulse on the reject cell. The reject cell on Applied now renders an inert dash so picking a reason there can't accidentally route to `/reject` (which writes feedback_log and would contaminate the scorer for an already-applied job). Kept from the hardening pass: `static/htmx_errors.js` (broad-purpose error toast) and the `log_event("board_not_selected", ...)` diagnostic.
+
 ## [0.10.0] — 2026-05-01
 
 Minor bump. Lands two onboarding feature shipments that together unlock self-deploy multi-tenancy for testers: the in-app onboarding interview (#336) and per-tester API key isolation at onboarding (#339). Both items carry migration markers — read the **Migration required** section below before pulling. Operator's stack and `findajob-test` need NO change. Existing tester stacks (alice, papa, dave, judy, tango) are unaffected on routine pulls; daily pipeline behavior is byte-identical to pre-#339.
@@ -605,7 +613,8 @@ from GHCR and deployed via Docker Compose on a shared Docker host.
 - Documentation cleanup — removing `sigoden/aichat` references in favor of
   `blob42/aichat-ng` — is tracked in #70
 
-[Unreleased]: https://github.com/brockamer/findajob/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/brockamer/findajob/compare/v0.10.1...HEAD
+[0.10.1]: https://github.com/brockamer/findajob/releases/tag/v0.10.1
 [0.10.0]: https://github.com/brockamer/findajob/releases/tag/v0.10.0
 [0.9.2]: https://github.com/brockamer/findajob/releases/tag/v0.9.2
 [0.9.1]: https://github.com/brockamer/findajob/releases/tag/v0.9.1
