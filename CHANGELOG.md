@@ -18,6 +18,14 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 - **Gmail integration (#330).** If you were using the OAuth integration: configure the new path at `/config/gmail/` and delete `config/gmail_oauth_client.json` + `config/gmail_token.json` from your bind mount. The pipeline silently no-ops Gmail ingestion until configured. Operators with no Gmail integration: nothing to do.
 
+## [0.8.4] — 2026-05-01
+
+Patch bump. Fixes the empty-board NUX cliff for brand-new tester stacks: jobs-api14's LinkedIn `datePosted='day'` filter yields ~7 jobs/day, and the Dashboard's score≥7 default floor filtered most of those out. Live example surfaced this session: papa's stack on day 1 returned 7 jobs total (max score 4) — board read as broken. The fix widens the recency window for stacks in their first 30 days post-onboarding; steady-state behavior unchanged.
+
+### Fixed
+
+- **LinkedIn `datePosted` widens to `'month'` during the first 30 days post-onboarding (#369).** New `_date_posted_for_install()` in `src/findajob/fetchers.py` checks the mtime of `data/.onboarding-complete` and returns `'month'` when under the 30-day threshold, falling back to `'day'` otherwise. `'month'` was chosen over `'week'` because (a) jobs-api14's LinkedIn endpoint accepts only `any|day|week|month` (no `2weeks` value), (b) the scorer correctly filters the additional volume — validated against papa's first triage which went 7 → 47 jobs ingested, all scored, no garbage in the high-score band. Auto-anchored per stack — no env var, no per-stack config. Logs the chosen value once per fetch as `jobsapi_date_posted` for traceability.
+
 ## [0.8.3] — 2026-05-01
 
 Patch bump. Fixes two onboarding bugs that surfaced when the second beta tester (#337 papa wave) tried to paste back his interview emission. The first click silently no-op'd because the body-level `hx-boost` was intercepting the form submit and HTMX was dropping the 400 response. The second click 500'd because `/app/.backups/` wasn't bind-mounted — the install-docker.md mkdir command and `ops/compose.yaml.example` volumes block both omitted it. Both fixes ship together so a fresh install on this tag onboards cleanly end-to-end.
