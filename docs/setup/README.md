@@ -16,11 +16,13 @@ Create `/opt/stacks/findajob-<you>/`, drop `compose.yaml`, start the container. 
 
 ## 3. Configure → three paths
 
-After the container is up, open `http://<your-host>:${FINDAJOB_MATERIALS_PORT}/onboarding/` in a browser. There are now two interview paths and a manual escape hatch:
+After the container is up, open `http://<your-host>:${FINDAJOB_MATERIALS_PORT}/` in a browser. A fresh stack 307s straight into `/onboarding/` — no need to know to navigate via Tools → Onboarding. The page presents Step 1 (collect your three API keys) and then Step 2, where you pick how to onboard:
 
-**In-app interview (operator opt-in, easiest for testers):** When the operator sets `OPENROUTER_OPERATOR_KEY` on the stack, `/onboarding/` shows a "Run interview here" button. Click it and the entire interview happens inside findajob as a chat — no tab-switching, no copy-paste. Server-side persistent: close the tab and reload the page to see a "Resume your interview" affordance and pick up where you left off. findajob bills the operator's OpenRouter key (~$1 per onboarding for Sonnet 4.6); your own key is collected at the end and used for the post-onboarding pipeline. See [`configure.md`](configure.md#openrouter_operator_key-in-app-onboarding-interview-optional) for opt-in details.
+**In-app interview (default for self-deploy):** Step 1 collects your OpenRouter, RapidAPI, and Google API keys (sign-up walkthrough at [`api-keys.md`](api-keys.md)); Step 2 enables a "Start interview" button that runs the entire interview inside findajob as a chat — no tab-switching, no copy-paste. Server-side persistent: close the tab and reload the page to see a "Resume your interview" affordance. The chat is funded by your own OpenRouter key from Step 1.
 
-**Paste-back (the original path, always available):** You paste the interview prompt into ChatGPT / Claude / Gemini in another tab, answer its questions in conversation, then paste the structured output back. Works for outbound-blocked deployments and for operators who haven't opted into the in-app path. The "I already ran the interview elsewhere" section on `/onboarding/` collapses this option when the in-app path is enabled.
+**Paste-back (the fallback):** For environments that can't reach OpenRouter directly, or if you'd rather run the interview in claude.ai / ChatGPT / Gemini in another tab and paste the emission. Same Step 1 keys collection; Step 2's "I'll run the interview elsewhere and paste back" section hands you the prompt and a paste box. Same config files written either way.
+
+**Operator-funded fallback (optional, for `findajob-test` and operator-deployed-for-tester scenarios):** When the operator sets `OPENROUTER_OPERATOR_KEY` on the stack, the in-app affordance enables before Step 1 keys are collected — useful for the operator's own dogfood instance or a tester whose stack the operator stood up directly. Self-deploy testers do not need this. See [`configure.md`](configure.md#openrouter_operator_key-operator-funded-fallback-optional) for cost (~$1/onboarding) and operational notes.
 
 Both interview paths produce the same emission protocol and write the same config files (profile, resume, prefilter rules, search queries, and more), back up anything they replace, and clear the onboarding sentinel on success.
 

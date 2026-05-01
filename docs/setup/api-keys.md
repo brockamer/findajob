@@ -12,7 +12,7 @@ credit card to get started.
 | Key | What findajob uses it for | Cost on free tier | Required? |
 |---|---|---|---|
 | **OpenRouter** | All LLM calls (scoring, briefings, resume tailoring, cover letters, outreach drafts, in-app interview) | Pay-as-you-go from $0; no monthly minimum. ~$0.50/day triage-only; $1.50–3.00 per fully-prepped job (Claude Opus dominates that bill). | **Yes** — pipeline cannot score or generate materials without it |
-| **RapidAPI (jobs-api14)** | LinkedIn + Indeed job search ingestion | BASIC plan: 150 requests/month free | Optional — paste-back from Gmail LinkedIn alerts works without it |
+| **RapidAPI (jobs-api14)** | LinkedIn + Indeed job search ingestion | BASIC plan: 150 requests/month free | Optional — Gmail LinkedIn-alert ingestion still works without it |
 | **Google AI Studio (Gemini)** | Embeddings for the optional RAG index over your candidate context (REPL-only feature) | Free tier on Gemini embeddings; no billing setup needed | Optional — only used by the REPL workflow; pipeline is fully functional without it |
 
 You can leave RapidAPI and Google blank during onboarding and add them
