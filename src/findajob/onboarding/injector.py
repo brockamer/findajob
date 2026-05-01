@@ -179,15 +179,27 @@ def _parse_ntfy_topic_body(body: str) -> str:
 def backup_existing(base_root: Path, stamp: str) -> Path:
     """Copy any existing destinations to ``{base_root}/.backups/{stamp}/``.
 
-    Returns the backup directory path (possibly empty). Preserves the
-    relative path structure of every copied file.
+    Returns the backup directory path. If no extant sources are present
+    (first onboarding run on a fresh stack), no directory is created and
+    the returned path will not exist on disk. Preserves the relative path
+    structure of every copied file.
+
+    Skipping the mkdir on first runs is defense-in-depth against #365: if
+    the operator's host is missing the ``./state/.backups:/app/.backups``
+    bind mount, an unconditional mkdir on a fresh stack would fail with
+    EPERM (parent ``/app`` is root-owned in the image). Short-circuiting
+    when there is nothing to back up means a fresh first run never
+    touches that path — the bind mount only matters on re-runs, which is
+    when there's something to back up anyway.
     """
+    sources = [base_root / r for r in _backup_relpaths()]
+    extant = [s for s in sources if s.is_file()]
     dest_root = base_root / _BACKUP_ROOT / stamp
+    if not extant:
+        return dest_root
     dest_root.mkdir(parents=True, exist_ok=True)
-    for relpath in _backup_relpaths():
-        src = base_root / relpath
-        if not src.is_file():
-            continue
+    for src in extant:
+        relpath = src.relative_to(base_root)
         target = dest_root / relpath
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, target)

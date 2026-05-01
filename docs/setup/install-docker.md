@@ -24,7 +24,7 @@ See [configure.md](configure.md). API keys and personal config end up in `state/
 
 ```bash
 # On the Docker host
-sudo mkdir -p /opt/stacks/findajob-<you>/state/{data,config,candidate_context,companies,logs,aichat_ng}
+sudo mkdir -p /opt/stacks/findajob-<you>/state/{data,config,candidate_context,companies,logs,aichat_ng,.backups}
 sudo chown -R $(id -u):$(id -g) /opt/stacks/findajob-<you>/
 ```
 
