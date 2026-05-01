@@ -240,6 +240,8 @@ def inject(
     found: dict[str, str],
     *,
     openrouter_api_key: str = "",
+    rapidapi_key: str = "",
+    google_api_key: str = "",
     redact_voice_samples: bool = True,
     skip_smoke_check: bool = False,
 ) -> InjectResult:
@@ -257,6 +259,18 @@ def inject(
     BEFORE the sentinel, so the user re-pastes with a corrected key and the
     second attempt overwrites the first cleanly. Pass an empty string only in
     contexts where ``skip_smoke_check=True`` (tests; legacy callers).
+
+    ``rapidapi_key`` is the optional RapidAPI key for LinkedIn/Indeed job
+    search (``RAPIDAPI_KEY`` in ``data/.env``). When empty or whitespace, the
+    key is not written to ``data/.env`` — the ``.env.example`` placeholder
+    line is left in place. When provided, it is merged without any live smoke
+    check (``findajob.fetchers`` performs its own truthiness-based skip logic).
+
+    ``google_api_key`` is the optional Google API key for Gemini embeddings
+    (``GOOGLE_API_KEY`` in ``data/.env``). Same optional-blank semantic as
+    ``rapidapi_key``: omitting or passing whitespace leaves the placeholder
+    untouched; providing a value merges it into ``data/.env`` without a live
+    smoke check.
 
     Optional filenames (currently ``voice-samples.md``) are processed if
     present and silently skipped if absent. When voice-samples.md is present,
@@ -278,6 +292,10 @@ def inject(
     env_updates: dict[str, str] = {}
     if openrouter_api_key.strip():
         env_updates["OPENROUTER_API_KEY"] = openrouter_api_key.strip()
+    if google_api_key.strip():
+        env_updates["GOOGLE_API_KEY"] = google_api_key.strip()
+    if rapidapi_key.strip():
+        env_updates["RAPIDAPI_KEY"] = rapidapi_key.strip()
     if "ntfy_topic.txt" in found:
         env_updates["NTFY_TOPIC"] = _parse_ntfy_topic_body(found["ntfy_topic.txt"])
 
