@@ -97,33 +97,46 @@ def client_no_key(base_root: Path, monkeypatch: pytest.MonkeyPatch) -> TestClien
 # ── /onboarding/ landing-page affordance ─────────────────────────────────
 
 
-def test_index_shows_interview_affordance_when_operator_key_set(client_with_key: TestClient) -> None:
-    """Per Task 5: when operator_mode_interview_enabled, render two affordances."""
+def test_index_shows_interview_affordance_when_keys_collected(client_with_key: TestClient, base_root: Path) -> None:
+    """Step 2 enables — and the Start interview button submits to /start —
+    once Step 1 credentials are saved. Operator key alone (no Step 1) no
+    longer flips Step 2 on, since 2026-05-02."""
+    _plant_credentials(base_root)
     resp = client_with_key.get("/onboarding/")
     assert resp.status_code == 200
     body = resp.text
-
-    # The "Run interview here" affordance is a form/link that posts to /start
+    # Form posts to /start. No "disabled" attribute on the fieldset.
     assert "/onboarding/interview/start" in body
-    assert "run interview here" in body.lower() or "interview here" in body.lower()
-
-    # The paste-back affordance must still be present (it's the fallback)
-    assert 'name="emission"' in body
-    assert "i already ran" in body.lower() or "already ran" in body.lower() or "paste" in body.lower()
+    assert 'disabled aria-disabled="true"' not in body
 
 
-def test_index_hides_interview_affordance_when_operator_key_unset(client_no_key: TestClient) -> None:
-    """When operator key isn't set, the chat affordance must NOT render
-    (would 404 on click — broken affordance, acceptance #6)."""
-    resp = client_no_key.get("/onboarding/")
+def test_index_disables_step_two_when_keys_not_collected(client_with_key: TestClient) -> None:
+    """Without Step 1 keys, the Start interview button is disabled — even
+    with OPENROUTER_OPERATOR_KEY set on the stack."""
+    resp = client_with_key.get("/onboarding/")
     assert resp.status_code == 200
     body = resp.text
+    assert 'disabled aria-disabled="true"' in body
+    assert "Save your API keys above before continuing." in body
 
-    # No link/form pointing at the in-app interview start route
-    assert "/onboarding/interview/start" not in body
 
-    # Paste-back is still the operative path
-    assert 'name="emission"' in body
+def _plant_credentials(base_root: Path) -> str:
+    """Helper: insert a credentials-only session row directly."""
+    from findajob.onboarding.session_store import create_session, set_credentials
+
+    conn = sqlite3.connect(base_root / "data" / "pipeline.db")
+    try:
+        sid = create_session(conn)
+        set_credentials(
+            conn,
+            sid,
+            openrouter_api_key="sk-or-v1-render-test",
+            rapidapi_key="",
+            google_api_key="",
+        )
+    finally:
+        conn.close()
+    return sid
 
 
 # ── /onboarding/interview/{sid} (resume page renders interview.html) ─────
@@ -201,16 +214,15 @@ def test_interview_page_hides_finalize_block_when_not_ready(client_with_key: Tes
     resp = client_with_key.get(f"/onboarding/interview/{sid}")
     assert resp.status_code == 200
     body = resp.text
-    # The finalize form posts to /{sid}/finalize and contains the API-key input.
-    # When NOT ready, that form must not be present in the rendered HTML.
+    # When NOT ready, the finalize form must not be present in the rendered HTML.
     assert f"/onboarding/interview/{sid}/finalize" not in body
-    assert 'name="openrouter_api_key"' not in body
 
 
 def test_interview_page_shows_finalize_block_when_all_blocks_captured(
     client_with_key: TestClient, base_root: Path
 ) -> None:
-    """When all ALLOWED_FILENAMES are in captured_blocks, finalize unhides."""
+    """When all ALLOWED_FILENAMES are in captured_blocks, finalize unhides.
+    The form has no OpenRouter input field — keys come from Step 1 creds."""
     from findajob.onboarding.parser import ALLOWED_FILENAMES, parse_emission
 
     blob = "\n\n".join(f"<<<FILE: {name}>>>\nbody for {name}\n<<<END FILE: {name}>>>" for name in ALLOWED_FILENAMES)
@@ -229,7 +241,8 @@ def test_interview_page_shows_finalize_block_when_all_blocks_captured(
     assert resp.status_code == 200
     body = resp.text
     assert f"/onboarding/interview/{sid}/finalize" in body
-    assert 'name="openrouter_api_key"' in body
+    # OR-key input field was removed — keys come from Step 1 credentials.
+    assert 'name="openrouter_api_key"' not in body
 
 
 def test_interview_page_shows_progress_count(client_with_key: TestClient, base_root: Path) -> None:

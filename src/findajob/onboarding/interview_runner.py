@@ -75,14 +75,29 @@ def run_turn(
     """
     if not operator_key or not operator_key.strip():
         raise InterviewRunnerError(
-            "Operator's OpenRouter key is missing. The administrator of this "
-            "findajob deployment must set OPENROUTER_OPERATOR_KEY before the "
-            "in-app interview is available. You can still use the paste-back "
-            "option from the onboarding page.",
+            "No OpenRouter key resolved for this stack. Provide your API keys "
+            "at /onboarding/ Step 1, or have the administrator set "
+            "OPENROUTER_OPERATOR_KEY to subsidize the interview.",
             kind="config",
         )
 
-    messages: list[dict[str, str]] = [{"role": "system", "content": system_prompt}]
+    # Mark the system prompt cacheable via OpenRouter's `cache_control`
+    # breakpoint. Anthropic providers honor this and bill cached system
+    # tokens at ~10% on subsequent turns — the system prompt is ~25KB and
+    # is re-sent every turn, so caching is the difference between a ~$3
+    # interview and a ~$0.50 one.
+    messages: list[dict] = [
+        {
+            "role": "system",
+            "content": [
+                {
+                    "type": "text",
+                    "text": system_prompt,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
+        }
+    ]
     messages.extend(history)
     messages.append({"role": "user", "content": user_message})
 

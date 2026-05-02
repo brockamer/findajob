@@ -178,22 +178,23 @@ pipeline runs identically. Full sign-up walk-throughs:
 [`docs/setup/api-keys.md`](api-keys.md) — also reachable in-app at
 `/docs/setup/api-keys`.
 
-**Step 2 — Pick how you want to onboard.** Two paths:
+**Step 2 — Run the interview.** Click "Start interview." findajob opens a
+chat surface where you have a structured 60–90 minute conversation with
+Claude Sonnet 4.6, billed against your own OpenRouter key. The session
+is server-side persistent — close the tab any time and the index page
+surfaces a "Resume your interview" affordance. When the LLM finishes
+emitting your config blocks (it does this in the chat itself; the
+parser extracts them automatically), a green Finalize button appears
+below the chat. Click it.
 
-- **In-app interview** (recommended where outbound network is allowed).
-  Click "Start interview" — findajob runs the interview as a chat surface
-  on the same site, server-side persistent across tab close. Funded by
-  your OpenRouter key from Step 1.
-- **Paste-back.** Use this if your environment can't reach OpenRouter
-  directly, or if you'd rather run the interview in claude.ai / ChatGPT /
-  Gemini and paste the emission. Click "I'll run the interview elsewhere
-  and paste back," copy the prompt, and paste the emission when you're
-  done.
+Cost runs ~$0.50 per onboarding because the system prompt is cached at
+OpenRouter — subsequent turns are billed at ~10% of the system tokens.
 
-Either way, the injector validates the emission, runs a 1-token smoke
-check against OpenRouter to re-verify the key, atomically writes the
-config files plus a derived `companies_of_interest.txt`, and marks
-onboarding complete. Errors are surfaced verbatim — fix and resubmit.
+The injector validates the emission, runs a 1-token smoke check against
+OpenRouter to re-verify the key, atomically writes the config files plus
+a derived `companies_of_interest.txt`, runs initial company discovery,
+and marks onboarding complete. Errors are surfaced verbatim — fix and
+resubmit.
 
 After onboarding lands, the next scheduled triage run (00:00 in your
 configured `TZ`) ingests its first batch of jobs.

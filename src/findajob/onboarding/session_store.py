@@ -238,11 +238,26 @@ def get_credentials(db: sqlite3.Connection, session_id: str) -> Credentials | No
     )
 
 
+def has_any_credentials(db: sqlite3.Connection) -> bool:
+    """True iff at least one ``onboarding_sessions`` row has an OpenRouter
+    key set, regardless of session lifecycle state.
+
+    Used by the index page's Step-2 gate. The earlier check
+    (:func:`find_credentials_only`) was too narrow — it required
+    ``history_json = '[]'``, so once the interview started and the
+    credentials bound to the active session, the gate flipped back to
+    False mid-flow and disabled the resume affordance.
+    """
+    row = db.execute("SELECT 1 FROM onboarding_sessions WHERE tester_openrouter_key IS NOT NULL LIMIT 1").fetchone()
+    return row is not None
+
+
 def find_credentials_only(db: sqlite3.Connection) -> Session | None:
     """Return the most recent session that has credentials but no chat history.
 
-    Used by the ``/onboarding/`` index handler to surface a
-    "Keys collected — ready to start interview" affordance.  Returns
+    Used by ``start_interview`` to "promote" the credentials-only row
+    (created by Step 1) into the active interview session, so chat
+    history attaches to the same row holding the tester's key. Returns
     ``None`` when no such session exists.
 
     Conditions:
@@ -250,8 +265,8 @@ def find_credentials_only(db: sqlite3.Connection) -> Session | None:
     - ``history_json`` is the empty-list literal ``'[]'`` (no turns yet)
     - ``completed_at IS NULL``
 
-    Return type matches :func:`find_active` so the index handler can swap
-    between the two affordances without branching.
+    Return type matches :func:`find_active` so callers can swap between
+    the two without branching.
     """
     row = db.execute(
         """SELECT id, history_json, captured_blocks_json, started_at,

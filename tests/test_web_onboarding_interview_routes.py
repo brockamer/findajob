@@ -55,6 +55,53 @@ _OPERATOR_KEY = "sk-or-v1-operator-test"
 _USER_KEY = "sk-or-v1-user-test"
 
 
+def _plant_credentials(
+    base_root: Path,
+    *,
+    openrouter: str = _USER_KEY,
+    rapidapi: str = "",
+    google: str = "",
+) -> str:
+    """Insert a credentials-only session row directly via session_store.
+
+    Used by tests that need /start to find a credentials-only row to
+    promote, without going through the full /onboarding/keys POST cycle.
+    Returns the session id (in case the test needs it).
+    """
+    from findajob.onboarding.session_store import create_session, set_credentials
+
+    conn = sqlite3.connect(base_root / "data" / "pipeline.db")
+    try:
+        sid = create_session(conn)
+        set_credentials(
+            conn,
+            sid,
+            openrouter_api_key=openrouter,
+            rapidapi_key=rapidapi,
+            google_api_key=google,
+        )
+    finally:
+        conn.close()
+    return sid
+
+
+def _set_credentials_on_session(base_root: Path, session_id: str, *, openrouter: str = _USER_KEY) -> None:
+    """Bind credentials to an existing session — used by /finalize tests."""
+    from findajob.onboarding.session_store import set_credentials
+
+    conn = sqlite3.connect(base_root / "data" / "pipeline.db")
+    try:
+        set_credentials(
+            conn,
+            session_id,
+            openrouter_api_key=openrouter,
+            rapidapi_key="",
+            google_api_key="",
+        )
+    finally:
+        conn.close()
+
+
 def _build_emission_blob() -> str:
     """A complete emission covering every ALLOWED_FILENAMES entry.
 
@@ -170,37 +217,45 @@ def test_routes_register_but_503_when_no_chat_key_resolved(client_no_key: TestCl
     assert "onboarding" in resp.text.lower()
 
 
-def test_start_uses_tester_credentials_when_collected(
+def test_start_uses_tester_credentials_when_no_operator_env(
     client_no_key: TestClient,
     monkeypatch: pytest.MonkeyPatch,
     base_root: Path,
 ) -> None:
-    """#339: with no operator env but tester credentials collected, in-app
-    chat funded by the tester's own OpenRouter key (not the operator's)."""
-    # Stub the smoke check used by /onboarding/keys so we can plant credentials.
-    monkeypatch.setattr(
-        "findajob.web.routes.onboarding.verify_openrouter_key",
-        lambda _k: (True, None),
-    )
-    tester_key = "sk-or-v1-tester-self-deploy"
-    r = client_no_key.post("/onboarding/keys", data={"openrouter_api_key": tester_key})
-    assert r.status_code == 303
+    """Self-deploy: no operator env, tester credentials collected — chat runs
+    on the tester's own OpenRouter key."""
+    _plant_credentials(base_root, openrouter="sk-or-v1-tester-self-deploy")
 
     calls = _stub_run_turn(monkeypatch, "Hi! What's your name?")
     resp = client_no_key.post("/onboarding/interview/start")
-    # 303 → redirect to chat page; route registered + chat key resolved.
     assert resp.status_code == 303
     assert len(calls) == 1
-    # The chat-runner was invoked with the TESTER's key, not the operator's.
-    assert calls[0]["operator_key"] == tester_key
+    assert calls[0]["operator_key"] == "sk-or-v1-tester-self-deploy"
 
 
-def test_start_uses_operator_key_when_no_credentials(
+def test_start_503_when_no_credentials_collected(
+    client_with_key: TestClient,
+) -> None:
+    """Step 1 (API-key collection) is mandatory before in-app interview can
+    start — even when OPENROUTER_OPERATOR_KEY is set. Operator key only
+    subsidizes the chat runner; it doesn't substitute for Step 1."""
+    resp = client_with_key.post("/onboarding/interview/start")
+    assert resp.status_code == 503
+    assert "onboarding" in resp.text.lower()
+
+
+def test_start_operator_key_wins_when_set(
     client_with_key: TestClient,
     monkeypatch: pytest.MonkeyPatch,
+    base_root: Path,
 ) -> None:
-    """#339: operator-funded fallback path. No tester credentials collected,
-    OPENROUTER_OPERATOR_KEY env is set — chat runs on the operator's key."""
+    """Operator-key precedence (flipped 2026-05-02): when
+    OPENROUTER_OPERATOR_KEY is set on the stack, chat runs on the operator's
+    key even when the tester collected their own key. This makes findajob-test
+    a free dogfood instance — the tester's pipeline still uses their own key
+    via /finalize, but the chat is subsidized."""
+    _plant_credentials(base_root, openrouter="sk-or-v1-tester-priority")
+
     calls = _stub_run_turn(monkeypatch, "Hi!")
     resp = client_with_key.post("/onboarding/interview/start")
     assert resp.status_code == 303
@@ -208,36 +263,10 @@ def test_start_uses_operator_key_when_no_credentials(
     assert calls[0]["operator_key"] == _OPERATOR_KEY
 
 
-def test_start_tester_credentials_win_over_operator_env(
-    client_with_key: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
+def test_router_registered_when_operator_key_set(
+    client_with_key: TestClient, base_root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """#339 precedence: tester credentials always beat operator env var."""
-    monkeypatch.setattr(
-        "findajob.web.routes.onboarding.verify_openrouter_key",
-        lambda _k: (True, None),
-    )
-    tester_key = "sk-or-v1-tester-priority"
-    r = client_with_key.post("/onboarding/keys", data={"openrouter_api_key": tester_key})
-    assert r.status_code == 303
-
-    calls = _stub_run_turn(monkeypatch, "Hi!")
-    resp = client_with_key.post("/onboarding/interview/start")
-    assert resp.status_code == 303
-    assert len(calls) == 1
-    # Tester's key wins, not the operator's env value.
-    assert calls[0]["operator_key"] == tester_key
-    assert calls[0]["operator_key"] != _OPERATOR_KEY
-
-
-def test_paste_back_path_still_available_when_operator_key_unset(client_no_key: TestClient) -> None:
-    """Acceptance #6 negative side: existing paste-back must keep working."""
-    resp = client_no_key.get("/onboarding/")
-    assert resp.status_code == 200
-    assert 'name="emission"' in resp.text  # paste form survives
-
-
-def test_router_registered_when_operator_key_set(client_with_key: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    _plant_credentials(base_root)
     _stub_run_turn(monkeypatch, "hello — what's your full name?")
     resp = client_with_key.post("/onboarding/interview/start")
     # Whatever the response, it MUST NOT be 404 (router not registered).
@@ -252,6 +281,7 @@ def test_start_creates_session_and_runs_first_turn(
     base_root: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    _plant_credentials(base_root)
     calls = _stub_run_turn(monkeypatch, "hello — what's your full name?")
     resp = client_with_key.post("/onboarding/interview/start")
 
@@ -283,6 +313,7 @@ def test_start_creates_session_and_runs_first_turn(
 def test_start_handles_runner_error(
     client_with_key: TestClient, base_root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    _plant_credentials(base_root)
     _stub_run_turn_error(monkeypatch, "OpenRouter rejected the operator key (401 Unauthorized).")
     resp = client_with_key.post("/onboarding/interview/start")
 
@@ -457,8 +488,10 @@ def test_finalize_rejects_when_blocks_missing(client_with_key: TestClient, base_
     assert "missing" in resp.text.lower() or "complete" in resp.text.lower()
 
 
-def test_finalize_rejects_when_user_key_blank(client_with_key: TestClient, base_root: Path) -> None:
-    """Even if all blocks captured, a blank user OpenRouter key is rejected."""
+def test_finalize_rejects_when_session_has_no_credentials(client_with_key: TestClient, base_root: Path) -> None:
+    """Finalize requires credentials bound to the session — those come from
+    Step 1 of /onboarding/. The earlier "blank form input" path was retired
+    along with the form OR-key field on 2026-05-02."""
     from findajob.onboarding.parser import parse_emission
     from findajob.onboarding.session_store import update_captured_blocks
 
@@ -469,13 +502,12 @@ def test_finalize_rejects_when_user_key_blank(client_with_key: TestClient, base_
         update_captured_blocks(conn, sid, all_captured)
     finally:
         conn.close()
+    # Note: NOT calling _set_credentials_on_session — leaving it bare.
 
-    resp = client_with_key.post(
-        f"/onboarding/interview/{sid}/finalize",
-        data={"openrouter_api_key": "  "},
-    )
+    resp = client_with_key.post(f"/onboarding/interview/{sid}/finalize")
     assert resp.status_code == 400
-    assert "key" in resp.text.lower()
+    body = resp.text.lower()
+    assert "step 1" in body or "key" in body
 
 
 def test_finalize_calls_inject_and_marks_complete(
@@ -519,18 +551,16 @@ def test_finalize_calls_inject_and_marks_complete(
         )
 
     monkeypatch.setattr("findajob.web.routes.onboarding_interview.inject", _fake_inject)
+    _set_credentials_on_session(base_root, sid, openrouter=_USER_KEY)
 
-    resp = client_with_key.post(
-        f"/onboarding/interview/{sid}/finalize",
-        data={"openrouter_api_key": _USER_KEY},
-    )
+    resp = client_with_key.post(f"/onboarding/interview/{sid}/finalize")
 
     # Either renders complete page directly (200) or redirects to /onboarding/complete
     assert resp.status_code in (200, 303)
     if resp.status_code == 303:
         assert "/onboarding/complete" in resp.headers["location"]
 
-    # inject was called with the captured blocks + the user's key
+    # inject was called with the captured blocks + the user's key (from creds)
     assert len(inject_calls) == 1
     assert inject_calls[0]["openrouter_api_key"] == _USER_KEY
     assert set(inject_calls[0]["parsed_files"].keys()) >= set(all_captured.keys())
@@ -561,11 +591,9 @@ def test_finalize_handles_smoke_check_failed(
         raise OnboardingSmokeCheckFailed("OpenRouter rejected the key (401).")
 
     monkeypatch.setattr("findajob.web.routes.onboarding_interview.inject", _fake_inject)
+    _set_credentials_on_session(base_root, sid, openrouter=_USER_KEY)
 
-    resp = client_with_key.post(
-        f"/onboarding/interview/{sid}/finalize",
-        data={"openrouter_api_key": _USER_KEY},
-    )
+    resp = client_with_key.post(f"/onboarding/interview/{sid}/finalize")
     assert resp.status_code == 400
     assert "401" in resp.text or "key" in resp.text.lower()
 
@@ -574,10 +602,7 @@ def test_finalize_handles_smoke_check_failed(
 
 
 def test_finalize_404_for_unknown_session(client_with_key: TestClient) -> None:
-    resp = client_with_key.post(
-        "/onboarding/interview/nope/finalize",
-        data={"openrouter_api_key": _USER_KEY},
-    )
+    resp = client_with_key.post("/onboarding/interview/nope/finalize")
     assert resp.status_code == 404
 
 
@@ -829,6 +854,7 @@ def test_start_error_emits_log_event(
     client_with_key: TestClient, base_root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """/start errors also log via the same channel — different route value."""
+    _plant_credentials(base_root)
     log_calls: list[dict[str, object]] = []
     monkeypatch.setattr(
         "findajob.web.routes.onboarding_interview.log_event",
@@ -870,10 +896,11 @@ def test_resume_index_no_affordance_when_no_session(client_with_key: TestClient)
 
 
 def test_resume_index_shows_affordance_when_active_session_exists(client_with_key: TestClient, base_root: Path) -> None:
-    """An un-completed session with recent activity surfaces a resume link."""
+    """An un-completed session with recent activity surfaces a resume link.
+    Index also requires Step 1 keys to be present (post-2026-05-02 gating)."""
     from findajob.onboarding.session_store import append_turn
 
-    sid = _create_session_directly(base_root)
+    sid = _plant_credentials(base_root)
     conn = sqlite3.connect(base_root / "data" / "pipeline.db")
     try:
         append_turn(conn, sid, "user", "kickoff")

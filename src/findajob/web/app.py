@@ -42,16 +42,6 @@ def create_app(
     templates.env.globals["filter_remove_qs"] = filter_remove_qs
     templates.env.globals["filter_qs_with"] = filter_qs_with
     templates.env.globals["operator_mode"] = os.environ.get("FINDAJOB_OPERATOR_MODE") == "1"
-    # True iff the operator-funded fallback for the in-app interview chat is
-    # available on this stack (used by findajob-test and operator-deployed-
-    # for-tester scenarios). Tester credentials collected at /onboarding/
-    # Step 1 (#339) are an independent path — both flow into
-    # ``_resolved_chat_key`` in onboarding_interview.py with tester
-    # credentials taking precedence. Templates use this flag to render the
-    # Step 2 affordance even before Step 1 keys are collected.
-    templates.env.globals["operator_mode_interview_enabled"] = bool(
-        (os.environ.get("OPENROUTER_OPERATOR_KEY") or "").strip()
-    )
 
     static_dir = Path(__file__).parent / "static"
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")

@@ -60,8 +60,9 @@ def test_empty_operator_key_raises_immediately() -> None:
         with pytest.raises(InterviewRunnerError) as exc:
             run_turn("", "system", [], "hi")
         mock_urlopen.assert_not_called()
-    assert "OPENROUTER_OPERATOR_KEY" in exc.value.user_message
-    assert "paste-back" in exc.value.user_message
+    # User-facing message points the user back to /onboarding/ Step 1
+    # (and mentions the operator-funded fallback for completeness).
+    assert "Step 1" in exc.value.user_message or "onboarding" in exc.value.user_message.lower()
 
 
 def test_whitespace_operator_key_raises_immediately() -> None:
@@ -113,8 +114,14 @@ def test_payload_contains_system_history_and_user_in_order() -> None:
     assert captured["url"] == "https://openrouter.ai/api/v1/chat/completions"
     assert captured["body"]["model"] == INTERVIEW_MODEL
     assert captured["body"]["max_tokens"] == INTERVIEW_MAX_TOKENS
+    # System message uses the cache-control breakpoint shape so OpenRouter
+    # bills cached system tokens at ~10% on subsequent turns. Subsequent
+    # messages are still the simple {role, content} form.
     assert captured["body"]["messages"] == [
-        {"role": "system", "content": "SYSTEM"},
+        {
+            "role": "system",
+            "content": [{"type": "text", "text": "SYSTEM", "cache_control": {"type": "ephemeral"}}],
+        },
         {"role": "user", "content": "begin"},
         {"role": "assistant", "content": "What role?"},
         {"role": "user", "content": "DC ops"},
@@ -157,7 +164,10 @@ def test_empty_history_works_for_first_turn() -> None:
         text, _ = run_turn("sk-or-v1-operator", "SYSTEM", [], "begin the interview")
     assert text == "Welcome."
     assert captured["body"]["messages"] == [
-        {"role": "system", "content": "SYSTEM"},
+        {
+            "role": "system",
+            "content": [{"type": "text", "text": "SYSTEM", "cache_control": {"type": "ephemeral"}}],
+        },
         {"role": "user", "content": "begin the interview"},
     ]
 

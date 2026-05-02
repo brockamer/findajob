@@ -18,19 +18,18 @@
          class="border border-green-300 bg-green-50 rounded p-4 space-y-3 mt-4">
   <h2 class="font-semibold text-green-900">Finalize onboarding</h2>
   <p class="text-sm text-green-900">
-    All required blocks have been emitted. Provide your personal OpenRouter
-    API key to complete onboarding.
+    All required blocks have been emitted. Click Finalize and we'll verify
+    your OpenRouter key and write your config files.
   </p>
+  {% if keys_collected %}
+  <p class="text-xs text-green-900">
+    Using OpenRouter key from Step 1 (<code>***{{ openrouter_last4 }}</code>).
+  </p>
+  {% endif %}
   <form action="/onboarding/interview/{{ session_id }}/finalize"
         method="post"
         hx-boost="false"
         class="space-y-2">
-    <label class="block text-sm">
-      OpenRouter API key (starts with <code>sk-or-v1-</code>)
-      <input type="text" name="openrouter_api_key" required
-             class="w-full border rounded p-2 mt-1 font-mono text-sm"
-             placeholder="sk-or-v1-...">
-    </label>
     <button type="submit" class="px-4 py-2 bg-green-700 text-white rounded hover:bg-green-800">
       Finalize
     </button>

@@ -10,6 +10,18 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Changed
+
+- **Onboarding: in-app-only flow; paste-back path retired.** The "I'll run the interview elsewhere and paste back" affordance and its routes (`GET /onboarding/prompt`, `POST /onboarding/inject`) are gone, along with the `_paste_form.html` template, the `<details>` toggle and clipboard JS on `/onboarding/`, and the v0.10.0 docs that documented two paths. The in-app flow becomes the single supported path. Mechanically: Step 2 is now disabled until Step 1 saves keys (the earlier "operator-key-only" path that let testers reach Step 2 before Step 1 was the proximate cause of a loop-back bug — finalize required an OR-key field even when Step 1 already had one, so smoke check rejected the typed key and stranded the session). Finalize on the chat page no longer renders an OpenRouter input; keys come from the credentials bound to the session at Step 1.
+- **Operator-key precedence flipped.** `_resolved_chat_key` now prefers `OPENROUTER_OPERATOR_KEY` over the tester's collected key. On stacks without the env var (real tester stacks: alice, papa, dave, judy, tango), behavior is unchanged — they fall through to tester key. On `findajob-test` (env var set), the chat is now subsidized: the operator pays for dogfood interviews instead of the tester. Pipeline (triage, scoring, prep) still runs on the tester's own key from Step 1.
+- **Onboarding interview prompt rewritten for in-app context (v3 — 2026-05-02).** Drops the "ask which LLM platform" branch, the OpenRouter signup walk-through (Phase 5), and the "After the interview, copy the chat back to findajob's textbox" closing instructions — all artifacts of the paste-back lineage. Phase 4 no longer shows YAML/regex blocks to the user; the LLM builds patterns silently and shows example titles ("yes, loosen, or drop?") so non-technical testers don't have to read regex. Phase 2 instructs paste-the-text instead of upload-files (in-app has no attach button). Schema exemplars and `<<<FILE: ...>>>` delimiters preserved — the parser depends on them.
+- **OpenRouter prompt caching enabled.** System prompt is sent with `cache_control: {type: "ephemeral"}` per Anthropic's caching protocol, so subsequent turns bill cached system tokens at ~10%. Per-onboarding cost drops from ~$3 to ~$0.50 with Sonnet 4.6 (~25KB system prompt × ~50 turns).
+
+### Fixed
+
+- **Loop-back after onboarding (regression from #339 / #336).** Testers who completed the interview ended up bumped back to `/onboarding/` Step 1 on every navigation. Root cause: `inject()` committed files (including merged `data/.env` keys), then a smoke-check failure raised before `mark_complete()` wrote the sentinel. Sentinel missing → onboarding guard 307s every guarded route to `/onboarding/`. Underlying bug was the finalize form requiring a fresh OpenRouter input even when Step 1 had already collected one — the user typed something different at finalize, smoke check rejected it. Fix: finalize form drops the OR input entirely; keys flow exclusively from Step 1 credentials. Existing stuck stacks (`findajob-test` was caught) need to be redeployed clean.
+- **Status indicator on the chat surface (#336 follow-up).** The interview chat now shows a "Thinking…" spinner while the model is generating the next turn and disables the Send button + textarea so the user can't double-submit. Previously the form swallowed the click silently for ~10–30s on each turn.
+
 ## [0.10.1] — 2026-05-01
 
 Patch bump. One UX fix on the Applied tab — Not Selected is now one-click. No migration required; bind mounts, schema, crontab, and compose unchanged. Operators on `:latest` and testers on `:v0.10` both pull and recreate.

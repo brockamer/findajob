@@ -191,10 +191,29 @@ def test_full_interview_flow_writes_all_files_and_sentinel(
         _fake_urlopen,
     )
 
+    # ── Step 1: plant credentials (mandatory before /start since 2026-05-02) ──
+    from findajob.onboarding.session_store import create_session, set_credentials
+
+    conn = sqlite3.connect(base_root / "data" / "pipeline.db")
+    try:
+        creds_sid = create_session(conn)
+        set_credentials(
+            conn,
+            creds_sid,
+            openrouter_api_key=_USER_KEY,
+            rapidapi_key="",
+            google_api_key="",
+        )
+    finally:
+        conn.close()
+
     # ── /start ────────────────────────────────────────────────────────
     resp = client.post("/onboarding/interview/start")
     assert resp.status_code == 303, resp.text
     sid = resp.headers["location"].rsplit("/", 1)[-1]
+    # /start promotes the credentials-only row, so the chat session id
+    # should equal the credentials-only id (same row, history attached).
+    assert sid == creds_sid
 
     # ── /turn × 2 ─────────────────────────────────────────────────────
     resp1 = client.post(
@@ -224,10 +243,9 @@ def test_full_interview_flow_writes_all_files_and_sentinel(
     )
 
     # ── /finalize ────────────────────────────────────────────────────
-    resp_fin = client.post(
-        f"/onboarding/interview/{sid}/finalize",
-        data={"openrouter_api_key": _USER_KEY},
-    )
+    # No form data — /finalize reads keys from the session's credentials,
+    # which we planted before /start.
+    resp_fin = client.post(f"/onboarding/interview/{sid}/finalize")
     assert resp_fin.status_code == 200, resp_fin.text
     assert "Onboarding complete" in resp_fin.text or "complete" in resp_fin.text.lower()
 
@@ -276,6 +294,22 @@ def test_full_interview_flow_skips_finalize_when_blocks_missing(
         lambda req, timeout=None: _ok_resp(next(response_iter)),
     )
 
+    # Plant Step 1 credentials so /start can promote them.
+    from findajob.onboarding.session_store import create_session, set_credentials
+
+    conn = sqlite3.connect(base_root / "data" / "pipeline.db")
+    try:
+        creds_sid = create_session(conn)
+        set_credentials(
+            conn,
+            creds_sid,
+            openrouter_api_key=_USER_KEY,
+            rapidapi_key="",
+            google_api_key="",
+        )
+    finally:
+        conn.close()
+
     resp_start = client.post("/onboarding/interview/start")
     sid = resp_start.headers["location"].rsplit("/", 1)[-1]
     client.post(
@@ -283,10 +317,7 @@ def test_full_interview_flow_skips_finalize_when_blocks_missing(
         data={"session_id": sid, "message": "social worker"},
     )
 
-    resp_fin = client.post(
-        f"/onboarding/interview/{sid}/finalize",
-        data={"openrouter_api_key": _USER_KEY},
-    )
+    resp_fin = client.post(f"/onboarding/interview/{sid}/finalize")
     assert resp_fin.status_code == 400
     assert "missing" in resp_fin.text.lower() or "not yet complete" in resp_fin.text.lower()
     assert not (base_root / "data" / ".onboarding-complete").exists()

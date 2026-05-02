@@ -50,3 +50,11 @@ html {
 .density-expanded .cell-text-wrap {
   display: block;
 }
+
+/* HTMX in-flight indicator. Element marked with class `htmx-indicator` is
+   hidden by default and revealed while any request bound via `hx-indicator`
+   is in flight. The onboarding interview chat uses this to show a
+   "thinking" bubble while the model is generating the next turn. */
+.htmx-indicator { opacity: 0; transition: opacity 150ms ease-in; }
+.htmx-request .htmx-indicator { opacity: 1; }
+.htmx-request.htmx-indicator { opacity: 1; }

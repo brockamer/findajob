@@ -49,91 +49,37 @@
   </div>
   {% endif %}
 
-  {# Step 1 — API keys collection (#339) #}
+  {# Step 1 — API keys collection #}
   {% include "onboarding/_keys_form.html" %}
 
-  {# Step 2 — Pick interview path. Disabled until Step 1 succeeds OR the
-     operator-funded path is available via OPENROUTER_OPERATOR_KEY. #}
-  {% set step_two_enabled = keys_collected or operator_mode_interview_enabled %}
-
-  <section class="bg-white border-2 {% if step_two_enabled %}border-blue-300{% else %}border-slate-200 opacity-60{% endif %} rounded p-4 space-y-4">
-    <h2 class="font-semibold {% if step_two_enabled %}text-blue-900{% else %}text-slate-500{% endif %}">
-      Step 2 — Pick how you want to onboard
+  {# Step 2 — Start the interview. Requires Step 1 keys to be saved. #}
+  <section class="bg-white border-2 {% if keys_collected %}border-blue-300{% else %}border-slate-200 opacity-60{% endif %} rounded p-4 space-y-4">
+    <h2 class="font-semibold {% if keys_collected %}text-blue-900{% else %}text-slate-500{% endif %}">
+      Step 2 — Run the interview
     </h2>
 
-    {% if not step_two_enabled %}
+    {% if not keys_collected %}
     <p class="text-sm text-slate-500">
       Save your API keys above before continuing.
     </p>
     {% endif %}
 
-    <fieldset {% if not step_two_enabled %}disabled aria-disabled="true"{% endif %} class="space-y-4">
-      {% if operator_mode_interview_enabled or keys_collected %}
-      <div class="space-y-2">
-        <h3 class="font-semibold">Run the interview here</h3>
-        <p class="text-sm text-slate-700">
-          Skip the copy-paste-LLM dance — run the interview directly inside findajob.
-          You'll work through the same questions in a chat box on this site, and we'll
-          handle the file blocks for you. Server-side persistent: close the tab anytime
-          and resume.
-        </p>
-        <form action="/onboarding/interview/start" method="post" hx-boost="false">
-          <button type="submit"
-                  class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                  {% if not step_two_enabled %}disabled{% endif %}>
-            Start interview
-          </button>
-        </form>
-      </div>
-      {% endif %}
-
-      <details class="bg-slate-50 border rounded p-3 space-y-3">
-        <summary class="font-semibold cursor-pointer text-sm">I'll run the interview elsewhere and paste back</summary>
-        <div class="space-y-4 mt-3">
-          <p class="text-xs text-gray-600">
-            Use this if your environment can't reach OpenRouter directly, or if you'd
-            rather run the interview in claude.ai / ChatGPT / Gemini and paste the
-            emission back here.
-          </p>
-          <div class="space-y-2">
-            <h4 class="text-sm font-semibold">Copy the interview prompt</h4>
-            <button type="button"
-                    class="inline-flex items-center gap-2 bg-slate-700 text-white px-3 py-1.5 rounded text-sm hover:bg-slate-600 disabled:opacity-50"
-                    onclick="window.__fjCopyPrompt()"
-                    {% if not step_two_enabled %}disabled{% endif %}>
-              Copy the prompt
-            </button>
-            <p class="text-xs text-gray-600">
-              Or fetch it raw at <a class="underline" href="/onboarding/prompt">/onboarding/prompt</a>.
-            </p>
-          </div>
-          <div class="space-y-2">
-            <h4 class="text-sm font-semibold">Open a new chat</h4>
-            <div class="flex flex-wrap gap-2">
-              <a href="https://claude.ai/new" target="_blank"
-                 class="px-3 py-1.5 border rounded text-sm hover:bg-slate-50">Open Claude</a>
-              <a href="https://chatgpt.com/" target="_blank"
-                 class="px-3 py-1.5 border rounded text-sm hover:bg-slate-50">Open ChatGPT</a>
-              <a href="https://gemini.google.com/app" target="_blank"
-                 class="px-3 py-1.5 border rounded text-sm hover:bg-slate-50">Open Gemini</a>
-            </div>
-          </div>
-          <div class="space-y-2">
-            <h4 class="text-sm font-semibold">Paste the emission back</h4>
-            {% include "onboarding/_paste_form.html" %}
-          </div>
-        </div>
-      </details>
+    <fieldset {% if not keys_collected %}disabled aria-disabled="true"{% endif %} class="space-y-4">
+      <p class="text-sm text-slate-700">
+        You'll have a structured conversation with an LLM running inside findajob.
+        It asks about your background, target role, exclusions, and writing voice,
+        then turns your answers into the config files the daily pipeline needs.
+        Plan for about 60–90 minutes — your progress is saved server-side, so you
+        can close the tab and resume any time.
+      </p>
+      <form action="/onboarding/interview/start" method="post" hx-boost="false">
+        <button type="submit"
+                class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                {% if not keys_collected %}disabled{% endif %}>
+          Start interview
+        </button>
+      </form>
     </fieldset>
   </section>
 </div>
-
-<script>
-  window.__fjCopyPrompt = async function() {
-    const resp = await fetch("/onboarding/prompt");
-    const text = await resp.text();
-    await navigator.clipboard.writeText(text);
-    alert("Interview prompt copied. Paste it into your new chat.");
-  };
-</script>
 {% endblock %}

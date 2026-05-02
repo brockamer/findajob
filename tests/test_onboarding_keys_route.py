@@ -257,58 +257,10 @@ def test_post_preserves_optional_inputs_on_failure(client: TestClient, base_root
     assert _VALID_GOOGLE in r.text
 
 
-def test_inject_uses_credentials_from_step1_when_present(
-    client: TestClient,
-    base_root: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """#339 Task 6: paste-back inject reads keys from Step 1 credentials when
-    available, ignoring any form-supplied openrouter_api_key value."""
-    # Plant credentials via Step 1.
-    client.post(
-        "/onboarding/keys",
-        data={
-            "openrouter_api_key": _VALID_OR,
-            "rapidapi_key": _VALID_RAPID,
-            "google_api_key": _VALID_GOOGLE,
-        },
-    )
-
-    # Stub inject to capture the kwargs it received.
-    inject_calls: list[dict[str, str]] = []
-
-    def _fake_inject(base_root_arg, parsed_files, *, openrouter_api_key="", rapidapi_key="", google_api_key=""):  # type: ignore[no-untyped-def]
-        inject_calls.append(
-            {
-                "openrouter_api_key": openrouter_api_key,
-                "rapidapi_key": rapidapi_key,
-                "google_api_key": google_api_key,
-            }
-        )
-        from findajob.onboarding.injector import DiscoveryStatus, InjectResult
-
-        return InjectResult(
-            backup_dir=Path("/tmp/fake-backup"),
-            discovery=DiscoveryStatus(success=True, count=0, error=None),
-        )
-
-    monkeypatch.setattr("findajob.web.routes.onboarding.inject", _fake_inject)
-
-    # Build a complete emission — every required block must be present.
-    from findajob.onboarding.parser import ALLOWED_FILENAMES
-
-    emission = "\n\n".join(f"<<<FILE: {name}>>>\nbody for {name}\n<<<END FILE: {name}>>>" for name in ALLOWED_FILENAMES)
-    # Form-supplied OpenRouter is intentionally garbage — credentials should win.
-    r = client.post(
-        "/onboarding/inject",
-        data={"emission": emission, "openrouter_api_key": "form-supplied-garbage"},
-    )
-    assert r.status_code == 200, f"unexpected: {r.status_code} {r.text[:300]}"
-    assert len(inject_calls) == 1
-    # Credentials from Step 1 won, NOT the form value.
-    assert inject_calls[0]["openrouter_api_key"] == _VALID_OR
-    assert inject_calls[0]["rapidapi_key"] == _VALID_RAPID
-    assert inject_calls[0]["google_api_key"] == _VALID_GOOGLE
+# test_inject_uses_credentials_from_step1_when_present — deleted 2026-05-02
+# along with the paste-back path (/onboarding/inject). The equivalent
+# coverage for the in-app finalize path is in
+# tests/test_web_onboarding_interview_routes.py::test_finalize_calls_inject_and_marks_complete.
 
 
 def test_already_onboarded_hint_renders_when_sentinel_present_no_keys(client: TestClient, base_root: Path) -> None:
@@ -346,17 +298,20 @@ def test_already_onboarded_hint_suppressed_when_keys_collected(client: TestClien
     assert "Change keys" in r.text
 
 
-def test_paste_form_hides_openrouter_input_when_keys_collected(client: TestClient, base_root: Path) -> None:
-    """#339 Task 6: paste-back form's OpenRouter input is hidden behind a
-    masked display when Step 1 credentials are present."""
+def test_keys_collected_hides_step1_input(client: TestClient, base_root: Path) -> None:
+    """When Step 1 credentials are saved, the index page renders a masked
+    summary instead of the input form, with a Change keys link.
+
+    Replaced 2026-05-02. The earlier test exercised paste-back's OR field
+    (now removed); this version covers the equivalent invariant for Step 1
+    itself: once collected, no editable OpenRouter input is rendered
+    anywhere on /onboarding/.
+    """
     client.post("/onboarding/keys", data={"openrouter_api_key": _VALID_OR})
     r = client.get("/onboarding/")
     assert r.status_code == 200
-    # The "Using OpenRouter key from Step 1" hint appears.
-    assert "Using OpenRouter key from Step 1" in r.text
-    # The editable OpenRouter input field is NOT rendered (no input with
-    # name="openrouter_api_key" inside the paste-back form).
-    # (The keys-collected state of Step 1 also has no editable openrouter
-    # input — the only places it could appear are the paste form and the
-    # uncollected Step 1, neither of which renders here.)
+    # Masked summary present instead of input.
+    assert _VALID_OR[-4:] in r.text
+    assert "Change keys" in r.text
+    # No editable OpenRouter input anywhere on the page.
     assert 'name="openrouter_api_key"' not in r.text

@@ -146,12 +146,13 @@ docker compose up -d
 
 ### First-run onboarding
 
-Open `http://<your-host>:<port>/` in a browser. A fresh stack redirects you straight into onboarding — no need to know to navigate via Tools → Onboarding. Two paths:
+Open `http://<your-host>:<port>/` in a browser. A fresh stack redirects you straight into onboarding — no need to know to navigate via Tools → Onboarding.
 
-- **In-app interview (recommended where outbound network works).** Step 1 collects your three API keys; Step 2 runs a chat-based interview right inside findajob, server-side persistent so you can close the tab and resume. Funded by your own OpenRouter key from Step 1.
-- **Paste-back.** For environments that can't reach OpenRouter directly, or if you'd rather run the interview in claude.ai / ChatGPT / Gemini and paste the emission. Same Step 1 keys collection; Step 2 hands you the prompt and a paste box.
+**Step 1** — paste your OpenRouter key (required), plus optional RapidAPI and Google keys. The OpenRouter key is smoke-checked against the live API before being saved.
 
-Either way, the injector validates the emission, smoke-checks your OpenRouter key, atomically writes the config files findajob needs, and marks onboarding complete. The next scheduled triage run (00:00 in your `TZ`) ingests its first batch of jobs.
+**Step 2** — click Start interview. A chat surface opens inside findajob and walks you through a 60–90 minute conversation about your background, target role, exclusions, and writing voice. The session is server-side persistent — close the tab anytime, reload, and the page surfaces a Resume affordance. When the LLM finishes emitting your config blocks, a Finalize button appears; clicking it writes the config files atomically, runs initial company discovery, and lands you on the dashboard. No copy-paste step.
+
+Cost runs ~$0.50 per onboarding (Claude Sonnet 4.6 with prompt caching). The next scheduled triage run (00:00 in your `TZ`) ingests its first batch of jobs.
 
 Full walkthrough → [`docs/setup/install-docker.md`](docs/setup/install-docker.md) (or start at [`docs/setup/README.md`](docs/setup/README.md) for the guided sequence). Native-host install remains as a legacy fallback → [`docs/setup/install-linux.md`](docs/setup/install-linux.md).
 

@@ -40,18 +40,29 @@
     {% endfor %}
   </div>
 
+  <div id="turn-thinking" class="htmx-indicator flex items-center gap-2 text-sm text-slate-600 px-3 py-2"
+       aria-live="polite" role="status">
+    <svg class="animate-spin h-4 w-4 text-slate-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+    </svg>
+    <span>Thinking… (the model takes a few seconds per turn)</span>
+  </div>
+
   <form hx-post="/onboarding/interview/turn"
         hx-target="#messages"
         hx-swap="beforeend"
+        hx-indicator="#turn-thinking"
+        hx-disabled-elt="find button, find textarea"
         hx-on::after-request="this.querySelector('textarea').value = ''"
         class="space-y-2">
     <input type="hidden" name="session_id" value="{{ session_id }}">
     <textarea name="message" rows="3" required
-              class="w-full border rounded p-2 font-sans text-sm"
+              class="w-full border rounded p-2 font-sans text-sm disabled:bg-slate-50 disabled:text-slate-500"
               placeholder="Type your reply..."></textarea>
     <div class="flex justify-end">
       <button type="submit"
-              class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+              class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-slate-400 disabled:cursor-wait">
         Send
       </button>
     </div>
@@ -61,23 +72,20 @@
   <section id="finalize-block" class="border border-green-300 bg-green-50 rounded p-4 space-y-3">
     <h2 class="font-semibold text-green-900">Finalize onboarding</h2>
     <p class="text-sm text-green-900">
-      All required blocks have been emitted. Provide your personal OpenRouter API
-      key to complete onboarding — we'll verify it against OpenRouter, write your
-      config files atomically, and back up any existing files first.
+      All required blocks have been emitted. Click Finalize and we'll verify
+      your OpenRouter key, write your config files atomically, and back up any
+      existing files first.
     </p>
+    {% if keys_collected %}
+    <p class="text-xs text-green-900">
+      Using OpenRouter key from Step 1 (<code>***{{ openrouter_last4 }}</code>).
+      To change it, use the <a class="underline" href="/onboarding/">Change keys</a> link on the onboarding page.
+    </p>
+    {% endif %}
     <form action="/onboarding/interview/{{ session_id }}/finalize"
           method="post"
           hx-boost="false"
           class="space-y-2">
-      <label class="block text-sm">
-        OpenRouter API key (starts with <code>sk-or-v1-</code>)
-        <input type="text" name="openrouter_api_key" required
-               class="w-full border rounded p-2 mt-1 font-mono text-sm"
-               placeholder="sk-or-v1-...">
-      </label>
-      <p class="text-xs text-green-900">
-        Get one at <a class="underline" href="https://openrouter.ai/keys" target="_blank">openrouter.ai/keys</a>.
-      </p>
       <button type="submit"
               class="px-4 py-2 bg-green-700 text-white rounded hover:bg-green-800">
         Finalize

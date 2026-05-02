@@ -1,30 +1,32 @@
-"""Onboarding NUX: landing page + prompt endpoint + paste-back inject (#148).
+"""Onboarding NUX: landing page + per-stack API-key collection.
 
-#339 added the keys-collection layer: ``POST /onboarding/keys`` collects
-the tester's own OpenRouter / RapidAPI / Google credentials before either
-interview path enables. The credentials live in a session row created (or
-updated, on retry) by that handler and persisted across tab-close-resume
-via the ``onboarding_sessions`` table's credential columns.
+The flow has two steps that share the ``onboarding_sessions`` table:
+
+- ``POST /onboarding/keys`` collects the tester's OpenRouter / RapidAPI /
+  Google credentials and persists them on a credentials-only session row.
+- ``POST /onboarding/interview/start`` (lives in
+  :mod:`findajob.web.routes.onboarding_interview`) promotes that row into
+  an active interview session.
+
+The earlier paste-back path (run the interview in another LLM, paste the
+emission back here) was removed 2026-05-02 — see CHANGELOG.
 """
 
 from __future__ import annotations
 
-import os
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Form, Request
-from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 
-from findajob.onboarding import OnboardingSmokeCheckFailed, inject, parse_emission
 from findajob.onboarding.key_validation import (
     validate_google_format,
     validate_openrouter_format,
     validate_rapidapi_format,
 )
 from findajob.onboarding.openrouter_smoke import verify_openrouter_key
-from findajob.onboarding.parser import ALLOWED_FILENAMES
 from findajob.onboarding.session_store import (
     Credentials,
     Session,
@@ -32,6 +34,7 @@ from findajob.onboarding.session_store import (
     find_active,
     find_credentials_only,
     get_credentials,
+    has_any_credentials,
     set_credentials,
 )
 
@@ -61,15 +64,19 @@ def _humanize_minutes_ago(iso_utc: str) -> str:
 
 
 def _has_in_app_interview_capability(request: Request) -> bool:
-    """True iff the in-app interview can be started right now.
+    """True iff any session row has a tester OpenRouter key set.
 
-    Either the tester collected their own credentials (#339 Step 1) or the
-    operator opted in via ``OPENROUTER_OPERATOR_KEY`` (#336 fallback). The
-    runtime check matches the precedence in
-    :func:`findajob.web.routes.onboarding_interview._resolved_chat_key`.
+    Step 1 (API-key collection at ``/onboarding/keys``) is the single
+    gate for the in-app interview — without it, finalize has no key to
+    verify and the smoke check strands the user on an unfinishable
+    session. ``OPENROUTER_OPERATOR_KEY`` only subsidizes the chat-runner
+    cost; it doesn't substitute for Step 1.
+
+    Uses :func:`has_any_credentials` (not :func:`find_credentials_only`)
+    so the gate stays True once the interview starts and the credentials
+    bind to the active session row — otherwise the resume affordance
+    would disappear mid-flow.
     """
-    if (os.environ.get("OPENROUTER_OPERATOR_KEY") or "").strip():
-        return True
     db_path: Path | None = getattr(request.app.state, "db_path", None)
     if db_path is None:
         return False
@@ -78,7 +85,7 @@ def _has_in_app_interview_capability(request: Request) -> bool:
     except sqlite3.Error:
         return False
     try:
-        return find_credentials_only(conn) is not None
+        return has_any_credentials(conn)
     except sqlite3.Error:
         return False
     finally:
@@ -155,67 +162,6 @@ def _last4(value: str | None) -> str:
     return value[-4:]
 
 
-def _interview_prompt_path(base_root: Path) -> Path:
-    return base_root / "config" / "roles" / "onboarding_interviewer.md"
-
-
-def _format_parse_error(
-    emission: str,
-    missing: list[str],
-    unknown: list[str],
-) -> str:
-    """Build a diagnostic error message for a failed emission parse.
-
-    Distinguishes the three real-world failure shapes — empty paste, no
-    delimited blocks at all (=> wrong content type), and partial paste
-    with some blocks present — so the user gets a remedy specific to
-    what actually went wrong, not a generic 'something is missing'.
-    Surfaces unknown block names (likely typos) as a separate hint.
-    """
-    blob = emission.strip()
-    found_count = len(ALLOWED_FILENAMES) - len(missing)
-
-    if not blob:
-        msg = (
-            "The paste box is empty. After your LLM finishes the interview "
-            "and emits the file blocks, copy the entire chat (or at least "
-            "everything from the first `<<<FILE: …>>>` line to the last "
-            "`<<<END FILE: …>>>` line) and paste it here."
-        )
-    elif found_count == 0:
-        # Pasted SOMETHING, but parser found zero recognizable blocks.
-        # Most often: copied just the chat-prose, missed the delimited blocks;
-        # or LLM produced markdown headings instead of `<<<FILE: …>>>` markers.
-        msg = (
-            "We couldn't find any `<<<FILE: name>>>` … `<<<END FILE: name>>>` "
-            "block in your paste. Common causes: (a) the LLM didn't actually "
-            'emit the delimited file blocks — re-prompt it with "Now emit the '
-            'ten file blocks per the interview spec"; (b) you copied only '
-            "the chat prose and missed the blocks at the end of the "
-            "transcript; (c) markdown formatting stripped the `<<<` markers — "
-            "try copying from the LLM's raw-text view if it has one."
-        )
-    else:
-        # Some blocks parsed, others didn't. Likely the LLM stopped emitting
-        # mid-list, or the user's paste was truncated.
-        msg = (
-            f"We found {found_count} of {len(ALLOWED_FILENAMES)} required "
-            "blocks, but these are still missing: "
-            f"{', '.join(missing)}. Scroll through your chat to make sure "
-            "every `<<<FILE: name>>> … <<<END FILE: name>>>` block is in "
-            "your paste — re-prompt the LLM if it stopped early."
-        )
-
-    if unknown:
-        msg += (
-            f" We also found these unrecognized block names (likely typos): "
-            f"{', '.join(unknown)}. If one of those was supposed to be a "
-            "required block, fix the filename in your paste and re-submit."
-        )
-
-    return msg
-
-
 @router.get("/onboarding/", response_class=HTMLResponse)
 def onboarding_index(request: Request, mode: str = "") -> HTMLResponse:
     """Landing page. ``mode=rerun`` flips on the backup warning.
@@ -224,8 +170,7 @@ def onboarding_index(request: Request, mode: str = "") -> HTMLResponse:
     Step 1 credentials have been collected yet AND the user is not in
     rerun mode, surface a brief "you've already onboarded" hint so an
     already-configured tester who lands here from a stale link or out
-    of curiosity doesn't think findajob has forgotten them. (#339
-    advisor follow-up.)
+    of curiosity doesn't think findajob has forgotten them.
     """
     templates = request.app.state.templates
     active = _active_session_for_index(request)
@@ -241,9 +186,6 @@ def onboarding_index(request: Request, mode: str = "") -> HTMLResponse:
         name="onboarding/index.html",
         context={
             "is_rerun": mode == "rerun",
-            "paste_error": None,
-            "paste_content": "",
-            "openrouter_api_key": "",
             "active_session_id": active.id if active else None,
             "active_session_age": _humanize_minutes_ago(active.last_turn_at) if active else None,
             "keys_collected": keys_collected,
@@ -279,9 +221,6 @@ def _render_keys_error(
         name="onboarding/index.html",
         context={
             "is_rerun": False,
-            "paste_error": None,
-            "paste_content": "",
-            "openrouter_api_key": "",
             "active_session_id": None,
             "active_session_age": None,
             "keys_collected": False,
@@ -387,131 +326,3 @@ def onboarding_keys(
         return RedirectResponse(url="/onboarding/", status_code=303)
     finally:
         conn.close()
-
-
-@router.get("/onboarding/prompt", response_class=PlainTextResponse)
-def onboarding_prompt(request: Request) -> PlainTextResponse:
-    """Serve the interview role verbatim so the user can copy it.
-
-    Delivered as ``text/plain; charset=utf-8`` so "copy to clipboard" UX
-    is literal — the user pastes the exact bytes we ship.
-    """
-    base_root: Path = request.app.state.base_root
-    prompt_path = _interview_prompt_path(base_root)
-    text = prompt_path.read_text(encoding="utf-8")
-    return PlainTextResponse(content=text, media_type="text/plain; charset=utf-8")
-
-
-@router.post("/onboarding/inject", response_model=None)
-def onboarding_inject(
-    request: Request,
-    emission: str = Form(default=""),
-    openrouter_api_key: str = Form(default=""),
-) -> HTMLResponse | RedirectResponse:
-    """Parse and inject an interview emission; render completion page on success.
-
-    The OpenRouter API key arrives in its own form field — kept out of the
-    ``emission`` blob so it never enters the user's chat-LLM logs (#328).
-
-    #339: when credentials were collected via Step 1, prefer those values
-    over the form's OpenRouter input (which is rendered as a masked
-    "***last4" display in that case, not an editable field) and merge the
-    optional RapidAPI / Google keys into ``data/.env`` alongside.
-    """
-    templates = request.app.state.templates
-    result = parse_emission(emission)
-    if result.missing:
-        paste_error = _format_parse_error(emission, result.missing, result.unknown)
-        return templates.TemplateResponse(
-            request=request,
-            name="onboarding/index.html",
-            context={
-                "is_rerun": False,
-                "paste_content": emission,
-                "openrouter_api_key": openrouter_api_key,
-                "paste_error": paste_error,
-            },
-            status_code=400,
-        )
-
-    # #339: pull credentials from the Step 1 session if present and let them
-    # override form-supplied values. The paste-back form's OpenRouter input
-    # is read-only when credentials exist, but a direct POST (e.g. from an
-    # integration test) is still a supported entry point — fall back to the
-    # form value for that legacy path.
-    creds = _credentials_for_index(request)
-    resolved_or = (creds.openrouter_api_key if creds and creds.openrouter_api_key else openrouter_api_key).strip()
-    resolved_rapid = (creds.rapidapi_key if creds and creds.rapidapi_key else "").strip()
-    resolved_google = (creds.google_api_key if creds and creds.google_api_key else "").strip()
-
-    if not resolved_or:
-        return templates.TemplateResponse(
-            request=request,
-            name="onboarding/index.html",
-            context={
-                "is_rerun": False,
-                "paste_content": emission,
-                "openrouter_api_key": "",
-                "paste_error": (
-                    "OpenRouter API key is missing. Paste your key (starts with sk-or-v1-…) "
-                    "from https://openrouter.ai/keys into the API key field above the paste box, "
-                    "then click Inject again. The key is required so we can verify it works "
-                    "before sealing your stack — failing to verify here would let the pipeline "
-                    "silently break on first scheduled triage."
-                ),
-            },
-            status_code=400,
-        )
-    base_root: Path = request.app.state.base_root
-    try:
-        inject_result = inject(
-            base_root,
-            result.found,
-            openrouter_api_key=resolved_or,
-            rapidapi_key=resolved_rapid,
-            google_api_key=resolved_google,
-        )
-    except OnboardingSmokeCheckFailed as e:
-        # Files were committed; only the sentinel is missing. The next paste-back
-        # with a corrected key will overwrite cleanly. Render the user-facing
-        # error so they can see what went wrong. e.user_message is already a
-        # specific, actionable string — surface it without further wrapping.
-        # When credentials came from Step 1 (creds is not None), the form's
-        # OpenRouter input is read-only and the user fixes the key by clicking
-        # "Change keys" — surface that path explicitly in the error message.
-        if creds and creds.openrouter_api_key:
-            error_msg = (
-                "OpenRouter rejected the key when we tried to verify it. "
-                f"{e.user_message} Use 'Change keys' at the top of the page to "
-                "re-supply your key — your paste content is preserved above."
-            )
-            preserve_input = ""
-        else:
-            error_msg = (
-                "OpenRouter rejected the key when we tried to verify it. "
-                f"{e.user_message} "
-                "Fix the key and click Inject again — your paste content is preserved above."
-            )
-            preserve_input = openrouter_api_key
-        return templates.TemplateResponse(
-            request=request,
-            name="onboarding/index.html",
-            context={
-                "is_rerun": False,
-                "paste_content": emission,
-                "openrouter_api_key": preserve_input,
-                "paste_error": error_msg,
-            },
-            status_code=400,
-        )
-    # Clear cached guard state so the next /board/ request passes through
-    request.app.state.onboarding_complete = True
-    return templates.TemplateResponse(
-        request=request,
-        name="onboarding/complete.html",
-        context={
-            "discovery_success": inject_result.discovery.success,
-            "discovery_count": inject_result.discovery.count,
-            "discovery_error": inject_result.discovery.error,
-        },
-    )
