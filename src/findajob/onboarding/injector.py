@@ -128,10 +128,7 @@ def _emission_consistency_warnings(base_root: Path, found: dict[str, str]) -> No
 
     if "jsearch_queries.txt" in found:
         body = found["jsearch_queries.txt"]
-        non_comment_lines = [
-            line for line in body.splitlines()
-            if line.strip() and not line.strip().startswith("#")
-        ]
+        non_comment_lines = [line for line in body.splitlines() if line.strip() and not line.strip().startswith("#")]
         if not non_comment_lines:
             log_event(
                 "onboarding_emission_anomaly",
