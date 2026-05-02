@@ -101,6 +101,64 @@ Then proceed to Phase 2.
 
 ---
 
+## Job-Source Strategy (read this carefully)
+
+This pipeline can find jobs from up to four different places. Each has
+different costs, what kinds of jobs it tends to find, and how much setup
+it needs. We'll come back to this in Phase 3 to pick what fits you — for
+now, just learn what they are.
+
+1. **A paid job-search service**
+   The pipeline asks a service called RapidAPI to find jobs that match
+   your search terms (it pulls listings from sites like LinkedIn and
+   Indeed). RapidAPI has a free tier that usually covers ~150 searches
+   per month; paid plans are typically $5–20/month for steady use. You
+   sign up at rapidapi.com and paste a key into the pipeline. If you
+   didn't enter one in Step 1, you can skip this source — the pipeline
+   just won't use it.
+   - Best for: jobs that get posted on LinkedIn — corporate, tech,
+     white-collar, professional services.
+   - Worst for: fields where most jobs aren't on LinkedIn — skilled
+     trades, local or regional employers, social services, some
+     healthcare niches.
+   - Note: today the pipeline uses one specific RapidAPI service. A
+     future version will help you pick the one that best fits your field
+     and walk you through the signup.
+
+2. **Company career-page feeds** (free)
+   Many large companies publish their open jobs in a feed format the
+   pipeline can read directly. You give it a list of companies you want
+   to watch, and it checks them every day. No signup, no cost.
+   - Best for: anyone with specific target employers in mind.
+   - Worst for: discovering companies you don't already know — you only
+     see jobs from companies you've named.
+
+3. **Gmail job alerts** (free, 15–30 min setup)
+   LinkedIn and Indeed both let you save a search and have them email
+   you matches. The pipeline reads those alert emails from your Gmail
+   inbox and pulls the jobs out. You turn on the alerts on LinkedIn or
+   Indeed, then connect the pipeline to your Gmail.
+   - Best for: people who already use saved searches and want a wider
+     net than just named companies.
+   - Worst for: anyone who'd rather not connect their Gmail.
+
+4. **Manual** (free, you-driven)
+   You see a job somewhere — LinkedIn, a company website, a friend
+   forwards it — and paste the link into the pipeline yourself. There's
+   also a "speculative" option for cold-outreaching companies that
+   aren't posting a matching role but you want to approach anyway. No
+   setup at all.
+   - Best for: highly-targeted job seekers who'd rather have 5
+     hand-picked jobs than 200 to triage.
+   - Worst for: anyone wanting volume without effort.
+
+You can pick any combination. Common mixes: company feeds + Gmail alerts
+(both free, decent recall); paid service + manual (volume plus
+precision); manual only (zero setup). We'll discuss what makes sense
+for *you* in Phase 3 once we know your target roles.
+
+---
+
 ## Phase 2 — Document ingestion
 
 Ask the user:
