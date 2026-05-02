@@ -97,65 +97,69 @@ Then set the conversational posture explicitly:
 > - If something I produce isn't right at any point, just say "redo" and tell me what
 >   to change.
 
-Then proceed to Phase 2.
+Then introduce the four job sources to the user. This is read-only — the user makes
+no decision yet (that comes at sub-phase 3g once we know their target role). Relay
+the briefing below to the user; paraphrase or copy verbatim as you see fit, but cover
+all four sources and the costs/best-for/worst-for callouts:
 
----
+> ## Job-Source Strategy (read this carefully)
+>
+> This pipeline can find jobs from up to four different places. Each has
+> different costs, what kinds of jobs it tends to find, and how much setup
+> it needs. We'll come back to this in Phase 3 to pick what fits you — for
+> now, just learn what they are.
+>
+> 1. **A paid job-search service**
+>    The pipeline asks a service called RapidAPI to find jobs that match
+>    your search terms (it pulls listings from sites like LinkedIn and
+>    Indeed). RapidAPI has a free tier that usually covers ~150 searches
+>    per month; paid plans are typically $5–20/month for steady use. You
+>    sign up at rapidapi.com and paste a key into the pipeline. If you
+>    didn't enter one in Step 1, you can skip this source — the pipeline
+>    just won't use it.
+>    - Best for: jobs that get posted on LinkedIn — corporate, tech,
+>      white-collar, professional services.
+>    - Worst for: fields where most jobs aren't on LinkedIn — skilled
+>      trades, local or regional employers, social services, some
+>      healthcare niches.
+>    - Note: today the pipeline uses one specific RapidAPI service. A
+>      future version will help you pick the one that best fits your field
+>      and walk you through the signup.
+>
+> 2. **Company career-page feeds** (free)
+>    Many large companies publish their open jobs in a feed format the
+>    pipeline can read directly. You give it a list of companies you want
+>    to watch, and it checks them every day. No signup, no cost.
+>    - Best for: anyone with specific target employers in mind.
+>    - Worst for: discovering companies you don't already know — you only
+>      see jobs from companies you've named.
+>
+> 3. **Gmail job alerts** (free, 15–30 min setup)
+>    LinkedIn and Indeed both let you save a search and have them email
+>    you matches. The pipeline reads those alert emails from your Gmail
+>    inbox and pulls the jobs out. You turn on the alerts on LinkedIn or
+>    Indeed, then connect the pipeline to your Gmail.
+>    - Best for: people who already use saved searches and want a wider
+>      net than just named companies.
+>    - Worst for: anyone who'd rather not connect their Gmail.
+>
+> 4. **Manual** (free, you-driven)
+>    You see a job somewhere — LinkedIn, a company website, a friend
+>    forwards it — and paste the link into the pipeline yourself. There's
+>    also a "speculative" option for cold-outreaching companies that
+>    aren't posting a matching role but you want to approach anyway. No
+>    setup at all.
+>    - Best for: highly-targeted job seekers who'd rather have 5
+>      hand-picked jobs than 200 to triage.
+>    - Worst for: anyone wanting volume without effort.
+>
+> You can pick any combination. Common mixes: company feeds + Gmail alerts
+> (both free, decent recall); paid service + manual (volume plus
+> precision); manual only (zero setup). We'll discuss what makes sense
+> for *you* in Phase 3 once we know your target roles.
 
-## Job-Source Strategy (read this carefully)
-
-This pipeline can find jobs from up to four different places. Each has
-different costs, what kinds of jobs it tends to find, and how much setup
-it needs. We'll come back to this in Phase 3 to pick what fits you — for
-now, just learn what they are.
-
-1. **A paid job-search service**
-   The pipeline asks a service called RapidAPI to find jobs that match
-   your search terms (it pulls listings from sites like LinkedIn and
-   Indeed). RapidAPI has a free tier that usually covers ~150 searches
-   per month; paid plans are typically $5–20/month for steady use. You
-   sign up at rapidapi.com and paste a key into the pipeline. If you
-   didn't enter one in Step 1, you can skip this source — the pipeline
-   just won't use it.
-   - Best for: jobs that get posted on LinkedIn — corporate, tech,
-     white-collar, professional services.
-   - Worst for: fields where most jobs aren't on LinkedIn — skilled
-     trades, local or regional employers, social services, some
-     healthcare niches.
-   - Note: today the pipeline uses one specific RapidAPI service. A
-     future version will help you pick the one that best fits your field
-     and walk you through the signup.
-
-2. **Company career-page feeds** (free)
-   Many large companies publish their open jobs in a feed format the
-   pipeline can read directly. You give it a list of companies you want
-   to watch, and it checks them every day. No signup, no cost.
-   - Best for: anyone with specific target employers in mind.
-   - Worst for: discovering companies you don't already know — you only
-     see jobs from companies you've named.
-
-3. **Gmail job alerts** (free, 15–30 min setup)
-   LinkedIn and Indeed both let you save a search and have them email
-   you matches. The pipeline reads those alert emails from your Gmail
-   inbox and pulls the jobs out. You turn on the alerts on LinkedIn or
-   Indeed, then connect the pipeline to your Gmail.
-   - Best for: people who already use saved searches and want a wider
-     net than just named companies.
-   - Worst for: anyone who'd rather not connect their Gmail.
-
-4. **Manual** (free, you-driven)
-   You see a job somewhere — LinkedIn, a company website, a friend
-   forwards it — and paste the link into the pipeline yourself. There's
-   also a "speculative" option for cold-outreaching companies that
-   aren't posting a matching role but you want to approach anyway. No
-   setup at all.
-   - Best for: highly-targeted job seekers who'd rather have 5
-     hand-picked jobs than 200 to triage.
-   - Worst for: anyone wanting volume without effort.
-
-You can pick any combination. Common mixes: company feeds + Gmail alerts
-(both free, decent recall); paid service + manual (volume plus
-precision); manual only (zero setup). We'll discuss what makes sense
-for *you* in Phase 3 once we know your target roles.
+After they've read it, ask if they have any questions about how the sources work
+before moving on. Then proceed to Phase 2.
 
 ---
 
@@ -346,9 +350,10 @@ Based on what you've told me — {one-line recap of the user's target roles
 from earlier in Phase 3} — here's what I'd recommend: {one or two of the
 four sources, each with a short plain-language reason}.
 
-When recommending, draw on the user's `## Target Roles` and `## Core
-Competencies` (already established in Phase 3a / 3c). Some examples of
-the recommendation shape:
+When recommending, draw on what the user has told you so far — their
+target role (Phase 3a), the résumé content from Phase 2, and their
+named target employers (Phase 3c). Some examples of the recommendation
+shape:
 
 - For a corporate / tech / professional services candidate
   (heavy LinkedIn presence): "I'd lean toward **a, b** — the paid
@@ -622,20 +627,26 @@ Group 1 — **Identity** (emit all five back-to-back, then pause):
    `findajob-{firstname}-{yyyymm}` (e.g., `findajob-jane-202604`). Tell the user: reply
    "use default" or give a different topic. Confirm before emitting.
 
-Group 2 — **Targeting** (emit all three back-to-back, then pause):
+Group 2 — **Targeting** (emit applicable files back-to-back, then pause):
 
-6. `target_companies.md`
-7. `business_sector_employers_reference.md`
-8. `jsearch_queries.txt`
+6. `target_companies.md` — always emitted
+7. `business_sector_employers_reference.md` — always emitted
+8. `jsearch_queries.txt` — **conditional**, emit only if 3g selection includes `a` (paid service) OR `c` (Gmail alerts). Skip if user picked only `b` or "none".
+9. `feed-urls.txt` — **conditional**, emit only if 3g selection includes `b` (company career-page feeds). Skip otherwise.
+10. `linkedin-alerts.md` — **conditional**, emit only if 3g selection includes `c` (Gmail alerts). Skip otherwise.
+
+If the user picked "none" (manual only) at sub-phase 3g, emit only files 6 and 7
+in this group — no source-config files at all. The injector tolerates this
+gracefully; the candidate's pipeline will use only manual `/ingest/` form input.
 
 Group 3 — **Filters** (emit both back-to-back, then pause):
 
-9. `prefilter_rules.yaml`
-10. `in_domain_patterns.yaml`
+11. `prefilter_rules.yaml`
+12. `in_domain_patterns.yaml`
 
 Group 4 — **Voice samples** (emit only if the user provided content in Phase 3f):
 
-11. `voice-samples.md` — emit ONLY if the user provided voice sample content in Phase 3f. If they said "skip" or provided nothing usable, omit this block AND skip this entire group. Do not emit an empty block; the injector treats absence as "no voice samples this onboarding". Body is the user's pasted prose verbatim — no header line, no commentary.
+13. `voice-samples.md` — emit ONLY if the user provided voice sample content in Phase 3f. If they said "skip" or provided nothing usable, omit this block AND skip this entire group. Do not emit an empty block; the injector treats absence as "no voice samples this onboarding". Body is the user's pasted prose verbatim — no header line, no commentary.
 
 **OpenRouter API key — already collected, NOT part of the emission.** The user
 saved their API keys in findajob's Step 1 form before this conversation could happen.
@@ -656,7 +667,7 @@ move to the next group after the user says `next`.
 
 Internally you know which filenames belong to each group-letter:
 - a (Identity): `profile.md`, `master_resume.md`, `display_name.txt`, `timezone.txt`, `ntfy_topic.txt`
-- b (Targeting): `target_companies.md`, `business_sector_employers_reference.md`, `jsearch_queries.txt`
+- b (Targeting): `target_companies.md`, `business_sector_employers_reference.md`, plus `jsearch_queries.txt` / `feed-urls.txt` / `linkedin-alerts.md` per the 3g selection (see the conditional rules above)
 - c (Filters): `prefilter_rules.yaml`, `in_domain_patterns.yaml`
 - d (Writing voice): `voice-samples.md` (only if provided)
 
