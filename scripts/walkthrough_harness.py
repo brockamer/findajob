@@ -428,7 +428,10 @@ def run_walkthrough(
                 page.fill('input[name="google_api_key"]', google_key)
             except Exception:
                 pass  # Field may not exist
-        page.click('button[type="submit"]')
+        # Scope the submit click to the keys form — the page also has the
+        # disabled Step 2 form whose generic `button[type="submit"]` selector
+        # would otherwise match first and hang waiting for it to enable.
+        page.click('form[action="/onboarding/keys"] button[type="submit"]')
         page.wait_for_load_state("networkidle")
         snapshot("turn-00-keys-saved")
 
