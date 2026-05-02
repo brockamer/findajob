@@ -42,6 +42,13 @@ def create_app(
     templates.env.globals["filter_remove_qs"] = filter_remove_qs
     templates.env.globals["filter_qs_with"] = filter_qs_with
     templates.env.globals["operator_mode"] = os.environ.get("FINDAJOB_OPERATOR_MODE") == "1"
+    # Cost-transparency signal for the /onboarding/ Step 2 panel. True on
+    # stacks where the chat-runner uses OPENROUTER_OPERATOR_KEY (operator-
+    # subsidized — findajob-test, operator-deployed-for-tester); False on
+    # tester stacks where the chat is billed to the tester's own key.
+    templates.env.globals["chat_subsidized_by_operator"] = bool(
+        (os.environ.get("OPENROUTER_OPERATOR_KEY") or "").strip()
+    )
 
     static_dir = Path(__file__).parent / "static"
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
