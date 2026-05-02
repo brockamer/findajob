@@ -26,11 +26,11 @@ from findajob.fetchers import (
     fetch_gmail_jobs,
     fetch_greenhouse_jobs,
     fetch_jd,
-    fetch_jobsapi_jobs,
     fetch_lever_jobs,
     get_linkedin_rate_limit_stats,
     reset_linkedin_rate_limit_stats,
 )
+from findajob.fetchers.adapters import iter_configured_adapters
 from findajob.onboarding import is_complete as _onboarding_is_complete
 from findajob.paths import BASE
 from findajob.scoring import _build_feedback_block, score_job
@@ -221,16 +221,34 @@ def main():
         greenhouse_jobs = fetch_greenhouse_jobs(feed_urls)
         ashby_jobs = fetch_ashby_jobs(feed_urls)
         lever_jobs = fetch_lever_jobs(feed_urls)
-        api_jobs = fetch_jobsapi_jobs(f"{BASE}/config/jsearch_queries.txt")
         gmail_jobs = fetch_gmail_jobs()
-        raw_jobs = greenhouse_jobs + ashby_jobs + lever_jobs + api_jobs + gmail_jobs
+
+        # Adapter-driven RapidAPI ingestion (#408)
+        queries_path = Path(f"{BASE}/config/jsearch_queries.txt")
+        queries = (
+            [
+                line.strip()
+                for line in queries_path.read_text().splitlines()
+                if line.strip() and not line.startswith("#")
+            ]
+            if queries_path.exists()
+            else []
+        )
+        adapter_jobs: list[dict] = []
+        adapter_counts: dict[str, int] = {}
+        for adapter in iter_configured_adapters():
+            rows = adapter.fetch(queries)
+            adapter_jobs.extend(rows)
+            adapter_counts[adapter.name] = len(rows)
+
+        raw_jobs = greenhouse_jobs + ashby_jobs + lever_jobs + adapter_jobs + gmail_jobs
         log_event(
             "jobs_fetched",
             count=len(raw_jobs),
             greenhouse=len(greenhouse_jobs),
             ashby=len(ashby_jobs),
             lever=len(lever_jobs),
-            jobsapi=len(api_jobs),
+            adapters=adapter_counts,
             gmail=len(gmail_jobs),
             attempt=attempt,
         )
