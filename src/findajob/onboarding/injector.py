@@ -64,6 +64,7 @@ _OPTIONAL_DESTINATIONS: dict[str, str] = {
     "jsearch_queries.txt": "config/jsearch_queries.txt",
     "feed-urls.txt": "config/feed_urls.txt",
     "linkedin-alerts.md": "candidate_context/linkedin-alerts.md",
+    "rapidapi_feed.txt": "config/active_sources.txt",
 }
 
 _COMPANIES_OF_INTEREST_DEST = "config/companies_of_interest.txt"
