@@ -824,7 +824,7 @@ picked only `b` (company feeds) or "none" (manual only).
 [query 2]
 [query 3]
 # Examples across fields (do not copy — replace with user's own):
-#   senior backend engineer
+#   backend engineer python
 #   clinical social worker
 #   middle school math teacher
 #   nonprofit development director
@@ -832,8 +832,10 @@ picked only `b` (company feeds) or "none" (manual only).
 #   labor delivery nurse
 ```
 
-**Volume:** Aim for 8–12 queries. Below 8, recall suffers; above 12,
-hits the 150-call/month free RapidAPI tier in <2 weeks of polling.
+**Volume:** Aim for 8–12 queries. Below 8, recall suffers; above 12
+risks burning the 150-call/month free RapidAPI tier (each query plus
+LinkedIn-get follow-ups for each returned job, so real consumption is
+several multiples of the search count).
 
 **Derivation:** queries are profile-grounded. Read `## Target Role`,
 `## Core Competencies`, and `## Career Summary` from the user's profile
