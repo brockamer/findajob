@@ -39,11 +39,15 @@
     {% endif %}
   </div>
 
-  <div id="messages" class="space-y-3 border rounded p-3 bg-white max-h-[60vh] overflow-y-auto">
+  <div id="messages" class="space-y-3 border rounded p-3 bg-white max-h-[60vh] overflow-y-auto"
+       hx-on::after-swap="this.scrollTop = this.scrollHeight">
     {% for turn in history %}
     {% include "onboarding/_turn_bubble.html" %}
     {% endfor %}
   </div>
+  <script>
+    (function () { var m = document.getElementById('messages'); if (m) m.scrollTop = m.scrollHeight; })();
+  </script>
 
   <div id="turn-thinking" class="htmx-indicator flex items-center gap-2 text-sm text-slate-600 px-3 py-2"
        aria-live="polite" role="status">
