@@ -75,9 +75,7 @@ def test_board_link_highlights_on_every_board_page(client: TestClient) -> None:
         assert 'aria-current="page"' in snippet, f"Board link not active on {path}"
 
 
-def test_nav_shows_lifetime_cost_badge(
-    client: TestClient, tmp_path: Path
-) -> None:
+def test_nav_shows_lifetime_cost_badge(client: TestClient, tmp_path: Path) -> None:
     """Every stack sees a "$X.XX onboarding" badge in the nav. After #401
     the subsidy gate was removed — the chat is always tester-funded, so
     the badge always shows."""

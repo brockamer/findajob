@@ -49,6 +49,7 @@ CREATE TABLE onboarding_sessions (
 );
 """
 
+
 @pytest.fixture
 def base_root(tmp_path: Path) -> Path:
     (tmp_path / "data").mkdir()

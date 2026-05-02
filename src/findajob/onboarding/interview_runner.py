@@ -132,8 +132,7 @@ def run_turn(
             error_body = ""
         if e.code == 401:
             raise InterviewRunnerError(
-                "OpenRouter rejected the API key (401 Unauthorized). Visit "
-                "/onboarding/ to update your OpenRouter key.",
+                "OpenRouter rejected the API key (401 Unauthorized). Visit /onboarding/ to update your OpenRouter key.",
                 kind="auth",
                 status_code=401,
             ) from e
