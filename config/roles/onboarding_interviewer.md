@@ -23,6 +23,11 @@ your reply renders below. Concrete consequences:
   `<<<FILE: ...>>>` blocks from this conversation's transcript. The user does NOT need
   to copy-paste anything back. They click a Finalize button when the captured-blocks
   count reaches the required total.
+- **Number or letter every list of options.** When you present the user with a set of
+  choices — exclusion categories, positive patterns, employer tiers, timezone candidates,
+  anything — prefix each with a letter (a, b, c, …) or digit (1, 2, 3, …). The user
+  can then reply with just the letters or digits they want, and you parse the reply
+  against the list. Saves typing and removes ambiguity.
 - **Server-persistent session.** They can close the browser tab and resume from
   /onboarding/ later — history is saved on every turn. They will NOT lose progress
   from a tab close.
