@@ -169,3 +169,93 @@ def test_live_test_rate_limit_mid_test(monkeypatch: pytest.MonkeyPatch) -> None:
     assert result.ok is True
     assert result.bucket == "rate_limit"
     assert result.per_query[0].count == 1
+
+
+def test_fetch_calls_clean_title_and_clean_company(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Row parsing must apply clean_title() and clean_company() like the legacy fetcher."""
+    monkeypatch.setenv("JOBS_API14_KEY", "test-key")
+    fake_response = MagicMock(status_code=200, headers={})
+    fake_response.json.return_value = {
+        "hasError": False,
+        "data": [
+            {
+                "id": "ext-1",
+                "title": "Senior Engineer · 5 days ago · 100 applicants",  # raw with appended metadata
+                "company": {"name": "Acme Corp"},  # nested dict shape
+                "location": "Seattle, WA",
+                "linkedinUrl": "https://www.linkedin.com/jobs/view/123",
+            },
+        ],
+    }
+    fake_response.raise_for_status.return_value = None
+
+    with patch("findajob.fetchers.adapters.jobs_api14.requests.get", return_value=fake_response):
+        rows = JobsApi14Adapter().fetch(["engineer"])
+
+    # clean_title strips trailing metadata; nested company name is unwrapped
+    assert "·" not in rows[0]["title"]
+    assert "5 days ago" not in rows[0]["title"]
+    assert rows[0]["company"] == "Acme Corp"
+
+
+def test_fetch_drops_rows_with_empty_title_or_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Legacy parity — rows missing title or url are skipped."""
+    monkeypatch.setenv("JOBS_API14_KEY", "test-key")
+    fake_response = MagicMock(status_code=200, headers={})
+    fake_response.json.return_value = {
+        "hasError": False,
+        "data": [
+            {"id": "1", "title": "", "company": "Acme", "linkedinUrl": "https://example.com/1"},  # empty title — drop
+            {"id": "2", "title": "Engineer", "company": "Acme", "linkedinUrl": ""},  # empty url — drop
+            {"id": "3", "title": "Engineer", "company": "Acme", "linkedinUrl": "https://example.com/3"},  # keep
+        ],
+    }
+    fake_response.raise_for_status.return_value = None
+
+    with patch("findajob.fetchers.adapters.jobs_api14.requests.get", return_value=fake_response):
+        rows = JobsApi14Adapter().fetch(["engineer"])
+
+    assert len(rows) == 1
+    assert rows[0]["api_id"] == "3"
+
+
+def test_fetch_handles_nested_dict_location(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Some LinkedIn responses return location as {location: 'X'} dict — unwrap it."""
+    monkeypatch.setenv("JOBS_API14_KEY", "test-key")
+    fake_response = MagicMock(status_code=200, headers={})
+    fake_response.json.return_value = {
+        "hasError": False,
+        "data": [
+            {
+                "id": "ext-1",
+                "title": "Engineer",
+                "company": "Acme",
+                "location": {"location": "Seattle, WA"},  # nested dict
+                "linkedinUrl": "https://example.com/1",
+            },
+        ],
+    }
+    fake_response.raise_for_status.return_value = None
+
+    with patch("findajob.fetchers.adapters.jobs_api14.requests.get", return_value=fake_response):
+        rows = JobsApi14Adapter().fetch(["engineer"])
+
+    assert rows[0]["location"] == "Seattle, WA"
+
+
+def test_fetch_paces_between_queries(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Legacy pacing — 0.6s sleep between queries."""
+    monkeypatch.setenv("JOBS_API14_KEY", "test-key")
+    fake = MagicMock(status_code=200, headers={})
+    fake.json.return_value = {"hasError": False, "data": []}
+    fake.raise_for_status.return_value = None
+
+    with (
+        patch("findajob.fetchers.adapters.jobs_api14.requests.get", return_value=fake),
+        patch("findajob.fetchers.adapters.jobs_api14.time.sleep") as mock_sleep,
+    ):
+        JobsApi14Adapter().fetch(["query1", "query2", "query3"])
+
+    # at least one sleep call with 0.6 (between queries)
+    sleep_calls = [c.args for c in mock_sleep.call_args_list]
+    assert (0.6,) in sleep_calls or any(c[0] == 0.6 for c in sleep_calls)

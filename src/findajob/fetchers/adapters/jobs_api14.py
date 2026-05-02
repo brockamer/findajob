@@ -8,6 +8,7 @@ from typing import ClassVar
 
 import requests
 
+from findajob.cleaning import clean_company, clean_title
 from findajob.utils import log_event
 
 from .base import LiveTestResult, QueryResult
@@ -41,7 +42,9 @@ class JobsApi14Adapter:
 
         headers = self._headers(api_key)
         rows: list[dict] = []
-        for query in queries:
+        for i, query in enumerate(queries):
+            if i > 0:
+                time.sleep(0.6)
             params = self._params(query, date_posted)
             data = self._call_with_retry(headers, params, query)
             if data is None:
@@ -172,12 +175,22 @@ class JobsApi14Adapter:
     def _parse_rows(self, data: dict, query: str) -> list[dict]:
         rows: list[dict] = []
         for job in data.get("data", []):
+            title = clean_title(job.get("title", ""))
+            raw_company = job.get("companyName", "") or job.get("company", {})
+            if isinstance(raw_company, dict):
+                raw_company = raw_company.get("name", "")
+            company = clean_company(raw_company)
+            loc = job.get("location", "")
+            location = loc.get("location", "") if isinstance(loc, dict) else loc
+            url = job.get("linkedinUrl", "")
+            if not title or not url:
+                continue
             rows.append(
                 {
-                    "title": job.get("title", ""),
-                    "company": job.get("company", ""),
-                    "location": job.get("location", ""),
-                    "url": job.get("linkedinUrl", ""),
+                    "title": title,
+                    "company": company,
+                    "location": location,
+                    "url": url,
                     "api_id": job.get("id", ""),
                     "source": self.source_label,
                     "query": query,
