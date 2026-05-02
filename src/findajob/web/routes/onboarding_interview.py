@@ -5,10 +5,8 @@ surface so non-technical testers can complete onboarding without leaving
 findajob's UI.
 
 Routes always register (#339); the in-app affordance is gated at runtime
-on either tester credentials being collected (Step 1 of /onboarding/) OR
-``OPENROUTER_OPERATOR_KEY`` being set (the operator-funded fallback used
-by ``findajob-test`` and operator-deployed-for-tester scenarios). When
-neither is available the routes return 503 with an actionable error
+on tester credentials being collected (Step 1 of /onboarding/). When no
+credentials are present the routes return 503 with an actionable error
 pointing the user back to /onboarding/ Step 1.
 
 Cross-task constraints (from #336 Session 2026-05-01):
@@ -21,7 +19,6 @@ Cross-task constraints (from #336 Session 2026-05-01):
 
 from __future__ import annotations
 
-import os
 import sqlite3
 from pathlib import Path
 
@@ -46,34 +43,23 @@ from findajob.utils import log_event
 
 router = APIRouter()
 
-OPERATOR_KEY_ENV = "OPENROUTER_OPERATOR_KEY"
 _SYSTEM_PROMPT_RELPATH = Path("config") / "roles" / "onboarding_interviewer.md"
 _KICKOFF_USER_MESSAGE = "Begin the interview."
 
 
-def _operator_key() -> str:
-    return (os.environ.get(OPERATOR_KEY_ENV) or "").strip()
-
-
 def _resolved_chat_key(conn: sqlite3.Connection, session_id: str | None) -> str:
-    """Return the OpenRouter key for chat-runner calls, in precedence order:
+    """Return the OpenRouter key for chat-runner calls.
 
-    1. The operator-funded env var (``OPENROUTER_OPERATOR_KEY``) when set —
-       lets the operator subsidize chat costs on dogfood / staging stacks.
-    2. The tester's own key on the given session (if session_id provided
+    Reads the tester's own key in precedence order:
+
+    1. The tester's own key on the given session (if session_id provided
        and credentials set on it).
-    3. The most-recent credentials-only session's OpenRouter key (when
+    2. The most-recent credentials-only session's OpenRouter key (when
        called from /start before a chat session exists).
-    4. Empty string — caller surfaces a 503 with link back to /onboarding/.
+    3. Empty string — caller surfaces a 503 with link back to /onboarding/.
 
-    Operator precedence (over tester key) was flipped 2026-05-01: the
-    earlier order made testers pay for chat even on operator-deployed
-    dogfood stacks (findajob-test). Tester stacks (alice, papa, etc.)
-    don't set the env var, so they fall through to tester key naturally.
+    Tester pays for their own chat — there is no operator-funded fallback.
     """
-    operator = _operator_key()
-    if operator:
-        return operator
     if session_id is not None:
         creds = get_credentials(conn, session_id)
         if creds is not None and creds.openrouter_api_key:
@@ -90,15 +76,14 @@ def _unavailable_503() -> HTTPException:
     """Consistent 503 surface for "in-app interview unavailable" cases.
 
     Detail message points the user at /onboarding/ Step 1 — the only path
-    out of this state is to either supply tester credentials or set
-    ``OPENROUTER_OPERATOR_KEY`` on the stack.
+    out of this state is to supply tester credentials.
     """
     return HTTPException(
         status_code=503,
         detail=(
-            "In-app interview unavailable: no OpenRouter key resolved for this stack. "
-            "Visit /onboarding/ to provide your API keys, or have the operator set "
-            "OPENROUTER_OPERATOR_KEY for an operator-funded interview."
+            "In-app interview unavailable: no OpenRouter key on file for this stack. "
+            "Visit /onboarding/ to provide your API keys, then return here to begin "
+            "the interview."
         ),
     )
 
@@ -222,9 +207,7 @@ def start_interview(request: Request) -> HTMLResponse | RedirectResponse:
     Step 1 (API key collection at ``/onboarding/keys``) is required before
     starting — promote that credentials-only session row into the active
     interview rather than creating a fresh one. If no credentials row
-    exists, 503 back to /onboarding/. (Previous "operator-key-only" path
-    let testers start without Step 1, then forced them to retype the key
-    at finalize, which wedged the smoke check.)
+    exists, 503 back to /onboarding/.
     """
     conn = _conn(request)
     try:
@@ -395,8 +378,8 @@ def finalize_interview(
 
     Keys come from the credentials bound to this session at /onboarding/
     Step 1 — that's the single collection point. The earlier form-input
-    fallback existed for the paste-back path and the operator-only-no-Step-1
-    path; both have been retired in favor of mandatory Step 1.
+    fallback existed for the paste-back path; it has been retired in
+    favor of mandatory Step 1.
     """
     conn = _conn(request)
     try:
