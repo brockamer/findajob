@@ -15,6 +15,7 @@ from findajob.web.routes import (
     landing,
     materials,
     onboarding,
+    onboarding_feed_config,
     speculative,
     stats,
     tools,
@@ -42,5 +43,6 @@ router.include_router(config.router)
 router.include_router(gmail_config.router)
 router.include_router(tools.router)
 router.include_router(onboarding.router)
+router.include_router(onboarding_feed_config.router)
 router.include_router(docs.router)
 router.include_router(feedback.router)

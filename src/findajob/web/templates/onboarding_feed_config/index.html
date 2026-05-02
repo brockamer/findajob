@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-2xl mx-auto py-8 px-4">
+  <h1 class="text-2xl font-semibold mb-2">One last setup step</h1>
+  <p class="text-gray-700 mb-6">
+    You picked <strong>{{ adapter.display_name }}</strong> as your job-search service.
+    To finish, we need your API key from rapidapi.com.
+  </p>
+
+  <ol class="list-decimal pl-6 space-y-2 text-gray-700 mb-8">
+    <li>Open <a href="{{ adapter.rapidapi_url }}" target="_blank" rel="noopener" class="text-blue-600 hover:underline">{{ adapter.rapidapi_url }}</a> and sign in (or sign up — it's free).</li>
+    <li>Click <strong>Subscribe to Test</strong>, then choose the <strong>Basic (free)</strong> plan.</li>
+    <li>On the API page, look for the <strong>X-RapidAPI-Key</strong> field in the code samples — copy that value.</li>
+    <li>Paste it below.</li>
+  </ol>
+
+  <form method="post" action="/onboarding/feed-config/{{ session_id }}" class="space-y-4">
+    <div>
+      <label for="api_key" class="block font-medium mb-1">Your {{ adapter.display_name }} API key</label>
+      <input id="api_key" name="api_key" type="password" autocomplete="off" required
+             placeholder="50-character key from RapidAPI"
+             class="w-full font-mono px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+    </div>
+
+    <div class="flex gap-3">
+      <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Save and test connection</button>
+      <button type="submit" name="skip" value="1" class="px-4 py-2 bg-gray-100 text-gray-800 rounded-md hover:bg-gray-200">Skip for now</button>
+    </div>
+
+    <p class="text-sm text-gray-500 mt-6 pt-4 border-t">
+      Stuck? You can always come back to <strong>/config/</strong> later and add the key, or re-run onboarding.
+    </p>
+  </form>
+</div>
+{% endblock %}
