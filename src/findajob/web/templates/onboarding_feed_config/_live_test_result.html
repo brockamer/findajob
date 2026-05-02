@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-2xl mx-auto py-8 px-4">
+
+{% if skipped %}
+  <div class="p-4 bg-amber-50 border-l-4 border-amber-600 rounded-md">
+    <h3 class="text-amber-900 font-semibold mb-1">Skipped for now</h3>
+    <p class="text-amber-900">No problem. You can come back to <a href="/config/" class="underline">/config/</a> any time and add your key. The pipeline will run without {{ adapter.display_name }} until you do.</p>
+  </div>
+  <form method="post" action="/onboarding/feed-config/{{ session_id }}/finish" class="mt-6">
+    <button type="submit" class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">Finish onboarding</button>
+  </form>
+
+{% elif result.bucket in ("success", "mixed", "zero_rows") %}
+  <h2 class="text-xl font-semibold mb-4">Test results</h2>
+  <div class="p-4 bg-gray-50 rounded-md font-mono text-sm space-y-1 mb-6">
+    {% for qr in result.per_query %}
+      <div class="text-green-700">✓ "{{ qr.query }}" — found {{ qr.count }} jobs{% if qr.count == 0 %} <span class="text-gray-500">(narrow search; that's normal)</span>{% endif %}</div>
+    {% endfor %}
+  </div>
+
+  {% if result.bucket == "zero_rows" %}
+    <div class="p-4 bg-amber-50 border-l-4 border-amber-600 rounded-md">
+      <h3 class="text-amber-900 font-semibold mb-1">Connected — but no matches today</h3>
+      <p class="text-amber-900">Your connection is working, but none of your search terms matched any active jobs today. That can happen with narrow searches. Job postings turn over daily, so we'll keep checking. If your daily fetch stays empty for a week, you may want to broaden your terms in <strong>config/jsearch_queries.txt</strong>.</p>
+      <p class="text-amber-900 mt-2">For now, this is a successful setup.</p>
+    </div>
+  {% else %}
+    <div class="p-4 bg-green-50 border-l-4 border-green-600 rounded-md">
+      <h3 class="text-green-900 font-semibold mb-1">Connected to {{ adapter.display_name }}.</h3>
+      <p class="text-green-900">Across your {{ result.per_query|length }} search terms, today returned <strong>{{ result.per_query|sum(attribute="count") }} jobs</strong> total.</p>
+      <p class="text-green-900 mt-2">Your full first batch lands tomorrow morning — that's the real test, since job postings turn over each day.</p>
+    </div>
+  {% endif %}
+
+  <form method="post" action="/onboarding/feed-config/{{ session_id }}/finish" class="mt-6">
+    <button type="submit" class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">Finish onboarding</button>
+  </form>
+
+{% else %}
+  {# Failure buckets: auth, rate_limit, server, network #}
+  <div class="p-4 bg-red-50 border-l-4 border-red-600 rounded-md">
+    {% if result.bucket == "auth" %}
+      <h3 class="text-red-900 font-semibold mb-1">Couldn't connect</h3>
+      <p class="text-red-900">{{ adapter.display_name }} didn't recognize your key. The most common cause is that your subscription isn't active yet.</p>
+      <p class="text-red-900 mt-2"><strong>Try this:</strong> go back to <a href="{{ adapter.rapidapi_url }}" target="_blank" rel="noopener" class="underline">rapidapi.com</a>, find {{ adapter.display_name }}, and make sure the <strong>Basic (free)</strong> plan shows as Subscribed.</p>
+    {% elif result.bucket == "rate_limit" %}
+      <h3 class="text-red-900 font-semibold mb-1">Rate limited</h3>
+      <p class="text-red-900">{{ adapter.display_name }} is rate-limiting requests right now — common on the free tier. Try again in a few minutes, or skip and we'll retry at the next daily fetch.</p>
+    {% elif result.bucket == "server" %}
+      <h3 class="text-red-900 font-semibold mb-1">{{ adapter.display_name }} is having trouble responding</h3>
+      <p class="text-red-900">Try again in a few minutes, or skip and we'll retry at the next daily fetch.</p>
+    {% else %}
+      <h3 class="text-red-900 font-semibold mb-1">Couldn't reach RapidAPI</h3>
+      <p class="text-red-900">Check your internet connection or skip — we'll retry tomorrow.</p>
+    {% endif %}
+  </div>
+
+  <div class="mt-6 flex gap-3">
+    <a href="/onboarding/feed-config/{{ session_id }}" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Try again</a>
+    <form method="post" action="/onboarding/feed-config/{{ session_id }}" class="inline">
+      <input type="hidden" name="skip" value="1">
+      <button type="submit" class="px-4 py-2 bg-gray-100 text-gray-800 rounded-md hover:bg-gray-200">Skip for now</button>
+    </form>
+  </div>
+{% endif %}
+
+</div>
+{% endblock %}

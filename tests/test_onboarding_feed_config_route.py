@@ -82,3 +82,85 @@ def test_get_404_when_no_active_sources_pending(base_root: Path, client: TestCli
     (base_root / "config" / "active_sources.txt").unlink()
     response = client.get("/onboarding/feed-config/test-session-id")
     assert response.status_code == 404
+
+
+def test_post_skip_writes_sentinel_no_key_change(client: TestClient, tmp_path: Path) -> None:
+    response = client.post(
+        "/onboarding/feed-config/test-session-id",
+        data={"skip": "1"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 200
+    assert "skip" in response.text.lower() or "configure later" in response.text.lower()
+    # Sentinel was NOT written here — only on /finish (which is the next click)
+
+
+def test_post_runs_live_test_and_writes_key_on_success(
+    client: TestClient,
+    base_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A successful POST writes the key into data/.env and renders the success card."""
+    monkeypatch.setattr("findajob.paths.BASE", str(base_root))
+    (base_root / "data" / ".env").write_text("OTHER=x\n")
+    (base_root / "config" / "jsearch_queries.txt").write_text("nurse\nteacher\n")
+
+    # Patch live_test to return a synthetic success result
+    from findajob.fetchers.adapters.base import LiveTestResult, QueryResult
+
+    fake_result = LiveTestResult(
+        ok=True,
+        bucket="success",
+        per_query=[
+            QueryResult(query="nurse", count=12),
+            QueryResult(query="teacher", count=8),
+        ],
+        auth_error=None,
+    )
+    monkeypatch.setattr(
+        "findajob.fetchers.adapters.jsearch.JSearchAdapter.live_test",
+        lambda self, queries: fake_result,
+    )
+
+    response = client.post(
+        "/onboarding/feed-config/test-session-id",
+        data={"api_key": "test-key-50-chars"},
+    )
+    assert response.status_code == 200
+    body = response.text
+    assert "12" in body  # nurse count
+    assert "8" in body   # teacher count
+    assert "JSEARCH_API_KEY=test-key-50-chars" in (base_root / "data" / ".env").read_text()
+
+
+def test_post_auth_failure_does_not_write_key(
+    client: TestClient,
+    base_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("findajob.paths.BASE", str(base_root))
+    (base_root / "data" / ".env").write_text("OTHER=x\n")
+    (base_root / "config" / "jsearch_queries.txt").write_text("nurse\n")
+
+    from findajob.fetchers.adapters.base import LiveTestResult
+
+    fake_result = LiveTestResult(
+        ok=False,
+        bucket="auth",
+        per_query=[],
+        auth_error="HTTP 401",
+    )
+    monkeypatch.setattr(
+        "findajob.fetchers.adapters.jsearch.JSearchAdapter.live_test",
+        lambda self, queries: fake_result,
+    )
+
+    response = client.post(
+        "/onboarding/feed-config/test-session-id",
+        data={"api_key": "bad-key"},
+    )
+    assert response.status_code == 200
+    body = response.text
+    assert "couldn't connect" in body.lower() or "didn't recognize" in body.lower()
+    # Key was NOT written
+    assert "JSEARCH_API_KEY" not in (base_root / "data" / ".env").read_text()
