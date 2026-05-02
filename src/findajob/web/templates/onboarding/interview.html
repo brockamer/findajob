@@ -77,8 +77,8 @@
     </div>
   </form>
 
-  {% if finalize_ready %}
-  <section id="finalize-block" class="border border-green-300 bg-green-50 rounded p-4 space-y-3">
+  <section id="finalize-block" class="{% if finalize_ready %}border border-green-300 bg-green-50 rounded p-4 space-y-3 mt-4{% endif %}">
+    {% if finalize_ready %}
     <h2 class="font-semibold text-green-900">Finalize onboarding</h2>
     <p class="text-sm text-green-900">
       All required blocks have been emitted. Click Finalize and we'll verify
@@ -100,7 +100,7 @@
         Finalize
       </button>
     </form>
+    {% endif %}
   </section>
-  {% endif %}
 </div>
 {% endblock %}

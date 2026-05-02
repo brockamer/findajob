@@ -211,6 +211,52 @@ def test_interview_page_hides_finalize_block_when_not_ready(client_with_key: Tes
     assert f"/onboarding/interview/{sid}/finalize" not in body
 
 
+# ── Task 6: finalize-block OOB placeholder (#401 PR B) ───────────────────
+
+
+def test_finalize_block_placeholder_present_when_not_ready(client_with_key: TestClient, base_root: Path) -> None:
+    """<section id="finalize-block"> must exist in the DOM even when finalize_ready=False.
+    HTMX OOB swaps targeting #finalize-block require the element to be present at first
+    page load or the swap silently fails — Finalize button never appears without a reload."""
+    sid = _create_session_with_history(base_root, [{"role": "user", "content": "hi"}])
+    resp = client_with_key.get(f"/onboarding/interview/{sid}")
+    assert resp.status_code == 200
+    body = resp.text
+    # Section must be present (empty placeholder for OOB target)
+    assert 'id="finalize-block"' in body
+    # No green-border class on the empty placeholder
+    assert "border-green-300" not in body
+    # No finalize form action
+    assert f"/onboarding/interview/{sid}/finalize" not in body
+
+
+def test_finalize_block_has_green_styling_and_button_when_ready(
+    client_with_key: TestClient, base_root: Path
+) -> None:
+    """When finalize_ready=True the section must carry the green-border styling
+    and contain the Finalize submit button."""
+    from findajob.onboarding.parser import ALLOWED_FILENAMES, parse_emission
+    from findajob.onboarding.session_store import update_captured_blocks
+
+    blob = "\n\n".join(f"<<<FILE: {name}>>>\nbody for {name}\n<<<END FILE: {name}>>>" for name in ALLOWED_FILENAMES)
+    captured = parse_emission(blob).found
+
+    sid = _create_session_with_history(base_root, [])
+    conn = sqlite3.connect(base_root / "data" / "pipeline.db")
+    try:
+        update_captured_blocks(conn, sid, captured)
+    finally:
+        conn.close()
+
+    resp = client_with_key.get(f"/onboarding/interview/{sid}")
+    assert resp.status_code == 200
+    body = resp.text
+    assert 'id="finalize-block"' in body
+    assert "border-green-300" in body
+    assert "bg-green-50" in body
+    assert f"/onboarding/interview/{sid}/finalize" in body
+
+
 def test_interview_page_shows_finalize_block_when_all_blocks_captured(
     client_with_key: TestClient, base_root: Path
 ) -> None:
