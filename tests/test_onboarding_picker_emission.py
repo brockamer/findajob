@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import pytest
-
 from pathlib import Path
+
+import pytest
 
 from findajob.onboarding.injector import inject
 from findajob.onboarding.parser import parse_emission
@@ -108,6 +108,30 @@ def test_inject_skips_sentinel_when_active_adapter_unconfigured(
     assert not sentinel.exists()
     assert result.decision.gate_to_feed_config is True
     assert result.decision.pending_adapter == "jsearch"
+
+
+def test_inject_deletes_sentinel_when_gating(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When gate fires (re-run with new adapter, key blank), existing sentinel is deleted
+    so the gate is enforcing, not advisory."""
+    monkeypatch.delenv("JSEARCH_API_KEY", raising=False)
+    (tmp_path / "config").mkdir()
+    (tmp_path / "data").mkdir()
+    (tmp_path / "candidate_context").mkdir()
+
+    # Simulate a previous onboarding having written the sentinel.
+    sentinel = tmp_path / "data" / ".onboarding-complete"
+    sentinel.touch()
+    assert sentinel.exists()
+
+    parsed = parse_emission(_emission_with_picker("jsearch"))
+    result = inject(tmp_path, parsed.found, skip_smoke_check=True)
+
+    assert result.decision.gate_to_feed_config is True
+    assert result.decision.pending_adapter == "jsearch"
+    assert not sentinel.exists(), "sentinel must be deleted when gate fires so /board/ redirect is enforcing"
 
 
 def test_inject_writes_sentinel_when_active_adapter_configured(

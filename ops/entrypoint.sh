@@ -118,6 +118,14 @@ fi
 # light back up. Idempotent: no-op when the destination already exists.
 gosu "$PUID:$PGID" python3 /app/scripts/seed_companies_of_interest.py >/dev/null || true
 
+# --- 3e-pre. Idempotent migration: RAPIDAPI_KEY → JOBS_API14_KEY (#408) ------
+# Runs synchronously BEFORE uvicorn and supercronic so that triage cannot
+# observe pre-migration data/.env on the first v0.13→v0.14 container boot.
+# The call in web/app.py:create_app() stays as redundancy for native installs.
+if [ -f /app/data/.env ]; then
+    gosu "$PUID:$PGID" python3 -c "from pathlib import Path; from findajob.onboarding.env_migrate import migrate_rapidapi_key_env; migrate_rapidapi_key_env(Path('/app/data/.env'))" || true
+fi
+
 # --- 3e. Render supercronic crontab from ops/scheduled-jobs.yaml (#344) ---
 # YAML at /app/scheduled-jobs.yaml is the source of truth. Per-job env-var
 # overrides (FINDAJOB_<JOB>_SCHEDULE / _ENABLED) let multi-tenant hosts

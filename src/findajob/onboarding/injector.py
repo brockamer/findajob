@@ -462,6 +462,12 @@ def inject(
                     break
 
             if needs_gate:
+                # Delete the existing sentinel so the gate is enforcing, not
+                # advisory. Without this, a re-run user could navigate directly
+                # to /board/ and bypass /onboarding/feed-config/ (#408).
+                sentinel_path = base_root / _SENTINEL_RELPATH
+                if sentinel_path.exists():
+                    sentinel_path.unlink()
                 decision = InjectionDecision(gate_to_feed_config=True, pending_adapter=pending)
             else:
                 mark_complete(base_root)
