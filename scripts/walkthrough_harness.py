@@ -719,7 +719,10 @@ def main() -> None:
     parser.add_argument(
         "--browser-channel",
         default=None,
-        help="Playwright browser channel (e.g. 'chrome' to use system-installed Google Chrome). Default: bundled chromium.",
+        help=(
+            "Playwright browser channel (e.g. 'chrome' to use system-installed Google Chrome). "
+            "Default: bundled chromium."
+        ),
     )
     args = parser.parse_args()
 
