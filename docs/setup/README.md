@@ -24,9 +24,7 @@ The page presents two steps:
 
 **Step 2 — Run the interview.** Once Step 1 is saved, a "Start interview" button enables. Clicking it opens a chat surface inside findajob where you have a structured 60–90 minute conversation with an LLM (Claude Sonnet 4.6, billed against your own OpenRouter key). Server-side persistent: close the tab anytime and the index page surfaces a "Resume your interview" affordance. When the LLM finishes emitting your config blocks, a green Finalize button appears — click it, and findajob writes your files, runs initial company discovery, and lands you on the dashboard. No copy-paste step.
 
-Cost runs ~$0.50 per onboarding with prompt caching (the system prompt is cached server-side at OpenRouter, so subsequent turns are billed at ~10% of the system tokens).
-
-**Operator-funded chat (optional, for `findajob-test` and operator-deployed-for-tester scenarios):** When the operator sets `OPENROUTER_OPERATOR_KEY` on the stack, the chat runner uses the operator's key instead of the tester's, subsidizing the dogfood/staging cost. Step 1 is still mandatory — the pipeline (triage, scoring, prep) always runs on your own key from Step 1. Self-deploy testers don't need this env var. See [`configure.md`](configure.md#openrouter_operator_key-operator-funded-fallback-optional).
+Cost runs ~$3-6 per onboarding even with prompt caching enabled (the system prompt is cached server-side at OpenRouter so subsequent turns are billed at ~10% of the system tokens, but voice-samples emission and the cumulative chat history dominate the bill in long interviews).
 
 **Manual:** Skip the interview and edit the config files by hand. See [`configure.md`](configure.md) for the file-by-file walkthrough — which fields matter most, which have sensible defaults, and which you can safely leave blank.
 

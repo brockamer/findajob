@@ -123,7 +123,7 @@ Three API keys before you start. Sign-up walkthroughs + cost expectations are in
 
 | Provider | Required? | What you'll spend | What findajob uses it for |
 |---|---|---|---|
-| **OpenRouter** | yes | pay-as-you-go from $0; ~$0.50/day triage-only, $1.50–3.00 per fully-prepped job, ~$1 per in-app onboarding interview | All LLM calls (scoring, prep writing, in-app onboarding) |
+| **OpenRouter** | yes | pay-as-you-go from $0; ~$0.50/day triage-only, $1.50–3.00 per fully-prepped job, ~$3-6 per in-app onboarding interview | All LLM calls (scoring, prep writing, in-app onboarding) |
 | **RapidAPI (jobs-api14)** | optional | BASIC plan: 150 req/month free, no credit card | LinkedIn + Indeed search ingestion |
 | **Google AI Studio (Gemini)** | optional | free tier; no billing setup needed | Embeddings for the optional REPL RAG index |
 
@@ -152,7 +152,7 @@ Open `http://<your-host>:<port>/` in a browser. A fresh stack redirects you stra
 
 **Step 2** — click Start interview. A chat surface opens inside findajob and walks you through a 60–90 minute conversation about your background, target role, exclusions, and writing voice. The session is server-side persistent — close the tab anytime, reload, and the page surfaces a Resume affordance. When the LLM finishes emitting your config blocks, a Finalize button appears; clicking it writes the config files atomically, runs initial company discovery, and lands you on the dashboard. No copy-paste step.
 
-Cost runs ~$0.50 per onboarding (Claude Sonnet 4.6 with prompt caching). The next scheduled triage run (00:00 in your `TZ`) ingests its first batch of jobs.
+Cost runs ~$3-6 per onboarding (Claude Sonnet 4.6 with prompt caching). The next scheduled triage run (00:00 in your `TZ`) ingests its first batch of jobs.
 
 Full walkthrough → [`docs/setup/install-docker.md`](docs/setup/install-docker.md) (or start at [`docs/setup/README.md`](docs/setup/README.md) for the guided sequence). Native-host install remains as a legacy fallback → [`docs/setup/install-linux.md`](docs/setup/install-linux.md).
 

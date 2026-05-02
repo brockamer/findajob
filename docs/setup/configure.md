@@ -114,44 +114,6 @@ NTFY_TOPIC=your-topic-name
 
 Protect this file: `chmod 600 data/.env`
 
----
-
-## OPENROUTER_OPERATOR_KEY (operator-funded fallback, optional)
-
-This is the **operator-funded fallback** for the in-app onboarding interview. Self-deploy testers do not need it — they collect their own OpenRouter key at `/onboarding/` Step 1, and the in-app interview runs on that key. `OPENROUTER_OPERATOR_KEY` exists for two specific scenarios:
-
-- **`findajob-test`** — the operator's dogfood instance for NUX walkthroughs (#389). Lets the operator test the in-app interview themselves without procuring a separate tester key.
-- **Operator-deployed-for-tester** — the operator stood up a tester's stack on their behalf and wants the tester to be able to start the interview before they've completed Step 1.
-
-When set, the in-app affordance enables in `/onboarding/` Step 2 even before Step 1 keys are collected. Tester credentials always win over the env value when both are present.
-
-**How to enable:**
-
-1. Add to the stack's compose `.env` (`/opt/stacks/findajob-<handle>/.env`):
-   ```
-   OPENROUTER_OPERATOR_KEY=sk-or-v1-...
-   ```
-   This key is **operator-funded** — findajob bills your OpenRouter account for the interview chat. The tester's own keys (collected at Step 1) are still used for the post-onboarding pipeline.
-
-2. Restart the stack: `docker compose -f /opt/stacks/findajob-<handle>/compose.yaml up -d`.
-
-3. Visit `/onboarding/` — Step 2's "Start interview" button is now available immediately, even on a stack with no Step 1 keys collected yet.
-
-**What it costs:** ~$1 per onboarding (Sonnet 4.6 at ~$3 per 1M output tokens × ~30k output tokens per interview). Cheaper if you pin a smaller model in the runner. Verify your spend on [openrouter.ai/credits](https://openrouter.ai/credits).
-
-**What happens if unset:** the in-app affordance is disabled until the tester completes `/onboarding/` Step 1. Posting to `/onboarding/interview/start` directly returns 503 with a pointer back to `/onboarding/`. Existing testers who already onboarded are unaffected — their sentinel skips the new collection flow entirely.
-
-**Operational notes:**
-
-- One key per stack. Don't share `OPENROUTER_OPERATOR_KEY` across stacks
-  — usage shows up in your OpenRouter dashboard mixed otherwise.
-- 401 / 402 / 429 errors mid-interview surface a kind-specific banner
-  inside the chat with a link to the relevant OpenRouter dashboard
-  (keys / credits) so the operator can fix and the tester can retry.
-- Errors are logged to `pipeline.jsonl` as
-  `onboarding_interview_error` events with `error_kind` and
-  `status_code` fields — grep there to triage.
-
 See `docs/superpowers/plans/2026-05-01-336-in-app-onboarding-interview.md`
 for design details.
 

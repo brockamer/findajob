@@ -187,8 +187,10 @@ emitting your config blocks (it does this in the chat itself; the
 parser extracts them automatically), a green Finalize button appears
 below the chat. Click it.
 
-Cost runs ~$0.50 per onboarding because the system prompt is cached at
-OpenRouter — subsequent turns are billed at ~10% of the system tokens.
+Cost runs ~$3-6 per onboarding even with prompt caching enabled. The
+system prompt is cached at OpenRouter so subsequent turns are billed
+at ~10% of the system tokens, but voice-samples emission and the
+cumulative chat history dominate the bill in long interviews.
 
 The injector validates the emission, runs a 1-token smoke check against
 OpenRouter to re-verify the key, atomically writes the config files plus
@@ -198,20 +200,6 @@ resubmit.
 
 After onboarding lands, the next scheduled triage run (00:00 in your
 configured `TZ`) ingests its first batch of jobs.
-
-### Operator-funded fallback (optional)
-
-To run the in-app interview on the operator's wallet — used by
-`findajob-test` and operator-deployed-for-tester scenarios — set
-`OPENROUTER_OPERATOR_KEY=sk-or-v1-…` in the stack's compose `.env` and
-restart. The Step 2 in-app affordance enables even before Step 1 keys
-are collected; the tester's key still gets collected at Step 1 and
-written to the per-stack `data/.env` for the post-onboarding pipeline.
-
-When `OPENROUTER_OPERATOR_KEY` is unset and Step 1 keys haven't been
-collected, the in-app affordance is disabled and surfaces a 503 if
-posted directly. Self-deploy testers always have a working path
-(supply own keys at Step 1).
 
 ## 8. Send a test notification
 
