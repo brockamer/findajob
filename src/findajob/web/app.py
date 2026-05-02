@@ -42,12 +42,6 @@ def create_app(
     templates.env.globals["filter_remove_qs"] = filter_remove_qs
     templates.env.globals["filter_qs_with"] = filter_qs_with
     templates.env.globals["operator_mode"] = os.environ.get("FINDAJOB_OPERATOR_MODE") == "1"
-    # Cost-transparency signal for the /onboarding/ Step 2 panel. True on
-    # stacks where the chat-runner uses OPENROUTER_OPERATOR_KEY (operator-
-    # subsidized — findajob-test, operator-deployed-for-tester); False on
-    # tester stacks where the chat is billed to the tester's own key.
-    chat_subsidized = bool((os.environ.get("OPENROUTER_OPERATOR_KEY") or "").strip())
-    templates.env.globals["chat_subsidized_by_operator"] = chat_subsidized
 
     # Helper exposed to base.html so the nav bar can render a lifetime
     # onboarding-cost badge on every page. Wrapped in a function (not a
@@ -124,12 +118,11 @@ def create_app(
         )
     # In-app onboarding interview routes (#336 + #339): registered
     # unconditionally. The runtime gate is per-request via
-    # ``_resolved_chat_key`` — either the tester collected their own key at
-    # /onboarding/ Step 1 (#339) or ``OPENROUTER_OPERATOR_KEY`` is set
-    # (operator-funded fallback). When neither is available the routes
-    # surface a 503 with a pointer back to /onboarding/. The previous
-    # import-time gate (which 404'd on stacks with no operator key) made
-    # self-deploy impossible.
+    # ``_resolved_chat_key`` — the tester must have collected their own
+    # OpenRouter key at /onboarding/ Step 1 (#339). When no key is on
+    # file the routes surface a 503 with a pointer back to /onboarding/.
+    # The previous import-time gate (which 404'd on stacks with no
+    # operator key) made self-deploy impossible.
     from findajob.web.routes import onboarding_interview
 
     app.include_router(onboarding_interview.router)
