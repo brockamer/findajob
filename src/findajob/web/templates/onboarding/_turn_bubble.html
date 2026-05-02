@@ -1,12 +1,26 @@
-{# Single role-styled message bubble (#336 Task 5).
+{# Single role-styled message bubble (#336 Task 5, updated #401 PR B Task 3).
 
    Per-bubble primitive used by both interview.html (history loop) and
-   _turn.html (the per-turn HTMX partial). Context: `turn` dict with `role`
-   and `content`.
+   _turn.html (the per-turn HTMX partial).
+
+   Context: `turn` dict with keys:
+     role          — "user" | "assistant"
+     content       — raw text (always present)
+     rendered_content — pre-rendered HTML string (assistant turns only,
+                        set by render_chat_assistant_html() in the route
+                        before the template is invoked)
+
+   User turns: auto-escaped plain text (whitespace-pre-wrap).
+   Assistant turns: pre-rendered HTML emitted via `| safe`; FILE blocks
+   have already been replaced with badge spans by the route layer.
 #}
 <div class="rounded p-3
             {% if turn.role == 'user' %}bg-blue-50 border border-blue-200{% else %}bg-slate-50 border border-slate-200{% endif %}"
      data-role="{{ turn.role }}">
   <div class="text-xs uppercase tracking-wide text-slate-500 mb-1">{{ turn.role }}</div>
+  {% if turn.role == 'user' %}
   <div class="whitespace-pre-wrap text-sm">{{ turn.content }}</div>
+  {% else %}
+  <div class="prose prose-sm max-w-none text-sm">{{ turn.rendered_content | safe }}</div>
+  {% endif %}
 </div>

@@ -300,3 +300,78 @@ def test_start_interview_button_has_alpine_loading_state(client_with_key: TestCl
     assert 'x-data="{ starting: false }"' in body
     assert ':disabled="starting"' in body
     assert "animate-spin" in body
+
+
+# ── Markdown rendering + FILE-block badging (#401 PR B Task 3) ───────────
+
+
+def _bind_credentials(base_root: Path, session_id: str) -> None:
+    from findajob.onboarding.session_store import set_credentials
+
+    conn = sqlite3.connect(base_root / "data" / "pipeline.db")
+    try:
+        set_credentials(conn, session_id, openrouter_api_key="sk-or-v1-render-test", rapidapi_key="", google_api_key="")
+    finally:
+        conn.close()
+
+
+def test_turn_partial_file_block_shows_badge_not_raw_delimiter(
+    client_with_key: TestClient, base_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When the assistant emits a FILE block, the HTMX partial must render
+    a captured-file badge instead of the raw <<<FILE:>>> markers (#401 PR B Task 3)."""
+    sid = _create_session_with_history(base_root, [])
+    _bind_credentials(base_root, sid)
+
+    emission_turn = (
+        "Your profile has been captured:\n\n"
+        "<<<FILE: profile.md>>>\nname: Test User\nrole: tester\n<<<END FILE: profile.md>>>\n\n"
+        "Let's continue with the next section."
+    )
+
+    monkeypatch.setattr(
+        "findajob.web.routes.onboarding_interview.run_turn",
+        lambda *a, **kw: (emission_turn, {}),
+    )
+
+    resp = client_with_key.post(
+        "/onboarding/interview/turn",
+        data={"session_id": sid, "message": "ready"},
+    )
+    assert resp.status_code == 200
+    body = resp.text
+    # Badge must be present
+    assert "captured-file" in body
+    # Raw delimiter must NOT appear
+    assert "<<<FILE:" not in body
+    assert "<<<END FILE:" not in body
+    # Block body (multi-KB in production) must not bleed through
+    assert "name: Test User" not in body
+
+
+def test_resume_page_file_block_shows_badge_not_raw_delimiter(client_with_key: TestClient, base_root: Path) -> None:
+    """On full-page resume load (GET /onboarding/interview/{sid}), FILE blocks
+    in persisted history must appear as badges, not raw markers (#401 PR B Task 3)."""
+    emission_content = (
+        "Here is your profile:\n\n"
+        "<<<FILE: profile.md>>>\nname: Stored User\n<<<END FILE: profile.md>>>\n\n"
+        "Continuing the interview."
+    )
+    sid = _create_session_with_history(
+        base_root,
+        [
+            {"role": "user", "content": "Begin the interview."},
+            {"role": "assistant", "content": emission_content},
+        ],
+    )
+
+    resp = client_with_key.get(f"/onboarding/interview/{sid}")
+    assert resp.status_code == 200
+    body = resp.text
+    # Badge must appear for the stored FILE block
+    assert "captured-file" in body
+    # Raw delimiter must not leak into rendered HTML
+    assert "<<<FILE:" not in body
+    assert "<<<END FILE:" not in body
+    # Block body must not appear
+    assert "name: Stored User" not in body

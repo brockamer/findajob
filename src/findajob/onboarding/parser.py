@@ -34,10 +34,12 @@ OPTIONAL_FILENAMES: tuple[str, ...] = ("voice-samples.md",)
 _KNOWN_FILENAMES: frozenset[str] = frozenset(ALLOWED_FILENAMES) | frozenset(OPTIONAL_FILENAMES)
 
 
-_BLOCK_RE = re.compile(
+BLOCK_RE = re.compile(
     r"<<<FILE:\s*(?P<name>[^>\s]+)\s*>>>\r?\n(?P<body>.*?)\r?\n<<<END FILE:\s*(?P=name)\s*>>>",
     re.DOTALL,
 )
+# Backward-compatible alias (internal use only — import BLOCK_RE from this module).
+_BLOCK_RE = BLOCK_RE
 
 _FENCE_OPEN_RE = re.compile(r"\A```[^\n]*\r?\n")
 _FENCE_CLOSE_RE = re.compile(r"(?<=\n)```[ \t]*\r?\n?\Z")

@@ -1,16 +1,22 @@
-{# Per-turn HTMX partial (#336 Task 5).
+{# Per-turn HTMX partial (#336 Task 5, updated #401 PR B Task 3).
 
    Returned by POST /onboarding/interview/turn and appended into #messages
    via HTMX `hx-swap="beforeend"`. Renders BOTH the user's just-sent message
    AND the assistant's reply, each as a `_turn_bubble.html` (single role-
    styled bubble) — so the user's input stays visible after the swap.
 
+   Context contract:
+     user_message        — raw user text (auto-escaped in bubble)
+     assistant_message   — raw assistant text (stored in DB)
+     assistant_message_html — pre-rendered HTML from render_chat_assistant_html()
+                              (emitted via | safe in bubble)
+
    When the latest captured-blocks count satisfies ALLOWED_FILENAMES, an OOB
    swap injects the finalize block into #finalize-slot in interview.html.
 #}
 {% set turn = {"role": "user", "content": user_message} %}
 {% include "onboarding/_turn_bubble.html" %}
-{% set turn = {"role": "assistant", "content": assistant_message} %}
+{% set turn = {"role": "assistant", "content": assistant_message, "rendered_content": assistant_message_html} %}
 {% include "onboarding/_turn_bubble.html" %}
 
 {# Out-of-band swap: refresh the captured-count + cost-spent badges after

@@ -40,6 +40,7 @@ from findajob.onboarding.session_store import (
     update_captured_blocks,
 )
 from findajob.utils import log_event
+from findajob.web.markdown import render_chat_assistant_html
 
 router = APIRouter()
 
@@ -169,6 +170,26 @@ def _keys_collected_for(conn: sqlite3.Connection, session_id: str) -> tuple[bool
     return True, creds.openrouter_api_key[-4:]
 
 
+def _render_history(history: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Return a copy of history where each assistant turn has ``rendered_content``.
+
+    User turns are passed through unchanged (the template auto-escapes them).
+    Assistant turns get ``rendered_content`` set to the output of
+    :func:`render_chat_assistant_html` — FILE blocks become badge spans and
+    the text is rendered through Python-Markdown.
+
+    Parser invariant: this is render-only.  The parser reads ``session.history``
+    (the raw stored turns), not this rendered list.
+    """
+    result: list[dict[str, str]] = []
+    for turn in history:
+        if turn.get("role") == "assistant":
+            result.append({**turn, "rendered_content": render_chat_assistant_html(turn["content"])})
+        else:
+            result.append(turn)
+    return result
+
+
 def _render_chat(
     request: Request,
     *,
@@ -187,7 +208,7 @@ def _render_chat(
         name="onboarding/interview.html",
         context={
             "session_id": session_id,
-            "history": history,
+            "history": _render_history(history),
             "captured_count": len(captured),
             "required_count": len(ALLOWED_FILENAMES),
             "finalize_ready": len(captured) >= len(ALLOWED_FILENAMES),
@@ -334,6 +355,7 @@ def post_turn(
                 "session_id": session_id,
                 "user_message": message,
                 "assistant_message": assistant_text,
+                "assistant_message_html": render_chat_assistant_html(assistant_text),
                 "captured_count": len(captured),
                 "required_count": len(ALLOWED_FILENAMES),
                 "finalize_ready": len(captured) >= len(ALLOWED_FILENAMES),
