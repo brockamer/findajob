@@ -74,6 +74,14 @@ OpenRouter shows you a live spend breakdown at <https://openrouter.ai/activity>.
 
 ## RapidAPI (jobs-api14) — optional
 
+> **Already onboarded?** The onboarding interview's source-strategy
+> briefing (#283) walks through what the paid service is good for and
+> when to skip it. If the briefing led you to opt out of RapidAPI
+> (sub-phase 3g, no `a` selection), you can leave the key field blank
+> here — the pipeline will use your other sources only. Re-run
+> onboarding via `/onboarding/?mode=rerun` if you want to revisit the
+> source-strategy decision.
+
 RapidAPI is the gateway findajob uses to query LinkedIn and Indeed
 listings programmatically. The free BASIC tier gives 150 requests per
 month, which is enough for a daily search across a small set of queries.

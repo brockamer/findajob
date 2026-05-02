@@ -44,6 +44,13 @@ The resume tailor selects and reorders content from this file — it doesn't add
 
 ## config/jsearch_queries.txt
 
+> **Note:** `config/jsearch_queries.txt`, `config/feed_urls.txt`, and
+> `candidate_context/linkedin-alerts.md` are now emitted by the
+> onboarding interview (#283) based on your sub-phase 3g selection.
+> Manual editing of these files remains supported — re-running
+> onboarding overwrites them, but backs up the prior content under
+> `.backups/{UTC-stamp}/`.
+
 LinkedIn and Indeed search queries. One per line. Blank lines and `#` comments ignored.
 
 **Critical rules:**

@@ -20,6 +20,53 @@ Rejections come later — from the Applied tab when a company comes back "no", o
 
 ---
 
+## Job sources
+
+The pipeline can ingest jobs from up to four sources. The onboarding
+interview helps you pick which ones make sense for your field; this
+section is a post-onboarding reference for what each source does and
+how to tune it.
+
+### Paid job-search service (RapidAPI)
+The pipeline calls a third-party job-search API (today: jobs-api14 on
+RapidAPI) with the queries in `config/jsearch_queries.txt`. Cost is
+metered against the RapidAPI key you provided in onboarding (Step 1).
+Free tier covers ~150 calls/month.
+
+To tune: edit `config/jsearch_queries.txt` (one 3-4 word query per
+line; LinkedIn returns zero results for 5+ word strings).
+
+### Company career-page feeds
+The pipeline polls Greenhouse / Lever / Ashby career-page endpoints
+listed in `config/feed_urls.txt`. Free; no API key.
+
+To tune: edit `config/feed_urls.txt` (one URL per line; supported
+shapes are `boards.greenhouse.io/{slug}`, `job-boards.greenhouse.io/{slug}`,
+`jobs.lever.co/{slug}`, `jobs.ashbyhq.com/{slug}`).
+
+### Gmail-ingest alerts
+The pipeline reads job-alert emails from your Gmail inbox via IMAP and
+parses the embedded job listings. You set up saved-search alerts on
+LinkedIn / Indeed, point them at your Gmail, and configure the
+pipeline's IMAP reader at `/config/gmail/`.
+
+The interview's `linkedin-alerts.md` checklist (in
+`candidate_context/`) is a one-time setup walkthrough.
+
+### Manual ingest
+Paste a job URL into the in-app `/ingest/` form. Best for highly-
+targeted candidates who'd rather hand-curate than triage volume. A
+"speculative" variant lets you cold-outreach companies that aren't
+posting a matching role.
+
+### Re-running source-strategy onboarding
+Visit `/onboarding/?mode=rerun` to walk through the source-strategy
+briefing again. Existing source-config files (`jsearch_queries.txt`,
+`feed_urls.txt`, `linkedin-alerts.md`) are backed up under
+`.backups/{UTC-stamp}/` before being overwritten.
+
+---
+
 ## The Dashboard (`/board/dashboard`)
 
 The Dashboard shows every scored job worth your attention — usually `score >= 7` plus anything you've flagged manually. You'll spend more time here than anywhere else.

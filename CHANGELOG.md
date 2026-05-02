@@ -10,6 +10,12 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Added
+- **Onboarding source-strategy briefing (#283).** The onboarding interview now opens with a four-source taxonomy (paid service, company career-page feeds, Gmail alerts, manual) in plain language and asks the candidate to pick which sources to activate using letter-prefixed selection. Source-config files (`config/jsearch_queries.txt`, `config/feed_urls.txt`, `candidate_context/linkedin-alerts.md`) are emitted opt-in based on selection. Existing operators can re-run via `/onboarding/?mode=rerun` to upgrade. Includes #215 injector hardening polish.
+
+### Changed
+- `findajob.onboarding.parser.ALLOWED_FILENAMES` drops from 10 entries to 9 (`jsearch_queries.txt` moves to `OPTIONAL_FILENAMES`). New OPTIONAL files: `feed-urls.txt`, `linkedin-alerts.md`. Conditional emission is enforced by the prompt; the parser is selection-agnostic.
+
 ## [0.12.0] — 2026-05-02
 
 Minor bump bundling PR A (#402, originally targeted as v0.11.1 patch) and PR B (#403, P1 onboarding UX + prompt revisions). The two ship together because no tester stack was pinned to `:v0.11`, so a separate v0.11.1 tag would have served no installed base. Operator's stack and `findajob-test` already moved through `:latest`; tester stacks (alice, papa, dave, judy, tango) currently on `:v0.10` should bump to `:v0.12` in the cohort wave.

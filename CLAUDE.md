@@ -183,8 +183,9 @@ When the pipeline runs inside the `ghcr.io/brockamer/findajob` image, paths shif
 <repo>/config/paths.env                     # binary path overrides (gitignored; see paths.env.example)
 <repo>/config/roles/                        # role .md files (8 roles)
 <repo>/config/scoring_schema.json           # JSON schema for LLM scorer output validation
-<repo>/config/jsearch_queries.txt           # LinkedIn/Indeed search queries (gitignored)
-<repo>/config/feed_urls.txt                 # Greenhouse company slugs (gitignored)
+<repo>/config/jsearch_queries.txt           # LinkedIn/Indeed search queries (gitignored; interview-emitted, conditional on 3g 'a' selection)
+<repo>/config/feed_urls.txt                 # Greenhouse / Lever / Ashby career-page feed URLs (gitignored; interview-emitted, conditional on 3g 'b' selection)
+<repo>/candidate_context/linkedin-alerts.md # LinkedIn-alerts setup checklist (interview-emitted, conditional on 3g 'c' selection)
 <repo>/config/gmail.json                    # Gmail IMAP/app-password config (gitignored, chmod 600)
 <repo>/config/gmail_state.json              # Gmail IMAP UID + auth-failure tracker (gitignored)
 <repo>/data/.env                            # API keys (chmod 600; gitignored)
