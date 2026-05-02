@@ -46,9 +46,28 @@ def create_app(
     # stacks where the chat-runner uses OPENROUTER_OPERATOR_KEY (operator-
     # subsidized — findajob-test, operator-deployed-for-tester); False on
     # tester stacks where the chat is billed to the tester's own key.
-    templates.env.globals["chat_subsidized_by_operator"] = bool(
-        (os.environ.get("OPENROUTER_OPERATOR_KEY") or "").strip()
-    )
+    chat_subsidized = bool((os.environ.get("OPENROUTER_OPERATOR_KEY") or "").strip())
+    templates.env.globals["chat_subsidized_by_operator"] = chat_subsidized
+
+    # Helper exposed to base.html so the nav bar can render a lifetime
+    # onboarding-cost badge on every page. Wrapped in a function (not a
+    # static value) so each request reads fresh DB state without us having
+    # to wire it through every individual route handler's context.
+    def _lifetime_cost_for_template() -> float:
+        try:
+            conn = sqlite3.connect(str(db_path), timeout=5)
+        except sqlite3.Error:
+            return 0.0
+        try:
+            from findajob.onboarding.session_store import lifetime_cost_usd
+
+            return lifetime_cost_usd(conn)
+        except sqlite3.Error:
+            return 0.0
+        finally:
+            conn.close()
+
+    templates.env.globals["onboarding_lifetime_cost_usd"] = _lifetime_cost_for_template
 
     static_dir = Path(__file__).parent / "static"
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")

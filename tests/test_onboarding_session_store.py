@@ -16,6 +16,7 @@ import pytest
 from findajob.onboarding.session_store import (
     Credentials,
     Session,
+    add_turn_cost,
     append_turn,
     create_session,
     find_credentials_only,
@@ -500,3 +501,81 @@ def test_credentials_dataclass_is_frozen():
     creds = Credentials(openrouter_api_key="x", rapidapi_key=None, google_api_key=None)
     with pytest.raises(dataclasses.FrozenInstanceError):
         creds.openrouter_api_key = "mutated"  # type: ignore[misc]
+
+
+def test_add_turn_cost_accumulates_across_calls(db):
+    """Two turns of cost data sum into cumulative_cost_usd."""
+    migrate_schema(db)
+    sid = create_session(db)
+    add_turn_cost(db, sid, {"cost": 0.0125, "prompt_tokens": 100})
+    add_turn_cost(db, sid, {"cost": 0.0050})
+    sess = get_session(db, sid)
+    assert sess is not None
+    assert sess.cumulative_cost_usd == pytest.approx(0.0175)
+
+
+def test_add_turn_cost_falls_back_to_upstream_inference_cost(db):
+    """BYOK responses sometimes report cost under cost_details.upstream_inference_cost."""
+    migrate_schema(db)
+    sid = create_session(db)
+    add_turn_cost(db, sid, {"cost_details": {"upstream_inference_cost": 0.42}})
+    sess = get_session(db, sid)
+    assert sess is not None
+    assert sess.cumulative_cost_usd == pytest.approx(0.42)
+
+
+def test_add_turn_cost_no_op_on_empty_or_missing_cost(db):
+    """Empty / missing / non-numeric cost must not corrupt the running total."""
+    migrate_schema(db)
+    sid = create_session(db)
+    add_turn_cost(db, sid, {})
+    add_turn_cost(db, sid, {"cost": None})
+    add_turn_cost(db, sid, {"cost": "not-a-number"})
+    add_turn_cost(db, sid, {"cost": 0})
+    add_turn_cost(db, sid, "garbage")  # type: ignore[arg-type]
+    sess = get_session(db, sid)
+    assert sess is not None
+    assert sess.cumulative_cost_usd == 0.0
+
+
+def test_lifetime_cost_usd_sums_across_sessions(db):
+    """lifetime_cost_usd sums cumulative_cost_usd across every session row."""
+    from findajob.onboarding.session_store import lifetime_cost_usd
+
+    migrate_schema(db)
+    sid_a = create_session(db)
+    sid_b = create_session(db)
+    add_turn_cost(db, sid_a, {"cost": 0.10})
+    add_turn_cost(db, sid_a, {"cost": 0.05})
+    add_turn_cost(db, sid_b, {"cost": 0.30})
+    assert lifetime_cost_usd(db) == pytest.approx(0.45)
+
+
+def test_lifetime_cost_usd_zero_on_empty_db(db):
+    from findajob.onboarding.session_store import lifetime_cost_usd
+
+    assert lifetime_cost_usd(db) == 0.0
+
+
+def test_lifetime_cost_usd_handles_missing_column_gracefully(tmp_path):
+    """Older stacks before 2026-05-02 lack the column. Aggregator returns 0,
+    not a crash, so the nav badge degrades to "$0.00" instead of 500ing."""
+    from findajob.onboarding.session_store import lifetime_cost_usd
+
+    db_path = tmp_path / "old.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.executescript("""
+        CREATE TABLE onboarding_sessions (
+            id TEXT PRIMARY KEY,
+            history_json TEXT NOT NULL DEFAULT '[]',
+            captured_blocks_json TEXT NOT NULL DEFAULT '{}',
+            started_at TEXT NOT NULL DEFAULT '',
+            last_turn_at TEXT NOT NULL DEFAULT '',
+            completed_at TEXT,
+            error_state TEXT
+        );
+    """)
+    try:
+        assert lifetime_cost_usd(conn) == 0.0
+    finally:
+        conn.close()

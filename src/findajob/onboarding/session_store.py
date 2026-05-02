@@ -30,6 +30,7 @@ class Session:
     last_turn_at: str
     completed_at: str | None
     error_state: str | None
+    cumulative_cost_usd: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -41,23 +42,28 @@ class Credentials:
     google_api_key: str | None
 
 
-# Credential columns added in #339; absent on DBs initialised before that
-# migration.  _ensure_credential_columns() is idempotent and runs at import
-# time via migrate_schema().
-_CREDENTIAL_COLUMNS: tuple[tuple[str, str], ...] = (
+# Schema additions layered on the original #336 onboarding_sessions table.
+# Each entry is (column, type+default). migrate_schema() applies them
+# idempotently at app startup.
+_ADDED_COLUMNS: tuple[tuple[str, str], ...] = (
+    # Credential columns (#339) — per-tester API keys collected at Step 1.
     ("tester_openrouter_key", "TEXT DEFAULT NULL"),
     ("tester_rapidapi_key", "TEXT DEFAULT NULL"),
     ("tester_google_key", "TEXT DEFAULT NULL"),
+    # Cumulative chat cost in USD (2026-05-02). OpenRouter returns
+    # `usage.cost` per response (in credits, 1:1 with USD); we sum it onto
+    # this column on every turn so the chat UI can show a live total.
+    ("cumulative_cost_usd", "REAL NOT NULL DEFAULT 0"),
 )
 
 
 def migrate_schema(db: sqlite3.Connection) -> None:
-    """Add credential columns to onboarding_sessions if they don't exist yet.
+    """Add layered columns to onboarding_sessions if they don't exist yet.
 
     Safe to call on every app start — skips columns that are already present.
     """
     existing = {row[1] for row in db.execute("PRAGMA table_info(onboarding_sessions)").fetchall()}
-    for col_name, col_def in _CREDENTIAL_COLUMNS:
+    for col_name, col_def in _ADDED_COLUMNS:
         if col_name not in existing:
             db.execute(f"ALTER TABLE onboarding_sessions ADD COLUMN {col_name} {col_def}")
     db.commit()
@@ -82,15 +88,14 @@ def create_session(db: sqlite3.Connection) -> str:
     return session_id
 
 
-def get_session(db: sqlite3.Connection, session_id: str) -> Session | None:
-    row = db.execute(
-        """SELECT id, history_json, captured_blocks_json, started_at,
-                  last_turn_at, completed_at, error_state
-           FROM onboarding_sessions WHERE id = ?""",
-        (session_id,),
-    ).fetchone()
-    if row is None:
-        return None
+_SESSION_COLUMNS = (
+    "id, history_json, captured_blocks_json, started_at, "
+    "last_turn_at, completed_at, error_state, "
+    "COALESCE(cumulative_cost_usd, 0)"
+)
+
+
+def _row_to_session(row: tuple) -> Session:
     return Session(
         id=row[0],
         history=json.loads(row[1]),
@@ -99,7 +104,18 @@ def get_session(db: sqlite3.Connection, session_id: str) -> Session | None:
         last_turn_at=row[4],
         completed_at=row[5],
         error_state=row[6],
+        cumulative_cost_usd=row[7] if row[7] is not None else 0.0,
     )
+
+
+def get_session(db: sqlite3.Connection, session_id: str) -> Session | None:
+    row = db.execute(
+        f"SELECT {_SESSION_COLUMNS} FROM onboarding_sessions WHERE id = ?",
+        (session_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    return _row_to_session(row)
 
 
 def append_turn(db: sqlite3.Connection, session_id: str, role: str, content: str) -> None:
@@ -140,6 +156,40 @@ def set_error(db: sqlite3.Connection, session_id: str, message: str) -> None:
     db.commit()
 
 
+def add_turn_cost(db: sqlite3.Connection, session_id: str, usage: dict) -> None:
+    """Add this turn's cost to ``cumulative_cost_usd``.
+
+    OpenRouter returns ``usage.cost`` in credits (1:1 with USD) on every
+    chat-completions response — already discounted for cache reads and
+    inclusive of any provider markup, so it matches the dashboard. Tester
+    BYOK responses sometimes report it under
+    ``cost_details.upstream_inference_cost`` instead; treat either as
+    authoritative and pick whichever is present.
+
+    Silently no-ops on a missing/zero cost field — some local-mock test
+    paths return `usage={}` and we don't want test fixtures to need
+    updating just because they didn't synthesise this field.
+    """
+    if not isinstance(usage, dict):
+        return
+    cost = usage.get("cost")
+    if cost is None:
+        details = usage.get("cost_details")
+        if isinstance(details, dict):
+            cost = details.get("upstream_inference_cost")
+    try:
+        cost_f = float(cost) if cost is not None else 0.0
+    except (TypeError, ValueError):
+        cost_f = 0.0
+    if cost_f <= 0:
+        return
+    db.execute(
+        "UPDATE onboarding_sessions SET cumulative_cost_usd = COALESCE(cumulative_cost_usd, 0) + ? WHERE id = ?",
+        (cost_f, session_id),
+    )
+    db.commit()
+
+
 def find_active(db: sqlite3.Connection, *, max_age_hours: int = 24) -> Session | None:
     """Return the most recently active un-completed session, or ``None``.
 
@@ -157,8 +207,7 @@ def find_active(db: sqlite3.Connection, *, max_age_hours: int = 24) -> Session |
     """
     cutoff = "datetime('now', ?)"
     row = db.execute(
-        f"""SELECT id, history_json, captured_blocks_json, started_at,
-                   last_turn_at, completed_at, error_state
+        f"""SELECT {_SESSION_COLUMNS}
             FROM onboarding_sessions
             WHERE completed_at IS NULL
               AND last_turn_at >= {cutoff}
@@ -168,15 +217,7 @@ def find_active(db: sqlite3.Connection, *, max_age_hours: int = 24) -> Session |
     ).fetchone()
     if row is None:
         return None
-    return Session(
-        id=row[0],
-        history=json.loads(row[1]),
-        captured_blocks=json.loads(row[2]),
-        started_at=row[3],
-        last_turn_at=row[4],
-        completed_at=row[5],
-        error_state=row[6],
-    )
+    return _row_to_session(row)
 
 
 # ── Per-tester credentials (#339) ────────────────────────────────────────────
@@ -238,6 +279,26 @@ def get_credentials(db: sqlite3.Connection, session_id: str) -> Credentials | No
     )
 
 
+def lifetime_cost_usd(db: sqlite3.Connection) -> float:
+    """Return the all-time onboarding-chat cost on this stack.
+
+    Sums ``cumulative_cost_usd`` across every row in ``onboarding_sessions``
+    — onboarding sessions are the only source of LLM cost we track per-stack
+    today. Returns 0.0 on a fresh DB or if the column hasn't been migrated
+    in yet (older stacks before 2026-05-02).
+    """
+    try:
+        row = db.execute("SELECT COALESCE(SUM(cumulative_cost_usd), 0) FROM onboarding_sessions").fetchone()
+    except sqlite3.OperationalError:
+        return 0.0
+    if row is None or row[0] is None:
+        return 0.0
+    try:
+        return float(row[0])
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def has_any_credentials(db: sqlite3.Connection) -> bool:
     """True iff at least one ``onboarding_sessions`` row has an OpenRouter
     key set, regardless of session lifecycle state.
@@ -269,27 +330,18 @@ def find_credentials_only(db: sqlite3.Connection) -> Session | None:
     the two without branching.
     """
     row = db.execute(
-        """SELECT id, history_json, captured_blocks_json, started_at,
-                  last_turn_at, completed_at, error_state
-           FROM onboarding_sessions
-           WHERE completed_at IS NULL
-             AND history_json = '[]'
-             AND (
-                   tester_openrouter_key IS NOT NULL
-                OR tester_rapidapi_key   IS NOT NULL
-                OR tester_google_key     IS NOT NULL
-             )
-           ORDER BY last_turn_at DESC
-           LIMIT 1"""
+        f"""SELECT {_SESSION_COLUMNS}
+            FROM onboarding_sessions
+            WHERE completed_at IS NULL
+              AND history_json = '[]'
+              AND (
+                    tester_openrouter_key IS NOT NULL
+                 OR tester_rapidapi_key   IS NOT NULL
+                 OR tester_google_key     IS NOT NULL
+              )
+            ORDER BY last_turn_at DESC
+            LIMIT 1"""
     ).fetchone()
     if row is None:
         return None
-    return Session(
-        id=row[0],
-        history=json.loads(row[1]),
-        captured_blocks=json.loads(row[2]),
-        started_at=row[3],
-        last_turn_at=row[4],
-        completed_at=row[5],
-        error_state=row[6],
-    )
+    return _row_to_session(row)

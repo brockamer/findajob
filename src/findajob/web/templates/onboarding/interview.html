@@ -23,11 +23,16 @@
   </div>
   {% endif %}
 
-  <div class="flex items-center gap-3 text-xs text-slate-600">
+  <div id="progress-row" class="flex flex-wrap items-center gap-3 text-xs text-slate-600">
     <span class="inline-flex items-center px-2 py-1 rounded bg-slate-100 border"
           data-captured-count="{{ captured_count }}"
           data-required-count="{{ required_count }}">
       Captured {{ captured_count }} of {{ required_count }} required blocks
+    </span>
+    <span class="inline-flex items-center px-2 py-1 rounded bg-slate-100 border"
+          data-cumulative-cost-usd="{{ '%.4f' | format(cumulative_cost_usd or 0) }}"
+          title="Sum of OpenRouter's reported per-turn cost. Matches your OpenRouter dashboard.">
+      ${{ '%.2f' | format(cumulative_cost_usd or 0) }} spent
     </span>
     {% if finalize_ready %}
     <span class="text-green-700 font-medium">All blocks captured — ready to finalize.</span>
@@ -57,9 +62,9 @@
         hx-on::after-request="this.querySelector('textarea').value = ''"
         class="space-y-2">
     <input type="hidden" name="session_id" value="{{ session_id }}">
-    <textarea name="message" rows="3" required
-              class="w-full border rounded p-2 font-sans text-sm disabled:bg-slate-50 disabled:text-slate-500"
-              placeholder="Type your reply..."></textarea>
+    <textarea name="message" rows="4" required
+              class="w-full border rounded p-2 font-sans text-sm resize-y disabled:bg-slate-50 disabled:text-slate-500"
+              placeholder="Type your reply… (drag the corner to resize — useful for pasting your resume)"></textarea>
     <div class="flex justify-end">
       <button type="submit"
               class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-slate-400 disabled:cursor-wait">

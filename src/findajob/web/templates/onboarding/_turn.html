@@ -13,6 +13,24 @@
 {% set turn = {"role": "assistant", "content": assistant_message} %}
 {% include "onboarding/_turn_bubble.html" %}
 
+{# Out-of-band swap: refresh the captured-count + cost-spent badges after
+   each turn without a full page reload. #}
+<div id="progress-row" hx-swap-oob="true" class="flex flex-wrap items-center gap-3 text-xs text-slate-600">
+  <span class="inline-flex items-center px-2 py-1 rounded bg-slate-100 border"
+        data-captured-count="{{ captured_count }}"
+        data-required-count="{{ required_count }}">
+    Captured {{ captured_count }} of {{ required_count }} required blocks
+  </span>
+  <span class="inline-flex items-center px-2 py-1 rounded bg-slate-100 border"
+        data-cumulative-cost-usd="{{ '%.4f' | format(cumulative_cost_usd or 0) }}"
+        title="Sum of OpenRouter's reported per-turn cost. Matches your OpenRouter dashboard.">
+    ${{ '%.2f' | format(cumulative_cost_usd or 0) }} spent
+  </span>
+  {% if finalize_ready %}
+  <span class="text-green-700 font-medium">All blocks captured — ready to finalize.</span>
+  {% endif %}
+</div>
+
 {% if finalize_ready %}
 <section id="finalize-block" hx-swap-oob="true"
          class="border border-green-300 bg-green-50 rounded p-4 space-y-3 mt-4">

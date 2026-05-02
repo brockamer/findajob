@@ -32,6 +32,7 @@ from findajob.onboarding import OnboardingSmokeCheckFailed, inject
 from findajob.onboarding.interview_runner import InterviewRunnerError, run_turn
 from findajob.onboarding.parser import ALLOWED_FILENAMES, parse_emission
 from findajob.onboarding.session_store import (
+    add_turn_cost,
     append_turn,
     find_active,
     find_credentials_only,
@@ -191,6 +192,7 @@ def _render_chat(
     captured: dict[str, str],
     keys_collected: bool = False,
     openrouter_last4: str = "",
+    cumulative_cost_usd: float = 0.0,
     error: str | None = None,
     status_code: int = 200,
 ) -> HTMLResponse:
@@ -206,6 +208,7 @@ def _render_chat(
             "finalize_ready": len(captured) >= len(ALLOWED_FILENAMES),
             "keys_collected": keys_collected,
             "openrouter_last4": openrouter_last4,
+            "cumulative_cost_usd": cumulative_cost_usd,
             "error": error,
         },
         status_code=status_code,
@@ -249,7 +252,7 @@ def start_interview(request: Request) -> HTMLResponse | RedirectResponse:
         keys_collected, openrouter_last4 = _keys_collected_for(conn, session_id)
 
         try:
-            assistant_text, _usage = run_turn(
+            assistant_text, usage = run_turn(
                 operator_key=chat_key,
                 system_prompt=_system_prompt(request),
                 history=[],
@@ -272,6 +275,7 @@ def start_interview(request: Request) -> HTMLResponse | RedirectResponse:
                 status_code=200,
             )
 
+        add_turn_cost(conn, session_id, usage)
         append_turn(conn, session_id, "user", _KICKOFF_USER_MESSAGE)
         append_turn(conn, session_id, "assistant", assistant_text)
         captured = _captured_from_history(
@@ -306,7 +310,7 @@ def post_turn(
             raise _unavailable_503()
 
         try:
-            assistant_text, _usage = run_turn(
+            assistant_text, usage = run_turn(
                 operator_key=chat_key,
                 system_prompt=_system_prompt(request),
                 history=sess.history,
@@ -322,6 +326,7 @@ def post_turn(
                 err=e,
             )
 
+        add_turn_cost(conn, session_id, usage)
         append_turn(conn, session_id, "user", message)
         append_turn(conn, session_id, "assistant", assistant_text)
 
@@ -334,6 +339,9 @@ def post_turn(
             update_captured_blocks(conn, session_id, captured)
 
         keys_collected, openrouter_last4 = _keys_collected_for(conn, session_id)
+        # Re-read the session to pick up the cumulative cost we just added.
+        refreshed = get_session(conn, session_id)
+        cumulative_cost = refreshed.cumulative_cost_usd if refreshed else 0.0
 
         templates = request.app.state.templates
         return templates.TemplateResponse(
@@ -348,6 +356,7 @@ def post_turn(
                 "finalize_ready": len(captured) >= len(ALLOWED_FILENAMES),
                 "keys_collected": keys_collected,
                 "openrouter_last4": openrouter_last4,
+                "cumulative_cost_usd": cumulative_cost,
             },
         )
     finally:
@@ -372,6 +381,7 @@ def resume_interview(request: Request, session_id: str) -> HTMLResponse:
         captured=sess.captured_blocks,
         keys_collected=keys_collected,
         openrouter_last4=openrouter_last4,
+        cumulative_cost_usd=sess.cumulative_cost_usd,
         error=sess.error_state,
     )
 
@@ -395,6 +405,7 @@ def finalize_interview(
             raise HTTPException(status_code=404, detail="session not found")
 
         keys_collected, openrouter_last4 = _keys_collected_for(conn, session_id)
+        cumulative_cost = sess.cumulative_cost_usd
 
         missing = [name for name in ALLOWED_FILENAMES if name not in sess.captured_blocks]
         if missing:
@@ -405,6 +416,7 @@ def finalize_interview(
                 captured=sess.captured_blocks,
                 keys_collected=keys_collected,
                 openrouter_last4=openrouter_last4,
+                cumulative_cost_usd=cumulative_cost,
                 error=(
                     f"Interview not yet complete — still missing {len(missing)} of "
                     f"{len(ALLOWED_FILENAMES)} required blocks: {', '.join(missing)}. "
@@ -422,6 +434,7 @@ def finalize_interview(
                 captured=sess.captured_blocks,
                 keys_collected=False,
                 openrouter_last4="",
+                cumulative_cost_usd=cumulative_cost,
                 error=(
                     "Your OpenRouter key was cleared from this session. Go back to "
                     "/onboarding/ Step 1, save your keys again, then return here and "
@@ -447,6 +460,7 @@ def finalize_interview(
                 captured=sess.captured_blocks,
                 keys_collected=keys_collected,
                 openrouter_last4=openrouter_last4,
+                cumulative_cost_usd=cumulative_cost,
                 error=(
                     "OpenRouter rejected the key when we tried to verify it. "
                     f"{e.user_message} Use 'Change keys' on /onboarding/ to "
