@@ -16,6 +16,34 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 - **Corrected per-onboarding cost claim ~$0.50 → ~$3-6 (#401).** The "~$0.50 per onboarding with prompt caching" claim shipped in v0.11.0 was wrong by a factor of ~10. Real-world walkthrough on `findajob-test` cost $5.39 over 100 turns / ~70 minutes with caching enabled. Voice-samples emission (~18KB per emission) is the dominant cost driver; long interviews compound. Updated cost claims in `README.md`, `docs/setup/README.md`, `docs/setup/install-docker.md`, `templates/onboarding/index.html`, `CLAUDE.md`, and the v0.11.0 CHANGELOG entry.
 
+- **Onboarding chat: assistant bubbles render markdown (#401 PR B).** Previously the chat view auto-escaped assistant content, so headings, bold, and numbered lists appeared as raw `**markdown**` syntax. Server-side `render_chat_assistant_html()` (in `findajob.web.markdown`) now renders the assistant's response, with `<<<FILE: …>>>` emission blocks replaced by inline "Captured: {name}" badges. The parser still reads from the stored transcript — render-only change, parser invariants preserved. Shared regex constant (`BLOCK_RE`) extracted to `findajob.onboarding.parser` so render-side and parser-side patterns can never drift.
+
+- **Onboarding chat: auto-scroll on turn append (#401 PR B).** `#messages` scrolls to bottom on every HTMX swap (`hx-on::after-swap`) and on full-page resume. Combined with the markdown render fix, multi-turn interviews no longer slide off the viewport silently.
+
+- **Onboarding chat: Finalize button reliably appears (#401 PR B).** The `<section id="finalize-block">` placeholder now renders unconditionally so subsequent HTMX OOB swaps from per-turn responses can populate it without a page reload. Previously the section was gated by `{% if finalize_ready %}` at first render; when a fresh interview hadn't yet captured all blocks, the OOB target didn't exist and the swap silently failed — Finalize never appeared until the user manually reloaded.
+
+- **Onboarding chat: nav lifetime-cost badge ticks per turn (#401 PR B).** Per-turn HTMX response now includes an OOB swap of the nav-bar `#nav-lifetime-cost` element so the operator's running spend updates without reloading.
+
+- **Onboarding chat: Start Interview button shows loading state (#401 PR B).** Click disables the button and swaps in a spinner-with-text during the ~5–10s kickoff round-trip. Implemented via Alpine.js (already loaded in `base.html`).
+
+- **Onboarding `/onboarding/`: resume banner suppressed on fresh stacks (#401 PR B).** The credentials-only session row created by Step 1 no longer triggers the "resume your in-progress interview" banner before any chat history exists. `_active_session_for_index` now requires `len(history) > 0` in addition to `find_active`'s "no `completed_at` + recent `last_turn_at`" filter.
+
+### Changed
+
+- **Onboarding interviewer prompt revisions (#401 PR B).** Phase 4 Pass A (exclusions) and Pass B (positive patterns) now open with proactive lettered category suggestions tailored to the user's documents — the user prunes/adds rather than enumerating from scratch. Lists across all phases are lettered/numbered for quick selection (global instruction added to "Running context"). ntfy explanation simplified with a default `findajob-{firstname}-{yyyymm}` topic suggestion. Phase 5 hides the "ten required files" abstraction in favor of four user-visible groups (a. Identity / b. Targeting / c. Filters / d. Writing voice); user replies "next" or "redo {a|b|c|d}". `<<<FILE: …>>>` block emission is now an internal protocol (still emitted for the parser, rendered as a "Captured" badge in the UI, never narrated to the user). Anti-re-emit guidance added — break the truncation-hallucination loop observed at turns 95/97/99 of the v0.11.0 walkthrough that drove ~$1+ of unnecessary voice-samples re-emissions per affected interview.
+
+### Added
+
+- **Playwright walkthrough harness (#401 PR B).** `scripts/walkthrough_harness.py` + `scripts/walkthrough_replay_corpus.py` drive an autonomous end-to-end onboarding interview against a target stack, replaying answers from a prior walkthrough transcript to control for the prompt-input variable. Captures DOM snapshots, console messages, cumulative cost, and a `findings.md` PASS/FAIL/REVIEW report against #401's P1 acceptance criteria. Used as the pre-merge verification gate; not part of the production runtime. Secret-redaction pass scrubs Step 1 form-input values from DOM snapshots before they're written to disk.
+
+- **CI: PR-branch image publishing (#401 PR B).** `.github/workflows/build-image.yml` now builds and pushes `ghcr.io/brockamer/findajob:pr-{N}` for every PR targeting `main`. PR builds do NOT push `:latest` — that stays aligned with main HEAD. Required so pre-merge walkthrough verification can run against the actual PR code on `findajob-test`.
+
+### Migration required
+
+No code-side migration. Stacks that pull the new image and recreate the container pick up all changes automatically.
+
+**Stack-config patch (pre-`:v0.10.0` stacks only):** stacks deployed before `:v0.10.0` may be missing the `./state/.backups:/app/.backups` bind mount. The injector writes pre-overwrite backups of `data/.env` and `candidate_context/` into `/app/.backups/{UTC-stamp}/`; without the mount, finalize and key rotation crash with `PermissionError`. See [`docs/setup/install-docker.md` → Operating an existing stack → Adding the `.backups` bind mount](docs/setup/install-docker.md) for the patch procedure. Stacks already on `:v0.10.x` or later are fine.
+
 ## [0.11.0] — 2026-05-02
 
 Minor bump. Onboarding goes in-app-only — the paste-back path is retired in favor of a single supported flow, with a same-PR fix for the loop-back bug that stranded testers on `/onboarding/` after a completed interview. Adds prompt caching, a per-turn running-cost badge in the chat, and a lifetime onboarding-cost badge in the top nav so testers can see what they've spent without leaving findajob. No schema migration, no manual user step — `docker compose pull && up -d` is the entire upgrade. Operator's stack and `findajob-test` (both on `:latest`) get the new behavior; tester stacks (alice, papa, dave, judy, tango) on `:v0.10` are unaffected and roll forward with the next cohort wave.
