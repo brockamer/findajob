@@ -21,6 +21,7 @@ _SOURCE_VALUES = (
     "jobsapi_indeed",
     "gmail_linkedin",
     "gmail_google",
+    "jsearch",
     "manual",
 )
 _STAGE_VALUES = (
