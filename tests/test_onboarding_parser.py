@@ -237,3 +237,14 @@ def test_all_three_new_optionals_together() -> None:
     result = parse_emission(blob)
     assert {"jsearch_queries.txt", "feed-urls.txt", "linkedin-alerts.md"} <= set(result.found.keys())
     assert result.unknown == []
+
+
+def test_rapidapi_feed_txt_recognized_as_optional() -> None:
+    """#408: rapidapi_feed.txt is a new OPTIONAL filename emitted by Section 3h."""
+    blocks = dict(_CLEAN_BLOCKS)
+    blocks["rapidapi_feed.txt"] = "jsearch\n"
+    blob = "\n\n".join(_wrap(n, b) for n, b in blocks.items())
+    result = parse_emission(blob)
+    assert "rapidapi_feed.txt" in result.found
+    assert result.found["rapidapi_feed.txt"].strip() == "jsearch"
+    assert result.unknown == []

@@ -33,6 +33,7 @@ OPTIONAL_FILENAMES: tuple[str, ...] = (
     "jsearch_queries.txt",
     "feed-urls.txt",
     "linkedin-alerts.md",
+    "rapidapi_feed.txt",
 )
 
 _KNOWN_FILENAMES: frozenset[str] = frozenset(ALLOWED_FILENAMES) | frozenset(OPTIONAL_FILENAMES)
