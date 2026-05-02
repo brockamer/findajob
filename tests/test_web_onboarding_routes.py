@@ -30,6 +30,23 @@ CREATE TABLE audit_log (
 );
 """
 
+# Extended schema for tests that need the onboarding_sessions table.
+# Credential columns (tester_*) are added by migrate_schema() inside create_app().
+_SCHEMA_WITH_SESSIONS = (
+    _MINIMAL_SCHEMA
+    + """
+CREATE TABLE onboarding_sessions (
+    id TEXT PRIMARY KEY,
+    history_json TEXT NOT NULL,
+    captured_blocks_json TEXT NOT NULL DEFAULT '{}',
+    started_at TEXT NOT NULL,
+    last_turn_at TEXT NOT NULL,
+    completed_at TEXT,
+    error_state TEXT
+);
+"""
+)
+
 
 @pytest.fixture()
 def client(tmp_path: Path) -> TestClient:
@@ -89,3 +106,57 @@ def test_tools_page_links_to_onboarding_rerun(client: TestClient) -> None:
     body = resp.text
     assert "/onboarding/?mode=rerun" in body
     assert "Run onboarding interview" in body
+
+
+@pytest.fixture()
+def client_with_credentials_only_session(tmp_path: Path) -> TestClient:
+    """Client whose DB holds a credentials-only session (history=[]) but no
+    chat turns.  This is the exact post-Step-1 state that triggered the
+    resume-banner false positive (#401 PR B Task 1).
+    """
+    db_path = tmp_path / "pipeline.db"
+    conn = sqlite3.connect(db_path)
+    conn.executescript(_SCHEMA_WITH_SESSIONS)
+    # Insert a credentials-only session row: history_json='[]', no completed_at,
+    # last_turn_at=now — satisfies find_active's filter but has no chat history.
+    conn.execute(
+        """INSERT INTO onboarding_sessions
+               (id, history_json, captured_blocks_json, started_at, last_turn_at)
+           VALUES ('cred-only-session', '[]', '{}',
+                   datetime('now'), datetime('now'))"""
+    )
+    # Populate the tester credential column directly (migrate_schema will have
+    # added it by the time create_app runs, but we need it for has_any_credentials
+    # to gate _has_in_app_interview_capability correctly).
+    conn.commit()
+    conn.close()
+    (tmp_path / "companies").mkdir()
+    app = create_app(
+        companies_root=tmp_path / "companies",
+        db_path=db_path,
+        base_root=tmp_path,
+    )
+    # Set the credential column after migrate_schema has run (column now exists).
+    conn2 = sqlite3.connect(db_path)
+    conn2.execute(
+        "UPDATE onboarding_sessions SET tester_openrouter_key = ? WHERE id = ?",
+        ("sk-or-v1-fake-tester-key-for-test", "cred-only-session"),
+    )
+    conn2.commit()
+    conn2.close()
+    return TestClient(app, follow_redirects=False)
+
+
+def test_credentials_only_session_does_not_trigger_resume_banner(
+    client_with_credentials_only_session: TestClient,
+) -> None:
+    """A credentials-only session (history=[]) must NOT show the resume banner.
+
+    Bug: _active_session_for_index returned the credentials-only row created by
+    POST /onboarding/keys because find_active matched it (no completed_at, recent
+    last_turn_at).  The fix adds a post-find_active guard: if history is empty,
+    treat it as no active session.
+    """
+    resp = client_with_credentials_only_session.get("/onboarding/")
+    assert resp.status_code == 200
+    assert 'id="resume-banner"' not in resp.text

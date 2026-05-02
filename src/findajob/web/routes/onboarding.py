@@ -114,7 +114,14 @@ def _active_session_for_index(request: Request) -> Session | None:
     except sqlite3.Error:
         return None
     try:
-        return find_active(conn)
+        active = find_active(conn)
+        # A credentials-only session row (created by POST /onboarding/keys)
+        # satisfies find_active's filter (no completed_at, recent last_turn_at)
+        # but has history=[]. The resume banner should only fire when the user
+        # has actually started chatting.
+        if active is not None and not active.history:
+            active = None
+        return active
     except sqlite3.Error:
         return None
     finally:
