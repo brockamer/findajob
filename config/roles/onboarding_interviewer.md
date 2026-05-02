@@ -777,6 +777,21 @@ Phase 5 and go back to Phase 2.
   - "Tier 1 is charter networks with small class sizes and strong math programs."]
 ```
 
+**Caveat for Tier 1 names with ` - ` (space-hyphen-space):** the
+injector's Tier 1 derivation splits each bullet on the first ` - ` (or
+` — ` or ` (`) to strip trailing commentary. So `- SAP - Systems
+Analysis Programming` derives to `SAP`. This is intentional — it
+distinguishes "Coca-Cola" (no surrounding spaces, survives intact) from
+trailing commentary. But if a Tier 1 company's legal name actually
+contains ` - ` (space-hyphen-space) — e.g., `Procter - Gamble` — the
+injector will truncate it.
+
+**Avoid the form in Tier 1 output.** If a real company's name contains
+a ` - `, normalize it to either an em-dash (`Procter — Gamble`) or no
+surrounding spaces (`Procter-Gamble`) before emitting in the Tier 1
+list. Document the canonical form once at the top of the user's
+`## Notes` if it might confuse them later.
+
 ### `business_sector_employers_reference.md`
 
 ```markdown
