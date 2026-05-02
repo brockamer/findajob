@@ -19,7 +19,6 @@ ALLOWED_FILENAMES: tuple[str, ...] = (
     "master_resume.md",
     "target_companies.md",
     "business_sector_employers_reference.md",
-    "jsearch_queries.txt",
     "prefilter_rules.yaml",
     "in_domain_patterns.yaml",
     "display_name.txt",
@@ -29,7 +28,12 @@ ALLOWED_FILENAMES: tuple[str, ...] = (
 
 # Recognized but not required. If present in an emission, the injector
 # processes them; if absent, no error and no entry in ParsedEmission.missing.
-OPTIONAL_FILENAMES: tuple[str, ...] = ("voice-samples.md",)
+OPTIONAL_FILENAMES: tuple[str, ...] = (
+    "voice-samples.md",
+    "jsearch_queries.txt",
+    "feed-urls.txt",
+    "linkedin-alerts.md",
+)
 
 _KNOWN_FILENAMES: frozenset[str] = frozenset(ALLOWED_FILENAMES) | frozenset(OPTIONAL_FILENAMES)
 

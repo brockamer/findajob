@@ -27,10 +27,17 @@ def _clean_emission() -> str:
     return "\n\n".join(_wrap(n, b) for n, b in _CLEAN_BLOCKS.items())
 
 
-def test_allowed_filenames_are_exactly_ten() -> None:
-    """#328 added display_name.txt, timezone.txt, ntfy_topic.txt (was 7, now 10)."""
-    assert len(ALLOWED_FILENAMES) == 10
-    assert set(ALLOWED_FILENAMES) == set(_CLEAN_BLOCKS)
+def test_allowed_filenames_are_exactly_nine() -> None:
+    """#283: jsearch_queries.txt moved to OPTIONAL (was 10, now 9 ALLOWED).
+
+    Pre-#283: profile.md, master_resume.md, target_companies.md,
+    business_sector_employers_reference.md, jsearch_queries.txt,
+    prefilter_rules.yaml, in_domain_patterns.yaml, display_name.txt,
+    timezone.txt, ntfy_topic.txt.
+    """
+    assert len(ALLOWED_FILENAMES) == 9
+    assert "jsearch_queries.txt" not in ALLOWED_FILENAMES
+    assert "jsearch_queries.txt" in OPTIONAL_FILENAMES
 
 
 def test_clean_emission_all_required_found() -> None:
@@ -143,7 +150,8 @@ def test_dangling_open_delimiter_is_missing() -> None:
 def test_blank_input_returns_all_missing() -> None:
     result = parse_emission("")
     assert result.found == {}
-    assert set(result.missing) == set(_CLEAN_BLOCKS)
+    # missing must be exactly the ALLOWED set (jsearch_queries.txt is OPTIONAL → not missing)
+    assert set(result.missing) == set(ALLOWED_FILENAMES)
     assert result.unknown == []
 
 
@@ -185,3 +193,47 @@ def test_truly_unknown_file_still_lands_in_unknown() -> None:
     blob = _clean_emission() + "\n\n" + _wrap("not-a-real-file.txt", "garbage")
     result = parse_emission(blob)
     assert "not-a-real-file.txt" in result.unknown
+
+
+# ── #283 new OPTIONAL filenames ──────────────────────────────────────────────
+
+
+def test_jsearch_queries_now_optional_not_in_missing_when_absent() -> None:
+    """#283: jsearch_queries.txt moved ALLOWED → OPTIONAL; absence is no longer a 'missing'."""
+    partial_blocks = {k: v for k, v in _CLEAN_BLOCKS.items() if k != "jsearch_queries.txt"}
+    blob = "\n\n".join(_wrap(n, b) for n, b in partial_blocks.items())
+    result = parse_emission(blob)
+    assert "jsearch_queries.txt" not in result.missing
+    assert result.missing == []  # all 9 remaining ALLOWED present
+
+
+def test_feed_urls_txt_recognized_as_optional() -> None:
+    """#283: feed-urls.txt is a new OPTIONAL filename."""
+    blocks = dict(_CLEAN_BLOCKS)
+    blocks["feed-urls.txt"] = "https://boards.greenhouse.io/acme\nhttps://jobs.lever.co/example\n"
+    blob = "\n\n".join(_wrap(n, b) for n, b in blocks.items())
+    result = parse_emission(blob)
+    assert "feed-urls.txt" in result.found
+    assert result.found["feed-urls.txt"] == "https://boards.greenhouse.io/acme\nhttps://jobs.lever.co/example\n"
+    assert result.unknown == []
+
+
+def test_linkedin_alerts_md_recognized_as_optional() -> None:
+    """#283: linkedin-alerts.md is a new OPTIONAL filename."""
+    blocks = dict(_CLEAN_BLOCKS)
+    blocks["linkedin-alerts.md"] = "# LinkedIn alerts\n- [ ] Step 1\n"
+    blob = "\n\n".join(_wrap(n, b) for n, b in blocks.items())
+    result = parse_emission(blob)
+    assert "linkedin-alerts.md" in result.found
+    assert "linkedin-alerts.md" not in result.unknown
+
+
+def test_all_three_new_optionals_together() -> None:
+    """#283: jsearch_queries.txt + feed-urls.txt + linkedin-alerts.md present together — none flagged unknown."""
+    blocks = dict(_CLEAN_BLOCKS)
+    blocks["feed-urls.txt"] = "https://boards.greenhouse.io/acme\n"
+    blocks["linkedin-alerts.md"] = "# LinkedIn alerts\n"
+    blob = "\n\n".join(_wrap(n, b) for n, b in blocks.items())
+    result = parse_emission(blob)
+    assert {"jsearch_queries.txt", "feed-urls.txt", "linkedin-alerts.md"} <= set(result.found.keys())
+    assert result.unknown == []
