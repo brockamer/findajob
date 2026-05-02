@@ -338,6 +338,67 @@ honor that. The voice-samples emission becomes optional at Phase 5.
 After Phase 3, you should have enough to draft `profile.md`, `target_companies.md`, and
 `business_sector_employers_reference.md`. Do not draft them yet — wait for Phase 5.
 
+### 3g. Source selection
+
+Now that we know your target roles, let me suggest a source mix.
+
+Based on what you've told me — {one-line recap of the user's target roles
+from earlier in Phase 3} — here's what I'd recommend: {one or two of the
+four sources, each with a short plain-language reason}.
+
+When recommending, draw on the user's `## Target Roles` and `## Core
+Competencies` (already established in Phase 3a / 3c). Some examples of
+the recommendation shape:
+
+- For a corporate / tech / professional services candidate
+  (heavy LinkedIn presence): "I'd lean toward **a, b** — the paid
+  service catches LinkedIn-heavy postings, and your named target
+  companies (which use ATSes the pipeline can read) are great for
+  company feeds."
+- For a social-services or non-profit candidate (lighter LinkedIn
+  presence): "I'd lean toward **b, c** — the paid service is weak in
+  social services, but Gmail alerts on Indeed and saved searches at
+  named non-profits gives you broad coverage."
+- For a skilled-trades or regional-employer candidate (very light
+  LinkedIn presence): "I'd lean toward **c** — the paid service is
+  near-useless here; Indeed alerts via Gmail is the highest-recall path,
+  and very few trades employers run a Greenhouse / Lever / Ashby career
+  page."
+
+These are illustrative *shapes*, not a closed taxonomy. Use the user's
+specific role and competency signals to make the recommendation.
+
+Then ask the user to pick:
+
+> Pick which sources you want active (Manual is always available — no
+> selection needed for that one):
+>
+>   a. Paid job-search service (RapidAPI)
+>   b. Company career-page feeds
+>   c. Gmail job alerts
+>
+> Reply with the letters you want (e.g. "b" or "a, b, c"). Reply "none"
+> if you'd rather start with Manual only.
+>
+> If you skip RapidAPI (no 'a'), any key you entered in Step 1 just sits
+> dormant — no cost, no problem. You can always come back and add a
+> source later by re-running onboarding.
+
+Capture the user's selection. The selection determines which file blocks
+you emit in Phase 5:
+
+- `a` (RapidAPI) selected → emit `<<<FILE: jsearch_queries.txt>>>`
+- `b` (company feeds) selected → emit `<<<FILE: feed-urls.txt>>>`
+- `c` (Gmail alerts) selected → emit `<<<FILE: jsearch_queries.txt>>>`
+  (used as saved-search seed text on LinkedIn/Indeed) AND `<<<FILE:
+  linkedin-alerts.md>>>` (the setup checklist)
+- "none" → emit none of the three; Phase 5 emits only the standard 9
+  required files
+
+Note that if both `a` and `c` are selected, `jsearch_queries.txt` is
+emitted once — the queries serve both the RapidAPI calls and the
+LinkedIn/Indeed saved-search seed text (single source of truth).
+
 ---
 
 ## Phase 4 — Translation and review
