@@ -43,7 +43,6 @@ _ALL_DESTINATIONS: dict[str, str] = {
     "master_resume.md": "candidate_context/master_resume.md",
     "target_companies.md": "config/target_companies.md",
     "business_sector_employers_reference.md": "config/business_sector_employers_reference.md",
-    "jsearch_queries.txt": "config/jsearch_queries.txt",
     "prefilter_rules.yaml": "config/prefilter_rules.yaml",
     "in_domain_patterns.yaml": "config/in_domain_patterns.yaml",
     "display_name.txt": "candidate_context/display_name.txt",
@@ -61,6 +60,9 @@ _ENV_EXAMPLE_RELPATH = "data/.env.example"
 # required destinations.
 _OPTIONAL_DESTINATIONS: dict[str, str] = {
     "voice-samples.md": "candidate_context/voice_samples/voice-samples.md",
+    "jsearch_queries.txt": "config/jsearch_queries.txt",
+    "feed-urls.txt": "config/feed_urls.txt",
+    "linkedin-alerts.md": "candidate_context/linkedin-alerts.md",
 }
 
 _COMPANIES_OF_INTEREST_DEST = "config/companies_of_interest.txt"
@@ -333,15 +335,23 @@ def inject(
                 fh.write(found[name])
             tempfiles.append((tmp_name, dest))
 
-        # Stage optional files (voice-samples.md, etc.) — clean + redact first
-        if "voice-samples.md" in found:
-            processed, _redaction_ok = process_voice_samples(found["voice-samples.md"], redact=redact_voice_samples)
-            if processed:
-                dest = base_root / _OPTIONAL_DESTINATIONS["voice-samples.md"]
-                fd, tmp_name = tempfile.mkstemp(prefix=dest.name + ".", suffix=".tmp", dir=str(dest.parent))
-                with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
-                    fh.write(processed)
-                tempfiles.append((tmp_name, dest))
+        # Stage optional files. voice-samples.md goes through process_voice_samples
+        # (clean + LLM-redact); the others (jsearch_queries.txt, feed-urls.txt,
+        # linkedin-alerts.md) are plain-write.
+        for opt_name, opt_relpath in _OPTIONAL_DESTINATIONS.items():
+            if opt_name not in found:
+                continue
+            body = found[opt_name]
+            if opt_name == "voice-samples.md":
+                processed, _redaction_ok = process_voice_samples(body, redact=redact_voice_samples)
+                if not processed:
+                    continue  # voice-samples processing returned empty → skip write
+                body = processed
+            dest = base_root / opt_relpath
+            fd, tmp_name = tempfile.mkstemp(prefix=dest.name + ".", suffix=".tmp", dir=str(dest.parent))
+            with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
+                fh.write(body)
+            tempfiles.append((tmp_name, dest))
 
         # Stage the derived companies_of_interest.txt
         coi_body = derive_companies_of_interest(found["target_companies.md"])

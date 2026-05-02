@@ -18,6 +18,7 @@ from findajob.onboarding.injector import (
     is_complete,
     mark_complete,
 )
+from findajob.onboarding.parser import ALLOWED_FILENAMES
 
 _MIN_FILES = {
     "profile.md": "# Profile\n",
@@ -43,12 +44,36 @@ _MIN_FILES = {
 }
 
 
+def _minimal_found_dict() -> dict[str, str]:
+    """Build the minimum 'found' dict that injector.inject() requires (all ALLOWED present).
+
+    Excludes optional source-config files (jsearch_queries.txt, feed-urls.txt,
+    linkedin-alerts.md) — tests that want them add them individually.
+    """
+    return {
+        "profile.md": "# Profile\n## Identity\nTest User\n",
+        "master_resume.md": "# Resume\n## Contact\nTest User\n",
+        "target_companies.md": "## Tier 1 — Active Focus\n- Acme\n",
+        "business_sector_employers_reference.md": "## Categories\n### Foo\n- Acme\n",
+        "prefilter_rules.yaml": "hard_rejects:\n  spam:\n    - '\\bspam\\b'\n",
+        "in_domain_patterns.yaml": "positive:\n  - '\\bbackend\\s+engineer\\b'\n",
+        "display_name.txt": "Test User",
+        "timezone.txt": "America/Los_Angeles",
+        "ntfy_topic.txt": "test-topic-2026",
+    }
+
+
 def test_all_destinations_map_required_filenames(tmp_path: Path) -> None:
-    """Every plain-file ALLOWED_FILENAMES key has a destination — except env-merge ones."""
+    """Every plain-file ALLOWED_FILENAMES key has a destination — except env-merge ones.
+
+    jsearch_queries.txt is OPTIONAL (moved to _OPTIONAL_DESTINATIONS in #283), so it
+    should NOT appear in _ALL_DESTINATIONS.  Compare against ALLOWED_FILENAMES directly
+    rather than _MIN_FILES to keep this invariant tight.
+    """
     from findajob.onboarding.injector import _ENV_MERGE_FILENAMES
 
-    plain_files = {n for n in _MIN_FILES if n not in _ENV_MERGE_FILENAMES}
-    assert set(_ALL_DESTINATIONS.keys()) == plain_files
+    plain_required = {n for n in ALLOWED_FILENAMES if n not in _ENV_MERGE_FILENAMES}
+    assert set(_ALL_DESTINATIONS.keys()) == plain_required
 
 
 def test_sentinel_and_companies_paths_are_stable() -> None:
@@ -629,3 +654,60 @@ def test_inject_whitespace_only_rapidapi_and_google_treated_as_blank(tmp_path: P
     # Whitespace-only values → placeholder preserved
     assert "RAPIDAPI_KEY=your_key_here" in env_content
     assert "GOOGLE_API_KEY=your_key_here" in env_content
+
+
+# ── #283: new OPTIONAL destinations (feed-urls.txt, linkedin-alerts.md) ─────
+
+
+def test_inject_writes_feed_urls_when_present(tmp_path: Path) -> None:
+    """#283 Section B: feed-urls.txt → config/feed_urls.txt (hyphen→underscore)."""
+    found = _minimal_found_dict()
+    found["feed-urls.txt"] = (
+        "https://boards.greenhouse.io/acme\n"
+        "https://jobs.lever.co/example\n"
+        "https://jobs.ashbyhq.com/zoox\n"
+    )
+    inject(tmp_path, found, openrouter_api_key="sk-test", skip_smoke_check=True)
+    feed_path = tmp_path / "config" / "feed_urls.txt"
+    assert feed_path.is_file()
+    assert "boards.greenhouse.io/acme" in feed_path.read_text()
+    assert "jobs.lever.co/example" in feed_path.read_text()
+    assert "jobs.ashbyhq.com/zoox" in feed_path.read_text()
+
+
+def test_inject_writes_linkedin_alerts_when_present(tmp_path: Path) -> None:
+    """#283 Section C: linkedin-alerts.md → candidate_context/linkedin-alerts.md."""
+    found = _minimal_found_dict()
+    found["linkedin-alerts.md"] = "# LinkedIn alerts\n- [ ] Step 1\n"
+    inject(tmp_path, found, openrouter_api_key="sk-test", skip_smoke_check=True)
+    alerts_path = tmp_path / "candidate_context" / "linkedin-alerts.md"
+    assert alerts_path.is_file()
+    assert "LinkedIn alerts" in alerts_path.read_text()
+
+
+def test_inject_manual_only_path_emits_no_optional_source_config(tmp_path: Path) -> None:
+    """#283: candidate picks 'none' (manual only) → no jsearch/feed-urls/linkedin-alerts emitted."""
+    found = _minimal_found_dict()
+    # No jsearch_queries.txt, no feed-urls.txt, no linkedin-alerts.md
+    inject(tmp_path, found, openrouter_api_key="sk-test", skip_smoke_check=True)
+    # Sentinel set, ALLOWED files committed, no optional source-config files written
+    assert (tmp_path / "data" / ".onboarding-complete").is_file()
+    assert not (tmp_path / "config" / "jsearch_queries.txt").is_file()
+    assert not (tmp_path / "config" / "feed_urls.txt").is_file()
+    assert not (tmp_path / "candidate_context" / "linkedin-alerts.md").is_file()
+
+
+def test_inject_backs_up_existing_feed_urls_before_overwrite(tmp_path: Path) -> None:
+    """#283: re-onboarding via ?mode=rerun backs up existing config/feed_urls.txt."""
+    feed_path = tmp_path / "config" / "feed_urls.txt"
+    feed_path.parent.mkdir(parents=True, exist_ok=True)
+    feed_path.write_text("https://boards.greenhouse.io/oldcompany\n")
+    found = _minimal_found_dict()
+    found["feed-urls.txt"] = "https://boards.greenhouse.io/newcompany\n"
+    result = inject(tmp_path, found, openrouter_api_key="sk-test", skip_smoke_check=True)
+    # New content committed
+    assert "newcompany" in feed_path.read_text()
+    # Old content backed up
+    backup_files = list(result.backup_dir.rglob("feed_urls.txt"))
+    assert len(backup_files) == 1
+    assert "oldcompany" in backup_files[0].read_text()
