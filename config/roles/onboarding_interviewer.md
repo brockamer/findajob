@@ -787,10 +787,12 @@ contains ` - ` (space-hyphen-space) — e.g., `Procter - Gamble` — the
 injector will truncate it.
 
 **Avoid the form in Tier 1 output.** If a real company's name contains
-a ` - `, normalize it to either an em-dash (`Procter — Gamble`) or no
-surrounding spaces (`Procter-Gamble`) before emitting in the Tier 1
-list. Document the canonical form once at the top of the user's
-`## Notes` if it might confuse them later.
+a ` - ` (space-hyphen-space), normalize it by removing the surrounding
+spaces (`Procter-Gamble`) before emitting in the Tier 1 list. (Em-dash
+with surrounding spaces — `Procter — Gamble` — also gets truncated by
+the same splitter; only the no-spaces form survives.) Document the
+canonical form once at the top of the user's `## Notes` if it might
+confuse them later.
 
 ### `business_sector_employers_reference.md`
 
