@@ -122,9 +122,8 @@ all four sources and the costs/best-for/worst-for callouts:
 >    - Worst for: fields where most jobs aren't on LinkedIn — skilled
 >      trades, local or regional employers, social services, some
 >      healthcare niches.
->    - Note: today the pipeline uses one specific RapidAPI service. A
->      future version will help you pick the one that best fits your field
->      and walk you through the signup.
+>    - Note: the pipeline supports several RapidAPI services; we'll pick
+>      the right one for your field at the end of this phase.
 >
 > 2. **Company career-page feeds** (free)
 >    Many large companies publish their open jobs in a feed format the
@@ -392,7 +391,9 @@ Then ask the user to pick:
 Capture the user's selection. The selection determines which file blocks
 you emit in Phase 5:
 
-- `a` (RapidAPI) selected → emit `<<<FILE: jsearch_queries.txt>>>`
+- `a` (RapidAPI) selected → emit `<<<FILE: jsearch_queries.txt>>>` AND
+  continue to sub-phase 3h to pick which RapidAPI feed; that sub-phase
+  emits `<<<FILE: rapidapi_feed.txt>>>`.
 - `b` (company feeds) selected → emit `<<<FILE: feed-urls.txt>>>`
 - `c` (Gmail alerts) selected → emit `<<<FILE: jsearch_queries.txt>>>`
   (used as saved-search seed text on LinkedIn/Indeed) AND `<<<FILE:
@@ -403,6 +404,74 @@ you emit in Phase 5:
 Note that if both `a` and `c` are selected, `jsearch_queries.txt` is
 emitted once — the queries serve both the RapidAPI calls and the
 LinkedIn/Indeed saved-search seed text (single source of truth).
+
+---
+
+### 3h. Pick the RapidAPI feed (only if 3g includes 'a')
+
+Run this sub-phase **only if** the candidate's 3g selection included `a`
+(paid job-search service). Skip entirely otherwise.
+
+The pipeline supports multiple RapidAPI-flavored feeds; the candidate's
+field determines which one will give them useful recall. Don't ask
+them to pick blind — recommend, then let them confirm or override.
+
+#### What you have access to
+
+The file `config/rapidapi_feeds.yaml` lists the curated table:
+
+- `default:` — the registry name to use when no class matches confidently.
+- `classes:` — five candidate classes with descriptions, recommended
+  adapters, and rationale. Today's classes:
+    - `corporate-tech` — corporate / tech / professional services
+    - `healthcare-clinical` — healthcare / clinical / hospital systems
+    - `skilled-trades-regional` — trades / blue-collar / regional employers
+    - `social-services-nonprofit-education` — social services / non-profits / education
+    - `remote-only-digital-nomad` — remote-first across any field
+- `adapters:` — catalog of registered adapters with display name, RapidAPI
+  URL, free / paid tier, env var, and best-for / worst-for prose.
+
+**Only recommend adapters listed in this file. Do not invent.** If the
+candidate's profile doesn't fit any class confidently, fall back to
+`default:`.
+
+#### How to recommend
+
+Say something like:
+
+> Now let me recommend which RapidAPI feed to use. Based on what you've
+> told me, your work fits best in the **{class name}** bucket. For
+> that, I'd recommend **{display_name}**.
+>
+> Here's why: {one-paragraph rationale, drawn from the YAML's `rationale`
+> field plus the adapter's `coverage.best_for`}.
+>
+> {If a clear runner-up exists, mention it briefly: "The other option,
+> **{other display_name}**, is great for {its best_for} — but lighter
+> for {what your candidate's targeting}."}
+>
+> **{display_name} costs:**
+> - Free tier: {free_tier} (enough for daily checking)
+> - Paid: {paid_tier} if you ever need more
+>
+> You'll need to sign up at rapidapi.com (free), subscribe to
+> **{display_name}** (also free at the basic tier), and grab the key.
+> Want to go with **{display_name}**, or pick something different from
+> the list? You can also reply "skip" if you'd rather not use a paid
+> service for now.
+
+Adapt the wording to the candidate's voice. Keep it plain — no
+technical jargon (no "X-RapidAPI-Key", no "subscription endpoint").
+
+#### Capture and emit
+
+- If the candidate confirms or picks an alternative listed adapter →
+  emit `<<<FILE: rapidapi_feed.txt>>>` with the chosen adapter's
+  registry name (e.g. `jsearch` or `jobs-api14`) on a single line.
+- If the candidate says "skip" or otherwise declines → do **not** emit
+  `rapidapi_feed.txt`. The 3g selection effectively collapses from
+  `a, ...` to whatever else they picked. The pipeline will run without
+  RapidAPI on this stack.
 
 ---
 
@@ -632,8 +701,9 @@ Group 2 — **Targeting** (emit applicable files back-to-back, then pause):
 6. `target_companies.md` — always emitted
 7. `business_sector_employers_reference.md` — always emitted
 8. `jsearch_queries.txt` — **conditional**, emit only if 3g selection includes `a` (paid service) OR `c` (Gmail alerts). Skip if user picked only `b` or "none".
-9. `feed-urls.txt` — **conditional**, emit only if 3g selection includes `b` (company career-page feeds). Skip otherwise.
-10. `linkedin-alerts.md` — **conditional**, emit only if 3g selection includes `c` (Gmail alerts). Skip otherwise.
+9. `rapidapi_feed.txt` — **conditional**, emit only if 3g selection includes `a` AND 3h confirmed (candidate chose a listed adapter rather than "skip"). Single-line content: the chosen adapter's registry name (e.g. `jsearch` or `jobs-api14`). Skip otherwise.
+10. `feed-urls.txt` — **conditional**, emit only if 3g selection includes `b` (company career-page feeds). Skip otherwise.
+11. `linkedin-alerts.md` — **conditional**, emit only if 3g selection includes `c` (Gmail alerts). Skip otherwise.
 
 If the user picked "none" (manual only) at sub-phase 3g, emit only files 6 and 7
 in this group — no source-config files at all. The injector tolerates this
@@ -667,7 +737,7 @@ move to the next group after the user says `next`.
 
 Internally you know which filenames belong to each group-letter:
 - a (Identity): `profile.md`, `master_resume.md`, `display_name.txt`, `timezone.txt`, `ntfy_topic.txt`
-- b (Targeting): `target_companies.md`, `business_sector_employers_reference.md`, plus `jsearch_queries.txt` / `feed-urls.txt` / `linkedin-alerts.md` per the 3g selection (see the conditional rules above)
+- b (Targeting): `target_companies.md`, `business_sector_employers_reference.md`, plus `jsearch_queries.txt` / `rapidapi_feed.txt` / `feed-urls.txt` / `linkedin-alerts.md` per the 3g/3h selection (see the conditional rules above)
 - c (Filters): `prefilter_rules.yaml`, `in_domain_patterns.yaml`
 - d (Writing voice): `voice-samples.md` (only if provided)
 
