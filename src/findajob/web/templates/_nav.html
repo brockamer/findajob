@@ -35,13 +35,11 @@
     {% endfor %}
     {# Lifetime onboarding-LLM cost badge. Sum of OpenRouter's per-turn
        reported `usage.cost` across every onboarding session on this stack.
-       Hidden when the operator subsidizes the chat — the tester wasn't
-       charged for it, so showing a $0.00 badge would be more confusing
-       than helpful. The defined-check protects the test paths that mount
-       a stripped-down app without going through `create_app`'s globals
-       registration; in production both globals are always set. #}
-    {% if onboarding_lifetime_cost_usd is defined and chat_subsidized_by_operator is defined and not chat_subsidized_by_operator %}
-      <li class="{% if not operator_mode %}ml-auto{% else %}ml-4{% endif %}">
+       The defined-check protects test paths that mount a stripped-down
+       app without going through `create_app`'s globals registration; in
+       production the global is always set. #}
+    {% if onboarding_lifetime_cost_usd is defined %}
+      <li class="ml-auto">
         <span class="text-xs px-2 py-1 rounded bg-slate-700/50 border border-slate-500/40 font-mono"
               title="Total OpenRouter cost for onboarding interviews on this stack. Authoritative number from your OpenRouter account.">
           ${{ '%.2f' | format(onboarding_lifetime_cost_usd()) }} onboarding
@@ -50,7 +48,7 @@
     {% endif %}
     {% if operator_mode %}
       {% set admin_active = request.url.path.startswith("/admin/") %}
-      <li class="{% if chat_subsidized_by_operator %}ml-auto{% endif %}">
+      <li>
         <a href="/admin/stacks/"
            {% if admin_active %}aria-current="page"{% endif %}
            class="px-2 py-1 rounded {% if admin_active %}bg-rose-900{% else %}hover:bg-rose-800{% endif %}">

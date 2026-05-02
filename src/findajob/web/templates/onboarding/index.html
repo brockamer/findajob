@@ -73,15 +73,9 @@
         can close the tab and resume any time.
       </p>
       <p class="text-xs text-slate-600">
-        {% if chat_subsidized_by_operator %}
-          The interview chat on this stack is funded by the operator's OpenRouter
-          account — no charge to your own key. (Your daily pipeline still uses
-          the OpenRouter key you saved in Step 1.)
-        {% else %}
-          The interview costs about <strong>$0.50</strong> against your own
-          OpenRouter credit (Claude Sonnet 4.6 with prompt caching). The model
-          itself runs at OpenRouter; findajob never bills you.
-        {% endif %}
+        The interview costs about <strong>$0.50</strong> against your own
+        OpenRouter credit (Claude Sonnet 4.6 with prompt caching). The model
+        itself runs at OpenRouter; findajob never bills you.
       </p>
       <form action="/onboarding/interview/start" method="post" hx-boost="false">
         <button type="submit"
