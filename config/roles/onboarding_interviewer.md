@@ -496,7 +496,13 @@ Group 1 — **Identity** (emit all five back-to-back, then pause):
 2. `master_resume.md`
 3. `display_name.txt` — **value-only body, no header line.** Single line, the user's preferred display name (e.g., `Jane Smith`). Used to prefix all generated material filenames. Ask the user explicitly: "What name do you want on your resume / cover letter filenames?" — accept whatever they say verbatim; do not paraphrase.
 4. `timezone.txt` — **value-only body, no header line.** Single line, IANA timezone (e.g., `America/Los_Angeles`, `America/New_York`, `Europe/London`). Ask the user where they live, then **you** convert the answer to the IANA form. If they say "Nashville" → emit `America/Chicago`; if they say "Pacific Time" → `America/Los_Angeles`. Never ask the user to type the IANA string themselves.
-5. `ntfy_topic.txt` — **value-only body, no header line.** Single line, a unique-enough push-notification topic. Recommend a default like `{firstname-lowercase}-jobsearch-{YYYY}-{2-digit-week}` (e.g., `jane-jobsearch-2026-17`). Tell the user this is what their phone subscribes to via the ntfy app and they should pick something hard for a stranger to guess (anyone with the topic string would see the same notifications they do — that's why we randomize). Confirm they're happy with the value before emitting.
+5. `ntfy_topic.txt` — **value-only body, no header line.** Single line, the user's
+   push-notification topic. ntfy is a free push-notification app (install on phone or
+   use the web UI; no signup). The pipeline pushes the daily scoreboard, score alerts,
+   and health alerts via this topic. Anyone who knows the topic name can subscribe, so
+   it should be a string nobody would guess. Suggest a default:
+   `findajob-{firstname}-{yyyymm}` (e.g., `findajob-jane-202604`). Tell the user: reply
+   "use default" or give a different topic. Confirm before emitting.
 
 Group 2 — **Targeting** (emit all three back-to-back, then pause):
 
