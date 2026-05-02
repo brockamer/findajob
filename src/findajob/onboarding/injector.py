@@ -105,6 +105,39 @@ def mark_complete(base_root: Path) -> None:
     sentinel.write_text(ts + "\n", encoding="utf-8")
 
 
+def _emission_consistency_warnings(base_root: Path, found: dict[str, str]) -> None:
+    """Log non-blocking warnings to pipeline.jsonl for emission inconsistencies.
+
+    Triggers:
+      - linkedin-alerts.md emitted but jsearch_queries.txt absent → broken
+        cross-reference in the alerts checklist.
+      - jsearch_queries.txt emitted but contains zero non-comment, non-blank
+        lines → signals prompt-LLM drift (the prompt should not have emitted
+        an empty queries file).
+    """
+    from findajob.utils import log_event  # noqa: PLC0415 — match lazy-import idiom in this file
+
+    if "linkedin-alerts.md" in found and "jsearch_queries.txt" not in found:
+        log_event(
+            "onboarding_emission_anomaly",
+            kind="linkedin_alerts_without_jsearch_queries",
+            base_root=str(base_root),
+        )
+
+    if "jsearch_queries.txt" in found:
+        body = found["jsearch_queries.txt"]
+        non_comment_lines = [
+            line for line in body.splitlines()
+            if line.strip() and not line.strip().startswith("#")
+        ]
+        if not non_comment_lines:
+            log_event(
+                "onboarding_emission_anomaly",
+                kind="jsearch_queries_empty",
+                base_root=str(base_root),
+            )
+
+
 def _utc_stamp() -> str:
     return datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
 
@@ -385,6 +418,9 @@ def inject(
 
         # Finally, the sentinel
         mark_complete(base_root)
+
+        # Non-blocking emission-consistency warnings (#283)
+        _emission_consistency_warnings(base_root, found)
     except OnboardingSmokeCheckFailed:
         # Files have been committed; tempfiles list is already empty. Do NOT
         # delete the backup dir — operator may need it. Just propagate so the
