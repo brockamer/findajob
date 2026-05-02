@@ -602,10 +602,11 @@ def run_walkthrough(
 
             # Type and send the answer
             try:
-                textarea = page.wait_for_selector("textarea", timeout=10_000)
-                textarea.fill(answer)
+                page.wait_for_selector("textarea", timeout=10_000)
+                page.fill("textarea", answer)
                 prev_bubble_count = count_assistant_bubbles()
-                page.click('button[hx-post*="/turn"]')
+                # The hx-post attribute is on the <form>, not the button.
+                page.click('form[hx-post*="/turn"] button[type="submit"]')
                 # Wait for HTMX to append a new assistant bubble
                 page.wait_for_function(
                     f"document.querySelectorAll('[data-role=\\'assistant\\']').length > {prev_bubble_count}",
