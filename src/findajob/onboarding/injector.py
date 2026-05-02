@@ -32,6 +32,7 @@ from findajob.onboarding.openrouter_smoke import (
 )
 from findajob.onboarding.parser import ALLOWED_FILENAMES
 from findajob.onboarding.voice_processor import process_voice_samples
+from findajob.utils import log_event
 
 # Maps emission filename -> destination relative path (relative to base_root).
 # Plain-file destinations: emission body is written verbatim to this file.
@@ -114,9 +115,10 @@ def _emission_consistency_warnings(base_root: Path, found: dict[str, str]) -> No
       - jsearch_queries.txt emitted but contains zero non-comment, non-blank
         lines → signals prompt-LLM drift (the prompt should not have emitted
         an empty queries file).
-    """
-    from findajob.utils import log_event  # noqa: PLC0415 — match lazy-import idiom in this file
 
+    Caller MUST treat any exception from this helper as soft-fail — onboarding
+    has already committed at this point and the sentinel is set.
+    """
     if "linkedin-alerts.md" in found and "jsearch_queries.txt" not in found:
         log_event(
             "onboarding_emission_anomaly",
@@ -418,9 +420,6 @@ def inject(
 
         # Finally, the sentinel
         mark_complete(base_root)
-
-        # Non-blocking emission-consistency warnings (#283)
-        _emission_consistency_warnings(base_root, found)
     except OnboardingSmokeCheckFailed:
         # Files have been committed; tempfiles list is already empty. Do NOT
         # delete the backup dir — operator may need it. Just propagate so the
@@ -435,6 +434,14 @@ def inject(
                 pass
         shutil.rmtree(backup_dir, ignore_errors=True)
         raise
+
+    # Non-blocking emission-consistency warnings (#283). Soft-fail: any failure
+    # here does NOT roll back the seven-file commit (sentinel is already written).
+    # Placed before the discovery hook so warnings fire even if discoverer bombs.
+    try:
+        _emission_consistency_warnings(base_root, found)
+    except Exception:  # noqa: BLE001 — warnings must never fail onboarding
+        pass
 
     # Post-commit discovery hook. Soft-fail: any failure here does NOT
     # roll back the seven-file commit (sentinel is already written).
