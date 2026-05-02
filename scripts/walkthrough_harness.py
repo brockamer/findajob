@@ -50,12 +50,18 @@ from walkthrough_replay_corpus import ReplayCorpus, load_corpus
 # ---------------------------------------------------------------------------
 
 _REQUIRED_SECRET_VARS = [
-    "FINDAJOB_TEST_USER",
-    "FINDAJOB_TEST_PASS",
     "FINDAJOB_TEST_OR_KEY",
     "FINDAJOB_TEST_RAPIDAPI_KEY",
 ]
-_OPTIONAL_SECRET_VARS = ["FINDAJOB_TEST_GOOGLE_KEY"]
+# USER/PASS only matter when the target stack sits behind HTTP Basic Auth
+# (tester stacks like alice/papa/dave/judy/tango). The operator's findajob-test
+# instance is open from the WireGuard mesh / public domain without auth, so
+# leaving them unset just means Playwright skips the httpCredentials context.
+_OPTIONAL_SECRET_VARS = [
+    "FINDAJOB_TEST_USER",
+    "FINDAJOB_TEST_PASS",
+    "FINDAJOB_TEST_GOOGLE_KEY",
+]
 
 # Input field names on the Step 1 form that carry API key values.
 _KEY_INPUT_NAMES = {"openrouter_api_key", "rapidapi_key", "google_api_key"}
@@ -314,6 +320,7 @@ def run_walkthrough(
     secrets: dict[str, str],
     max_turns: int,
     cost_ceiling_usd: float,
+    browser_channel: str | None = None,
 ) -> FindingsReport:
     """Drive the full onboarding walkthrough via Playwright sync API."""
 
@@ -339,8 +346,8 @@ def run_walkthrough(
     console_messages: list[dict[str, Any]] = []
     transcript_turns: list[dict[str, str]] = []
 
-    user = secrets["FINDAJOB_TEST_USER"]
-    password = secrets["FINDAJOB_TEST_PASS"]
+    user = secrets.get("FINDAJOB_TEST_USER", "")
+    password = secrets.get("FINDAJOB_TEST_PASS", "")
     or_key = secrets["FINDAJOB_TEST_OR_KEY"]
     rapidapi_key = secrets["FINDAJOB_TEST_RAPIDAPI_KEY"]
     google_key = secrets.get("FINDAJOB_TEST_GOOGLE_KEY", "")
@@ -349,10 +356,17 @@ def run_walkthrough(
     base_url = base_url.rstrip("/")
 
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=True)
-        ctx = browser.new_context(
-            http_credentials={"username": user, "password": password},
-        )
+        # On platforms where Playwright doesn't ship a prebuilt chromium
+        # (e.g. Ubuntu 26.04 dev VM), pass --browser-channel chrome to use
+        # the system-installed Chrome binary instead.
+        launch_kwargs: dict[str, Any] = {"headless": True}
+        if browser_channel:
+            launch_kwargs["channel"] = browser_channel
+        browser = pw.chromium.launch(**launch_kwargs)
+        context_kwargs: dict[str, Any] = {}
+        if user and password:
+            context_kwargs["http_credentials"] = {"username": user, "password": password}
+        ctx = browser.new_context(**context_kwargs)
         page = ctx.new_page()
 
         # Capture console messages throughout the session
@@ -691,6 +705,11 @@ def main() -> None:
         default=7.0,
         help="Cost ceiling in USD before harness stops (default: 7.0)",
     )
+    parser.add_argument(
+        "--browser-channel",
+        default=None,
+        help="Playwright browser channel (e.g. 'chrome' to use system-installed Google Chrome). Default: bundled chromium.",
+    )
     args = parser.parse_args()
 
     # Load secrets (never from argv — stays out of ps output)
@@ -716,6 +735,7 @@ def main() -> None:
         secrets=secrets,
         max_turns=args.max_turns,
         cost_ceiling_usd=args.cost_ceiling_usd,
+        browser_channel=args.browser_channel,
     )
 
     sys.exit(findings.exit_code())
