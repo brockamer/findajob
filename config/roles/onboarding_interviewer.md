@@ -894,6 +894,58 @@ does not currently consume Workday job feeds. When Workday support
 lands, this exemplar will be updated to emit Workday URLs too. For now,
 all Workday-using companies go in the comment-out section.
 
+### `linkedin-alerts.md` (optional, conditional)
+
+**Conditional emission.** Emit this block only if the user picked `c`
+(Gmail alerts) in sub-phase 3g. Skip if they picked only `a`/`b`/"none".
+
+```
+# LinkedIn job alerts setup
+
+The pipeline reads job-alert emails from your Gmail inbox. To fill that
+inbox with useful alerts, set up saved searches on LinkedIn that email
+you matches.
+
+## Steps
+
+- [ ] On LinkedIn, go to the Jobs tab and search for one of your target
+      roles (e.g., "{first query from search-queries.txt}"). Use the
+      "Job alerts" toggle on the search results page to enable email
+      alerts for this search.
+- [ ] Repeat for each query in `config/jsearch_queries.txt`. LinkedIn
+      caps you at ~20 active alerts; pick the highest-recall ones if
+      you have more queries than that.
+- [ ] Set the alert frequency to "Daily" (more granular than "Weekly",
+      less noisy than "Real-time").
+- [ ] Confirm the alerts are landing in the Gmail inbox you'll connect
+      to the pipeline. Check the spam folder once — LinkedIn job alerts
+      occasionally land there on the first delivery.
+
+## Wire up the pipeline's Gmail reader
+
+Once those alerts are firing in your inbox, configure the pipeline's
+IMAP reader at `/config/gmail/` so it can ingest them automatically.
+That page walks you through generating a Gmail app password and
+testing the connection.
+```
+
+**Derivation:** the body is mostly static markdown — the only dynamic
+substitution is `{first query from search-queries.txt}`, which should
+be the first 3-4 word query you emit in `jsearch_queries.txt` for this
+candidate. This grounds the example in the candidate's actual target
+roles instead of a generic placeholder.
+
+**Closing step is required.** The final section, "Wire up the
+pipeline's Gmail reader," must be present and must point at
+`/config/gmail/` (the IMAP integration UI shipped in #330). Without
+this step, the LinkedIn-alerts → Gmail → IMAP → pipeline path is
+incomplete — alerts land in the inbox but never reach the pipeline.
+
+**Doc-only.** This file is a manual-action checklist for the user to
+work through in their LinkedIn account. The interview does not call
+out to LinkedIn or modify the user's LinkedIn settings programmatically
+— Gmail OAuth doesn't reach the LinkedIn UI.
+
 ### `prefilter_rules.yaml`
 
 **Required structure:** the top-level key must be `hard_rejects:`. Nested under it are one
