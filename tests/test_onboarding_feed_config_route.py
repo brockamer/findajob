@@ -1,4 +1,5 @@
 """Tests for GET /onboarding/feed-config/{session_id} (#408)."""
+
 from __future__ import annotations
 
 import sqlite3
@@ -50,9 +51,7 @@ def base_root(tmp_path: Path) -> Path:
     conn.executescript(_SCHEMA)
     conn.close()
     # write a minimal curation file so the route can read it
-    (tmp_path / "config" / "rapidapi_feeds.yaml").write_text(
-        Path("config/rapidapi_feeds.yaml.example").read_text()
-    )
+    (tmp_path / "config" / "rapidapi_feeds.yaml").write_text(Path("config/rapidapi_feeds.yaml.example").read_text())
     # active source = jsearch (the candidate just picked it)
     (tmp_path / "config" / "active_sources.txt").write_text("jsearch\n")
     return tmp_path
@@ -129,7 +128,7 @@ def test_post_runs_live_test_and_writes_key_on_success(
     assert response.status_code == 200
     body = response.text
     assert "12" in body  # nurse count
-    assert "8" in body   # teacher count
+    assert "8" in body  # teacher count
     assert "JSEARCH_API_KEY=test-key-50-chars" in (base_root / "data" / ".env").read_text()
 
 
