@@ -1,0 +1,80 @@
+# config/rapidapi_feeds.yaml — operator-curated feed recommendations per
+# candidate class. Read by the onboarding interviewer at Section 3h
+# (when the candidate picks 'a' in 3g) and by the feed-config form's
+# signup walkthrough copy.
+#
+# Ships as .yaml.example; gitignored real file. Operators can edit
+# without touching the prompt — the prompt references this file by
+# name and trusts its content.
+#
+# Replace each class's recommended_adapter as you learn from
+# production hit-rate data. #411 (Sonar live recommender) will
+# eventually consume this same schema dynamically.
+
+default: jobs-api14
+
+classes:
+  - name: corporate-tech
+    description: |
+      Corporate, technology, professional services. Roles posted heavily
+      on LinkedIn — programs, engineering, product, data.
+    recommended_adapter: jobs-api14
+    rationale: |
+      Pulls LinkedIn directly. Strong recall for the corporate / tech tier.
+      Free tier covers ~150 calls / month — enough for daily polling.
+
+  - name: healthcare-clinical
+    description: |
+      Healthcare, clinical, hospital systems, allied health.
+    recommended_adapter: jobs-api14
+    rationale: |
+      No specialty-tuned adapter shipped today. jobs-api14's LinkedIn
+      coverage is OK for hospital systems and large clinical employers,
+      weaker for community / regional clinics. Watch hit-rate after a
+      few weeks; consider widening to JSearch if recall is thin.
+
+  - name: skilled-trades-regional
+    description: |
+      Trades, blue-collar, regional employers. Light LinkedIn presence.
+    recommended_adapter: jsearch
+    rationale: |
+      JSearch aggregates LinkedIn + Indeed + Glassdoor + ZipRecruiter
+      under one feed — broader coverage for fields where Indeed is the
+      dominant board.
+
+  - name: social-services-nonprofit-education
+    description: |
+      Social services, non-profits, education, public sector roles.
+    recommended_adapter: jsearch
+    rationale: |
+      Same multi-board coverage rationale. Indeed is the dominant board
+      for these fields; JSearch's aggregation captures it.
+
+  - name: remote-only-digital-nomad
+    description: |
+      Remote-only or geography-flexible roles across any field.
+    recommended_adapter: jsearch
+    rationale: |
+      Multi-board aggregation gives the broadest remote-only filtering
+      surface.
+
+adapters:
+  - name: jobs-api14
+    display_name: Jobs API (jobs-api14)
+    rapidapi_url: https://rapidapi.com/Pat92/api/jobs-api14
+    free_tier: 150 calls / month
+    paid_tier: $5-25 / month for higher quotas
+    required_env_var: JOBS_API14_KEY
+    coverage:
+      best_for: Corporate, tech, professional services, white-collar roles posted to LinkedIn
+      worst_for: Trades, regional employers, social services, healthcare-niche roles
+
+  - name: jsearch
+    display_name: JSearch
+    rapidapi_url: https://rapidapi.com/letscrape-6bRBa3QguO5/api/jsearch
+    free_tier: 200 calls / month
+    paid_tier: $25 / month (Pro tier)
+    required_env_var: JSEARCH_API_KEY
+    coverage:
+      best_for: Multi-board aggregation; Indeed-dominant fields; trades, social services, education
+      worst_for: LinkedIn-only employers (use jobs-api14 instead)

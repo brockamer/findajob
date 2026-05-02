@@ -53,3 +53,7 @@ config/companies_of_interest.txt
 # Gmail integration credentials and state (#330)
 config/gmail.json
 config/gmail_state.json
+
+# Per-stack pipeline config — gitignored, .example tracked
+config/rapidapi_feeds.yaml
+config/active_sources.txt

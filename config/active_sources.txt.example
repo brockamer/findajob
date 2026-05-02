@@ -1,0 +1,10 @@
+# config/active_sources.txt — registered job-source adapters active for
+# this stack. One adapter name per line. Comments and blank lines OK.
+# Default if file missing: ["jobs-api14"] (preserves pre-v0.14 behavior).
+#
+# Adapter names match registry identifiers in
+# src/findajob/fetchers/adapters/registry.py — currently:
+#   - jobs-api14   # Jobs API (RapidAPI)
+#   - jsearch      # JSearch (RapidAPI)
+
+jobs-api14
