@@ -438,13 +438,12 @@ def run_walkthrough(
         # ── Step 2: Start Interview ───────────────────────────────────────────
         print("[harness] Clicking Start Interview...")
 
-        # Criterion: Start button loading state — check Alpine x-data attr present
-        start_btn = page.query_selector('form[action*="/onboarding/interview/start"] button[type="submit"]')
-        start_form = page.query_selector('form[action*="/onboarding/interview/start"]')
-        has_alpine_loading = False
-        if start_form:
-            x_data = start_form.get_attribute("x-data") or ""
-            has_alpine_loading = "starting" in x_data
+        # Criterion: Start button loading state — read the form's x-data attr
+        # via page.locator (re-evaluated lazily) rather than holding a stale
+        # ElementHandle that Alpine/HTMX may detach from the DOM.
+        start_form_loc = page.locator('form[action*="/onboarding/interview/start"]')
+        x_data = start_form_loc.get_attribute("x-data") or ""
+        has_alpine_loading = "starting" in x_data
         findings.add(
             "start_button_loading_state",
             "0",
@@ -452,10 +451,9 @@ def run_walkthrough(
             str(snapshot("turn-00-before-start")),
         )
 
-        if start_btn:
-            start_btn.click()
-        else:
-            page.click('form[action*="/onboarding/interview/start"] button')
+        # Use page.click(selector) — auto-waits for visible+enabled and
+        # re-evaluates the selector each retry, surviving DOM re-attachment.
+        page.click('form[action*="/onboarding/interview/start"] button[type="submit"]')
 
         # Wait for redirect to /onboarding/interview/{sid}
         try:
