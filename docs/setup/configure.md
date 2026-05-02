@@ -108,6 +108,25 @@ Linux defaults are already built into `src/findajob/paths.py`. If everything is 
 
 ---
 
+## Choosing your job-search service
+
+During onboarding, **Section 3h** of the interview reads `config/rapidapi_feeds.yaml`
+(the operator-curated feed table) and recommends the best RapidAPI feed for the
+candidate's field. The recommendation is based on the field classification established
+in Section 3g.
+
+At the end of the interview, the injector writes `config/active_sources.txt` with the
+chosen adapter slug (e.g. `jobs-api14` or `jsearch`). The feed-config form at
+`/onboarding/feed-config/{session_id}` then collects the per-feed API key and runs a
+live connection test against every query in `config/jsearch_queries.txt`.
+
+**To change your active source after onboarding:** visit `/onboarding/?mode=rerun`.
+Section 3h re-runs the picker; the new choice overwrites `config/active_sources.txt`.
+
+See `docs/setup/api-keys.md` for per-feed sign-up walkthroughs.
+
+---
+
 ## data/.env
 
 API keys and secrets. See `data/.env.example` for the full list.
@@ -115,7 +134,8 @@ API keys and secrets. See `data/.env.example` for the full list.
 ```bash
 OPENROUTER_API_KEY=sk-or-...
 GOOGLE_API_KEY=AIza...
-RAPIDAPI_KEY=...
+JOBS_API14_KEY=...      # jobs-api14 adapter (optional; set by onboarding picker)
+JSEARCH_API_KEY=...     # JSearch adapter (optional; set by onboarding picker)
 NTFY_TOPIC=your-topic-name
 ```
 

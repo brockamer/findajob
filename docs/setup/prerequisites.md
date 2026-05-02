@@ -22,12 +22,14 @@ Used by: embedding model only (`gemini-embedding-001`) for RAG indexing of `cand
 - Add to `data/.env` as `GOOGLE_API_KEY`
 - Model: `gemini-embedding-001` (embedding endpoint; no OpenRouter equivalent)
 
-### 3. RapidAPI — jobs-api14
-Used by: LinkedIn and Indeed job search in `triage.py`
+### 3. RapidAPI feed (jobs-api14 or JSearch)
+Used by: LinkedIn and Indeed job search in `triage.py` (via pluggable adapter)
 
 - Sign up at https://rapidapi.com
-- Subscribe to **jobs-api14** (has a free tier)
-- Add API key to `data/.env` as `RAPIDAPI_KEY`
+- The onboarding interview's Section 3h recommends the right feed for your field
+- Subscribe to your chosen feed (both have a free tier)
+- Add API key to `data/.env` as `JOBS_API14_KEY` or `JSEARCH_API_KEY`
+- See `docs/setup/api-keys.md` for per-feed sign-up walkthroughs
 
 ### 4. Google Cloud — Sheets API + Gmail API
 

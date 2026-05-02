@@ -168,7 +168,7 @@ path enables. You'll need three:
 | Key | Required? | What it funds | Free tier? |
 |---|---|---|---|
 | **OpenRouter** | Yes | All pipeline LLM calls + the in-app interview itself | Pay-as-you-go from $0; ~$0.05–$0.10 per fully-prepped job |
-| **RapidAPI (jobs-api14)** | Optional | LinkedIn + Indeed search ingestion | 150 requests/month BASIC (no credit card) |
+| **RapidAPI feed** (jobs-api14 or JSearch — onboarding picker chooses) | Optional | LinkedIn + Indeed search ingestion | 150–200 requests/month BASIC (no credit card) |
 | **Google AI Studio (Gemini)** | Optional | Embeddings for the optional RAG index | Free tier; no billing setup |
 
 Skipping RapidAPI means LinkedIn + Indeed search is inactive, but
@@ -321,8 +321,8 @@ SQLite reads use `mode=ro` URI; `/opt/stacks` is mounted read-only.
 
 ### Rotating an API key
 
-To replace the OpenRouter, RapidAPI, or Google API key on an already-onboarded
-stack, you have two options:
+To replace the OpenRouter, RapidAPI feed (`JOBS_API14_KEY` / `JSEARCH_API_KEY`), or
+Google API key on an already-onboarded stack, you have two options:
 
 **Option A — Web UI (recommended):**
 
@@ -349,7 +349,7 @@ sudo docker compose restart scheduler
 
 Per the project memory `feedback_never_print_secrets`, never `cat` or
 echo the `.env` to your terminal — copy + edit server-side only.
-Repeat for `RAPIDAPI_KEY` / `GOOGLE_API_KEY` as needed.
+Repeat for `JOBS_API14_KEY` / `JSEARCH_API_KEY` / `GOOGLE_API_KEY` as needed.
 
 ### Adding the `.backups` bind mount (for stacks deployed before `:v0.10.0`)
 
@@ -391,6 +391,22 @@ fails the same way.
 
 Stacks deployed using `compose.yaml.example` from `:v0.10.0` onward
 already have this mount; no action needed.
+
+## Upgrading from v0.13
+
+The entrypoint migration from v0.14 onward is **automatic** — no manual action needed.
+
+On first boot after pulling the v0.14 image, the entrypoint runs
+`migrate_rapidapi_key_env()`, which reads `data/.env`, renames any `RAPIDAPI_KEY`
+line to `JOBS_API14_KEY`, and writes the file back in place. The migration is
+idempotent — running it again on an already-migrated `.env` is a no-op.
+
+Stacks without `config/active_sources.txt` (i.e., stacks that pre-date the picker)
+default to `jobs-api14` as the active adapter, preserving pre-v0.14 behavior
+automatically. To switch to a different feed, visit `/onboarding/?mode=rerun` —
+Section 3h presents the picker and the feed-config form collects the new key.
+
+---
 
 ## Updating
 

@@ -92,7 +92,7 @@ tag against `HEAD`, and each released version links to its tag page. If the late
 release added a new link and the previous `[Unreleased]` line wasn't updated to
 reference the new tag, the file is inconsistent — fix before cutting.
 
-- For PRs touching `src/findajob/gmail_imap.py` or `src/findajob/fetchers.py:fetch_gmail_jobs`: re-run `uv run pytest tests/test_transparency_invariants.py -v` and link the green run in the PR description.
+- For PRs touching `src/findajob/gmail_imap.py` or `src/findajob/fetchers/__init__.py:fetch_gmail_jobs`: re-run `uv run pytest tests/test_transparency_invariants.py -v` and link the green run in the PR description.
 
 ## Pre-tag smoke check
 

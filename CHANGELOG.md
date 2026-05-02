@@ -10,6 +10,25 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+## [0.14.0] — 2026-05-02
+
+Minor bump shipping #408 pluggable `JobSourceAdapter` framework + JSearch adapter (#310) + onboarding picker (Section 3h). Operator's stack and `findajob-test` already track `:latest`; tester stacks (alice, papa, dave, judy, tango) currently on `:v0.13` should bump to `:v0.14` in the cohort wave.
+
+### Added
+- Pluggable `JobSourceAdapter` framework (`src/findajob/fetchers/adapters/`) for RapidAPI-flavored job sources (#408)
+- JSearch adapter — multi-board aggregator (LinkedIn + Indeed + Glassdoor + ZipRecruiter) (#408, closes #310)
+- Onboarding picker for RapidAPI feeds — Section 3h reads `config/rapidapi_feeds.yaml` and recommends a feed for the candidate's field (#408)
+- `/onboarding/feed-config/{session_id}` form with live connection test exercising every query in `config/jsearch_queries.txt` (#408)
+- `config/active_sources.txt` per-stack active-source list (#408)
+
+### Changed
+- `RAPIDAPI_KEY` env var renamed to `JOBS_API14_KEY` for clarity; `triage.py` now iterates `iter_configured_adapters()` instead of calling hardcoded fetcher functions for RapidAPI feeds (#408)
+
+### Migration required
+- **Existing stacks pulling v0.14:** the entrypoint auto-migrates `RAPIDAPI_KEY` to `JOBS_API14_KEY` in `data/.env` on first boot. No manual action needed.
+- Existing stacks without `config/active_sources.txt` keep the pre-v0.14 behavior automatically (jobs-api14 active by default).
+- To pick a different feed, re-run `/onboarding/?mode=rerun` — Section 3h presents the picker.
+
 ## [0.13.0] — 2026-05-02
 
 Minor bump shipping #283 source-strategy briefing in the onboarding interview, with bundled #215 injector hardening polish (3 fixes). Operator's stack and `findajob-test` already track `:latest`; tester stacks (alice, papa, dave, judy, tango) currently on `:v0.12` should bump to `:v0.13` in the cohort wave.

@@ -27,14 +27,21 @@ interview helps you pick which ones make sense for your field; this
 section is a post-onboarding reference for what each source does and
 how to tune it.
 
-### Paid job-search service (RapidAPI)
-The pipeline calls a third-party job-search API (today: jobs-api14 on
-RapidAPI) with the queries in `config/jsearch_queries.txt`. Cost is
-metered against the RapidAPI key you provided in onboarding (Step 1).
-Free tier covers ~150 calls/month.
+### Paid job-search service (RapidAPI feed — pluggable)
+The pipeline supports multiple RapidAPI-flavored job feeds (jobs-api14,
+JSearch, with more coming). During onboarding, **Section 3h** reads the
+operator-curated feed table and recommends the best feed for your field.
+Your choice is stored in `config/active_sources.txt`; the
+`/onboarding/feed-config/` form collects the per-feed API key and runs a
+live connection test.
+
+The active feed is called daily with the queries in
+`config/jsearch_queries.txt`. Free tiers cover ~150–200 calls/month.
 
 To tune: edit `config/jsearch_queries.txt` (one 3-4 word query per
 line; LinkedIn returns zero results for 5+ word strings).
+
+To switch feeds: visit `/onboarding/?mode=rerun` and run Section 3h again.
 
 ### Company career-page feeds
 The pipeline polls Greenhouse / Lever / Ashby career-page endpoints
