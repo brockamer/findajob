@@ -48,7 +48,7 @@ class InterviewRunnerError(Exception):
 
 
 def run_turn(
-    operator_key: str,
+    api_key: str,
     system_prompt: str,
     history: list[dict[str, str]],
     user_message: str,
@@ -56,8 +56,9 @@ def run_turn(
     """Submit one user turn + receive the assistant turn.
 
     Args:
-        operator_key: ``OPENROUTER_OPERATOR_KEY`` — operator-funded, distinct
-            from the per-tester key collected at finalize.
+        api_key: tester's OpenRouter key (collected at /onboarding/ Step 1).
+            The chat is funded by this key — there is no operator-funded
+            fallback.
         system_prompt: full role system prompt (typically the contents of
             ``config/roles/onboarding_interviewer.md``).
         history: prior turns as ``[{"role":"user"|"assistant","content":"..."}, ...]``.
@@ -73,19 +74,19 @@ def run_turn(
         InterviewRunnerError: every non-success path — empty key, network,
             auth, payment, rate-limit, model 5xx, malformed response.
     """
-    if not operator_key or not operator_key.strip():
+    if not api_key or not api_key.strip():
         raise InterviewRunnerError(
-            "No OpenRouter key resolved for this stack. Provide your API keys "
-            "at /onboarding/ Step 1, or have the administrator set "
-            "OPENROUTER_OPERATOR_KEY to subsidize the interview.",
+            "No OpenRouter key on file for this stack. Visit /onboarding/ "
+            "Step 1 to provide your API keys, then return here to start "
+            "the interview.",
             kind="config",
         )
 
     # Mark the system prompt cacheable via OpenRouter's `cache_control`
     # breakpoint. Anthropic providers honor this and bill cached system
     # tokens at ~10% on subsequent turns — the system prompt is ~25KB and
-    # is re-sent every turn, so caching is the difference between a ~$3
-    # interview and a ~$0.50 one.
+    # is re-sent every turn, so caching meaningfully cuts cost on long
+    # interviews. Cost figures live in user-facing docs, not here.
     messages: list[dict] = [
         {
             "role": "system",
@@ -113,7 +114,7 @@ def run_turn(
         OPENROUTER_API_URL,
         data=payload,
         headers={
-            "Authorization": f"Bearer {operator_key.strip()}",
+            "Authorization": f"Bearer {api_key.strip()}",
             "Content-Type": "application/json",
             "HTTP-Referer": "https://github.com/brockamer/findajob",
             "X-Title": "findajob in-app onboarding",
@@ -131,17 +132,16 @@ def run_turn(
             error_body = ""
         if e.code == 401:
             raise InterviewRunnerError(
-                "OpenRouter rejected the operator key (401 Unauthorized). The "
-                "administrator of this deployment needs to update "
-                "OPENROUTER_OPERATOR_KEY.",
+                "OpenRouter rejected the API key (401 Unauthorized). Visit "
+                "/onboarding/ to update your OpenRouter key.",
                 kind="auth",
                 status_code=401,
             ) from e
         if e.code == 402:
             raise InterviewRunnerError(
-                "Operator's OpenRouter account is out of credit (402 Payment "
-                "Required). The administrator needs to add prepaid credit at "
-                "https://openrouter.ai/credits.",
+                "Your OpenRouter account is out of credit (402 Payment "
+                "Required). Add prepaid credit at "
+                "https://openrouter.ai/credits, then continue the interview.",
                 kind="payment",
                 status_code=402,
             ) from e

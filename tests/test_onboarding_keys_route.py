@@ -73,7 +73,6 @@ def client(base_root: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
         "verify_openrouter_key",
         lambda key: (True, None) if "tester" in key or "valid" in key else (False, "key invalid"),
     )
-    monkeypatch.delenv("OPENROUTER_OPERATOR_KEY", raising=False)
     app = create_app(
         companies_root=base_root / "companies",
         db_path=base_root / "data" / "pipeline.db",

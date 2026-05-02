@@ -54,18 +54,17 @@ def _success_body(text: str = "hello", usage: dict | None = None) -> dict:
 # ── Pre-flight validation ───────────────────────────────────────────────
 
 
-def test_empty_operator_key_raises_immediately() -> None:
-    """No network call when the operator key is empty."""
+def test_empty_api_key_raises_immediately() -> None:
+    """No network call when the API key is empty."""
     with patch("findajob.onboarding.interview_runner.urllib.request.urlopen") as mock_urlopen:
         with pytest.raises(InterviewRunnerError) as exc:
             run_turn("", "system", [], "hi")
         mock_urlopen.assert_not_called()
-    # User-facing message points the user back to /onboarding/ Step 1
-    # (and mentions the operator-funded fallback for completeness).
+    # User-facing message points the user back to /onboarding/ Step 1.
     assert "Step 1" in exc.value.user_message or "onboarding" in exc.value.user_message.lower()
 
 
-def test_whitespace_operator_key_raises_immediately() -> None:
+def test_whitespace_api_key_raises_immediately() -> None:
     with patch("findajob.onboarding.interview_runner.urllib.request.urlopen") as mock_urlopen:
         with pytest.raises(InterviewRunnerError):
             run_turn("   \t\n  ", "system", [], "hi")
@@ -130,7 +129,7 @@ def test_payload_contains_system_history_and_user_in_order() -> None:
     ]
 
 
-def test_authorization_header_uses_operator_key() -> None:
+def test_authorization_header_uses_api_key() -> None:
     captured: dict = {}
 
     def _capture(req, timeout=None):
@@ -141,10 +140,10 @@ def test_authorization_header_uses_operator_key() -> None:
         "findajob.onboarding.interview_runner.urllib.request.urlopen",
         side_effect=_capture,
     ):
-        run_turn("  sk-or-v1-operator-with-spaces  ", "SYSTEM", [], "hi")
+        run_turn("  sk-or-v1-tester-with-spaces  ", "SYSTEM", [], "hi")
 
     # urllib title-cases header keys.
-    assert captured["headers"]["Authorization"] == "Bearer sk-or-v1-operator-with-spaces"
+    assert captured["headers"]["Authorization"] == "Bearer sk-or-v1-tester-with-spaces"
     assert captured["headers"]["Content-type"] == "application/json"
     assert "findajob" in captured["headers"]["X-title"].lower()
 
@@ -196,17 +195,18 @@ def test_usage_defaults_to_empty_dict_when_non_dict() -> None:
 # ── HTTP error paths ────────────────────────────────────────────────────
 
 
-def test_401_raises_with_friendly_admin_message() -> None:
+def test_401_raises_with_friendly_message() -> None:
     err = HTTPError("u", 401, "Unauthorized", {}, fp=io.BytesIO(b'{"error":"bad key"}'))  # type: ignore[arg-type]
     with patch(
         "findajob.onboarding.interview_runner.urllib.request.urlopen",
         side_effect=err,
     ):
         with pytest.raises(InterviewRunnerError) as exc:
-            run_turn("sk-or-v1-operator", "SYSTEM", [], "hi")
+            run_turn("sk-or-v1-tester", "SYSTEM", [], "hi")
     msg = exc.value.user_message
     assert "401" in msg
-    assert "OPENROUTER_OPERATOR_KEY" in msg
+    # User is pointed to /onboarding/ to update their own key.
+    assert "/onboarding/" in msg
 
 
 def test_402_raises_with_credit_message() -> None:

@@ -236,7 +236,7 @@ def start_interview(request: Request) -> HTMLResponse | RedirectResponse:
 
         try:
             assistant_text, usage = run_turn(
-                operator_key=chat_key,
+                api_key=chat_key,
                 system_prompt=_system_prompt(request),
                 history=[],
                 user_message=_KICKOFF_USER_MESSAGE,
@@ -294,7 +294,7 @@ def post_turn(
 
         try:
             assistant_text, usage = run_turn(
-                operator_key=chat_key,
+                api_key=chat_key,
                 system_prompt=_system_prompt(request),
                 history=sess.history,
                 user_message=message,

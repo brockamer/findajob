@@ -51,7 +51,6 @@ CREATE TABLE onboarding_sessions (
 );
 """
 
-_OPERATOR_KEY = "sk-or-v1-operator-test"
 _USER_KEY = "sk-or-v1-user-test"
 
 
@@ -132,35 +131,37 @@ def base_root(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def client_with_key(base_root: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    monkeypatch.setenv("OPENROUTER_OPERATOR_KEY", _OPERATOR_KEY)
+def client(base_root: Path) -> TestClient:
     app = create_app(
         companies_root=base_root / "companies",
         db_path=base_root / "data" / "pipeline.db",
         base_root=base_root,
     )
     return TestClient(app, follow_redirects=False)
+
+
+# Aliases for tests that historically distinguished env-key states. After
+# the OPENROUTER_OPERATOR_KEY revert (#401), there's only one client shape;
+# the difference between "with key" and "no key" is now whether a
+# credentials row has been planted via _plant_credentials.
+@pytest.fixture
+def client_with_key(client: TestClient) -> TestClient:
+    return client
 
 
 @pytest.fixture
-def client_no_key(base_root: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    monkeypatch.delenv("OPENROUTER_OPERATOR_KEY", raising=False)
-    app = create_app(
-        companies_root=base_root / "companies",
-        db_path=base_root / "data" / "pipeline.db",
-        base_root=base_root,
-    )
-    return TestClient(app, follow_redirects=False)
+def client_no_key(client: TestClient) -> TestClient:
+    return client
 
 
 def _stub_run_turn(monkeypatch: pytest.MonkeyPatch, assistant_text: str) -> list[dict[str, Any]]:
     """Replace run_turn with a stub that records calls and returns a fixed reply."""
     calls: list[dict[str, Any]] = []
 
-    def _fake(operator_key: str, system_prompt: str, history: list, user_message: str):
+    def _fake(api_key: str, system_prompt: str, history: list, user_message: str):
         calls.append(
             {
-                "operator_key": operator_key,
+                "api_key": api_key,
                 "system_prompt": system_prompt,
                 "history": list(history),
                 "user_message": user_message,
@@ -203,74 +204,44 @@ def _read_session(base_root: Path, session_id: str) -> tuple[str, str, str | Non
 # ── Conditional registration ──────────────────────────────────────────────
 
 
-def test_routes_register_but_503_when_no_chat_key_resolved(client_no_key: TestClient) -> None:
+def test_routes_register_but_503_when_no_credentials(client: TestClient) -> None:
     """#339 changed gating from import-time to per-request.
 
-    With no OPENROUTER_OPERATOR_KEY env AND no tester credentials collected
-    via /onboarding/ Step 1, the route is registered (no 404) but resolves
-    to a 503 with a pointer back to /onboarding/. This is the self-deploy
-    failure mode — the previous import-time 404 was the wrong shape because
+    With no tester credentials collected via /onboarding/ Step 1, the route
+    is registered (no 404) but resolves to a 503 with a pointer back to
+    /onboarding/. The previous import-time 404 was the wrong shape because
     a self-deploy stack with tester credentials NEEDS the route to register.
     """
-    resp = client_no_key.post("/onboarding/interview/start")
+    resp = client.post("/onboarding/interview/start")
     assert resp.status_code == 503
     assert "onboarding" in resp.text.lower()
 
 
-def test_start_uses_tester_credentials_when_no_operator_env(
-    client_no_key: TestClient,
+def test_start_uses_tester_credentials(
+    client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
     base_root: Path,
 ) -> None:
-    """Self-deploy: no operator env, tester credentials collected — chat runs
-    on the tester's own OpenRouter key."""
+    """Self-deploy: tester credentials collected — chat runs on the
+    tester's own OpenRouter key. There is no operator-funded fallback
+    after the #401 revert."""
     _plant_credentials(base_root, openrouter="sk-or-v1-tester-self-deploy")
 
     calls = _stub_run_turn(monkeypatch, "Hi! What's your name?")
-    resp = client_no_key.post("/onboarding/interview/start")
+    resp = client.post("/onboarding/interview/start")
     assert resp.status_code == 303
     assert len(calls) == 1
-    assert calls[0]["operator_key"] == "sk-or-v1-tester-self-deploy"
+    assert calls[0]["api_key"] == "sk-or-v1-tester-self-deploy"
 
 
 def test_start_503_when_no_credentials_collected(
-    client_with_key: TestClient,
+    client: TestClient,
 ) -> None:
     """Step 1 (API-key collection) is mandatory before in-app interview can
-    start — even when OPENROUTER_OPERATOR_KEY is set. Operator key only
-    subsidizes the chat runner; it doesn't substitute for Step 1."""
-    resp = client_with_key.post("/onboarding/interview/start")
+    start — without it, /start has no key to give the runner."""
+    resp = client.post("/onboarding/interview/start")
     assert resp.status_code == 503
     assert "onboarding" in resp.text.lower()
-
-
-def test_start_operator_key_wins_when_set(
-    client_with_key: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
-    base_root: Path,
-) -> None:
-    """Operator-key precedence (flipped 2026-05-02): when
-    OPENROUTER_OPERATOR_KEY is set on the stack, chat runs on the operator's
-    key even when the tester collected their own key. This makes findajob-test
-    a free dogfood instance — the tester's pipeline still uses their own key
-    via /finalize, but the chat is subsidized."""
-    _plant_credentials(base_root, openrouter="sk-or-v1-tester-priority")
-
-    calls = _stub_run_turn(monkeypatch, "Hi!")
-    resp = client_with_key.post("/onboarding/interview/start")
-    assert resp.status_code == 303
-    assert len(calls) == 1
-    assert calls[0]["operator_key"] == _OPERATOR_KEY
-
-
-def test_router_registered_when_operator_key_set(
-    client_with_key: TestClient, base_root: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _plant_credentials(base_root)
-    _stub_run_turn(monkeypatch, "hello — what's your full name?")
-    resp = client_with_key.post("/onboarding/interview/start")
-    # Whatever the response, it MUST NOT be 404 (router not registered).
-    assert resp.status_code != 404
 
 
 # ── /start ────────────────────────────────────────────────────────────────
@@ -290,9 +261,9 @@ def test_start_creates_session_and_runs_first_turn(
     assert location.startswith("/onboarding/interview/")
     sid = location.rsplit("/", 1)[-1]
 
-    # run_turn was called exactly once with the operator key + non-empty system prompt + empty history
+    # run_turn was called exactly once with the tester's key + non-empty system prompt + empty history
     assert len(calls) == 1
-    assert calls[0]["operator_key"] == _OPERATOR_KEY
+    assert calls[0]["api_key"] == _USER_KEY
     assert "interviewer" in calls[0]["system_prompt"].lower() or len(calls[0]["system_prompt"]) > 100
     assert calls[0]["history"] == []
     assert calls[0]["user_message"]  # synthetic kickoff non-empty
@@ -337,13 +308,27 @@ def test_start_handles_runner_error(
 # ── /turn ─────────────────────────────────────────────────────────────────
 
 
-def _create_session_directly(base_root: Path) -> str:
-    """Insert a session row directly so /turn tests don't depend on /start."""
-    from findajob.onboarding.session_store import create_session
+def _create_session_directly(base_root: Path, *, with_credentials: bool = True) -> str:
+    """Insert a session row directly so /turn tests don't depend on /start.
+
+    By default, also binds tester credentials to the session — /turn now
+    requires session credentials to resolve a chat key (no operator-env
+    fallback after #401). Pass ``with_credentials=False`` to test the
+    no-credentials behavior (e.g. resume-banner suppression).
+    """
+    from findajob.onboarding.session_store import create_session, set_credentials
 
     conn = sqlite3.connect(base_root / "data" / "pipeline.db")
     try:
         sid = create_session(conn)
+        if with_credentials:
+            set_credentials(
+                conn,
+                sid,
+                openrouter_api_key=_USER_KEY,
+                rapidapi_key="",
+                google_api_key="",
+            )
     finally:
         conn.close()
     return sid
@@ -962,10 +947,11 @@ def test_resume_index_excludes_stale_sessions(client_with_key: TestClient, base_
     assert 'id="resume-banner"' not in resp.text
 
 
-def test_resume_index_no_affordance_when_operator_key_unset(client_no_key: TestClient, base_root: Path) -> None:
-    """When the operator hasn't opted in, surfacing a resume affordance
-    would point at a router that isn't even registered. Suppress it."""
-    sid = _create_session_directly(base_root)
+def test_resume_index_no_affordance_when_no_credentials(client: TestClient, base_root: Path) -> None:
+    """When no tester credentials have been collected, surfacing a resume
+    affordance would point at an interview the user can't actually run.
+    Suppress it."""
+    sid = _create_session_directly(base_root, with_credentials=False)
     from findajob.onboarding.session_store import append_turn
 
     conn = sqlite3.connect(base_root / "data" / "pipeline.db")
@@ -974,6 +960,6 @@ def test_resume_index_no_affordance_when_operator_key_unset(client_no_key: TestC
     finally:
         conn.close()
 
-    resp = client_no_key.get("/onboarding/")
+    resp = client.get("/onboarding/")
     assert resp.status_code == 200
     assert 'id="resume-banner"' not in resp.text

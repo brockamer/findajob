@@ -64,7 +64,6 @@ CREATE TABLE onboarding_sessions (
 );
 """
 
-_OPERATOR_KEY = "sk-or-v1-operator-test"
 _USER_KEY = "sk-or-v1-user-test"
 
 _FIXTURE_DIR = Path(__file__).parent / "fixtures" / "onboarding"
@@ -125,8 +124,7 @@ def _stub_openrouter_smoke_check(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture
-def client(base_root: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    monkeypatch.setenv("OPENROUTER_OPERATOR_KEY", _OPERATOR_KEY)
+def client(base_root: Path) -> TestClient:
     app = create_app(
         companies_root=base_root / "companies",
         db_path=base_root / "data" / "pipeline.db",

@@ -3,7 +3,8 @@
 Distinct from `test_web_onboarding_interview_routes.py` (which exercises the
 route logic + DB observable state). These tests assert on the rendered HTML
 shape so the chat UI is correct independent of route behavior:
-- /onboarding/ shows the interview affordance only when operator_key is set
+- /onboarding/ shows the interview affordance only when tester credentials
+  have been collected at Step 1
 - interview.html: messages list, HTMX wiring, finalize visibility
 - _turn.html: single bubble, role-styled
 """
@@ -48,9 +49,6 @@ CREATE TABLE onboarding_sessions (
 );
 """
 
-_OPERATOR_KEY = "sk-or-v1-operator-test"
-
-
 @pytest.fixture
 def base_root(tmp_path: Path) -> Path:
     (tmp_path / "data").mkdir()
@@ -67,13 +65,7 @@ def base_root(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def _make_client(base_root: Path, *, operator_key: str | None) -> TestClient:
-    import os
-
-    if operator_key is None:
-        os.environ.pop("OPENROUTER_OPERATOR_KEY", None)
-    else:
-        os.environ["OPENROUTER_OPERATOR_KEY"] = operator_key
+def _make_client(base_root: Path) -> TestClient:
     app = create_app(
         companies_root=base_root / "companies",
         db_path=base_root / "data" / "pipeline.db",
@@ -82,16 +74,18 @@ def _make_client(base_root: Path, *, operator_key: str | None) -> TestClient:
     return TestClient(app, follow_redirects=False)
 
 
+# After the OPENROUTER_OPERATOR_KEY revert (#401), the env-var distinction is
+# gone — there is only one client shape. The fixtures stay as aliases so
+# existing test bodies continue to read naturally; the difference between
+# "with key" and "no key" is now whether _plant_credentials has been called.
 @pytest.fixture
-def client_with_key(base_root: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    monkeypatch.setenv("OPENROUTER_OPERATOR_KEY", _OPERATOR_KEY)
-    return _make_client(base_root, operator_key=_OPERATOR_KEY)
+def client_with_key(base_root: Path) -> TestClient:
+    return _make_client(base_root)
 
 
 @pytest.fixture
-def client_no_key(base_root: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    monkeypatch.delenv("OPENROUTER_OPERATOR_KEY", raising=False)
-    return _make_client(base_root, operator_key=None)
+def client_no_key(base_root: Path) -> TestClient:
+    return _make_client(base_root)
 
 
 # ── /onboarding/ landing-page affordance ─────────────────────────────────
@@ -99,8 +93,7 @@ def client_no_key(base_root: Path, monkeypatch: pytest.MonkeyPatch) -> TestClien
 
 def test_index_shows_interview_affordance_when_keys_collected(client_with_key: TestClient, base_root: Path) -> None:
     """Step 2 enables — and the Start interview button submits to /start —
-    once Step 1 credentials are saved. Operator key alone (no Step 1) no
-    longer flips Step 2 on, since 2026-05-02."""
+    once Step 1 credentials are saved."""
     _plant_credentials(base_root)
     resp = client_with_key.get("/onboarding/")
     assert resp.status_code == 200
@@ -111,8 +104,7 @@ def test_index_shows_interview_affordance_when_keys_collected(client_with_key: T
 
 
 def test_index_disables_step_two_when_keys_not_collected(client_with_key: TestClient) -> None:
-    """Without Step 1 keys, the Start interview button is disabled — even
-    with OPENROUTER_OPERATOR_KEY set on the stack."""
+    """Without Step 1 keys, the Start interview button is disabled."""
     resp = client_with_key.get("/onboarding/")
     assert resp.status_code == 200
     body = resp.text
@@ -267,8 +259,17 @@ def test_turn_response_renders_user_and_assistant_bubbles(
     its own role-styled bubble. Otherwise the user's message disappears
     from view after the HTMX swap."""
     sid = _create_session_with_history(base_root, [])
+    # /turn now requires the session's credentials to resolve a chat key
+    # (no operator-env fallback after #401). Bind a tester key to this row.
+    from findajob.onboarding.session_store import set_credentials
 
-    def _fake(operator_key, system_prompt, history, user_message):
+    conn = sqlite3.connect(base_root / "data" / "pipeline.db")
+    try:
+        set_credentials(conn, sid, openrouter_api_key="sk-or-v1-render-test", rapidapi_key="", google_api_key="")
+    finally:
+        conn.close()
+
+    def _fake(api_key, system_prompt, history, user_message):
         return "ASSISTANT_REPLY_MARKER", {}
 
     monkeypatch.setattr("findajob.web.routes.onboarding_interview.run_turn", _fake)

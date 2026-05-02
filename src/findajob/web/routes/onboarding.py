@@ -69,8 +69,7 @@ def _has_in_app_interview_capability(request: Request) -> bool:
     Step 1 (API-key collection at ``/onboarding/keys``) is the single
     gate for the in-app interview — without it, finalize has no key to
     verify and the smoke check strands the user on an unfinishable
-    session. ``OPENROUTER_OPERATOR_KEY`` only subsidizes the chat-runner
-    cost; it doesn't substitute for Step 1.
+    session.
 
     Uses :func:`has_any_credentials` (not :func:`find_credentials_only`)
     so the gate stays True once the interview starts and the credentials
@@ -96,20 +95,14 @@ def _active_session_for_index(request: Request) -> Session | None:
     """Look up a resumable in-app interview session for the index page.
 
     Returns ``None`` when:
-    - In-app interview is unavailable on this stack (neither tester
-      credentials collected nor ``OPENROUTER_OPERATOR_KEY`` set)
+    - In-app interview is unavailable on this stack (no tester
+      credentials collected at /onboarding/ Step 1)
     - DB unavailable or schema doesn't include ``onboarding_sessions``
     - no recent un-completed session exists
 
     Failures are silent — the resume affordance is a convenience, not a
     correctness requirement, and failing the index render over a session
     lookup glitch would break the whole onboarding entry point.
-
-    Updated in #339 to gate on the same precedence as
-    :func:`_has_in_app_interview_capability` (was: env var only). Without
-    this, a self-deploy stack with tester credentials but no operator env
-    var would never surface the resume affordance — a tester who closes
-    their tab mid-interview would have to start over.
     """
     if not _has_in_app_interview_capability(request):
         return None
