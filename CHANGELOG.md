@@ -10,6 +10,12 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+## [0.12.0] — 2026-05-02
+
+Minor bump bundling PR A (#402, originally targeted as v0.11.1 patch) and PR B (#403, P1 onboarding UX + prompt revisions). The two ship together because no tester stack was pinned to `:v0.11`, so a separate v0.11.1 tag would have served no installed base. Operator's stack and `findajob-test` already moved through `:latest`; tester stacks (alice, papa, dave, judy, tango) currently on `:v0.10` should bump to `:v0.12` in the cohort wave.
+
+**Migration required:** No code-side action — `docker compose pull && up -d` covers the image upgrade. Stacks deployed before `:v0.10.0` and missing the `./state/.backups:/app/.backups` bind mount need a one-time stack-config patch; see [`docs/setup/install-docker.md` → Operating an existing stack → Adding the `.backups` bind mount](docs/setup/install-docker.md). Stacks already on `:v0.10.x` or later are fine.
+
 ### Fixed
 
 - **Reverted operator-funded chat path (`OPENROUTER_OPERATOR_KEY`) (#401).** The v0.11.0 release re-enabled an operator-funded fallback for the in-app onboarding interview chat (precedence: operator env key → tester's own key). Operator clarified post-release that this path was deprecated and was never supposed to be supported — the only model is "tester pays for their own chat via the OpenRouter key collected in Step 1." Removed: `chat_subsidized_by_operator` Jinja global, the operator-key precedence branch in `_resolved_chat_key`, the operator-key fallback in `interview_runner.run_turn` (param renamed `operator_key` → `api_key`), template branching for the Step 2 cost notice and nav-bar lifetime-cost badge, all documentation references in `CLAUDE.md`, `docs/setup/configure.md`, `docs/setup/README.md`, and `docs/setup/install-docker.md`. **No migration required:** stacks that had `OPENROUTER_OPERATOR_KEY=…` set in `data/.env` continue to work unchanged — the env var is simply no longer read. Tester stacks (alice, papa, dave, judy, tango) on `:v0.10` are unaffected; the cohort will roll forward to `:v0.11.x` once this patch ships and a follow-up walkthrough verifies cleanly.
@@ -673,7 +679,8 @@ from GHCR and deployed via Docker Compose on a shared Docker host.
 - Documentation cleanup — removing `sigoden/aichat` references in favor of
   `blob42/aichat-ng` — is tracked in #70
 
-[Unreleased]: https://github.com/brockamer/findajob/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/brockamer/findajob/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/brockamer/findajob/releases/tag/v0.12.0
 [0.11.0]: https://github.com/brockamer/findajob/releases/tag/v0.11.0
 [0.10.1]: https://github.com/brockamer/findajob/releases/tag/v0.10.1
 [0.10.0]: https://github.com/brockamer/findajob/releases/tag/v0.10.0
