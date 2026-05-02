@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
     tags: ["v*.*.*"]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: read
@@ -27,8 +29,11 @@ jobs:
 
       - name: Compute tags
         id: tags
+        env:
+          REPO_OWNER: ${{ github.repository_owner }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          IMAGE="ghcr.io/${{ github.repository_owner }}/findajob"
+          IMAGE="ghcr.io/${REPO_OWNER}/findajob"
           TAGS=""
           if [[ "${GITHUB_REF}" == refs/tags/v*.*.* ]]; then
             VERSION="${GITHUB_REF#refs/tags/}"              # v0.1.3
@@ -37,6 +42,11 @@ jobs:
           elif [[ "${GITHUB_REF}" == refs/heads/main ]]; then
             SHA="${GITHUB_SHA::7}"
             TAGS="${IMAGE}:main-${SHA},${IMAGE}:latest"
+          elif [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            # PR builds publish only :pr-{N} — :latest stays aligned with main HEAD.
+            # The PR-branch image lets pre-merge walkthrough verification
+            # (e.g. findajob-test) run against the actual PR code.
+            TAGS="${IMAGE}:pr-${PR_NUMBER}"
           fi
           echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
           echo "Will push: ${TAGS}"
