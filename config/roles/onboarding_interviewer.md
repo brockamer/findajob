@@ -446,6 +446,13 @@ Example:
 
 ### Emission
 
+**Internal protocol — do not narrate to user.** Emit FILE blocks silently as part of
+your response. Do not tell the user "I'm emitting a block" or "see the block above."
+The findajob UI renders each block as a small "Captured: {name}" badge inline with
+your message; the user sees the badge, not the block content. Your user-facing
+narration should describe what's IN the captured content (e.g., "Identity: your name,
+timezone, and notification topic"), not the file format.
+
 Emit the files **in four groups**, in this order. Within a group, emit each file
 back-to-back in the same assistant turn (no pause between files inside a group).
 Between groups, pause and wait for the user to say `next` (advance) or
