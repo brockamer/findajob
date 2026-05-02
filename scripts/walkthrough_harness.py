@@ -9,9 +9,15 @@ machine-readable findings report.
 Usage:
   uv run python scripts/walkthrough_harness.py \\
     --base-url https://findajob-test.example.com/ \\
-    --replay-from tmp/onboarding-walkthrough-2026-05-02/transcript.md \\
-    --output-dir tmp/onboarding-walkthrough-YYYY-MM-DD-prb/ \\
+    --output-dir tmp/onboarding-walkthrough-YYYY-MM-DD/ \\
     --secrets-file ~/.secrets
+
+Replay corpus: defaults to ``tests/fixtures/walkthrough/corpus_transcript.md``
+(an in-repo fictional persona). Override with ``--replay-from <path>`` if
+re-baselining or experimenting with a captured transcript. Real operator
+walkthroughs MUST NOT be checked into the repo as the corpus — they
+contain PII; sanitize and re-baseline the in-repo corpus instead. See the
+re-baseline workflow notes at the top of the corpus file.
 
 Secrets file format (one per line, optionally quoted, # = comment):
   FINDAJOB_TEST_USER=myuser
@@ -46,7 +52,13 @@ from typing import Any
 
 # Allow importing from the scripts/ directory for the corpus parser module.
 sys.path.insert(0, str(Path(__file__).parent))
-from walkthrough_replay_corpus import ReplayCorpus, load_corpus
+from walkthrough_replay_corpus import _PHASE_ANCHORS, ReplayCorpus, load_corpus
+
+# Ordered list of phase-end anchor names. Index in this list IS the phase
+# number minus one (i.e. PHASE_ANCHOR_ORDER[0] == "phase_1_end" marks the
+# end of phase 1). Drives the harness's "current phase" state machine and
+# corpus-side phase-range computation.
+PHASE_ANCHOR_ORDER = ["phase_1_end", "phase_2_end", "phase_3_end", "phase_4_end", "phase_5_end"]
 
 # ---------------------------------------------------------------------------
 # Secret loading
@@ -167,28 +179,101 @@ def _keyword_overlap(a: str, b: str) -> float:
     return matches / len(a_words)
 
 
+def compute_phase_ranges(corpus: ReplayCorpus) -> list[tuple[int, int]]:
+    """Convert ``corpus.phase_anchors`` into ordered 0-based half-open
+    ranges over ``corpus.user_messages``, one per phase.
+
+    The result has ``len(PHASE_ANCHOR_ORDER) + 1`` entries — one slot per
+    phase 1..N plus a tail slot. Each fired anchor at 1-based turn ``T``
+    marks ``T - 1`` (0-based) as the FIRST turn of the new phase, because
+    anchors are detected on the assistant turn whose user response is in
+    the new phase. The "tail" slot lands at the index immediately after
+    the last fired anchor — i.e. it represents the phase the corpus
+    ended in. Slots for unfired anchors at the end are empty
+    (``start == end``).
+    """
+    ranges: list[tuple[int, int]] = [(0, 0)] * (len(PHASE_ANCHOR_ORDER) + 1)
+    prev_start = 0
+    last_phase_idx = 0
+    for i, name in enumerate(PHASE_ANCHOR_ORDER):
+        t = corpus.phase_anchors.get(name, 0)
+        if t <= 0:
+            continue
+        next_start = t - 1
+        ranges[i] = (prev_start, next_start)
+        prev_start = next_start
+        last_phase_idx = i + 1
+    ranges[last_phase_idx] = (prev_start, corpus.turn_count)
+    return ranges
+
+
+def advance_phase_idx(assistant_text: str, current_phase_idx: int) -> int:
+    """Detect phase advance from the assistant's text. Monotonically
+    non-decreasing — once we've advanced past phase N we can't go back.
+    A single assistant turn that mentions multiple anchors (e.g.
+    "we just finished phase 2; moving to phase 3") advances by all of
+    them in one call.
+    """
+    lower = assistant_text.lower()
+    new_idx = current_phase_idx
+    for i in range(current_phase_idx, len(PHASE_ANCHOR_ORDER)):
+        anchor_name = PHASE_ANCHOR_ORDER[i]
+        for phrase in _PHASE_ANCHORS[anchor_name]:
+            if phrase in lower:
+                new_idx = i + 1
+                break
+    return new_idx
+
+
 def pick_answer(
     turn_idx: int,
     assistant_text: str,
     corpus: ReplayCorpus,
     intent_map: dict[str, str],
+    *,
+    current_phase_idx: int | None = None,
+    phase_relative_turn: int | None = None,
+    phase_ranges: list[tuple[int, int]] | None = None,
 ) -> tuple[str, str]:
     """Select the best replay answer for the current assistant question.
 
-    Returns (answer_text, match_reason).
-    match_reason is one of: 'positional', 'keyword', 'intent', 'affirmative', 'review'
+    Two modes:
+
+    - **Legacy** (``current_phase_idx is None``): preserved for unit tests
+      and any caller that doesn't track phase. Positional match is by
+      absolute ``turn_idx``; keyword overlap considers all corpus turns.
+
+    - **Phase-scoped** (``current_phase_idx`` provided, plus ``phase_ranges``
+      and ``phase_relative_turn``): positional match is by the
+      within-phase index; keyword overlap is restricted to corpus turns
+      belonging to the same phase. Eliminates cross-phase contamination
+      when the prompt's question shape has shifted between corpus capture
+      and the current run (#405 Issue 2).
+
+    Returns ``(answer_text, match_reason)`` — match_reason is one of
+    ``positional``, ``positional_within_phase``, ``keyword(...)``,
+    ``keyword_within_phase(...)``, ``intent(...)``, ``affirmative``,
+    ``review``, ``review_no_phase_match``.
     """
-    # Rule 4: yes/no readiness questions always get an affirmative
     if _is_affirmative_question(assistant_text):
         return ("yes", "affirmative")
 
-    # Rule 1: positional match — same turn index from prior corpus
+    if current_phase_idx is not None and phase_ranges is not None:
+        return _pick_answer_phase_scoped(
+            assistant_text=assistant_text,
+            corpus=corpus,
+            intent_map=intent_map,
+            current_phase_idx=current_phase_idx,
+            phase_relative_turn=phase_relative_turn or 0,
+            phase_ranges=phase_ranges,
+        )
+
+    # Legacy path: positional by absolute turn_idx, keyword over all corpus.
     if 0 <= turn_idx < len(corpus.user_messages):
         prior = corpus.user_messages[turn_idx]
         if prior.strip():
             return (prior, "positional")
 
-    # Rule 1 (fallback): keyword similarity against all prior user messages
     best_overlap = 0.0
     best_answer = ""
     for prior_asst_idx, prior_asst in enumerate(corpus.assistant_messages):
@@ -203,12 +288,60 @@ def pick_answer(
     if best_overlap >= _KEYWORD_MATCH_THRESHOLD and best_answer.strip():
         return (best_answer, f"keyword(overlap={best_overlap:.2f})")
 
-    # Rule 2: intent map for lettered-list questions (Phase 4 proactive categories)
     for intent_key, letter_choices in intent_map.items():
         if intent_key.lower() in assistant_text.lower():
             return (letter_choices, f"intent({intent_key})")
 
-    # Rule 3: new question — emit sentinel, log as REVIEW
+    return ("Skip — using prior context", "review")
+
+
+def _pick_answer_phase_scoped(
+    *,
+    assistant_text: str,
+    corpus: ReplayCorpus,
+    intent_map: dict[str, str],
+    current_phase_idx: int,
+    phase_relative_turn: int,
+    phase_ranges: list[tuple[int, int]],
+) -> tuple[str, str]:
+    candidate_indices: list[int] = []
+    if 0 <= current_phase_idx < len(phase_ranges):
+        start, end = phase_ranges[current_phase_idx]
+        if start < end:
+            candidate_indices = list(range(start, end))
+
+    if candidate_indices:
+        # Rule 1: positional within phase
+        if 0 <= phase_relative_turn < len(candidate_indices):
+            corpus_idx = candidate_indices[phase_relative_turn]
+            prior = corpus.user_messages[corpus_idx]
+            if prior.strip():
+                return (prior, "positional_within_phase")
+
+        # Rule 2: keyword overlap restricted to phase
+        best_overlap = 0.0
+        best_answer = ""
+        for corpus_idx in candidate_indices:
+            prior_asst = corpus.assistant_messages[corpus_idx]
+            if not prior_asst.strip():
+                continue
+            overlap = _keyword_overlap(assistant_text, prior_asst)
+            if overlap > best_overlap:
+                best_overlap = overlap
+                best_answer = corpus.user_messages[corpus_idx]
+
+        if best_overlap >= _KEYWORD_MATCH_THRESHOLD and best_answer.strip():
+            return (best_answer, f"keyword_within_phase(overlap={best_overlap:.2f})")
+
+    # Rule 3: intent map — phase-independent (a categorical-question detector
+    # that classifies by question shape, not by corpus similarity). Runs
+    # whether or not the corpus has any turns for the current phase.
+    for intent_key, letter_choices in intent_map.items():
+        if intent_key.lower() in assistant_text.lower():
+            return (letter_choices, f"intent({intent_key})")
+
+    if not candidate_indices:
+        return ("Skip — using prior context", "review_no_phase_match")
     return ("Skip — using prior context", "review")
 
 
@@ -398,8 +531,14 @@ def run_walkthrough(
             return snap_path
 
         def read_cost() -> float:
+            # The data attribute lives on the inner <span>, not on the
+            # #progress-row <div> wrapper. The wrong selector returned None
+            # → 0.0 every time; #405 Issue 1.
             try:
-                val = page.get_attribute("#progress-row", "data-cumulative-cost-usd")
+                val = page.get_attribute(
+                    "#progress-row span[data-cumulative-cost-usd]",
+                    "data-cumulative-cost-usd",
+                )
                 return float(val) if val else 0.0
             except Exception:
                 return 0.0
@@ -469,6 +608,14 @@ def run_walkthrough(
         markdown_checked = False
         file_badge_checked = False
         auto_scroll_checked = False
+
+        # Phase scoping state — restricts corpus matching to within-phase
+        # candidates so prompt revisions that reorder/add questions don't
+        # cause cross-phase contamination (#405 Issue 2).
+        current_phase_idx = 0
+        phase_relative_turn = 0
+        phase_ranges = compute_phase_ranges(corpus)
+        print(f"[harness] Corpus phase ranges (0-based, half-open): {phase_ranges}")
 
         def count_assistant_bubbles() -> int:
             return len(page.query_selector_all("[data-role='assistant']"))
@@ -585,8 +732,27 @@ def run_walkthrough(
                 print(f"[harness] Cost ceiling ${cost_ceiling_usd:.2f} exceeded at turn {turn_num}. Stopping.")
                 break
 
-            # Pick answer from corpus
-            answer, reason = pick_answer(turn_idx, assistant_text, corpus, intent_map)
+            # Detect phase advance from this assistant turn before picking
+            # an answer. If we just crossed a phase boundary, reset the
+            # within-phase positional counter so the next user message is
+            # the *first* answer in the new phase.
+            new_phase_idx = advance_phase_idx(assistant_text, current_phase_idx)
+            if new_phase_idx != current_phase_idx:
+                print(f"[harness] Phase advance: {current_phase_idx} → {new_phase_idx} (triggered at turn {turn_num})")
+                current_phase_idx = new_phase_idx
+                phase_relative_turn = 0
+
+            # Pick answer from corpus, restricted to within-phase candidates.
+            answer, reason = pick_answer(
+                turn_idx,
+                assistant_text,
+                corpus,
+                intent_map,
+                current_phase_idx=current_phase_idx,
+                phase_relative_turn=phase_relative_turn,
+                phase_ranges=phase_ranges,
+            )
+            phase_relative_turn += 1
 
             if reason == "review":
                 findings.add(
@@ -695,8 +861,11 @@ def run_walkthrough(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Autonomous Playwright walkthrough harness for findajob onboarding.")
+    repo_root = Path(__file__).resolve().parent.parent
+    default_corpus = repo_root / "tests" / "fixtures" / "walkthrough" / "corpus_transcript.md"
+    default_help = f"Path to replay corpus transcript (default: {default_corpus.relative_to(repo_root)})"
     parser.add_argument("--base-url", required=True, help="Base URL of the findajob instance")
-    parser.add_argument("--replay-from", type=Path, required=True, help="Path to prior transcript.md")
+    parser.add_argument("--replay-from", type=Path, default=default_corpus, help=default_help)
     parser.add_argument("--output-dir", type=Path, required=True, help="Directory for output artifacts")
     parser.add_argument(
         "--secrets-file",
