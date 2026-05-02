@@ -16,6 +16,9 @@ Usage:
 Secrets file format (one per line, optionally quoted, # = comment):
   FINDAJOB_TEST_USER=myuser
   FINDAJOB_TEST_PASS=mypass
+
+The file can equivalently use shell-sourceable ``export KEY=value`` lines so
+it can double as a script you ``source`` in your shell.
   FINDAJOB_TEST_OR_KEY=sk-or-v1-...
   FINDAJOB_TEST_RAPIDAPI_KEY=abc...
   FINDAJOB_TEST_GOOGLE_KEY=AIza...   # optional
@@ -68,7 +71,11 @@ _KEY_INPUT_NAMES = {"openrouter_api_key", "rapidapi_key", "google_api_key"}
 
 
 def load_secrets(path: Path) -> dict[str, str]:
-    """Parse a KEY=value secrets file. Never shells out — parses manually."""
+    """Parse a KEY=value secrets file. Never shells out — parses manually.
+
+    Accepts both bare ``KEY=value`` and shell-sourceable ``export KEY=value``
+    so the file can double as a shell-source script.
+    """
     if not path.exists():
         raise FileNotFoundError(f"Secrets file not found: {path}")
 
@@ -77,6 +84,8 @@ def load_secrets(path: Path) -> dict[str, str]:
         line = raw_line.strip()
         if not line or line.startswith("#"):
             continue
+        if line.startswith("export "):
+            line = line[len("export ") :]
         if "=" not in line:
             continue
         key, _, value = line.partition("=")

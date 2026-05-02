@@ -188,6 +188,20 @@ class TestSecretsLoading:
         # Google key is optional — not in file, should not raise
         assert "FINDAJOB_TEST_GOOGLE_KEY" not in secrets or secrets.get("FINDAJOB_TEST_GOOGLE_KEY") == ""
 
+    def test_accepts_shell_export_prefix(self, tmp_path: Path) -> None:
+        """Lines may use ``export KEY=value`` so the file doubles as a
+        shell-sourceable script."""
+        path = tmp_path / "secrets-export"
+        path.write_text(
+            "export FINDAJOB_TEST_OR_KEY=or-key-export\n"
+            "export FINDAJOB_TEST_RAPIDAPI_KEY=rapid-key-export\n"
+            "FINDAJOB_TEST_GOOGLE_KEY=plain-form\n"
+        )
+        secrets = load_secrets(path)
+        assert secrets["FINDAJOB_TEST_OR_KEY"] == "or-key-export"
+        assert secrets["FINDAJOB_TEST_RAPIDAPI_KEY"] == "rapid-key-export"
+        assert secrets["FINDAJOB_TEST_GOOGLE_KEY"] == "plain-form"
+
 
 # ---------------------------------------------------------------------------
 # DOM snapshot redaction tests
