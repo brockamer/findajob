@@ -285,3 +285,18 @@ def test_turn_response_renders_user_and_assistant_bubbles(
     assert "ASSISTANT_REPLY_MARKER" in body
     assert 'data-role="user"' in body
     assert 'data-role="assistant"' in body
+
+
+# ── Start Interview button loading state (#401 PR B Task 2) ──────────────
+
+
+def test_start_interview_button_has_alpine_loading_state(client_with_key: TestClient, base_root: Path) -> None:
+    """When keys are collected the Start Interview button carries Alpine.js
+    reactivity to disable itself and swap to a spinner label on submit."""
+    _plant_credentials(base_root)
+    resp = client_with_key.get("/onboarding/")
+    assert resp.status_code == 200
+    body = resp.text
+    assert 'x-data="{ starting: false }"' in body
+    assert ':disabled="starting"' in body
+    assert "animate-spin" in body
