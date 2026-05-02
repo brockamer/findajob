@@ -249,6 +249,9 @@ def test_inject_staging_failure_rolls_back(tmp_path: Path) -> None:
     # No residual tempfiles
     residual = list((tmp_path / "candidate_context").glob("profile.md.*.tmp"))
     assert residual == []
+    # WIDEN: assert no *.tmp residue anywhere in the tree, not just for one filename
+    leftover_anywhere = list(tmp_path.rglob("*.tmp"))
+    assert leftover_anywhere == [], f"rollback left tempfile residue: {leftover_anywhere}"
     # No backup dir left behind
     backups = tmp_path / ".backups"
     assert not backups.exists() or not any(backups.iterdir())
@@ -711,3 +714,31 @@ def test_inject_backs_up_existing_feed_urls_before_overwrite(tmp_path: Path) -> 
     backup_files = list(result.backup_dir.rglob("feed_urls.txt"))
     assert len(backup_files) == 1
     assert "oldcompany" in backup_files[0].read_text()
+
+
+def test_inject_rollback_includes_tempfile_when_write_fails_mid_staging(tmp_path: Path, monkeypatch) -> None:
+    """#215 Fix 1: rollback must clean up tempfiles even if os.fdopen/write
+    raises after mkstemp succeeded but before tempfiles.append."""
+    import os
+
+    found = _minimal_found_dict()
+
+    # Patch os.fdopen to raise on the THIRD call (after first 2 staging writes succeed).
+    real_fdopen = os.fdopen
+    call_count = {"n": 0}
+
+    def fail_third(*args, **kwargs):
+        call_count["n"] += 1
+        if call_count["n"] == 3:
+            raise OSError("simulated mid-staging write failure")
+        return real_fdopen(*args, **kwargs)
+
+    monkeypatch.setattr(os, "fdopen", fail_third)
+
+    with pytest.raises(OSError):
+        inject(tmp_path, found, openrouter_api_key="sk-test", skip_smoke_check=True)
+
+    # The third tempfile was created on disk by mkstemp before fdopen failed.
+    # Rollback must have cleaned it up regardless.
+    leftover = list(tmp_path.rglob("*.tmp"))
+    assert leftover == [], f"rollback left tempfile residue: {leftover}"

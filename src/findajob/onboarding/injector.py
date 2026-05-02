@@ -366,9 +366,9 @@ def inject(
                 continue
             dest = base_root / _ALL_DESTINATIONS[name]
             fd, tmp_name = tempfile.mkstemp(prefix=dest.name + ".", suffix=".tmp", dir=str(dest.parent))
+            tempfiles.append((tmp_name, dest))  # register immediately so rollback sees it
             with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
                 fh.write(found[name])
-            tempfiles.append((tmp_name, dest))
 
         # Stage optional files. voice-samples.md goes through process_voice_samples
         # (clean + LLM-redact); the others (jsearch_queries.txt, feed-urls.txt,
@@ -384,25 +384,25 @@ def inject(
                 body = processed
             dest = base_root / opt_relpath
             fd, tmp_name = tempfile.mkstemp(prefix=dest.name + ".", suffix=".tmp", dir=str(dest.parent))
+            tempfiles.append((tmp_name, dest))  # register immediately so rollback sees it
             with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
                 fh.write(body)
-            tempfiles.append((tmp_name, dest))
 
         # Stage the derived companies_of_interest.txt
         coi_body = derive_companies_of_interest(found["target_companies.md"])
         coi_dest = base_root / _COMPANIES_OF_INTEREST_DEST
         fd, tmp_name = tempfile.mkstemp(prefix=coi_dest.name + ".", suffix=".tmp", dir=str(coi_dest.parent))
+        tempfiles.append((tmp_name, coi_dest))  # register immediately so rollback sees it
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
             fh.write(coi_body)
-        tempfiles.append((tmp_name, coi_dest))
 
         # Stage the merged data/.env if there are any env updates
         if new_env_content is not None:
             fd, env_tmp_name = tempfile.mkstemp(prefix=env_path.name + ".", suffix=".tmp", dir=str(env_path.parent))
+            tempfiles.append((env_tmp_name, env_path))  # register immediately so rollback sees it
+            os.chmod(env_tmp_name, 0o600)
             with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
                 fh.write(new_env_content)
-            os.chmod(env_tmp_name, 0o600)
-            tempfiles.append((env_tmp_name, env_path))
 
         # Commit: os.replace every staged tempfile into place
         for tmp_name, dest in tempfiles:
