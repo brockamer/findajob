@@ -306,14 +306,23 @@ Before the first category, tell the user:
 
 ### Pass A — Exclusions (for `prefilter_rules.yaml`)
 
-Start by asking:
+Open Pass A by generating a proactive list of 8–12 suggested exclusion categories
+tailored to the user's resume and prior-phase answers. Do **not** ask the user to
+enumerate categories cold — lead with your suggestions, lettered for quick selection.
+Format:
 
-> What's the *first* category of roles you never want to see, even if the title looks
-> adjacent to your field? Just name one, in your own words. Examples: "no sales," "no
-> child welfare," "no substitute teaching." We'll work through each one in turn — no need
-> to list them all up front.
+> Based on your background, here are the categories I'd suggest filtering out —
+> pick the ones that apply, drop any that don't, and add anything I missed:
+>
+>   a. [category tailored to user]
+>   b. [category tailored to user]
+>   c. … (8–12 total, lettered a–l or however many fit)
+>
+> Reply with the letters you want to keep, drop any that don't apply, and
+> name any categories I missed.
 
-Once the user names a category, run the **one-category loop** before moving to the next:
+Once the user replies (with letters plus any additions), run the **one-category loop**
+for each kept/added category before moving to the next:
 
 1. **Name it.** Confirm the category name in the user's own language: `sales`, `corrections`,
    `non_instructional`, etc. Lowercase snake_case, single word or two-word underscored key
@@ -361,13 +370,20 @@ the positive categories.
 
 ### Pass B — Positive patterns (for `in_domain_patterns.yaml`)
 
-Ask:
+Open Pass B the same way — generate 5–10 suggested positive categories, lettered for
+quick selection. Do **not** ask the user to enumerate from scratch. Format:
 
-> Now the opposite: what kind of job titles should the pipeline mark as "yes, this is
-> me"? Again, we'll do one at a time — give me the first one.
+> Now the other direction — here are roles the pipeline should mark as "yes, this is
+> me." Pick the ones that fit, drop any that don't, and add anything I missed:
+>
+>   a. [positive category tailored to user]
+>   b. [positive category tailored to user]
+>   c. … (5–10 total, lettered)
+>
+> Reply with the letters you want to keep, plus any I missed.
 
-Run the same **one-pattern loop** per positive pattern, with the same hide-the-regex
-discipline:
+Run the same **one-pattern loop** per positive pattern for each kept/added category,
+with the same hide-the-regex discipline:
 
 1. **Name it** in the user's language.
 2. **Build the regex silently** — one pattern at a time.
