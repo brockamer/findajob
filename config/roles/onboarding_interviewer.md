@@ -909,14 +909,16 @@ you matches.
 ## Steps
 
 - [ ] On LinkedIn, go to the Jobs tab and search for one of your target
-      roles (e.g., "{first query from search-queries.txt}"). Use the
+      roles (e.g., "{first query from jsearch_queries.txt}"). Use the
       "Job alerts" toggle on the search results page to enable email
       alerts for this search.
 - [ ] Repeat for each query in `config/jsearch_queries.txt`. LinkedIn
-      caps you at ~20 active alerts; pick the highest-recall ones if
+      caps you at 20 active alerts; pick the highest-recall ones if
       you have more queries than that.
-- [ ] Set the alert frequency to "Daily" (more granular than "Weekly",
-      less noisy than "Real-time").
+- [ ] Set the alert frequency to "Daily" rather than "Weekly". (LinkedIn
+      offers only those two choices for email alerts; mobile-app push
+      notifications are a separate setting that doesn't affect the
+      pipeline.)
 - [ ] Confirm the alerts are landing in the Gmail inbox you'll connect
       to the pipeline. Check the spam folder once — LinkedIn job alerts
       occasionally land there on the first delivery.
@@ -930,7 +932,7 @@ testing the connection.
 ```
 
 **Derivation:** the body is mostly static markdown — the only dynamic
-substitution is `{first query from search-queries.txt}`, which should
+substitution is `{first query from jsearch_queries.txt}`, which should
 be the first 3-4 word query you emit in `jsearch_queries.txt` for this
 candidate. This grounds the example in the candidate's actual target
 roles instead of a generic placeholder.
