@@ -230,9 +230,7 @@ def test_finalize_block_placeholder_present_when_not_ready(client_with_key: Test
     assert f"/onboarding/interview/{sid}/finalize" not in body
 
 
-def test_finalize_block_has_green_styling_and_button_when_ready(
-    client_with_key: TestClient, base_root: Path
-) -> None:
+def test_finalize_block_has_green_styling_and_button_when_ready(client_with_key: TestClient, base_root: Path) -> None:
     """When finalize_ready=True the section must carry the green-border styling
     and contain the Finalize submit button."""
     from findajob.onboarding.parser import ALLOWED_FILENAMES, parse_emission
