@@ -39,7 +39,7 @@
        app without going through `create_app`'s globals registration; in
        production the global is always set. #}
     {% if onboarding_lifetime_cost_usd is defined %}
-      <li class="ml-auto">
+      <li id="nav-lifetime-cost" class="ml-auto">
         <span class="text-xs px-2 py-1 rounded bg-slate-700/50 border border-slate-500/40 font-mono"
               title="Total OpenRouter cost for onboarding interviews on this stack. Authoritative number from your OpenRouter account.">
           ${{ '%.2f' | format(onboarding_lifetime_cost_usd()) }} onboarding
