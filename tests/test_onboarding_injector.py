@@ -666,14 +666,14 @@ def test_inject_writes_feed_urls_when_present(tmp_path: Path) -> None:
     """#283 Section B: feed-urls.txt → config/feed_urls.txt (hyphen→underscore)."""
     found = _minimal_found_dict()
     found["feed-urls.txt"] = (
-        "https://boards.greenhouse.io/acme\nhttps://jobs.lever.co/example\nhttps://jobs.ashbyhq.com/zoox\n"
+        "https://boards.greenhouse.io/acme\nhttps://jobs.lever.co/example\nhttps://jobs.ashbyhq.com/example-startup\n"
     )
     inject(tmp_path, found, openrouter_api_key="sk-test", skip_smoke_check=True)
     feed_path = tmp_path / "config" / "feed_urls.txt"
     assert feed_path.is_file()
     assert "boards.greenhouse.io/acme" in feed_path.read_text()
     assert "jobs.lever.co/example" in feed_path.read_text()
-    assert "jobs.ashbyhq.com/zoox" in feed_path.read_text()
+    assert "jobs.ashbyhq.com/example-startup" in feed_path.read_text()
 
 
 def test_inject_writes_linkedin_alerts_when_present(tmp_path: Path) -> None:
