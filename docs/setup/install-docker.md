@@ -351,6 +351,47 @@ Per the project memory `feedback_never_print_secrets`, never `cat` or
 echo the `.env` to your terminal — copy + edit server-side only.
 Repeat for `RAPIDAPI_KEY` / `GOOGLE_API_KEY` as needed.
 
+### Adding the `.backups` bind mount (for stacks deployed before `:v0.10.0`)
+
+Stacks deployed before `:v0.10.0` may be missing the `./state/.backups`
+bind mount. The injector writes pre-overwrite backups of `data/.env` and
+`candidate_context/` into `/app/.backups/{UTC-stamp}/`; without the bind
+mount, the path resolves inside the container and fails with
+`PermissionError` on finalize / key rotation.
+
+**Symptom:** Finalize on `/onboarding/` crashes with
+`PermissionError: [Errno 13] Permission denied: '/app/.backups'` (or
+`EACCES` in the container logs); the rerun-onboarding "Save keys" path
+fails the same way.
+
+**Fix:**
+
+1. SSH to the host and stop the stack:
+   ```
+   ssh <docker-host>
+   cd /opt/stacks/findajob-<handle>/
+   sudo docker compose down
+   ```
+2. Create the host directory:
+   ```
+   sudo mkdir -p state/.backups
+   sudo chown 1000:1000 state/.backups
+   ```
+3. Add the bind mount to `compose.yaml` under the `volumes:` block of the
+   `scheduler` service (matches the line in `compose.yaml.example`):
+   ```
+   - ./state/.backups:/app/.backups
+   ```
+4. Bring the stack back up:
+   ```
+   sudo docker compose up -d
+   ```
+5. Confirm with `sudo docker compose exec scheduler ls -la /app/.backups` —
+   should show an empty directory owned by uid 1000.
+
+Stacks deployed using `compose.yaml.example` from `:v0.10.0` onward
+already have this mount; no action needed.
+
 ## Updating
 
 Before running `docker compose pull && docker compose up -d`:
