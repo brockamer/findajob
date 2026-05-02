@@ -18,6 +18,7 @@ import os
 import re
 import shutil
 import tempfile
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import NamedTuple
@@ -89,9 +90,27 @@ class DiscoveryStatus(NamedTuple):
     error: str | None
 
 
+@dataclass(frozen=True)
+class InjectionDecision:
+    """Gate decision produced by :func:`inject`.
+
+    When ``gate_to_feed_config`` is True the filesystem sentinel was NOT
+    written — the caller must redirect the user to ``/onboarding/feed-config/``
+    to collect the missing adapter key before the sentinel is written.
+    ``pending_adapter`` is the first adapter name whose env var is absent.
+
+    When ``gate_to_feed_config`` is False the sentinel was written by inject()
+    and the normal onboarding completion flow applies.
+    """
+
+    gate_to_feed_config: bool
+    pending_adapter: str | None  # adapter name to configure, if gating
+
+
 class InjectResult(NamedTuple):
     backup_dir: Path
     discovery: DiscoveryStatus
+    decision: InjectionDecision = InjectionDecision(gate_to_feed_config=False, pending_adapter=None)
 
 
 def is_complete(base_root: Path) -> bool:
@@ -354,6 +373,7 @@ def inject(
     stamp = _utc_stamp()
     backup_dir = backup_existing(base_root, stamp)
 
+    decision: InjectionDecision = InjectionDecision(gate_to_feed_config=False, pending_adapter=None)
     tempfiles: list[tuple[str, Path]] = []  # (tmp_name, final_dest)
     env_tmp_name: str | None = None
     try:
@@ -416,8 +436,36 @@ def inject(
             if not ok:
                 raise OnboardingSmokeCheckFailed(err or "OpenRouter verification failed.")
 
-        # Finally, the sentinel
-        mark_complete(base_root)
+        # Decide whether to write the sentinel immediately or gate to feed-config.
+        # Gate fires when active_sources.txt names an adapter whose env var is blank.
+        active_path = base_root / "config" / "active_sources.txt"
+        if not active_path.exists():
+            # No picker emission → existing behavior (write sentinel).
+            mark_complete(base_root)
+            decision = InjectionDecision(gate_to_feed_config=False, pending_adapter=None)
+        else:
+            from findajob.fetchers.adapters.registry import REGISTERED_ADAPTERS  # noqa: PLC0415
+
+            active_names = [
+                n.strip() for n in active_path.read_text().splitlines() if n.strip() and not n.startswith("#")
+            ]
+            classes_by_name = {cls.name: cls for cls in REGISTERED_ADAPTERS}
+            needs_gate = False
+            pending: str | None = None
+            for name in active_names:
+                if name not in classes_by_name:
+                    continue
+                instance = classes_by_name[name]()
+                if not instance.is_configured():
+                    needs_gate = True
+                    pending = name
+                    break
+
+            if needs_gate:
+                decision = InjectionDecision(gate_to_feed_config=True, pending_adapter=pending)
+            else:
+                mark_complete(base_root)
+                decision = InjectionDecision(gate_to_feed_config=False, pending_adapter=None)
     except OnboardingSmokeCheckFailed:
         # Files have been committed; tempfiles list is already empty. Do NOT
         # delete the backup dir — operator may need it. Just propagate so the
@@ -454,4 +502,4 @@ def inject(
         )
     except Exception as e:  # noqa: BLE001 — discovery must never crash onboarding
         discovery = DiscoveryStatus(success=False, count=0, error=str(e))
-    return InjectResult(backup_dir=backup_dir, discovery=discovery)
+    return InjectResult(backup_dir=backup_dir, discovery=discovery, decision=decision)

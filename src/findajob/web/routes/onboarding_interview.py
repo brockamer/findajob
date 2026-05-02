@@ -478,6 +478,13 @@ def finalize_interview(
     finally:
         conn.close()
 
+    # When the chosen adapter's env var is missing, gate to the feed-config
+    # step where the user can enter the key and run a live test. The filesystem
+    # sentinel has NOT been written yet — post_finish() on /onboarding/feed-config/
+    # writes it after the key is collected and verified.
+    if inject_result.decision.gate_to_feed_config:
+        return RedirectResponse(f"/onboarding/feed-config/{session_id}", status_code=303)
+
     # Mirror the existing /onboarding/inject contract: clear the cached guard
     # state and render complete.html inline. No /onboarding/complete GET
     # route exists yet, so a redirect would 404.

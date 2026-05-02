@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from pathlib import Path
 
 from findajob.onboarding.injector import inject
@@ -87,3 +89,40 @@ def test_no_picker_emission_no_active_sources_file(tmp_path: Path) -> None:
     inject(tmp_path, parsed.found, skip_smoke_check=True)
 
     assert not (tmp_path / "config" / "active_sources.txt").exists()
+
+
+def test_inject_skips_sentinel_when_active_adapter_unconfigured(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If active adapter's env var is blank, sentinel is NOT written; gate to feed-config."""
+    monkeypatch.delenv("JSEARCH_API_KEY", raising=False)
+    (tmp_path / "config").mkdir()
+    (tmp_path / "data").mkdir()
+    (tmp_path / "candidate_context").mkdir()
+
+    parsed = parse_emission(_emission_with_picker("jsearch"))
+    result = inject(tmp_path, parsed.found, skip_smoke_check=True)
+
+    sentinel = tmp_path / "data" / ".onboarding-complete"
+    assert not sentinel.exists()
+    assert result.decision.gate_to_feed_config is True
+    assert result.decision.pending_adapter == "jsearch"
+
+
+def test_inject_writes_sentinel_when_active_adapter_configured(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If active adapter's env var is set, sentinel is written immediately."""
+    monkeypatch.setenv("JOBS_API14_KEY", "existing-key")
+    (tmp_path / "config").mkdir()
+    (tmp_path / "data").mkdir()
+    (tmp_path / "candidate_context").mkdir()
+
+    parsed = parse_emission(_emission_with_picker("jobs-api14"))
+    result = inject(tmp_path, parsed.found, skip_smoke_check=True)
+
+    sentinel = tmp_path / "data" / ".onboarding-complete"
+    assert sentinel.exists()
+    assert result.decision.gate_to_feed_config is False
