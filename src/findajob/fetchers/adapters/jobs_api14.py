@@ -34,22 +34,26 @@ class JobsApi14Adapter:
     def fetch(self, queries: list[str]) -> list[dict]:
         api_key = os.environ.get("JOBS_API14_KEY", "")
         if not api_key:
-            log_event("jobs_api14_error", error="JOBS_API14_KEY not set in .env")
+            log_event("jobsapi_error", error="JOBS_API14_KEY not set in .env")
             return []
 
         date_posted = _date_posted_for_install()
-        log_event("jobs_api14_date_posted", value=date_posted)
+        log_event("jobsapi_date_posted", value=date_posted)
 
         headers = self._headers(api_key)
         rows: list[dict] = []
+        last_idx = len(queries) - 1
         for i, query in enumerate(queries):
-            if i > 0:
-                time.sleep(0.6)
             params = self._params(query, date_posted)
             data = self._call_with_retry(headers, params, query)
             if data is None:
                 continue
-            rows.extend(self._parse_rows(data, query))
+            new_rows = self._parse_rows(data, query)
+            rows.extend(new_rows)
+            count = len(new_rows)
+            log_event("jobsapi_fetched", source="linkedin", query=query, count=count)
+            if i < last_idx:
+                time.sleep(0.6)
         return rows
 
     def live_test(self, queries: list[str]) -> LiveTestResult:
@@ -165,11 +169,11 @@ class JobsApi14Adapter:
             response.raise_for_status()
             data = response.json()
             if data.get("hasError"):
-                log_event("jobs_api14_error", source=self.name, query=query, errors=data.get("errors"))
+                log_event("jobsapi_error", source="linkedin", query=query, errors=data.get("errors"))
                 return None
             return data
         except requests.RequestException as e:
-            log_event("jobs_api14_error", source=self.name, query=query, error=str(e))
+            log_event("jobsapi_error", source="linkedin", query=query, error=str(e))
             return None
 
     def _parse_rows(self, data: dict, query: str) -> list[dict]:
@@ -191,7 +195,7 @@ class JobsApi14Adapter:
                     "company": company,
                     "location": location,
                     "url": url,
-                    "api_id": job.get("id", ""),
+                    "api_id": str(job.get("id", "")),
                     "source": self.source_label,
                     "query": query,
                 }

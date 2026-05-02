@@ -259,3 +259,56 @@ def test_fetch_paces_between_queries(monkeypatch: pytest.MonkeyPatch) -> None:
     # at least one sleep call with 0.6 (between queries)
     sleep_calls = [c.args for c in mock_sleep.call_args_list]
     assert (0.6,) in sleep_calls or any(c[0] == 0.6 for c in sleep_calls)
+
+
+def test_live_test_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("JOBS_API14_KEY", "good-key")
+    fake = MagicMock(status_code=200, headers={})
+    fake.json.return_value = {"hasError": False, "data": [{"title": "X", "company": "Y"}]}
+    fake.raise_for_status.return_value = None
+    with patch("findajob.fetchers.adapters.jobs_api14.requests.get", return_value=fake):
+        result = JobsApi14Adapter().live_test(["q1", "q2"])
+    assert result.ok is True
+    assert result.bucket == "success"
+    assert all(qr.count == 1 for qr in result.per_query)
+
+
+def test_live_test_server_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("JOBS_API14_KEY", "good-key")
+    fake = MagicMock(status_code=503, headers={})
+    fake.raise_for_status.return_value = None
+    with patch("findajob.fetchers.adapters.jobs_api14.requests.get", return_value=fake):
+        result = JobsApi14Adapter().live_test(["q1"])
+    assert result.ok is False
+    assert result.bucket == "server"
+
+
+def test_live_test_network_error_on_first_call(monkeypatch: pytest.MonkeyPatch) -> None:
+    import requests as req
+
+    monkeypatch.setenv("JOBS_API14_KEY", "good-key")
+    with patch(
+        "findajob.fetchers.adapters.jobs_api14.requests.get",
+        side_effect=req.ConnectionError("DNS failure"),
+    ):
+        result = JobsApi14Adapter().live_test(["q1", "q2"])
+    assert result.ok is False
+    assert result.bucket == "network"
+
+
+def test_live_test_network_error_mid_test(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Network error after first query succeeds → partial-result, bucket=rate_limit."""
+    import requests as req
+
+    monkeypatch.setenv("JOBS_API14_KEY", "good-key")
+    success = MagicMock(status_code=200, headers={})
+    success.json.return_value = {"hasError": False, "data": [{"title": "X"}]}
+    success.raise_for_status.return_value = None
+    with patch(
+        "findajob.fetchers.adapters.jobs_api14.requests.get",
+        side_effect=[success, req.ConnectionError("DNS failure")],
+    ):
+        result = JobsApi14Adapter().live_test(["q1", "q2"])
+    assert result.ok is True
+    assert result.bucket == "rate_limit"
+    assert len(result.per_query) == 1
