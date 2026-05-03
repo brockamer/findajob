@@ -8,6 +8,7 @@ import sys
 import time
 
 from findajob.cleaning import clean_company, clean_title, extract_linkedin_job_id
+from findajob.fetchers.adapters._keys import resolve_rapidapi_key
 from findajob.paths import BASE, PANDOC
 from findajob.utils import JD_MAX_CHARS, log_event, strip_jd_boilerplate
 
@@ -49,7 +50,7 @@ def fetch_linkedin_job_data(job_id):
     """
     import requests as req
 
-    api_key = os.environ.get("RAPIDAPI_KEY", "")
+    api_key = resolve_rapidapi_key("RAPIDAPI_KEY", "JOBS_API14_KEY")
     if not api_key or not job_id:
         return {"description": None, "company": None}
     time.sleep(_LINKEDIN_GET_THROTTLE_SEC)
@@ -399,9 +400,9 @@ def fetch_jobsapi_jobs(queries_path):
     """
     import requests as req
 
-    api_key = os.environ.get("RAPIDAPI_KEY", "")
+    api_key = resolve_rapidapi_key("RAPIDAPI_KEY", "JOBS_API14_KEY")
     if not api_key:
-        log_event("jobsapi_error", error="RAPIDAPI_KEY not set in .env")
+        log_event("jobsapi_error", error="No RAPIDAPI_KEY or JOBS_API14_KEY set in .env")
         return []
 
     try:
