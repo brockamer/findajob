@@ -109,14 +109,27 @@ live connection test.
 
 #### Pagination tuning (PRO-tier)
 
-`JobsApi14Adapter` (LinkedIn endpoint) defaults to fetching one page per query — 10 jobs each. The endpoint supports opaque-token pagination via `meta.nextToken`, and each additional page is one billed RapidAPI request (per-call billing — empirically confirmed on the operator stack). Set `JOBS_API14_MAX_PAGES=N` in `data/.env` to opt in (#414 PR2):
+Both jobs-api14 and JSearch let you trade quota for yield via per-stack env vars (#414 PR2 / PR3). Each additional page is one billed RapidAPI request (per-call billing — empirically confirmed on the operator stack for both APIs).
+
+**`JobsApi14Adapter`** (LinkedIn endpoint, opaque-token pagination via `meta.nextToken`) — set `JOBS_API14_MAX_PAGES=N`:
 
 | Tier | Recommended | Monthly cost (5 queries × N pages × 30 days) |
 |---|---|---|
 | BASIC (150 req/mo) | leave at 1 | 150 / 150 = 100% — no headroom |
 | PRO (20,000 req/mo) | 3–5 | 450 / 20,000 = 2.25% (N=3); 750 / 20,000 = 3.75% (N=5) |
 
-Clamped to `[1, 20]`. Restart the stack after editing `data/.env`. Live-test in `/onboarding/feed-config/` stays single-page regardless of this setting — it's a connectivity check, not a yield benchmark.
+Clamped to `[1, 20]`.
+
+**`JSearchAdapter`** (server-side pagination via the API's own `num_pages` param — single HTTP request per query, billed as N units) — set `JSEARCH_NUM_PAGES=N`:
+
+| Tier | Recommended | Monthly cost (5 queries × N pages × 30 days) | Yield ratio |
+|---|---|---|---|
+| BASIC (200 req/mo) | leave at 1 | 150 / 200 = 75% | ~10 jobs/query |
+| PRO (10,000 req/mo) | 3 | 450 / 10,000 = 4.5% | ~27 jobs/query (~2.7x) |
+
+Clamped to `[1, 10]` (half of jobs-api14's ceiling because JSearch's PRO quota is half).
+
+Restart the stack after editing `data/.env`. Live-test in `/onboarding/feed-config/` stays single-page for both adapters regardless of these settings — it's a connectivity check, not a yield benchmark.
 
 If you skip the RapidAPI key, findajob will:
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import time
 from typing import ClassVar
 
@@ -17,7 +18,15 @@ __all__ = ("JSearchAdapter",)
 
 
 class JSearchAdapter:
-    """Multi-board aggregator (LinkedIn + Indeed + Glassdoor + ZipRecruiter)."""
+    """Multi-board aggregator (LinkedIn + Indeed + Glassdoor + ZipRecruiter).
+
+    fetch() passes JSEARCH_NUM_PAGES (default 1) as the API's `num_pages`
+    param — JSearch handles pagination server-side and returns up to
+    N*~10 jobs in one HTTP response, billed as N RapidAPI requests
+    (per-call billing — empirically confirmed). live_test() stays at
+    num_pages=1 to keep onboarding-time spot checks budget-bounded
+    (#414 PR3).
+    """
 
     name: ClassVar[str] = "jsearch"
     display_name: ClassVar[str] = "JSearch"
@@ -26,6 +35,8 @@ class JSearchAdapter:
 
     _ENDPOINT: ClassVar[str] = "https://jsearch.p.rapidapi.com/search"
     _HOST: ClassVar[str] = "jsearch.p.rapidapi.com"
+    _DEFAULT_NUM_PAGES: ClassVar[int] = 1
+    _NUM_PAGES_CEILING: ClassVar[int] = 10
 
     def is_configured(self) -> bool:
         return bool(self._api_key())
@@ -33,12 +44,35 @@ class JSearchAdapter:
     def _api_key(self) -> str:
         return resolve_rapidapi_key("RAPIDAPI_KEY", "JSEARCH_API_KEY")
 
+    @classmethod
+    def _num_pages(cls) -> int:
+        """Per-stack num_pages ceiling. Default 1 (current behavior).
+
+        Set JSEARCH_NUM_PAGES=N in data/.env to widen each query's
+        server-side pagination. Each page is one billed RapidAPI request
+        (per-call cost confirmed empirically in #414 PR3 probe — 2026-05-03;
+        2.7x yield for 3x cost). Recommended for PRO-tier stacks; free-tier
+        stacks should leave at 1. Clamped to [1, 10] — half of jobs-api14's
+        ceiling because JSearch's PRO quota (10k/mo) is half of jobs-api14
+        PRO (20k/mo).
+        """
+        raw = os.environ.get("JSEARCH_NUM_PAGES", "").strip()
+        if not raw:
+            return cls._DEFAULT_NUM_PAGES
+        try:
+            value = int(raw)
+        except ValueError:
+            log_event("jsearch_num_pages_invalid", value=raw)
+            return cls._DEFAULT_NUM_PAGES
+        return max(1, min(value, cls._NUM_PAGES_CEILING))
+
     def fetch(self, queries: list[str]) -> list[dict]:
         api_key = self._api_key()
         if not api_key:
             log_event("jsearch_error", error="No RAPIDAPI_KEY or JSEARCH_API_KEY set in .env")
             return []
 
+        num_pages = self._num_pages()
         headers = self._headers(api_key)
         rows: list[dict] = []
         last_idx = len(queries) - 1
@@ -47,7 +81,7 @@ class JSearchAdapter:
                 response = requests.get(
                     self._ENDPOINT,
                     headers=headers,
-                    params=self._params(query),
+                    params=self._params(query, num_pages),
                     timeout=30,
                 )
                 if response.status_code == 429:
@@ -57,7 +91,7 @@ class JSearchAdapter:
                     response = requests.get(
                         self._ENDPOINT,
                         headers=headers,
-                        params=self._params(query),
+                        params=self._params(query, num_pages),
                         timeout=30,
                     )
                 response.raise_for_status()
@@ -69,7 +103,7 @@ class JSearchAdapter:
             new_rows = self._parse_rows(data, query)
             rows.extend(new_rows)
             count = len(new_rows)
-            log_event("jsearch_fetched", query=query, count=count)
+            log_event("jsearch_fetched", query=query, count=count, num_pages=num_pages)
             if i < last_idx:
                 time.sleep(0.6)
 
@@ -157,11 +191,11 @@ class JSearchAdapter:
             "x-rapidapi-key": api_key,
         }
 
-    def _params(self, query: str) -> dict[str, str]:
+    def _params(self, query: str, num_pages: int = 1) -> dict[str, str]:
         return {
             "query": query,
             "page": "1",
-            "num_pages": "1",
+            "num_pages": str(num_pages),
             "country": "us",
         }
 

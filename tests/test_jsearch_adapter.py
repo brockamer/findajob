@@ -229,3 +229,75 @@ def test_is_configured_canonical_wins_over_dedicated(monkeypatch: pytest.MonkeyP
     monkeypatch.setenv("RAPIDAPI_KEY", "shared-1234")
     monkeypatch.setenv("JSEARCH_API_KEY", "legacy-1234")
     assert JSearchAdapter().is_configured() is True
+
+
+# ── #414 PR3 — JSEARCH_NUM_PAGES env var ──
+
+
+@pytest.fixture
+def _scrub_num_pages(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("JSEARCH_NUM_PAGES", raising=False)
+
+
+def test_num_pages_default_is_one(_scrub_num_pages: None) -> None:
+    assert JSearchAdapter._num_pages() == 1
+
+
+def test_num_pages_reads_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("JSEARCH_NUM_PAGES", "3")
+    assert JSearchAdapter._num_pages() == 3
+
+
+def test_num_pages_clamps_to_upper_bound(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("JSEARCH_NUM_PAGES", "999")
+    assert JSearchAdapter._num_pages() == 10
+
+
+def test_num_pages_clamps_to_lower_bound(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("JSEARCH_NUM_PAGES", "0")
+    assert JSearchAdapter._num_pages() == 1
+
+
+def test_num_pages_invalid_falls_back_to_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("JSEARCH_NUM_PAGES", "abc")
+    assert JSearchAdapter._num_pages() == 1
+
+
+def test_fetch_sends_default_num_pages_in_params(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Default JSEARCH_NUM_PAGES=1 → params["num_pages"] == "1" (unchanged behavior)."""
+    monkeypatch.setenv("JSEARCH_API_KEY", "test-key")
+    monkeypatch.delenv("JSEARCH_NUM_PAGES", raising=False)
+    fake = MagicMock(status_code=200, headers={})
+    fake.json.return_value = {"data": []}
+    fake.raise_for_status.return_value = None
+    with patch("findajob.fetchers.adapters.jsearch.requests.get", return_value=fake) as mock_get:
+        JSearchAdapter().fetch(["nurse"])
+    assert mock_get.call_args.kwargs["params"]["num_pages"] == "1"
+
+
+def test_fetch_sends_configured_num_pages(monkeypatch: pytest.MonkeyPatch) -> None:
+    """JSEARCH_NUM_PAGES=3 propagates to the params dict, single HTTP call (per-call billed for 3 units)."""
+    monkeypatch.setenv("JSEARCH_API_KEY", "test-key")
+    monkeypatch.setenv("JSEARCH_NUM_PAGES", "3")
+    fake = MagicMock(status_code=200, headers={})
+    fake.json.return_value = {"data": []}
+    fake.raise_for_status.return_value = None
+    with patch("findajob.fetchers.adapters.jsearch.requests.get", return_value=fake) as mock_get:
+        JSearchAdapter().fetch(["nurse"])
+    assert mock_get.call_count == 1  # still one HTTP request per query
+    assert mock_get.call_args.kwargs["params"]["num_pages"] == "3"
+
+
+def test_live_test_always_sends_num_pages_one(monkeypatch: pytest.MonkeyPatch) -> None:
+    """live_test stays single-page even when JSEARCH_NUM_PAGES is raised.
+
+    Onboarding-time connectivity check should not multiply cost.
+    """
+    monkeypatch.setenv("JSEARCH_API_KEY", "good-key")
+    monkeypatch.setenv("JSEARCH_NUM_PAGES", "5")
+    fake = MagicMock(status_code=200, headers={})
+    fake.json.return_value = {"data": [{"job_title": "X", "employer_name": "Y"}]}
+    fake.raise_for_status.return_value = None
+    with patch("findajob.fetchers.adapters.jsearch.requests.get", return_value=fake) as mock_get:
+        JSearchAdapter().live_test(["q1"])
+    assert mock_get.call_args.kwargs["params"]["num_pages"] == "1"
