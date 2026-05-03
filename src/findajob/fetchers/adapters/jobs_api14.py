@@ -11,6 +11,7 @@ import requests
 from findajob.cleaning import clean_company, clean_title
 from findajob.utils import log_event
 
+from ._keys import resolve_rapidapi_key
 from .base import LiveTestResult, QueryResult
 
 # Bind module-level imports so tests can patch them via the public path
@@ -29,12 +30,15 @@ class JobsApi14Adapter:
     _HOST: ClassVar[str] = "jobs-api14.p.rapidapi.com"
 
     def is_configured(self) -> bool:
-        return bool(os.environ.get("JOBS_API14_KEY", ""))
+        return bool(self._api_key())
+
+    def _api_key(self) -> str:
+        return resolve_rapidapi_key("RAPIDAPI_KEY", "JOBS_API14_KEY")
 
     def fetch(self, queries: list[str]) -> list[dict]:
-        api_key = os.environ.get("JOBS_API14_KEY", "")
+        api_key = self._api_key()
         if not api_key:
-            log_event("jobsapi_error", error="JOBS_API14_KEY not set in .env")
+            log_event("jobsapi_error", error="No RAPIDAPI_KEY or JOBS_API14_KEY set in .env")
             return []
 
         date_posted = _date_posted_for_install()
@@ -57,7 +61,7 @@ class JobsApi14Adapter:
         return rows
 
     def live_test(self, queries: list[str]) -> LiveTestResult:
-        api_key = os.environ.get("JOBS_API14_KEY", "")
+        api_key = self._api_key()
         if not api_key:
             return LiveTestResult(
                 ok=False,

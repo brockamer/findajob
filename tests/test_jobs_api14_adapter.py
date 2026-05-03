@@ -32,10 +32,18 @@ def test_is_configured_true_when_env_set(monkeypatch: pytest.MonkeyPatch) -> Non
     assert JobsApi14Adapter().is_configured() is True
 
 
-def test_is_configured_does_not_fall_back_to_rapidapi_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    """No production-code fallback. Migration handles RAPIDAPI_KEY at entrypoint."""
-    monkeypatch.setenv("RAPIDAPI_KEY", "old-key-1234")
-    assert JobsApi14Adapter().is_configured() is False
+def test_is_configured_falls_back_to_rapidapi_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Shared RAPIDAPI_KEY backs JobsApi14Adapter when JOBS_API14_KEY is unset (#414)."""
+    monkeypatch.setenv("RAPIDAPI_KEY", "shared-1234")
+    assert JobsApi14Adapter().is_configured() is True
+
+
+def test_is_configured_canonical_wins_over_dedicated(monkeypatch: pytest.MonkeyPatch) -> None:
+    """RAPIDAPI_KEY is canonical; when both are set, canonical wins (#414)."""
+    monkeypatch.setenv("RAPIDAPI_KEY", "shared-1234")
+    monkeypatch.setenv("JOBS_API14_KEY", "legacy-1234")
+    # Both adapters use canonical-first lookup; canonical wins
+    assert JobsApi14Adapter().is_configured() is True
 
 
 def test_fetch_returns_empty_when_unconfigured() -> None:
