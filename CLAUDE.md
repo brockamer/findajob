@@ -82,7 +82,7 @@ file. If you're refactoring an old hardcoded section, add a note to `docs/GENERA
 | `interview_prep` | `openrouter:anthropic/claude-opus-4.7`, `max_tokens: 4096` — fires on `applied → interview` transition; expands briefing's interview-questions + stories sections. |
 | `candidate_led_briefing` | `openrouter:perplexity/sonar-deep-research` — async (1–5 min); drives the speculative briefing pass via `scripts/run_speculative_research.py`. |
 | `speculative_roles_synth` | `openrouter:anthropic/claude-sonnet-4-6`, `max_tokens: 4096` — synthesizes 1–5 candidate-tailored role cards from the briefing. |
-| Job ingestion | Pluggable via `JobSourceAdapter` (`src/findajob/fetchers/adapters/`); jobs-api14 + JSearch ship in v0.14; per-stack active list in `config/active_sources.txt`. Greenhouse / Ashby / Lever / Gmail still function-style — migration tracked in #410. |
+| Job ingestion | Pluggable via `JobSourceAdapter` (`src/findajob/fetchers/adapters/`); jobs-api14 + JSearch ship in v0.14; per-stack active list in `config/active_sources.txt`. Greenhouse / Ashby / Lever / Gmail still function-style — migration tracked in #410. v0.15 adds `JobsApi14IndeedAdapter` (Indeed via jobs-api14 with sortType=date + post-filter, restoring pre-#408 coverage) and consolidates RapidAPI credentials to a shared `RAPIDAPI_KEY` env var (legacy `JOBS_API14_KEY` / `JSEARCH_API_KEY` work as fallbacks) (#414). |
 | Package manager | `uv sync` for dev deps; `uv run` prefix for pytest/ruff/mypy/uvicorn |
 | Path resolution | `src/findajob/paths.py` — reads `config/paths.env`; BASE derived from `__file__` |
 | Roles dir | `config/roles/` |
@@ -289,9 +289,11 @@ RAG indexes `candidate_context/` but is used only in REPL mode.
 Every RapidAPI-flavored job source implements `JobSourceAdapter`
 (`src/findajob/fetchers/adapters/base.py`). Adding a new feed = one new
 adapter file + one entry in `REGISTERED_ADAPTERS`. `triage.py` iterates
-the registry; no per-source code paths in triage. Each adapter declares
-its own env var (`JOBS_API14_KEY`, `JSEARCH_API_KEY`, etc.) — there is no
-global `RAPIDAPI_KEY`. The `JobSourceAdapter` Protocol is source-agnostic
+the registry; no per-source code paths in triage. Adapters share a canonical
+`RAPIDAPI_KEY` env var (#414); per-adapter env vars (`JOBS_API14_KEY`,
+`JSEARCH_API_KEY`) remain valid as fallbacks for legacy stacks. Stacks pick
+which adapters to run via `config/active_sources.txt` (default: `['jobs-api14']`
+if missing). The `JobSourceAdapter` Protocol is source-agnostic
 by design — direct fetchers (Workday CXS #248, Gem GraphQL #249) implement
 the same contract.
 
