@@ -54,3 +54,11 @@ def test_iter_configured_adapters_default_when_file_missing(tmp_path: Path, monk
     with patch("findajob.fetchers.adapters.registry._active_sources_path", return_value=nonexistent):
         names = [a.name for a in iter_configured_adapters()]
     assert names == ["jobs-api14"]
+
+
+def test_jobs_api14_indeed_adapter_is_registered() -> None:
+    """JobsApi14IndeedAdapter (#414) ships in the registry alongside its sibling."""
+    from findajob.fetchers.adapters.jobs_api14_indeed import JobsApi14IndeedAdapter
+    from findajob.fetchers.adapters.registry import REGISTERED_ADAPTERS
+
+    assert JobsApi14IndeedAdapter in REGISTERED_ADAPTERS

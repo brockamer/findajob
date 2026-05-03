@@ -10,10 +10,12 @@ from findajob.utils import log_event
 
 from .base import JobSourceAdapter
 from .jobs_api14 import JobsApi14Adapter
+from .jobs_api14_indeed import JobsApi14IndeedAdapter
 from .jsearch import JSearchAdapter
 
 REGISTERED_ADAPTERS: list[type[JobSourceAdapter]] = [
     JobsApi14Adapter,  # type: ignore[list-item]
+    JobsApi14IndeedAdapter,  # type: ignore[list-item]
     JSearchAdapter,  # type: ignore[list-item]
 ]
 
