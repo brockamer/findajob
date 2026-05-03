@@ -107,6 +107,17 @@ live connection test.
 
 > **Note (Indeed title allowlist):** The `jobs-api14-indeed` adapter applies a hardcoded title allowlist tuned for engineering / operations / program-management / hardware / data-center families. Non-engineering candidates may see sparse Indeed pulls until a follow-up issue lifts this to a config file. See `_TITLE_ALLOW_PATTERN` in `src/findajob/fetchers/adapters/jobs_api14_indeed.py` for the full regex.
 
+#### Pagination tuning (PRO-tier)
+
+`JobsApi14Adapter` (LinkedIn endpoint) defaults to fetching one page per query — 10 jobs each. The endpoint supports opaque-token pagination via `meta.nextToken`, and each additional page is one billed RapidAPI request (per-call billing — empirically confirmed on the operator stack). Set `JOBS_API14_MAX_PAGES=N` in `data/.env` to opt in (#414 PR2):
+
+| Tier | Recommended | Monthly cost (5 queries × N pages × 30 days) |
+|---|---|---|
+| BASIC (150 req/mo) | leave at 1 | 150 / 150 = 100% — no headroom |
+| PRO (20,000 req/mo) | 3–5 | 450 / 20,000 = 2.25% (N=3); 750 / 20,000 = 3.75% (N=5) |
+
+Clamped to `[1, 20]`. Restart the stack after editing `data/.env`. Live-test in `/onboarding/feed-config/` stays single-page regardless of this setting — it's a connectivity check, not a yield benchmark.
+
 If you skip the RapidAPI key, findajob will:
 
 - still ingest jobs from Greenhouse / Ashby / Lever ATS feeds (configured

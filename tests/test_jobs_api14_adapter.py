@@ -320,3 +320,147 @@ def test_live_test_network_error_mid_test(monkeypatch: pytest.MonkeyPatch) -> No
     assert result.ok is True
     assert result.bucket == "rate_limit"
     assert len(result.per_query) == 1
+
+
+# ── #414 PR2 — JOBS_API14_MAX_PAGES + nextToken pagination ──
+
+
+def _page(rows: list[dict], next_token: str | None) -> MagicMock:
+    """Build a fake jobs-api14 LinkedIn search response with optional nextToken."""
+    response = MagicMock(status_code=200, headers={})
+    response.json.return_value = {
+        "hasError": False,
+        "data": rows,
+        "meta": {"nextToken": next_token} if next_token else {},
+    }
+    response.raise_for_status.return_value = None
+    return response
+
+
+def _row(idx: int) -> dict:
+    return {
+        "id": f"ext-{idx}",
+        "title": f"Engineer {idx}",
+        "company": "Acme",
+        "location": "Remote",
+        "linkedinUrl": f"https://example.com/{idx}",
+    }
+
+
+def test_max_pages_default_is_one() -> None:
+    assert JobsApi14Adapter._max_pages() == 1
+
+
+def test_max_pages_reads_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("JOBS_API14_MAX_PAGES", "5")
+    assert JobsApi14Adapter._max_pages() == 5
+
+
+def test_max_pages_clamps_to_upper_bound(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("JOBS_API14_MAX_PAGES", "999")
+    assert JobsApi14Adapter._max_pages() == 20
+
+
+def test_max_pages_clamps_to_lower_bound(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("JOBS_API14_MAX_PAGES", "0")
+    assert JobsApi14Adapter._max_pages() == 1
+
+
+def test_max_pages_invalid_falls_back_to_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("JOBS_API14_MAX_PAGES", "abc")
+    assert JobsApi14Adapter._max_pages() == 1
+
+
+def test_fetch_single_page_when_max_pages_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Default max_pages=1 → exactly one HTTP call per query, even if nextToken is present."""
+    monkeypatch.setenv("JOBS_API14_KEY", "test-key")
+    response = _page([_row(1), _row(2)], next_token="should-be-ignored")
+    with patch("findajob.fetchers.adapters.jobs_api14.requests.get", return_value=response) as mock_get:
+        rows = JobsApi14Adapter().fetch(["engineer"])
+    assert mock_get.call_count == 1
+    assert len(rows) == 2
+
+
+def test_fetch_loops_to_max_pages(monkeypatch: pytest.MonkeyPatch) -> None:
+    """JOBS_API14_MAX_PAGES=3 + chained nextTokens → exactly 3 HTTP calls."""
+    monkeypatch.setenv("JOBS_API14_KEY", "test-key")
+    monkeypatch.setenv("JOBS_API14_MAX_PAGES", "3")
+    p1 = _page([_row(i) for i in range(10)], next_token="t1")
+    p2 = _page([_row(10 + i) for i in range(10)], next_token="t2")
+    p3 = _page([_row(20 + i) for i in range(10)], next_token="t3")
+    with patch(
+        "findajob.fetchers.adapters.jobs_api14.requests.get",
+        side_effect=[p1, p2, p3],
+    ) as mock_get:
+        rows = JobsApi14Adapter().fetch(["engineer"])
+    assert mock_get.call_count == 3
+    assert len(rows) == 30
+
+
+def test_fetch_stops_when_next_token_absent(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Loop breaks when API returns no nextToken, even if max_pages allows more."""
+    monkeypatch.setenv("JOBS_API14_KEY", "test-key")
+    monkeypatch.setenv("JOBS_API14_MAX_PAGES", "5")
+    p1 = _page([_row(1)], next_token="t1")
+    p2 = _page([_row(2)], next_token=None)  # no token → stop
+    with patch(
+        "findajob.fetchers.adapters.jobs_api14.requests.get",
+        side_effect=[p1, p2],
+    ) as mock_get:
+        rows = JobsApi14Adapter().fetch(["engineer"])
+    assert mock_get.call_count == 2
+    assert len(rows) == 2
+
+
+def test_fetch_uses_token_only_on_pagination_calls(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pagination calls send only {"token": ...}; original query/location params are dropped."""
+    monkeypatch.setenv("JOBS_API14_KEY", "test-key")
+    monkeypatch.setenv("JOBS_API14_MAX_PAGES", "2")
+    p1 = _page([_row(1)], next_token="page-2-token")
+    p2 = _page([_row(2)], next_token=None)
+    with patch(
+        "findajob.fetchers.adapters.jobs_api14.requests.get",
+        side_effect=[p1, p2],
+    ) as mock_get:
+        JobsApi14Adapter().fetch(["data center engineer"])
+    first_params = mock_get.call_args_list[0].kwargs["params"]
+    second_params = mock_get.call_args_list[1].kwargs["params"]
+    assert first_params["query"] == "data center engineer"
+    assert second_params == {"token": "page-2-token"}
+    assert "query" not in second_params
+
+
+def test_fetch_logs_pages_counter(monkeypatch: pytest.MonkeyPatch) -> None:
+    """jobsapi_fetched event includes pages= for observability."""
+    monkeypatch.setenv("JOBS_API14_KEY", "test-key")
+    monkeypatch.setenv("JOBS_API14_MAX_PAGES", "3")
+    p1 = _page([_row(1)], next_token="t1")
+    p2 = _page([_row(2)], next_token=None)
+    with (
+        patch("findajob.fetchers.adapters.jobs_api14.requests.get", side_effect=[p1, p2]),
+        patch("findajob.fetchers.adapters.jobs_api14.log_event") as mock_log,
+    ):
+        JobsApi14Adapter().fetch(["engineer"])
+    fetched_events = [c for c in mock_log.call_args_list if c.args[0] == "jobsapi_fetched"]
+    assert len(fetched_events) == 1
+    kwargs = fetched_events[0].kwargs
+    assert kwargs["pages"] == 2
+    assert kwargs["count"] == 2
+
+
+def test_live_test_does_not_paginate(monkeypatch: pytest.MonkeyPatch) -> None:
+    """live_test stays single-page even when JOBS_API14_MAX_PAGES is raised.
+
+    Onboarding-time spot check is connectivity-only.
+    """
+    monkeypatch.setenv("JOBS_API14_KEY", "good-key")
+    monkeypatch.setenv("JOBS_API14_MAX_PAGES", "5")
+    response = _page([_row(1)], next_token="should-be-ignored-by-live-test")
+    with patch(
+        "findajob.fetchers.adapters.jobs_api14.requests.get",
+        return_value=response,
+    ) as mock_get:
+        result = JobsApi14Adapter().live_test(["q1", "q2"])
+    # 2 queries × 1 page each = 2 calls (NOT 2 × 5 = 10)
+    assert mock_get.call_count == 2
+    assert result.ok is True

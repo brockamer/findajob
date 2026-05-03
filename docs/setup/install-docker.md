@@ -424,6 +424,10 @@ Before running `docker compose pull && docker compose up -d`:
 
 The "Action required" section is driven by PRs labeled `migration-required` (see [`docs/release-process.md`](../release-process.md) for the criteria). If a release has no such PRs in its range, the section won't appear.
 
+### Optional tuning: jobs-api14 multi-page
+
+Operators on PRO tier (20,000 req/month) can raise `JobsApi14Adapter`'s per-query page count by setting `JOBS_API14_MAX_PAGES=3` (or up to 5) in `data/.env`. Each additional page is one billed RapidAPI request; default of 1 preserves pre-#414-PR2 behavior. See [`api-keys.md` → Pagination tuning](api-keys.md#pagination-tuning-pro-tier) for the cost math.
+
 ## Migrating from an older image: aichat-ng mount path fix
 
 If your stack was deployed before the aichat-ng mount-path fix, your `compose.yaml` still mounts `./state/aichat_ng` to `/root/.config/aichat_ng`. The container now runs as a non-root user (PUID), so `/root` is unreadable and all scoring calls fail silently.

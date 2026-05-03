@@ -19,7 +19,12 @@ __all__ = ("JobsApi14Adapter",)
 
 
 class JobsApi14Adapter:
-    """LinkedIn ingestion via jobs-api14 (RapidAPI)."""
+    """LinkedIn ingestion via jobs-api14 (RapidAPI).
+
+    fetch() loops up to JOBS_API14_MAX_PAGES pages per query via the
+    opaque nextToken pagination contract; live_test() stays single-page
+    to keep onboarding-time spot checks budget-bounded (#414 PR2).
+    """
 
     name: ClassVar[str] = "jobs-api14"
     display_name: ClassVar[str] = "Jobs API (jobs-api14)"
@@ -28,12 +33,34 @@ class JobsApi14Adapter:
 
     _ENDPOINT: ClassVar[str] = "https://jobs-api14.p.rapidapi.com/v2/linkedin/search"
     _HOST: ClassVar[str] = "jobs-api14.p.rapidapi.com"
+    _DEFAULT_MAX_PAGES: ClassVar[int] = 1
+    _MAX_PAGES_CEILING: ClassVar[int] = 20
 
     def is_configured(self) -> bool:
         return bool(self._api_key())
 
     def _api_key(self) -> str:
         return resolve_rapidapi_key("RAPIDAPI_KEY", "JOBS_API14_KEY")
+
+    @classmethod
+    def _max_pages(cls) -> int:
+        """Per-stack pagination ceiling. Default 1 (current behavior).
+
+        Set JOBS_API14_MAX_PAGES=N in data/.env to fetch up to N pages per
+        query. Each page is one billed RapidAPI request (per-call cost
+        confirmed empirically in #414 PR2 probe — 2026-05-03). Recommended
+        for PRO-tier stacks; free-tier stacks should leave at 1. Clamped
+        to [1, 20] as a defense-in-depth rail.
+        """
+        raw = os.environ.get("JOBS_API14_MAX_PAGES", "").strip()
+        if not raw:
+            return cls._DEFAULT_MAX_PAGES
+        try:
+            value = int(raw)
+        except ValueError:
+            log_event("jobsapi_max_pages_invalid", value=raw)
+            return cls._DEFAULT_MAX_PAGES
+        return max(1, min(value, cls._MAX_PAGES_CEILING))
 
     def fetch(self, queries: list[str]) -> list[dict]:
         api_key = self._api_key()
@@ -44,18 +71,30 @@ class JobsApi14Adapter:
         date_posted = _date_posted_for_install()
         log_event("jobsapi_date_posted", value=date_posted)
 
+        max_pages = self._max_pages()
         headers = self._headers(api_key)
         rows: list[dict] = []
         last_idx = len(queries) - 1
         for i, query in enumerate(queries):
-            params = self._params(query, date_posted)
-            data = self._call_with_retry(headers, params, query)
-            if data is None:
-                continue
-            new_rows = self._parse_rows(data, query)
-            rows.extend(new_rows)
-            count = len(new_rows)
-            log_event("jobsapi_fetched", source="linkedin", query=query, count=count)
+            token: str | None = None
+            pages_fetched = 0
+            query_rows = 0
+            for _page_idx in range(max_pages):
+                # Per the API contract, paginated calls send token alone — the
+                # original query/location params are no-ops once token is set.
+                params = {"token": token} if token is not None else self._params(query, date_posted)
+                data = self._call_with_retry(headers, params, query)
+                if data is None:
+                    break
+                new_rows = self._parse_rows(data, query)
+                rows.extend(new_rows)
+                query_rows += len(new_rows)
+                pages_fetched += 1
+                token = (data.get("meta") or {}).get("nextToken")
+                if not token:
+                    break
+                time.sleep(0.6)  # intra-query pacing for the 2 req/sec PRO ceiling
+            log_event("jobsapi_fetched", source="linkedin", query=query, count=query_rows, pages=pages_fetched)
             if i < last_idx:
                 time.sleep(0.6)
         return rows
