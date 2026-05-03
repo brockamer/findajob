@@ -89,11 +89,23 @@ right feed for your field from the operator-curated `config/rapidapi_feeds.yaml`
 table; the `/onboarding/feed-config/` form walks you through signup and runs a
 live connection test.
 
-| Feed | Env var | What it searches | Free tier |
-|---|---|---|---|
-| **jobs-api14** | `RAPIDAPI_KEY` (canonical) or `JOBS_API14_KEY` (legacy fallback, #414) | LinkedIn — broad coverage, LinkedIn-heavy | 150 req/month |
-| **jobs-api14 (Indeed)** | `RAPIDAPI_KEY` (canonical) or `JOBS_API14_KEY` (legacy fallback, #414) | Indeed — broad US coverage, inline JD | shares jobs-api14 quota (150 req/month free) |
-| **JSearch** | `RAPIDAPI_KEY` (canonical) or `JSEARCH_API_KEY` (legacy fallback, #414) | LinkedIn + Indeed + Glassdoor + ZipRecruiter | 200 req/month |
+| Feed | Adapter name (in `active_sources.txt`) | Env var | What it searches | Free tier |
+|---|---|---|---|---|
+| **jobs-api14** | `jobs-api14` | `RAPIDAPI_KEY` (canonical) or `JOBS_API14_KEY` (legacy fallback, #414) | LinkedIn — broad coverage, LinkedIn-heavy | 150 req/month (BASIC); 20,000 req/month (PRO) |
+| **jobs-api14 (Indeed)** | `jobs-api14-indeed` | `RAPIDAPI_KEY` (canonical) or `JOBS_API14_KEY` (legacy fallback, #414) | Indeed — broad US coverage, inline JD | shares per-account quota with jobs-api14 |
+| **JSearch** | `jsearch` | `RAPIDAPI_KEY` (canonical) or `JSEARCH_API_KEY` (legacy fallback, #414) | LinkedIn + Indeed + Glassdoor + ZipRecruiter | 200 req/month (BASIC); 20,000 req/month (PRO) |
+
+> **Adapter names matter.** The values in the "Adapter name" column above are what you must put in `config/active_sources.txt` — one per line. Stacks without `config/active_sources.txt` default to `jobs-api14` (LinkedIn-only); the file is written by the onboarding picker for new stacks.
+
+> **Indeed is opt-in.** To activate it, add `jobs-api14-indeed` to `config/active_sources.txt`. The onboarding picker handles this for new stacks; existing stacks need to add the line manually. Example `config/active_sources.txt` with both feeds:
+> ```
+> jobs-api14
+> jobs-api14-indeed
+> ```
+
+> **PRO/ULTRA/MEGA tiers:** Indeed and LinkedIn share the same per-account quota — upgrading your RapidAPI plan raises the limit for both feeds together (PRO: 20,000 req/month shared).
+
+> **Note (Indeed title allowlist):** The `jobs-api14-indeed` adapter applies a hardcoded title allowlist tuned for engineering / operations / program-management / hardware / data-center families. Non-engineering candidates may see sparse Indeed pulls until a follow-up issue lifts this to a config file. See `_TITLE_ALLOW_PATTERN` in `src/findajob/fetchers/adapters/jobs_api14_indeed.py` for the full regex.
 
 If you skip the RapidAPI key, findajob will:
 

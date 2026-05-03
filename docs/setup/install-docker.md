@@ -321,8 +321,7 @@ SQLite reads use `mode=ro` URI; `/opt/stacks` is mounted read-only.
 
 ### Rotating an API key
 
-To replace the OpenRouter, RapidAPI feed (`JOBS_API14_KEY` / `JSEARCH_API_KEY`), or
-Google API key on an already-onboarded stack, you have two options:
+To replace the OpenRouter, RapidAPI feed (`RAPIDAPI_KEY` — canonical; or legacy per-adapter vars `JOBS_API14_KEY` / `JSEARCH_API_KEY`, #414), or Google API key on an already-onboarded stack, you have two options:
 
 **Option A — Web UI (recommended):**
 
@@ -349,7 +348,9 @@ sudo docker compose restart scheduler
 
 Per the project memory `feedback_never_print_secrets`, never `cat` or
 echo the `.env` to your terminal — copy + edit server-side only.
-Repeat for `JOBS_API14_KEY` / `JSEARCH_API_KEY` / `GOOGLE_API_KEY` as needed.
+Repeat for `RAPIDAPI_KEY` / `GOOGLE_API_KEY` as needed. Stacks with legacy
+per-adapter vars (`JOBS_API14_KEY` / `JSEARCH_API_KEY`) can rotate those
+the same way — both still work as fallback (#414).
 
 ### Adding the `.backups` bind mount (for stacks deployed before `:v0.10.0`)
 

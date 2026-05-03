@@ -134,8 +134,9 @@ API keys and secrets. See `data/.env.example` for the full list.
 ```bash
 OPENROUTER_API_KEY=sk-or-...
 GOOGLE_API_KEY=AIza...
-JOBS_API14_KEY=...      # jobs-api14 adapter (optional; set by onboarding picker)
-JSEARCH_API_KEY=...     # JSearch adapter (optional; set by onboarding picker)
+RAPIDAPI_KEY=...        # canonical key for all RapidAPI feeds (optional; set by onboarding picker)
+# JOBS_API14_KEY=...   # legacy per-adapter fallback — still works; RAPIDAPI_KEY preferred (#414)
+# JSEARCH_API_KEY=...  # legacy per-adapter fallback — still works; RAPIDAPI_KEY preferred (#414)
 NTFY_TOPIC=your-topic-name
 ```
 
