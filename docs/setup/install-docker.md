@@ -193,8 +193,9 @@ at ~10% of the system tokens, but voice-samples emission and the
 cumulative chat history dominate the bill in long interviews.
 
 The injector validates the emission, runs a 1-token smoke check against
-OpenRouter to re-verify the key, atomically writes the config files plus
-a derived `companies_of_interest.txt`, runs initial company discovery,
+OpenRouter to re-verify the key, atomically writes the config files
+(`findajob.config_loader` reads Tier 1 directly from `target_companies.md`
+at runtime — no derived file post-#211), runs initial company discovery,
 and marks onboarding complete. Errors are surfaced verbatim — fix and
 resubmit.
 

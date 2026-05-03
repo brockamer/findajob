@@ -10,10 +10,8 @@ import pytest
 
 from findajob.onboarding.injector import (
     _ALL_DESTINATIONS,
-    _COMPANIES_OF_INTEREST_DEST,
     _SENTINEL_RELPATH,
     backup_existing,
-    derive_companies_of_interest,
     inject,
     is_complete,
     mark_complete,
@@ -76,43 +74,8 @@ def test_all_destinations_map_required_filenames(tmp_path: Path) -> None:
     assert set(_ALL_DESTINATIONS.keys()) == plain_required
 
 
-def test_sentinel_and_companies_paths_are_stable() -> None:
+def test_sentinel_path_is_stable() -> None:
     assert _SENTINEL_RELPATH == "data/.onboarding-complete"
-    assert _COMPANIES_OF_INTEREST_DEST == "config/companies_of_interest.txt"
-
-
-# ---- derive_companies_of_interest ----------------------------------------
-
-
-def test_derive_tier1_strips_bullets_and_commentary() -> None:
-    out = derive_companies_of_interest(_MIN_FILES["target_companies.md"])
-    lines = [line for line in out.splitlines() if line]
-    assert lines == ["Acme Corp", "Example Industries", "Sample Systems"]
-
-
-def test_derive_ignores_tier2_and_beyond() -> None:
-    md = (
-        "## Tier 1 — Active Focus\n- A\n- B\n\n"
-        "## Tier 2 — Strong Interest\n- C\n- D\n\n"
-        "## Tier 3 — Opportunistic\n- E\n"
-    )
-    out = derive_companies_of_interest(md)
-    assert out.splitlines() == ["A", "B"]
-
-
-def test_derive_handles_star_bullets_and_numbered() -> None:
-    md = "## Tier 1 — Active Focus\n* Alpha Co\n1. Beta Inc\n- Gamma LLC\n"
-    out = derive_companies_of_interest(md)
-    assert out.splitlines() == ["Alpha Co", "Beta Inc", "Gamma LLC"]
-
-
-def test_derive_ends_with_newline() -> None:
-    out = derive_companies_of_interest("## Tier 1\n- X\n")
-    assert out.endswith("\n")
-
-
-def test_derive_empty_when_no_tier1() -> None:
-    assert derive_companies_of_interest("## Tier 2\n- Z\n") == ""
 
 
 # ---- is_complete / mark_complete -----------------------------------------
@@ -203,10 +166,6 @@ def test_inject_writes_required_files_and_sentinel_and_derivation(tmp_path: Path
     # ntfy_topic.txt merges into data/.env, not a standalone file
     env_content = (tmp_path / "data" / ".env").read_text()
     assert "NTFY_TOPIC=tester-jobsearch-2026-17" in env_content
-    # Derived companies_of_interest
-    coi = (tmp_path / "config" / "companies_of_interest.txt").read_text()
-    assert "Acme Corp" in coi
-    assert "Example Industries" in coi
     # Sentinel
     sentinel = tmp_path / "data" / ".onboarding-complete"
     assert sentinel.is_file()
@@ -244,8 +203,6 @@ def test_inject_staging_failure_rolls_back(tmp_path: Path) -> None:
     assert (tmp_path / "candidate_context" / "profile.md").read_text() == original
     # No sentinel
     assert not (tmp_path / "data" / ".onboarding-complete").exists()
-    # No derived file
-    assert not (tmp_path / "config" / "companies_of_interest.txt").exists()
     # No residual tempfiles
     residual = list((tmp_path / "candidate_context").glob("profile.md.*.tmp"))
     assert residual == []

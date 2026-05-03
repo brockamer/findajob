@@ -20,7 +20,7 @@ FIXTURES = Path(__file__).parent / "fixtures" / "config"
 def _use_fixture_configs(monkeypatch):
     monkeypatch.setattr(config_loader, "_RULES_PATH", FIXTURES / "prefilter_rules.yaml")
     monkeypatch.setattr(config_loader, "_IN_DOMAIN_PATH", FIXTURES / "in_domain_patterns.yaml")
-    monkeypatch.setattr(config_loader, "_COMPANIES_PATH", FIXTURES / "companies_of_interest.txt")
+    monkeypatch.setattr(config_loader, "_TARGET_COMPANIES_PATH", FIXTURES / "target_companies.md")
     config_loader._reset_cache()
     yield
     config_loader._reset_cache()

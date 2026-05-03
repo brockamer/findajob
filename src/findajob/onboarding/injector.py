@@ -1,8 +1,10 @@
 """Onboarding injector (#148).
 
-Turns a parsed emission into seven files on disk plus a derived
-``companies_of_interest.txt``, with backup-then-overwrite and a
-sentinel file that gates the NUX redirect.
+Turns a parsed emission into seven files on disk, with backup-then-overwrite
+and a sentinel file that gates the NUX redirect. The Tier 1 company list
+is no longer derived as a separate file (#211 retired
+``companies_of_interest.txt``); `findajob.config_loader` reads
+`target_companies.md` directly.
 
 All writes are atomic: every tempfile is staged first, then
 ``os.replace`` commits them in order. Any staging failure rolls back
@@ -68,14 +70,8 @@ _OPTIONAL_DESTINATIONS: dict[str, str] = {
     "rapidapi_feed.txt": "config/active_sources.txt",
 }
 
-_COMPANIES_OF_INTEREST_DEST = "config/companies_of_interest.txt"
 _SENTINEL_RELPATH = "data/.onboarding-complete"
 _BACKUP_ROOT = ".backups"
-
-_TIER1_HEADING_RE = re.compile(r"^##\s+tier\s*1\b[^\n]*", re.IGNORECASE | re.MULTILINE)
-_NEXT_H2_RE = re.compile(r"^##\s+\S", re.MULTILINE)
-_BULLET_RE = re.compile(r"^\s*(?:[-*]\s+|\d+\.\s+)(.*)")
-_SPLIT_COMMENTARY_RE = re.compile(r"\s+[—-]\s+|\s+\(")
 
 
 class DiscoveryStatus(NamedTuple):
@@ -164,7 +160,6 @@ def _utc_stamp() -> str:
 def _backup_relpaths() -> list[str]:
     paths = list(_ALL_DESTINATIONS.values())
     paths.extend(_OPTIONAL_DESTINATIONS.values())
-    paths.append(_COMPANIES_OF_INTEREST_DEST)
     paths.append(_SENTINEL_RELPATH)
     paths.append(_ENV_FILE_RELPATH)  # data/.env is mutated via merge — must back up
     return paths
@@ -260,35 +255,6 @@ def backup_existing(base_root: Path, stamp: str) -> Path:
     return dest_root
 
 
-def derive_companies_of_interest(target_companies_md: str) -> str:
-    """Extract Tier 1 company names from ``target_companies.md``.
-
-    Returns one company per line, trailing newline. Empty string if no
-    ``## Tier 1`` section is present.
-    """
-    match = _TIER1_HEADING_RE.search(target_companies_md)
-    if not match:
-        return ""
-    section_start = match.end()
-    remainder = target_companies_md[section_start:]
-    next_h2 = _NEXT_H2_RE.search(remainder)
-    section = remainder[: next_h2.start()] if next_h2 else remainder
-    companies: list[str] = []
-    for line in section.splitlines():
-        bullet = _BULLET_RE.match(line)
-        if not bullet:
-            continue
-        raw = bullet.group(1).strip()
-        # Strip trailing commentary (everything from the first " — " or " - " or " (")
-        parts = _SPLIT_COMMENTARY_RE.split(raw, maxsplit=1)
-        name = parts[0].strip()
-        if name:
-            companies.append(name)
-    if not companies:
-        return ""
-    return "\n".join(companies) + "\n"
-
-
 def inject(
     base_root: Path,
     found: dict[str, str],
@@ -360,7 +326,7 @@ def inject(
     new_env_content = merge_env_content(existing_env, example_env, env_updates) if env_updates else None
 
     # Ensure target directories exist (required + any optional that was provided)
-    parent_relpaths: list[str] = list(_ALL_DESTINATIONS.values()) + [_COMPANIES_OF_INTEREST_DEST]
+    parent_relpaths: list[str] = list(_ALL_DESTINATIONS.values())
     for opt_name, opt_relpath in _OPTIONAL_DESTINATIONS.items():
         if opt_name in found:
             parent_relpaths.append(opt_relpath)
@@ -405,14 +371,6 @@ def inject(
             tempfiles.append((tmp_name, dest))  # register immediately so rollback sees it
             with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
                 fh.write(body)
-
-        # Stage the derived companies_of_interest.txt
-        coi_body = derive_companies_of_interest(found["target_companies.md"])
-        coi_dest = base_root / _COMPANIES_OF_INTEREST_DEST
-        fd, tmp_name = tempfile.mkstemp(prefix=coi_dest.name + ".", suffix=".tmp", dir=str(coi_dest.parent))
-        tempfiles.append((tmp_name, coi_dest))  # register immediately so rollback sees it
-        with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
-            fh.write(coi_body)
 
         # Stage the merged data/.env if there are any env updates
         if new_env_content is not None:

@@ -69,7 +69,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 FIXTURES="$REPO_ROOT/tests/fixtures"
 
 for f in smoke_profile.md smoke_jsearch_queries.txt smoke_prefilter_rules.yaml \
-         smoke_in_domain_patterns.yaml smoke_companies_of_interest.txt; do
+         smoke_in_domain_patterns.yaml smoke_target_companies.md; do
     if [ ! -f "$FIXTURES/$f" ]; then
         echo "ERROR: missing fixture $FIXTURES/$f" >&2
         exit 2
@@ -157,7 +157,7 @@ cp "$FIXTURES/smoke_profile.md" "$SCRATCH/state/candidate_context/profile.md"
 cp "$FIXTURES/smoke_jsearch_queries.txt"       "$SCRATCH/state/config/jsearch_queries.txt"
 cp "$FIXTURES/smoke_prefilter_rules.yaml"      "$SCRATCH/state/config/prefilter_rules.yaml"
 cp "$FIXTURES/smoke_in_domain_patterns.yaml"   "$SCRATCH/state/config/in_domain_patterns.yaml"
-cp "$FIXTURES/smoke_companies_of_interest.txt" "$SCRATCH/state/config/companies_of_interest.txt"
+cp "$FIXTURES/smoke_target_companies.md"      "$SCRATCH/state/config/target_companies.md"
 
 # Empty feed_urls.txt — smoke test drives jobs via RapidAPI queries only
 : > "$SCRATCH/state/config/feed_urls.txt"

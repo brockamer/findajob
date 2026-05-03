@@ -1,7 +1,0 @@
-# Test fixture
-meta
-google
-openai
-anthropic
-aws
-microsoft

@@ -1,9 +1,9 @@
 """Loads prefilter rules and companies-of-interest from gitignored configs.
 
 Reads from BASE/config/:
-  - prefilter_rules.yaml        (hard_rejects + context_suppressors)
+  - prefilter_rules.yaml        (hard_rejects + context_suppressors + indeed_title_allow)
   - in_domain_patterns.yaml     (positive + poison)
-  - companies_of_interest.txt   (one company per line; case-insensitive)
+  - target_companies.md         (Tier 1 section parsed for case-insensitive match)
 
 Missing files emit a UserWarning and return no-op sentinels so the pipeline
 degrades gracefully on a fresh install. Malformed files raise ConfigError.
@@ -22,7 +22,13 @@ from findajob.paths import BASE
 # Module-level paths (overridden in tests via conftest)
 _RULES_PATH = Path(BASE) / "config" / "prefilter_rules.yaml"
 _IN_DOMAIN_PATH = Path(BASE) / "config" / "in_domain_patterns.yaml"
-_COMPANIES_PATH = Path(BASE) / "config" / "companies_of_interest.txt"
+_TARGET_COMPANIES_PATH = Path(BASE) / "config" / "target_companies.md"
+
+# Tier 1 parser — moved from findajob.onboarding.injector (#211).
+_TIER1_HEADING_RE = re.compile(r"^##\s+tier\s*1\b[^\n]*", re.IGNORECASE | re.MULTILINE)
+_NEXT_H2_RE = re.compile(r"^##\s+\S", re.MULTILINE)
+_BULLET_RE = re.compile(r"^\s*(?:[-*]\s+|\d+\.\s+)(.*)")
+_SPLIT_COMMENTARY_RE = re.compile(r"\s+[—-]\s+|\s+\(")
 
 # Sentinel regex that never matches anything. Used when a config is missing
 # or empty. Returned in place of None so callers don't need a None-check.
@@ -126,36 +132,66 @@ def load_in_domain_rules() -> tuple[re.Pattern[str], re.Pattern[str] | None]:
     return _in_domain_cache
 
 
+def parse_target_companies_tier1(target_companies_md: str) -> list[str]:
+    """Extract Tier 1 company names from `target_companies.md` content.
+
+    Parses the `## Tier 1` section (case-insensitive heading match), reads
+    bullets through the next `##` heading or EOF, strips bullet markers
+    (`-`, `*`, `1.`), and trims trailing parenthetical or em-dash commentary.
+
+    Returns an ordered list (de-duplication and case-folding are caller
+    concerns). Empty list if no Tier 1 section is present.
+    """
+    match = _TIER1_HEADING_RE.search(target_companies_md)
+    if not match:
+        return []
+    section_start = match.end()
+    remainder = target_companies_md[section_start:]
+    next_h2 = _NEXT_H2_RE.search(remainder)
+    section = remainder[: next_h2.start()] if next_h2 else remainder
+    companies: list[str] = []
+    for line in section.splitlines():
+        bullet = _BULLET_RE.match(line)
+        if not bullet:
+            continue
+        raw = bullet.group(1).strip()
+        parts = _SPLIT_COMMENTARY_RE.split(raw, maxsplit=1)
+        name = parts[0].strip()
+        if name:
+            companies.append(name)
+    return companies
+
+
 def load_companies_of_interest() -> frozenset[str]:
-    """Lowercase company names. Used for case-insensitive substring matching."""
+    """Lowercase Tier 1 company names from `config/target_companies.md` (#211).
+
+    Reads the Tier 1 section directly — replaces the prior derived
+    `companies_of_interest.txt` path. Used for case-insensitive substring
+    matching by `is_company_of_interest()` (consumed by `notify.py` mis-score
+    health check + sync_sheet archival exception).
+    """
     global _companies_cache
     if _companies_cache is not None:
         return _companies_cache
 
     try:
-        raw = _COMPANIES_PATH.read_text()
+        raw = _TARGET_COMPANIES_PATH.read_text(encoding="utf-8")
     except FileNotFoundError:
         _warn_once(
-            "config/companies_of_interest.txt missing — "
+            "config/target_companies.md missing — "
             "sync_sheet archival exception and notify mis-score check will be disabled"
         )
         _companies_cache = frozenset()
         return _companies_cache
 
-    entries: set[str] = set()
-    for line in raw.splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-        entries.add(stripped.lower())
-
-    if not entries:
+    names = parse_target_companies_tier1(raw)
+    if not names:
         _warn_once(
-            "config/companies_of_interest.txt is empty — "
+            "config/target_companies.md has no '## Tier 1' section (or it's empty) — "
             "sync_sheet archival exception and notify mis-score check will be disabled"
         )
 
-    _companies_cache = frozenset(entries)
+    _companies_cache = frozenset(n.lower() for n in names)
     return _companies_cache
 
 

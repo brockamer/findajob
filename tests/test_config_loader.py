@@ -9,7 +9,44 @@ from findajob.config_loader import (
     ConfigError,
     is_company_of_interest,
     load_companies_of_interest,
+    parse_target_companies_tier1,
 )
+
+
+class TestParseTargetCompaniesTier1:
+    """#211 — parser moved from findajob.onboarding.injector.derive_companies_of_interest."""
+
+    def test_strips_bullets_and_commentary(self):
+        md = (
+            "## Tier 1 — Active Focus\n"
+            "- Acme Corp\n"
+            "- Example Industries — would take a role there today\n"
+            "- Sample Systems (public benefit corp)\n"
+        )
+        assert parse_target_companies_tier1(md) == ["Acme Corp", "Example Industries", "Sample Systems"]
+
+    def test_ignores_tier2_and_beyond(self):
+        md = (
+            "## Tier 1 — Active Focus\n- A\n- B\n\n"
+            "## Tier 2 — Strong Interest\n- C\n- D\n\n"
+            "## Tier 3 — Opportunistic\n- E\n"
+        )
+        assert parse_target_companies_tier1(md) == ["A", "B"]
+
+    def test_handles_star_bullets_and_numbered(self):
+        md = "## Tier 1 — Active Focus\n* Alpha Co\n1. Beta Inc\n- Gamma LLC\n"
+        assert parse_target_companies_tier1(md) == ["Alpha Co", "Beta Inc", "Gamma LLC"]
+
+    def test_returns_empty_list_when_no_tier1(self):
+        assert parse_target_companies_tier1("## Tier 2\n- Z\n") == []
+
+    def test_case_insensitive_tier1_heading(self):
+        # Heading regex tolerates `Tier 1` / `tier 1` / `TIER 1` / spacing variations
+        assert parse_target_companies_tier1("## TIER 1\n- X\n") == ["X"]
+        assert parse_target_companies_tier1("## tier1\n- Y\n") == ["Y"]
+
+    def test_empty_input(self):
+        assert parse_target_companies_tier1("") == []
 
 
 class TestLoadCompaniesOfInterest:
@@ -128,13 +165,22 @@ class TestMissingFiles:
         assert in_domain_re.search("Data Center Operations") is None
         assert poison_re is None
 
-    def test_missing_companies_file_returns_empty(self, monkeypatch, tmp_path):
-        monkeypatch.setattr(config_loader, "_COMPANIES_PATH", tmp_path / "does-not-exist.txt")
+    def test_missing_target_companies_file_returns_empty(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(config_loader, "_TARGET_COMPANIES_PATH", tmp_path / "does-not-exist.md")
         config_loader._reset_cache()
-        with pytest.warns(UserWarning, match="companies_of_interest.txt missing"):
+        with pytest.warns(UserWarning, match="target_companies.md missing"):
             result = config_loader.load_companies_of_interest()
         assert result == frozenset()
         assert config_loader.is_company_of_interest("Meta") is False
+
+    def test_target_companies_without_tier1_returns_empty(self, monkeypatch, tmp_path):
+        bad = tmp_path / "target_companies.md"
+        bad.write_text("# Some Header\n\nNo Tier 1 section here.\n")
+        monkeypatch.setattr(config_loader, "_TARGET_COMPANIES_PATH", bad)
+        config_loader._reset_cache()
+        with pytest.warns(UserWarning, match="no '## Tier 1' section"):
+            result = config_loader.load_companies_of_interest()
+        assert result == frozenset()
 
     def test_empty_rules_file(self, monkeypatch, tmp_path):
         empty = tmp_path / "prefilter_rules.yaml"
