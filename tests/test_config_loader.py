@@ -194,3 +194,69 @@ class TestMalformedFiles:
         config_loader._reset_cache()
         with pytest.raises(ConfigError, match="'positive' must be a list"):
             config_loader.load_in_domain_rules()
+
+
+class TestLoadIndeedTitleAllowRules:
+    """#417 — JobsApi14IndeedAdapter title allowlist lifted from hardcode to config."""
+
+    def test_returns_pattern_when_configured(self):
+        # Fixture provides indeed_title_allow with engineering patterns
+        pattern = config_loader.load_indeed_title_allow_rules()
+        assert pattern is not None
+        assert pattern.search("Senior Data Center Engineer") is not None
+        assert pattern.search("Operations Manager") is not None
+
+    def test_pattern_does_not_match_unrelated_titles(self):
+        pattern = config_loader.load_indeed_title_allow_rules()
+        assert pattern is not None
+        assert pattern.search("Cashier") is None
+        assert pattern.search("Bartender") is None
+
+    def test_returns_none_when_key_missing(self, monkeypatch, tmp_path):
+        # File exists but has no indeed_title_allow key → None (allow-all semantic)
+        rules = tmp_path / "prefilter_rules.yaml"
+        rules.write_text("hard_rejects:\n  spam:\n    - 'foo'\n")
+        monkeypatch.setattr(config_loader, "_RULES_PATH", rules)
+        config_loader._reset_cache()
+        assert config_loader.load_indeed_title_allow_rules() is None
+
+    def test_returns_none_when_file_missing(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(config_loader, "_RULES_PATH", tmp_path / "missing.yaml")
+        config_loader._reset_cache()
+        assert config_loader.load_indeed_title_allow_rules() is None
+
+    def test_empty_list_returns_none(self, monkeypatch, tmp_path):
+        rules = tmp_path / "prefilter_rules.yaml"
+        rules.write_text("indeed_title_allow: []\n")
+        monkeypatch.setattr(config_loader, "_RULES_PATH", rules)
+        config_loader._reset_cache()
+        assert config_loader.load_indeed_title_allow_rules() is None
+
+    def test_non_list_raises(self, monkeypatch, tmp_path):
+        bad = tmp_path / "prefilter_rules.yaml"
+        bad.write_text("indeed_title_allow:\n  nested: value\n")
+        monkeypatch.setattr(config_loader, "_RULES_PATH", bad)
+        config_loader._reset_cache()
+        with pytest.raises(ConfigError, match="'indeed_title_allow' must be a list"):
+            config_loader.load_indeed_title_allow_rules()
+
+    def test_non_string_pattern_raises(self, monkeypatch, tmp_path):
+        bad = tmp_path / "prefilter_rules.yaml"
+        bad.write_text("indeed_title_allow:\n  - 42\n")
+        monkeypatch.setattr(config_loader, "_RULES_PATH", bad)
+        config_loader._reset_cache()
+        with pytest.raises(ConfigError, match="indeed_title_allow pattern is not a string"):
+            config_loader.load_indeed_title_allow_rules()
+
+    def test_invalid_regex_raises(self, monkeypatch, tmp_path):
+        bad = tmp_path / "prefilter_rules.yaml"
+        bad.write_text("indeed_title_allow:\n  - '(unclosed'\n")
+        monkeypatch.setattr(config_loader, "_RULES_PATH", bad)
+        config_loader._reset_cache()
+        with pytest.raises(ConfigError, match=r"invalid regex.*\(unclosed"):
+            config_loader.load_indeed_title_allow_rules()
+
+    def test_caches_result(self):
+        p1 = config_loader.load_indeed_title_allow_rules()
+        p2 = config_loader.load_indeed_title_allow_rules()
+        assert p1 is p2  # cache hit

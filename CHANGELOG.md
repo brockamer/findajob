@@ -16,6 +16,9 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 - `JOBS_API14_MAX_PAGES` env var — optional per-stack pagination ceiling for `JobsApi14Adapter` (LinkedIn endpoint). Default 1 (unchanged behavior). Loops over `meta.nextToken` up to N pages per query. Each additional page is one billed RapidAPI request (per-call billing — empirically confirmed on operator stack). PRO-tier operators (jobs-api14 PRO = 20k/mo) can safely set 3–5 for additive yield (2.25–3.75% of quota). Clamped to `[1, 20]`. `live_test()` stays single-page regardless of this setting (#414 PR2)
 - `JSEARCH_NUM_PAGES` env var — optional per-stack pagination width for `JSearchAdapter`. Default 1 (unchanged behavior). Sets the `num_pages` API param so JSearch handles pagination server-side (single HTTP request per query, billed as N units). Empirically: N=3 returns ~27 jobs vs ~10 (~2.7x yield). PRO-tier operators (JSearch = 10k/mo) can safely set 3 (4.5% of quota). Clamped to `[1, 10]` (half of jobs-api14's ceiling because JSearch's PRO quota is half). `live_test()` stays at num_pages=1 regardless (#414 PR3)
 
+### Changed
+- `JobsApi14IndeedAdapter` title allowlist lifted from a hardcoded engineering-tuned regex (`_TITLE_ALLOW_PATTERN`) to the optional `indeed_title_allow:` key in `config/prefilter_rules.yaml`. Missing/empty key = no post-filter (allow-all). Field-specific example blocks for engineering, healthcare, social-work, and education candidates included in `prefilter_rules.yaml.example`. Restores domain-neutrality of the pipeline per CLAUDE.md "PII / Domain-Neutrality — HARD RULES" (#417)
+
 ### Removed
 - `findajob.onboarding.env_migrate.migrate_rapidapi_key_env()` and its startup invocation in `findajob.web.app`. The v0.14 helper renamed `RAPIDAPI_KEY` → `JOBS_API14_KEY` on every container boot, which became the inverse of #414's canonical-name direction. Adapter + legacy-fetcher fallback (introduced alongside #414) covers the same compatibility surface without rewriting `data/.env` (#416)
 
@@ -25,6 +28,7 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 - **To enable the new Indeed adapter:** add `jobs-api14-indeed` as a new line in `config/active_sources.txt` and restart the stack. No new credentials needed (shares jobs-api14's account).
 - **To opt into multi-page LinkedIn fetching:** add `JOBS_API14_MAX_PAGES=3` (or up to 5) to `data/.env` and restart the stack. PRO-tier operators only; BASIC stays at default 1 to avoid quota burn. No action required for default behavior.
 - **To opt into JSearch multi-page fetching:** add `JSEARCH_NUM_PAGES=3` to `data/.env` and restart the stack. PRO-tier operators only; BASIC stays at default 1 to avoid quota burn. No action required for default behavior.
+- **`JobsApi14IndeedAdapter` allowlist lift (#417):** if your stack runs the Indeed adapter (`jobs-api14-indeed` in `config/active_sources.txt`), the engineering-tuned hardcoded title allowlist is gone. Without configuration, the adapter now allows ALL Indeed titles through (89% noise for engineering candidates per pre-#414 measurement). To preserve operator's pre-#417 behavior, add the engineering-default `indeed_title_allow:` block from `config/prefilter_rules.yaml.example` to your `config/prefilter_rules.yaml`. For non-engineering candidates, replace the engineering block with the field-specific example provided. Stacks not running the Indeed adapter are unaffected.
 
 ## [0.14.0] — 2026-05-02
 

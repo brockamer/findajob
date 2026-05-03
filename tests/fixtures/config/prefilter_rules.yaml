@@ -98,3 +98,12 @@ context_suppressors:
   - '\bdata\s*center\b'
   - '\bdatacenter\b'
   - '\bdc\s+(ops|operations|site)\b'
+
+# JobsApi14IndeedAdapter title allowlist (#417). Inclusion regexes — only
+# titles matching at least one of these are stored. Missing key = allow-all.
+indeed_title_allow:
+  - '\bengineer\b'
+  - '\bmanager\b'
+  - '\bdirector\b'
+  - '\boperations\b'
+  - '\bdata\s*center\b'

@@ -55,3 +55,65 @@ hard_rejects:
 # context_suppressors:
 #   - '\bdata\s*center\b'
 #   - '\bdatacenter\b'
+
+# ── JobsApi14IndeedAdapter title allowlist (#417) ────────────────────────────
+# OPTIONAL. Inclusion regexes — only Indeed titles matching at least one of
+# these are stored. The adapter applies this AFTER the API fetch, since
+# jobs-api14's Indeed endpoint exposes no recency / level / employment-type
+# filters and otherwise returns ~89% off-target rows.
+#
+# Missing key OR empty list = no allowlist → all titles pass through to LLM
+# scoring (with the warning surfaced via _safe_load_yaml). Configure the
+# patterns for your role family for best Indeed signal-to-noise.
+#
+# Each entry is a Python regex; case-insensitive matching is applied.
+# Use \b word boundaries to avoid accidental substring matches.
+#
+# Engineering / data center / NPI / hardware default (operator's stack):
+#
+# indeed_title_allow:
+#   - '\bengineer\b'
+#   - '\bmanager\b'
+#   - '\bdirector\b'
+#   - '\blead\b'
+#   - '\barchitect\b'
+#   - '\banalyst\b'
+#   - '\bprogram\b'
+#   - '\boperations\b'
+#   - '\binfrastructure\b'
+#   - '\bdata\s*center\b'
+#   - '\bhardware\b'
+#   - '\bnpi\b'
+#   - '\btechnician\b'
+#   - '\bspecialist\b'
+#   - '\bcoordinator\b'
+#   - '\bsupervisor\b'
+#   - '\badministrator\b'
+#
+# Healthcare / nursing candidate:
+#
+# indeed_title_allow:
+#   - '\bnurs(e|ing)\b'
+#   - '\b(rn|lpn|bsn|np)\b'
+#   - '\bclinical\b'
+#   - '\bpatient\s+care\b'
+#   - '\bhealthcare\b'
+#
+# Social work / human services candidate:
+#
+# indeed_title_allow:
+#   - '\bsocial\s+work(er)?\b'
+#   - '\bcase\s+(manager|worker)\b'
+#   - '\bcommunity\s+outreach\b'
+#   - '\bhomeless(ness)?\b'
+#   - '\bhuman\s+services\b'
+#
+# Education / teaching candidate:
+#
+# indeed_title_allow:
+#   - '\bteacher\b'
+#   - '\binstructor\b'
+#   - '\bprincipal\b'
+#   - '\beducation\b'
+#   - '\bcurriculum\b'
+#   - '\bschool\b'

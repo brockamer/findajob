@@ -7,6 +7,8 @@ filters (unlike LinkedIn), so the legacy fetcher (retired pre-#408) returned
 1. sortType=date — most-recent first, daily triage captures fresh jobs.
 2. countryCode=us + location="United States" — geo-narrow.
 3. Adapter-side title regex post-filter — inclusion allowlist before storing.
+   Configured per-stack via `indeed_title_allow:` in
+   `config/prefilter_rules.yaml` (#417). Missing/empty key = no post-filter.
 
 Per-page count is 20 (vs LinkedIn's 10). Description is inline in the
 search response, so no separate /v2/linkedin/get-equivalent call needed.
@@ -18,35 +20,19 @@ RapidAPI account.
 
 from __future__ import annotations
 
-import re
 import time
 from typing import ClassVar
 
 import requests
 
 from findajob.cleaning import clean_company, clean_title
+from findajob.config_loader import load_indeed_title_allow_rules
 from findajob.utils import log_event
 
 from ._keys import resolve_rapidapi_key
 from .base import LiveTestResult, QueryResult
 
 __all__ = ("JobsApi14IndeedAdapter",)
-
-
-# Title-allowlist regex — case-insensitive. Tuned for ops / infrastructure /
-# program-mgmt / NPI / hardware / data-center title families. Tighter than
-# scorer_prefilter Stage 1's REJECT pattern; this is INCLUSION, applied
-# pre-storage to compensate for Indeed's missing server-side filters.
-# Hardcoded here in PR1 (#414); a follow-up issue will lift this to a config file
-# once the right shape is clear from real ingest data.
-_TITLE_ALLOW_PATTERN: re.Pattern[str] = re.compile(
-    r"\b("
-    r"engineer|manager|director|lead|architect|analyst|program|"
-    r"operations|infrastructure|data\s*center|hardware|npi|"
-    r"technician|specialist|coordinator|supervisor|administrator"
-    r")\b",
-    re.IGNORECASE,
-)
 
 
 class JobsApi14IndeedAdapter:
@@ -210,14 +196,16 @@ class JobsApi14IndeedAdapter:
             return None
 
     def _parse_rows(self, data: dict, query: str) -> list[dict]:
+        allow_pattern = load_indeed_title_allow_rules()
         rows: list[dict] = []
         for job in data.get("data", []) or []:
             raw_title = job.get("title", "")
             title = clean_title(raw_title)
             if not title:
                 continue
-            # Inclusion post-filter — drop titles outside the allowlist
-            if not _TITLE_ALLOW_PATTERN.search(title):
+            # Inclusion post-filter — drop titles outside the allowlist.
+            # Missing/empty config = allow-all (no filter applied).
+            if allow_pattern is not None and not allow_pattern.search(title):
                 continue
 
             url = job.get("applyUrl", "")
