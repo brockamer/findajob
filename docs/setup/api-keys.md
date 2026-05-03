@@ -12,7 +12,7 @@ credit card to get started.
 | Key | What findajob uses it for | Cost on free tier | Required? |
 |---|---|---|---|
 | **OpenRouter** | All LLM calls (scoring, briefings, resume tailoring, cover letters, outreach drafts, in-app interview) | Pay-as-you-go from $0; no monthly minimum. ~$0.50/day triage-only; $1.50–3.00 per fully-prepped job (Claude Opus dominates that bill). | **Yes** — pipeline cannot score or generate materials without it |
-| **RapidAPI feed** (jobs-api14 or JSearch) | LinkedIn + Indeed job search ingestion | BASIC plan: 150–250 requests/month free | Optional — Gmail LinkedIn-alert ingestion still works without it |
+| **RapidAPI feed** (jobs-api14, JSearch, or jobs-api14 Indeed) | LinkedIn + Indeed job search ingestion | BASIC plan: 150–250 requests/month free | Optional — Gmail LinkedIn-alert ingestion still works without it |
 | **Google AI Studio (Gemini)** | Embeddings for the optional RAG index over your candidate context (REPL-only feature) | Free tier on Gemini embeddings; no billing setup needed | Optional — only used by the REPL workflow; pipeline is fully functional without it |
 
 You can leave RapidAPI and Google blank during onboarding and add them
@@ -82,19 +82,20 @@ OpenRouter shows you a live spend breakdown at <https://openrouter.ai/activity>.
 > onboarding via `/onboarding/?mode=rerun` if you want to revisit the
 > source-strategy decision.
 
-findajob supports multiple RapidAPI-flavored job feeds. Each feed has its
-own env var and its own BASIC-tier quota. The onboarding interview's
-Section 3h recommends the right feed for your field from the
-operator-curated `config/rapidapi_feeds.yaml` table; the
-`/onboarding/feed-config/` form walks you through signup and runs a live
-connection test.
+findajob supports multiple RapidAPI-flavored job feeds. All feeds share the
+canonical `RAPIDAPI_KEY` env var — one RapidAPI account key covers every API
+you've subscribed to. The onboarding interview's Section 3h recommends the
+right feed for your field from the operator-curated `config/rapidapi_feeds.yaml`
+table; the `/onboarding/feed-config/` form walks you through signup and runs a
+live connection test.
 
 | Feed | Env var | What it searches | Free tier |
 |---|---|---|---|
-| **jobs-api14** | `JOBS_API14_KEY` | LinkedIn — broad coverage, LinkedIn-heavy | 150 req/month |
-| **JSearch** | `JSEARCH_API_KEY` | LinkedIn + Indeed + Glassdoor + ZipRecruiter | 200 req/month |
+| **jobs-api14** | `RAPIDAPI_KEY` (canonical) or `JOBS_API14_KEY` (legacy fallback, #414) | LinkedIn — broad coverage, LinkedIn-heavy | 150 req/month |
+| **jobs-api14 (Indeed)** | `RAPIDAPI_KEY` (canonical) or `JOBS_API14_KEY` (legacy fallback, #414) | Indeed — broad US coverage, inline JD | shares jobs-api14 quota (150 req/month free) |
+| **JSearch** | `RAPIDAPI_KEY` (canonical) or `JSEARCH_API_KEY` (legacy fallback, #414) | LinkedIn + Indeed + Glassdoor + ZipRecruiter | 200 req/month |
 
-If you skip both keys, findajob will:
+If you skip the RapidAPI key, findajob will:
 
 - still ingest jobs from Greenhouse / Ashby / Lever ATS feeds (configured
   in `config/feed_urls.txt`)
@@ -116,7 +117,7 @@ running the picker again.
    in the right-hand pane as the `X-RapidAPI-Key` header value.
 5. The onboarding `/onboarding/feed-config/` form accepts the key and
    runs a live connection test before writing it to `data/.env` as
-   `JOBS_API14_KEY`.
+   `RAPIDAPI_KEY` — the canonical name covers every RapidAPI feed (#414).
 
 ### Sign up for JSearch
 
@@ -127,7 +128,7 @@ running the picker again.
 4. After subscribing, your API key appears in the right-hand pane as the
    `X-RapidAPI-Key` header value.
 5. The onboarding `/onboarding/feed-config/` form accepts the key and
-   writes it to `data/.env` as `JSEARCH_API_KEY`.
+   writes it to `data/.env` as `RAPIDAPI_KEY` — the canonical name covers every RapidAPI feed (#414).
 
 ### Quota guidance
 
