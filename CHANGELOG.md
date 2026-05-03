@@ -10,6 +10,14 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Added
+- `JobsApi14IndeedAdapter` — Indeed coverage via jobs-api14 `/v2/indeed/search`. Restores pre-#408 Indeed pulls, tuned with `sortType=date` + adapter-side title-allowlist regex to compensate for the missing recency / experience-level / employment-type filters. 20 jobs/page (2× LinkedIn), inline JD ingestion. `source_label='jobsapi_indeed'` preserves DB row continuity. Active when `'jobs-api14-indeed'` is listed in `config/active_sources.txt` (#414)
+- Shared `RAPIDAPI_KEY` env var as the canonical RapidAPI credential. Both `JobsApi14Adapter` and `JSearchAdapter` (and the new Indeed adapter) read it first, falling back to the legacy per-adapter vars (`JOBS_API14_KEY`, `JSEARCH_API_KEY`) if unset. Reflects the reality that RapidAPI uses one account-level key per user, not per-API (#414)
+
+### Migration required
+- **Existing stacks pulling next minor:** legacy `JOBS_API14_KEY` / `JSEARCH_API_KEY` continue to work — no action required to keep current adapter configs running. To start using `RAPIDAPI_KEY` as the canonical name, copy the existing legacy var's value to `RAPIDAPI_KEY=` in `data/.env` (operators can also remove the legacy vars once migrated, but they're harmless if left).
+- **To enable the new Indeed adapter:** add `jobs-api14-indeed` as a new line in `config/active_sources.txt` and restart the stack. No new credentials needed (shares jobs-api14's account).
+
 ## [0.14.0] — 2026-05-02
 
 Minor bump shipping #408 pluggable `JobSourceAdapter` framework + JSearch adapter (#310) + onboarding picker (Section 3h). Operator's stack and `findajob-test` already track `:latest`; tester stacks (alice, papa, dave, judy, tango) currently on `:v0.13` should bump to `:v0.14` in the cohort wave.
