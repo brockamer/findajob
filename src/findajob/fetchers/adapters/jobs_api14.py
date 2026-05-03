@@ -24,7 +24,7 @@ class JobsApi14Adapter:
     name: ClassVar[str] = "jobs-api14"
     display_name: ClassVar[str] = "Jobs API (jobs-api14)"
     source_label: ClassVar[str] = "jobsapi_linkedin"
-    required_env_vars: ClassVar[tuple[str, ...]] = ("JOBS_API14_KEY",)
+    required_env_vars: ClassVar[tuple[str, ...]] = ("RAPIDAPI_KEY", "JOBS_API14_KEY")
 
     _ENDPOINT: ClassVar[str] = "https://jobs-api14.p.rapidapi.com/v2/linkedin/search"
     _HOST: ClassVar[str] = "jobs-api14.p.rapidapi.com"

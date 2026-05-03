@@ -20,7 +20,7 @@ def test_class_attributes() -> None:
     assert adapter.name == "jobs-api14"
     assert adapter.display_name == "Jobs API (jobs-api14)"
     assert adapter.source_label == "jobsapi_linkedin"  # preserves existing DB rows
-    assert adapter.required_env_vars == ("JOBS_API14_KEY",)
+    assert adapter.required_env_vars == ("RAPIDAPI_KEY", "JOBS_API14_KEY")
 
 
 def test_is_configured_false_when_env_unset() -> None:
