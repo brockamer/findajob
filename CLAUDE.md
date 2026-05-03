@@ -138,7 +138,7 @@ When the pipeline runs inside the `ghcr.io/brockamer/findajob` image, paths shif
 <repo>/src/findajob/cleaning.py             # normalize, fingerprint, clean_title, clean_company
 <repo>/src/findajob/ingest.py               # ingest_manual_job() — shared entry point for the /ingest/ web form
 <repo>/src/findajob/fetchers/                 # Greenhouse, Gmail job fetching; RapidAPI feeds via adapters/
-<repo>/src/findajob/fetchers/adapters/      # JobSourceAdapter Protocol + REGISTERED_ADAPTERS + JobsApi14Adapter + JSearchAdapter
+<repo>/src/findajob/fetchers/adapters/      # JobSourceAdapter Protocol + REGISTERED_ADAPTERS + JobsApi14Adapter + JobsApi14IndeedAdapter + JSearchAdapter
 <repo>/src/findajob/scoring.py              # score_job(), _build_feedback_block()
 <repo>/src/findajob/scorer_prefilter.py     # deterministic pre-filter (Stage 1 + 2)
 <repo>/src/findajob/web/app.py               # FastAPI app factory (create_app)
