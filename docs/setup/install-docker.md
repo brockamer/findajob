@@ -395,12 +395,11 @@ already have this mount; no action needed.
 
 ## Upgrading from v0.13
 
-The entrypoint migration from v0.14 onward is **automatic** — no manual action needed.
-
-On first boot after pulling the v0.14 image, the entrypoint runs
-`migrate_rapidapi_key_env()`, which reads `data/.env`, renames any `RAPIDAPI_KEY`
-line to `JOBS_API14_KEY`, and writes the file back in place. The migration is
-idempotent — running it again on an already-migrated `.env` is a no-op.
+No manual action needed. Whichever RapidAPI key var your `data/.env` holds
+(`RAPIDAPI_KEY`, `JOBS_API14_KEY`, or `JSEARCH_API_KEY`) keeps working — the
+adapter resolver tries `RAPIDAPI_KEY` first and falls back to the legacy
+per-adapter names (#414). Renaming an existing legacy var to the canonical
+`RAPIDAPI_KEY` is optional and only worthwhile for clarity.
 
 Stacks without `config/active_sources.txt` (i.e., stacks that pre-date the picker)
 default to `jobs-api14` as the active adapter, preserving pre-v0.14 behavior

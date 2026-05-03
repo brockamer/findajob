@@ -99,13 +99,6 @@ def create_app(
     except sqlite3.Error:
         pass
 
-    # Idempotent env-var rename: RAPIDAPI_KEY → JOBS_API14_KEY (#408).
-    # Existing v0.13 stacks have RAPIDAPI_KEY; this transparently migrates
-    # them on first v0.14 boot. No-op if already migrated or file missing.
-    from findajob.onboarding.env_migrate import migrate_rapidapi_key_env
-
-    migrate_rapidapi_key_env(app.state.base_root / "data" / ".env")
-
     def get_db() -> Generator[sqlite3.Connection, None, None]:
         conn = sqlite3.connect(str(db_path))
         conn.row_factory = sqlite3.Row

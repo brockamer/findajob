@@ -14,8 +14,12 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 - `JobsApi14IndeedAdapter` — Indeed coverage via jobs-api14 `/v2/indeed/search`. Restores pre-#408 Indeed pulls, tuned with `sortType=date` + adapter-side title-allowlist regex to compensate for the missing recency / experience-level / employment-type filters. 20 jobs/page (2× LinkedIn), inline JD ingestion. `source_label='jobsapi_indeed'` preserves DB row continuity. Active when `'jobs-api14-indeed'` is listed in `config/active_sources.txt` (#414)
 - Shared `RAPIDAPI_KEY` env var as the canonical RapidAPI credential. Both `JobsApi14Adapter` and `JSearchAdapter` (and the new Indeed adapter) read it first, falling back to the legacy per-adapter vars (`JOBS_API14_KEY`, `JSEARCH_API_KEY`) if unset. Reflects the reality that RapidAPI uses one account-level key per user, not per-API (#414)
 
+### Removed
+- `findajob.onboarding.env_migrate.migrate_rapidapi_key_env()` and its startup invocation in `findajob.web.app`. The v0.14 helper renamed `RAPIDAPI_KEY` → `JOBS_API14_KEY` on every container boot, which became the inverse of #414's canonical-name direction. Adapter + legacy-fetcher fallback (introduced alongside #414) covers the same compatibility surface without rewriting `data/.env` (#416)
+
 ### Migration required
 - **Existing stacks pulling next minor:** legacy `JOBS_API14_KEY` / `JSEARCH_API_KEY` continue to work — no action required to keep current adapter configs running. To start using `RAPIDAPI_KEY` as the canonical name, copy the existing legacy var's value to `RAPIDAPI_KEY=` in `data/.env` (operators can also remove the legacy vars once migrated, but they're harmless if left).
+- **Stacks where v0.14's auto-rename already fired** (have `JOBS_API14_KEY` set, `RAPIDAPI_KEY` absent): no action required. The legacy var continues to be read via fallback. Adopt the canonical name on your next manual edit if you want one.
 - **To enable the new Indeed adapter:** add `jobs-api14-indeed` as a new line in `config/active_sources.txt` and restart the stack. No new credentials needed (shares jobs-api14's account).
 
 ## [0.14.0] — 2026-05-02
