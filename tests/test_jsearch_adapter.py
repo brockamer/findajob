@@ -13,6 +13,7 @@ from findajob.fetchers.adapters.jsearch import JSearchAdapter
 @pytest.fixture(autouse=True)
 def _scrub_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("JSEARCH_API_KEY", raising=False)
+    monkeypatch.delenv("RAPIDAPI_KEY", raising=False)
 
 
 def test_class_attributes() -> None:
@@ -20,7 +21,7 @@ def test_class_attributes() -> None:
     assert adapter.name == "jsearch"
     assert adapter.display_name == "JSearch"
     assert adapter.source_label == "jsearch"
-    assert adapter.required_env_vars == ("JSEARCH_API_KEY",)
+    assert adapter.required_env_vars == ("RAPIDAPI_KEY", "JSEARCH_API_KEY")
 
 
 def test_is_configured(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -214,3 +215,17 @@ def test_fetch_paces_between_queries(monkeypatch: pytest.MonkeyPatch) -> None:
 
     sleep_calls = [c.args for c in mock_sleep.call_args_list]
     assert (0.6,) in sleep_calls or any(c[0] == 0.6 for c in sleep_calls)
+
+
+def test_is_configured_falls_back_to_rapidapi_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Shared RAPIDAPI_KEY backs JSearchAdapter when JSEARCH_API_KEY is unset (#414)."""
+    monkeypatch.delenv("JSEARCH_API_KEY", raising=False)
+    monkeypatch.setenv("RAPIDAPI_KEY", "shared-1234")
+    assert JSearchAdapter().is_configured() is True
+
+
+def test_is_configured_canonical_wins_over_dedicated(monkeypatch: pytest.MonkeyPatch) -> None:
+    """RAPIDAPI_KEY is canonical; if both set, RAPIDAPI_KEY wins (#414)."""
+    monkeypatch.setenv("RAPIDAPI_KEY", "shared-1234")
+    monkeypatch.setenv("JSEARCH_API_KEY", "legacy-1234")
+    assert JSearchAdapter().is_configured() is True
