@@ -104,9 +104,30 @@ def test_fetch_drops_rows_with_no_title_or_url(monkeypatch: pytest.MonkeyPatch) 
     fake_response.json.return_value = {
         "hasError": False,
         "data": [
-            {"id": "x", "title": "", "company": {"name": "A"}, "location": {"location": "X"}, "applyUrl": "u", "description": "d"},
-            {"id": "y", "title": "Engineer", "company": {"name": "A"}, "location": {"location": "X"}, "applyUrl": "", "description": "d"},
-            {"id": "z", "title": "Engineer", "company": {"name": "A"}, "location": {"location": "X"}, "applyUrl": "u", "description": "d"},
+            {
+                "id": "x",
+                "title": "",
+                "company": {"name": "A"},
+                "location": {"location": "X"},
+                "applyUrl": "u",
+                "description": "d",
+            },
+            {
+                "id": "y",
+                "title": "Engineer",
+                "company": {"name": "A"},
+                "location": {"location": "X"},
+                "applyUrl": "",
+                "description": "d",
+            },
+            {
+                "id": "z",
+                "title": "Engineer",
+                "company": {"name": "A"},
+                "location": {"location": "X"},
+                "applyUrl": "u",
+                "description": "d",
+            },
         ],
         "meta": {"count": 3},
     }
@@ -127,10 +148,38 @@ def test_fetch_post_filter_drops_titles_outside_allowlist(monkeypatch: pytest.Mo
     fake_response.json.return_value = {
         "hasError": False,
         "data": [
-            {"id": "1", "title": "Cashier", "company": {"name": "A"}, "location": {"location": "X"}, "applyUrl": "u1", "description": "d"},
-            {"id": "2", "title": "Senior Data Center Engineer", "company": {"name": "A"}, "location": {"location": "X"}, "applyUrl": "u2", "description": "d"},
-            {"id": "3", "title": "Operations Manager", "company": {"name": "A"}, "location": {"location": "X"}, "applyUrl": "u3", "description": "d"},
-            {"id": "4", "title": "Bartender", "company": {"name": "A"}, "location": {"location": "X"}, "applyUrl": "u4", "description": "d"},
+            {
+                "id": "1",
+                "title": "Cashier",
+                "company": {"name": "A"},
+                "location": {"location": "X"},
+                "applyUrl": "u1",
+                "description": "d",
+            },
+            {
+                "id": "2",
+                "title": "Senior Data Center Engineer",
+                "company": {"name": "A"},
+                "location": {"location": "X"},
+                "applyUrl": "u2",
+                "description": "d",
+            },
+            {
+                "id": "3",
+                "title": "Operations Manager",
+                "company": {"name": "A"},
+                "location": {"location": "X"},
+                "applyUrl": "u3",
+                "description": "d",
+            },
+            {
+                "id": "4",
+                "title": "Bartender",
+                "company": {"name": "A"},
+                "location": {"location": "X"},
+                "applyUrl": "u4",
+                "description": "d",
+            },
         ],
         "meta": {"count": 4},
     }
@@ -153,9 +202,10 @@ def test_fetch_handles_429_with_retry(monkeypatch: pytest.MonkeyPatch) -> None:
     success.json.return_value = {"hasError": False, "data": []}
     success.raise_for_status.return_value = None
 
+    _mod = "findajob.fetchers.adapters.jobs_api14_indeed"
     with (
-        patch("findajob.fetchers.adapters.jobs_api14_indeed.requests.get", side_effect=[rate_limited, success]) as mock_get,
-        patch("findajob.fetchers.adapters.jobs_api14_indeed.time.sleep") as mock_sleep,
+        patch(f"{_mod}.requests.get", side_effect=[rate_limited, success]) as mock_get,
+        patch(f"{_mod}.time.sleep") as mock_sleep,
     ):
         JobsApi14IndeedAdapter().fetch(["engineer"])
 
@@ -189,7 +239,14 @@ def test_live_test_success_returns_per_query_counts(monkeypatch: pytest.MonkeyPa
     fake_response.json.return_value = {
         "hasError": False,
         "data": [
-            {"id": "1", "title": "Engineer", "company": {"name": "A"}, "location": {"location": "X"}, "applyUrl": "u", "description": "d"},
+            {
+                "id": "1",
+                "title": "Engineer",
+                "company": {"name": "A"},
+                "location": {"location": "X"},
+                "applyUrl": "u",
+                "description": "d",
+            },
         ],
     }
 

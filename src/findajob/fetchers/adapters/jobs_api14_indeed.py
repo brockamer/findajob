@@ -37,6 +37,8 @@ __all__ = ("JobsApi14IndeedAdapter",)
 # program-mgmt / NPI / hardware / data-center title families. Tighter than
 # scorer_prefilter Stage 1's REJECT pattern; this is INCLUSION, applied
 # pre-storage to compensate for Indeed's missing server-side filters.
+# Hardcoded here in PR1 (#414); a follow-up issue will lift this to a config file
+# once the right shape is clear from real ingest data.
 _TITLE_ALLOW_PATTERN: re.Pattern[str] = re.compile(
     r"\b("
     r"engineer|manager|director|lead|architect|analyst|program|"
@@ -218,6 +220,10 @@ class JobsApi14IndeedAdapter:
             if not _TITLE_ALLOW_PATTERN.search(title):
                 continue
 
+            url = job.get("applyUrl", "")
+            if not url:
+                continue
+
             raw_company = job.get("company", {})
             if isinstance(raw_company, dict):
                 raw_company = raw_company.get("name", "")
@@ -225,10 +231,6 @@ class JobsApi14IndeedAdapter:
 
             loc = job.get("location", "")
             location = loc.get("location", "") if isinstance(loc, dict) else loc
-
-            url = job.get("applyUrl", "")
-            if not url:
-                continue
 
             rows.append(
                 {
