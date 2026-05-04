@@ -535,10 +535,17 @@ def _normalize_sender_to_source(sender: str, url: str = "") -> str:
     return "gmail_unknown"
 
 
-def notify_send_raw(text: str) -> None:
-    """Thin wrapper for ntfy notifications. Module-level for monkeypatching in tests."""
+def notify_send_raw(text: str, kind: str = "gmail_auth_failure") -> None:
+    """Thin wrapper for ntfy notifications. Module-level for monkeypatching in tests.
+
+    Splits `text` into title + body around the first newline so the existing
+    notify.py CLI contract is satisfied (it requires title+body positional args).
+    """
+    title, _, body = text.partition("\n")
+    if not body:
+        body = title
     subprocess.run(
-        [sys.executable, f"{BASE}/scripts/notify.py", "send-raw", text],
+        [sys.executable, f"{BASE}/scripts/notify.py", "send-raw", title, body, "--kind", kind],
         check=False,
         timeout=10,
     )

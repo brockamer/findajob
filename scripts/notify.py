@@ -46,8 +46,70 @@ NTFY_URL = f"https://ntfy.sh/{NTFY_TOPIC}"
 WEB_BASE_URL = (_env.get("FINDAJOB_WEB_URL") or os.environ.get("FINDAJOB_WEB_URL", "http://localhost:8090")).rstrip("/")
 
 
-def send(title, body, priority="default", tags=None):
-    """Send a push notification via ntfy.sh."""
+# Closed-set kind taxonomy (#440). Adding a new kind = update this tuple AND
+# the per-kind color/label in templates/notifications/_kind.html.
+NOTIFICATION_KINDS: tuple[str, ...] = (
+    "daily_stats",
+    "apply_reminder",
+    "feedback_review",
+    "scoreboard",
+    "health_check",
+    "issues_ping",
+    "ci_check",
+    "send_raw",
+    "discovery_run",
+    "gmail_auth_failure",
+    "rejection_detected",  # consumed by #362 when it lands
+)
+
+
+def _persist_notification(
+    kind: str,
+    title: str,
+    body: str,
+    priority: str,
+    tags: str | None,
+    delivery_status: str,
+    delivery_error: str | None,
+    cta_url: str | None,
+) -> int | None:
+    """Insert a row into the notifications table. Returns row id, or None on error.
+
+    Persistence failures must NOT crash the caller — ntfy delivery and audit
+    persistence are independent. A missing table on a brand-new stack with no
+    init_db run is the only realistic failure; in that case we skip silently.
+    """
+    try:
+        conn = db_connect()
+        try:
+            cur = conn.execute(
+                """
+                INSERT INTO notifications
+                    (kind, title, body, priority, tags, delivery_status, delivery_error, cta_url)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (kind, title, body, priority, tags, delivery_status, delivery_error, cta_url),
+            )
+            conn.commit()
+            return cur.lastrowid
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return None
+
+
+def send(title, body, priority="default", tags=None, kind="send_raw", cta_url=None):
+    """Persist a notification row, then push via ntfy.sh.
+
+    The DB row is the source of truth for the in-app notification dashboard
+    (#440). We insert FIRST so the audit trail captures even ntfy outages,
+    then attempt delivery. If ntfy.sh fails (network, 5xx), the row stays
+    with `delivery_status='failed'` and `delivery_error` populated — never
+    deleted. Returns the row id (or None if persistence itself failed).
+
+    `kind` should match one of NOTIFICATION_KINDS; arbitrary strings are
+    accepted but render as plain badges in the UI.
+    """
     headers = [
         "-H",
         f"Title: {title}",
@@ -56,10 +118,26 @@ def send(title, body, priority="default", tags=None):
     ]
     if tags:
         headers += ["-H", f"Tags: {tags}"]
-    subprocess.run(
+    result = subprocess.run(
         ["curl", "-s", "-X", "POST", NTFY_URL, "-H", "Content-Type: text/plain; charset=utf-8", *headers, "-d", body],
         check=False,
         capture_output=True,
+    )
+    if result.returncode == 0:
+        delivery_status = "sent"
+        delivery_error = None
+    else:
+        delivery_status = "failed"
+        delivery_error = (result.stderr or b"").decode("utf-8", errors="replace")[:500] or "curl exited non-zero"
+    return _persist_notification(
+        kind=kind,
+        title=title,
+        body=body,
+        priority=priority,
+        tags=tags,
+        delivery_status=delivery_status,
+        delivery_error=delivery_error,
+        cta_url=cta_url,
     )
 
 
@@ -190,7 +268,7 @@ def cmd_daily_stats():
         f"  {_p(total, 'job')} tracked in total",
     ]
     body = "\n".join(lines)
-    send("💼 findajob — good morning!", body, priority="default", tags="bar_chart")
+    send("💼 findajob — good morning!", body, priority="default", tags="bar_chart", kind="daily_stats")
 
 
 REVIEW_BACKLOG_WARN = 100  # warn if manual_review backlog exceeds this
@@ -418,7 +496,7 @@ def cmd_health_check():
         priority = "high" if any("ERROR" in i for i in issues) else "default"
         tags = "warning"
 
-    send("💼 findajob — health check", body, priority=priority, tags=tags)
+    send("💼 findajob — health check", body, priority=priority, tags=tags, kind="health_check")
 
 
 def cmd_issues_ping():
@@ -432,7 +510,7 @@ def cmd_issues_ping():
             lines.append(f"{i}. {iss}")
         body = "\n".join(lines)
         tags = "memo"
-    send("💼 findajob — open issues", body, priority="default", tags=tags)
+    send("💼 findajob — open issues", body, priority="default", tags=tags, kind="issues_ping")
 
 
 def cmd_apply_reminder():
@@ -482,7 +560,13 @@ def cmd_apply_reminder():
         f"Set aside for later: {n_waitlisted}"
     )
 
-    send("💼 findajob — apply to something today!", quip + checklist, priority="default", tags="rocket")
+    send(
+        "💼 findajob — apply to something today!",
+        quip + checklist,
+        priority="default",
+        tags="rocket",
+        kind="apply_reminder",
+    )
 
 
 def cmd_feedback_review():
@@ -529,15 +613,29 @@ def cmd_feedback_review():
     else:
         body = f"You've passed on {count} jobs so far.\nSee the trends: {WEB_BASE_URL}/stats/feedback"
 
-    send("💼 findajob — feedback check", body, priority="default", tags="magnifying")
+    send("💼 findajob — feedback check", body, priority="default", tags="magnifying", kind="feedback_review")
 
 
 def cmd_send_raw():
-    """Send a raw notification. Usage: notify.py send-raw <title> <body>"""
+    """Send a raw notification.
+
+    Usage:
+        notify.py send-raw <title> <body> [--kind <kind>]
+
+    `--kind` defaults to 'send_raw' — pass through one of NOTIFICATION_KINDS
+    when calling from a known internal site (e.g. discoverer, fetchers).
+    """
     if len(sys.argv) < 4:
-        print("Usage: notify.py send-raw <title> <body>")
+        print("Usage: notify.py send-raw <title> <body> [--kind <kind>]")
         sys.exit(1)
-    send(sys.argv[2], sys.argv[3], priority="default", tags="hourglass_flowing_sand")
+    title = sys.argv[2]
+    body = sys.argv[3]
+    kind = "send_raw"
+    if "--kind" in sys.argv:
+        idx = sys.argv.index("--kind")
+        if idx + 1 < len(sys.argv):
+            kind = sys.argv[idx + 1]
+    send(title, body, priority="default", tags="hourglass_flowing_sand", kind=kind)
 
 
 def cmd_ci_check():
@@ -553,7 +651,13 @@ def cmd_ci_check():
         timeout=30,
     )
     if result.returncode != 0:
-        send("💼 findajob — CI check", f"gh run list failed: {result.stderr[:200]}", priority="default", tags="warning")
+        send(
+            "💼 findajob — CI check",
+            f"gh run list failed: {result.stderr[:200]}",
+            priority="default",
+            tags="warning",
+            kind="ci_check",
+        )
         return
 
     import json as _json
@@ -576,7 +680,7 @@ def cmd_ci_check():
         f"  {latest.get('displayTitle', '?')}",
         f"  {latest.get('url', '')}",
     ]
-    send("💼 findajob — CI failed", "\n".join(lines), priority="high", tags="x")
+    send("💼 findajob — CI failed", "\n".join(lines), priority="high", tags="x", kind="ci_check")
 
 
 SCOREBOARD_ISSUE = 31
@@ -844,13 +948,14 @@ Cumulative counts — how many jobs ever reached each stage, not just current st
     )
     if rc.returncode == 0:
         msg = f"Pipeline funnel scoreboard (#31) updated for {today}."
-        send("💼 findajob — scoreboard updated", msg, priority="low", tags="bar_chart")
+        send("💼 findajob — scoreboard updated", msg, priority="low", tags="bar_chart", kind="scoreboard")
     else:
         send(
             "💼 findajob — scoreboard update failed",
             f"gh issue edit failed: {rc.stderr[:200]}",
             priority="high",
             tags="warning",
+            kind="scoreboard",
         )
 
 

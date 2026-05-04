@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Notifications — findajob{% endblock %}
+
+{% block content %}
+<div class="flex items-baseline justify-between mb-4">
+  <h1 class="text-2xl font-semibold">Notifications</h1>
+  <div class="text-sm text-slate-600">
+    {% if unread_total > 0 %}
+      <span class="font-semibold text-amber-700">{{ unread_total }}</span> unread
+      <form action="/notifications/mark-all-read" method="post" class="inline ml-3">
+        <button type="submit"
+                class="text-xs px-2 py-1 rounded border border-slate-300 hover:bg-slate-100">
+          Mark all read
+        </button>
+      </form>
+    {% else %}
+      All caught up.
+    {% endif %}
+  </div>
+</div>
+
+<form method="get" action="/notifications/" class="mb-4 flex flex-wrap gap-2 items-center text-sm">
+  <span class="text-slate-500">Filter:</span>
+  <select name="read" class="border border-slate-300 rounded px-2 py-1">
+    <option value="" {% if not selected_read %}selected{% endif %}>All states</option>
+    <option value="unread" {% if selected_read == 'unread' %}selected{% endif %}>Unread</option>
+    <option value="read" {% if selected_read == 'read' %}selected{% endif %}>Read</option>
+  </select>
+
+  {% if kind_counts %}
+  <select name="kind" class="border border-slate-300 rounded px-2 py-1">
+    <option value="">All kinds</option>
+    {% for k in kind_counts %}
+      {% set selected = k.kind in selected_kinds %}
+      <option value="{{ k.kind }}" {% if selected %}selected{% endif %}>
+        {{ k.label }} ({{ k.n }})
+      </option>
+    {% endfor %}
+  </select>
+  {% endif %}
+
+  <button type="submit"
+          class="px-2 py-1 rounded bg-slate-700 text-white hover:bg-slate-800">
+    Apply
+  </button>
+  {% if selected_kinds or selected_read %}
+    <a href="/notifications/" class="text-slate-500 hover:underline">clear</a>
+  {% endif %}
+</form>
+
+{% if not items %}
+  <div class="bg-slate-100 border border-slate-200 rounded p-6 text-center text-slate-600">
+    {% if selected_kinds or selected_read %}
+      <p>No notifications match those filters.</p>
+      <p class="mt-2"><a href="/notifications/" class="text-blue-700 hover:underline">Clear filters</a></p>
+    {% else %}
+      <p class="font-medium">No notifications yet.</p>
+      <p class="mt-2 text-sm">
+        Pipeline events get persisted here once they fire — daily stats at 6am, health checks,
+        feedback reviews, and more. Make sure
+        <code class="bg-slate-200 rounded px-1">NTFY_TOPIC</code> is set in
+        <a href="/config/" class="text-blue-700 hover:underline">/config/</a>
+        if you also want phone push notifications.
+      </p>
+    {% endif %}
+  </div>
+{% else %}
+  <ul class="space-y-2">
+    {% for item in items %}
+      {% include "notifications/_row.html" %}
+    {% endfor %}
+  </ul>
+
+  {% if has_more %}
+    <div class="mt-4 text-center">
+      <a href="/notifications/?before={{ next_before }}{% if selected_kinds %}&kind={{ selected_kinds | join(',') }}{% endif %}{% if selected_read %}&read={{ selected_read }}{% endif %}"
+         class="px-3 py-1 border border-slate-300 rounded hover:bg-slate-100 text-sm">
+        Older →
+      </a>
+    </div>
+  {% endif %}
+{% endif %}
+{% endblock %}

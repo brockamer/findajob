@@ -10,6 +10,12 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Added
+- **In-app notification dashboard + history (#440).** Pipeline notifications (daily stats, apply reminders, health checks, scoreboard, feedback reviews, CI alerts, discovery runs, gmail-auth failures, manual sends) now persist to a new `notifications` table. New `/notifications/` page renders a reverse-chronological list with filters by kind + read/unread state; bell icon + HTMX-polled unread badge in the top nav (every 60s); `POST /notifications/{id}/read` and `/notifications/mark-all-read` for triage. `scripts/notify.py:send()` now writes the row BEFORE the ntfy.sh POST so ntfy outages don't lose the audit trail (`delivery_status='failed'` + `delivery_error` populated when curl exits non-zero). Operator-mode `/admin/stacks/` table gains an "Unread notifs" column. Generalizes the ntfy fire-and-forget surface and lays the foundation for the rejection-detection signal coming in #362.
+
+### Migration required
+- **New `notifications` table (#440).** `docker compose pull && docker compose up -d` is the entire migration path — `scripts/init_db.py` runs at container start and creates the table idempotently (`CREATE TABLE IF NOT EXISTS`). Existing notification call sites continue working unchanged; their rows start landing in the new table on the first cron firing post-restart. No backfill — historical notifications (pre-restart) are not reconstructable from `pipeline.jsonl` and stay absent from the dashboard.
+
 ## [0.16.0] — 2026-05-04
 
 Minor bump shipping the Google Sheets sync retirement (#331, closes #209) plus the aichat-ng config/catalog cleanup (#67). User-visible: the Sheet at the previously-synced ID stops updating — use the web UI at `/board/*` instead. Operator's stack and `findajob-test` track `:latest`; tester stacks (alice, papa, dave, judy, tango) currently on `:v0.15` stay on `:v0.15` until the next cohort wave.

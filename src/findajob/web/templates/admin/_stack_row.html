@@ -34,6 +34,15 @@
     {% endif %}
   </td>
 
+  {# Unread notifications (#440) #}
+  <td class="py-2 pr-4">
+    {% if h.unread_notifications > 0 %}
+      <span class="font-semibold text-amber-700">{{ h.unread_notifications }}</span>
+    {% else %}
+      0
+    {% endif %}
+  </td>
+
   {# 24h triage success/failure #}
   <td class="py-2 pr-4 whitespace-nowrap">
     <span class="text-emerald-700">{{ h.triage_success_24h }} ✓</span>

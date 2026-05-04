@@ -1,0 +1,71 @@
+{# One notification row. Used by index.html and as the HTMX OOB swap target
+   when /notifications/{id}/read fires. #}
+{% set kind_color_map = {
+  "daily_stats": "bg-sky-100 text-sky-800 border-sky-300",
+  "apply_reminder": "bg-emerald-100 text-emerald-800 border-emerald-300",
+  "feedback_review": "bg-violet-100 text-violet-800 border-violet-300",
+  "scoreboard": "bg-cyan-100 text-cyan-800 border-cyan-300",
+  "health_check": "bg-red-100 text-red-800 border-red-300",
+  "issues_ping": "bg-amber-100 text-amber-800 border-amber-300",
+  "ci_check": "bg-orange-100 text-orange-800 border-orange-300",
+  "send_raw": "bg-slate-100 text-slate-800 border-slate-300",
+  "discovery_run": "bg-teal-100 text-teal-800 border-teal-300",
+  "gmail_auth_failure": "bg-rose-100 text-rose-800 border-rose-300",
+  "rejection_detected": "bg-amber-200 text-amber-900 border-amber-400",
+} %}
+{% set kind_class = kind_color_map.get(item.kind, "bg-slate-100 text-slate-800 border-slate-300") %}
+{% set is_unread = item.read_at is none %}
+
+<li id="notif-row-{{ item.id }}"
+    class="rounded border {% if is_unread %}border-amber-400 bg-amber-50/40{% else %}border-slate-200 bg-white{% endif %} p-3"
+    x-data="{open: false}">
+  <div class="flex items-start gap-3">
+    <span class="shrink-0 inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full border {{ kind_class }}">
+      {{ item.kind_label }}
+    </span>
+    <div class="flex-1 min-w-0">
+      <div class="flex items-baseline justify-between gap-2">
+        <h3 class="font-semibold {% if is_unread %}text-slate-900{% else %}text-slate-700{% endif %}">
+          {{ item.title }}
+        </h3>
+        <span class="shrink-0 text-xs text-slate-500" title="{{ item.sent_at }} UTC">
+          {{ item.sent_at }}
+        </span>
+      </div>
+      <div class="mt-1 text-sm text-slate-700">
+        {% set body_len = item.body | length %}
+        {% if body_len > 240 %}
+          <pre class="whitespace-pre-wrap font-sans" x-show="!open">{{ item.body[:240] }}...</pre>
+          <pre class="whitespace-pre-wrap font-sans" x-show="open" x-cloak>{{ item.body }}</pre>
+          <button type="button" @click="open = !open"
+                  class="mt-1 text-xs text-blue-700 hover:underline"
+                  x-text="open ? 'collapse' : 'show full'"></button>
+        {% else %}
+          <pre class="whitespace-pre-wrap font-sans">{{ item.body }}</pre>
+        {% endif %}
+      </div>
+      <div class="mt-2 flex items-center gap-3 text-xs">
+        {% if item.delivery_status == 'failed' %}
+          <span class="text-red-700" title="{{ item.delivery_error or '' }}">⚠ ntfy delivery failed</span>
+        {% elif item.delivery_status == 'in_app_only' %}
+          <span class="text-slate-500">in-app only</span>
+        {% endif %}
+        {% if item.cta_url %}
+          <a href="{{ item.cta_url }}" class="text-blue-700 hover:underline">Open →</a>
+        {% endif %}
+        {% if is_unread %}
+          <form hx-post="/notifications/{{ item.id }}/read"
+                hx-target="#notif-row-{{ item.id }}"
+                hx-swap="outerHTML"
+                class="inline">
+            <button type="submit" class="text-slate-600 hover:text-slate-900 hover:underline">
+              Mark read
+            </button>
+          </form>
+        {% else %}
+          <span class="text-slate-400">read {{ item.read_at }}</span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</li>

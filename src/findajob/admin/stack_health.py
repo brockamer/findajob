@@ -30,6 +30,7 @@ class StackHealth:
     triage_failure_24h: int = 0
     stage_counts: dict[str, int] = field(default_factory=dict)
     stuck_prep_count: int = 0
+    unread_notifications: int = 0
     db_missing: bool = False
     jsonl_missing: bool = False
     error: str | None = None
@@ -50,6 +51,7 @@ def gather(stack: StackPath, *, now: datetime | None = None) -> StackHealth:
     error: str | None = None
     stage_counts: dict[str, int] = {}
     stuck_prep_count = 0
+    unread_notifications = 0
 
     if not db_missing:
         try:
@@ -82,6 +84,14 @@ def gather(stack: StackPath, *, now: datetime | None = None) -> StackHealth:
                     "AND stage_updated < ?",
                     (cutoff,),
                 ).fetchone()[0]
+                # Notifications table is post-#440; older stacks may lack it.
+                # Wrap the lookup so a missing table is silently a 0.
+                try:
+                    unread_notifications = conn.execute(
+                        "SELECT COUNT(*) FROM notifications WHERE read_at IS NULL"
+                    ).fetchone()[0]
+                except sqlite3.OperationalError:
+                    unread_notifications = 0
         except sqlite3.Error as e:
             error = f"sqlite: {e}"
         except Exception as e:  # defensive — don't let one stack crash the page
@@ -134,6 +144,7 @@ def gather(stack: StackPath, *, now: datetime | None = None) -> StackHealth:
         triage_failure_24h=failure_24h,
         stage_counts=stage_counts,
         stuck_prep_count=stuck_prep_count,
+        unread_notifications=unread_notifications,
         db_missing=db_missing,
         jsonl_missing=jsonl_missing,
         error=error,

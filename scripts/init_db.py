@@ -165,6 +165,26 @@ CREATE TABLE IF NOT EXISTS onboarding_sessions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_onboarding_sessions_completed ON onboarding_sessions(completed_at);
+
+CREATE TABLE IF NOT EXISTS notifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    sent_at TEXT NOT NULL DEFAULT (datetime('now')),
+    kind TEXT NOT NULL,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    priority TEXT NOT NULL DEFAULT 'default',
+    tags TEXT,
+    delivery_status TEXT NOT NULL DEFAULT 'sent' CHECK(delivery_status IN (
+        'sent', 'failed', 'in_app_only'
+    )),
+    delivery_error TEXT,
+    cta_url TEXT,
+    read_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_notifications_sent_at ON notifications(sent_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications(read_at) WHERE read_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_notifications_kind ON notifications(kind);
 """)
 conn.close()
 print("Database initialized:", DB_PATH)

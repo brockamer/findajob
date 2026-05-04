@@ -390,7 +390,10 @@ class TestNotifyWaitlistResurface:
 
         actions.notify_waitlist_resurface(db, "Acme Corp")
 
-        body = popen_calls[0][-1]  # last arg is the body
+        # Args: [python, notify.py, send-raw, <title>, <body>, --kind, send_raw]
+        # Find the body via its position relative to send-raw.
+        args = popen_calls[0]
+        body = args[args.index("send-raw") + 2]
         assert "Site Lead" in body
         assert "Ops Manager" in body
 

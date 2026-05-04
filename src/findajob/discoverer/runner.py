@@ -49,15 +49,24 @@ def _extract_cost_usd(stderr: str) -> float | None:
     return None
 
 
-def _send_ntfy(title: str, body: str) -> None:
+def _send_ntfy(title: str, body: str, kind: str = "discovery_run") -> None:
     """Best-effort ntfy via scripts/notify.py send-raw.
 
     Uses subprocess to call the existing notify.py CLI; suppresses any
-    error so a notification failure cannot mask a successful run.
+    error so a notification failure cannot mask a successful run. `kind`
+    flows through to the persisted notifications row (#440).
     """
     try:
         subprocess.run(
-            [sys.executable, str(Path(BASE) / "scripts" / "notify.py"), "send-raw", title, body],
+            [
+                sys.executable,
+                str(Path(BASE) / "scripts" / "notify.py"),
+                "send-raw",
+                title,
+                body,
+                "--kind",
+                kind,
+            ],
             check=False,
             capture_output=True,
             timeout=15,

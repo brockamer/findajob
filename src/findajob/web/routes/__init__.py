@@ -14,6 +14,7 @@ from findajob.web.routes import (
     ingest,
     landing,
     materials,
+    notifications,
     onboarding,
     onboarding_feed_config,
     onboarding_gmail_config,
@@ -48,3 +49,4 @@ router.include_router(onboarding_feed_config.router)
 router.include_router(onboarding_gmail_config.router)
 router.include_router(docs.router)
 router.include_router(feedback.router)
+router.include_router(notifications.router, dependencies=_guard)

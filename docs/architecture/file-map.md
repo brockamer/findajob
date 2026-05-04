@@ -30,6 +30,7 @@ When this map drifts from the actual code (renamed file, new route module, retir
 <repo>/src/findajob/web/routes/onboarding_feed_config.py # GET/POST /onboarding/feed-config/{sid} — per-adapter signup walkthrough (#408)
 <repo>/src/findajob/web/routes/onboarding_gmail_config.py # GET/POST /onboarding/gmail-config/{sid}/{,skip,finish} — universal terminal gate; writes the sentinel after IMAP verify or explicit skip (#407)
 <repo>/src/findajob/web/routes/feedback.py    # POST /feedback/ — in-app feedback widget; files GitHub issues. Env: GITHUB_FEEDBACK_PAT, FEEDBACK_STACK_LABEL, FEEDBACK_REPO (#227)
+<repo>/src/findajob/web/routes/notifications.py # GET /notifications/, POST /notifications/{id}/read, POST /notifications/mark-all-read, GET /notifications/badge — in-app notification dashboard (#440)
 <repo>/src/findajob/onboarding/parser.py    # parse interview emission into files to inject
 <repo>/src/findajob/onboarding/injector.py  # atomic write + backup + Tier-1 derivation + sentinel
 <repo>/src/findajob/onboarding/session_store.py # onboarding_sessions CRUD (history/captured_blocks/find_active)

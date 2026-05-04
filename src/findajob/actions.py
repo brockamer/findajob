@@ -156,7 +156,10 @@ def notify_waitlist_resurface(conn: sqlite3.Connection, company: str) -> None:
     titles = [r["title"] for r in rows]
     title = f"Waitlisted jobs at {company}"
     body = "You just rejected/withdrew from this company. Waitlisted roles:\n" + "\n".join(f"• {t}" for t in titles)
-    subprocess.Popen([sys.executable, f"{BASE}/scripts/notify.py", "send-raw", title, body], start_new_session=True)
+    subprocess.Popen(
+        [sys.executable, f"{BASE}/scripts/notify.py", "send-raw", title, body, "--kind", "send_raw"],
+        start_new_session=True,
+    )
     log_event("waitlist_resurface", company=company, count=len(titles))
 
 

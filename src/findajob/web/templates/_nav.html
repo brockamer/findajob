@@ -46,6 +46,20 @@
         </span>
       </li>
     {% endif %}
+    {# Notifications bell — links to /notifications/, polls /notifications/badge
+       every 60s for the unread count. #440 #}
+    <li class="{% if onboarding_lifetime_cost_usd is not defined %}ml-auto{% endif %}">
+      <a href="/notifications/"
+         class="px-2 py-1 rounded inline-flex items-center {% if operator_mode %}hover:bg-rose-800{% else %}hover:bg-slate-700{% endif %}"
+         aria-label="Notifications"
+         title="Notifications">
+        <span aria-hidden="true">🔔</span>
+        <span hx-get="/notifications/badge"
+              hx-trigger="load, every 60s"
+              hx-swap="outerHTML"
+              id="nav-notif-badge"></span>
+      </a>
+    </li>
     {% if operator_mode %}
       {% set admin_active = request.url.path.startswith("/admin/") %}
       <li>
