@@ -382,3 +382,79 @@ class TestLoadExcludedEmployers:
         p1 = config_loader.load_indeed_title_allow_rules()
         p2 = config_loader.load_indeed_title_allow_rules()
         assert p1 is p2  # cache hit
+
+
+class TestLoadRejectReasons:
+    """#429 — single source of truth for the reject-reason taxonomy."""
+
+    def test_returns_defaults_when_file_missing(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(config_loader, "_REJECT_REASONS_PATH", tmp_path / "missing.yaml")
+        config_loader._reset_cache()
+        reasons, title_signal = config_loader.load_reject_reasons()
+        assert reasons == config_loader._DEFAULT_REJECT_REASONS
+        assert title_signal == config_loader._DEFAULT_TITLE_SIGNAL_REASONS
+        # Defaults must be field-agnostic: no operator-domain tokens.
+        assert "Too TPM-Heavy" not in reasons
+        assert "Too Senior" not in reasons
+
+    def test_reads_configured_values(self, monkeypatch, tmp_path):
+        f = tmp_path / "reject_reasons.yaml"
+        f.write_text(
+            'reasons:\n  - "Skills Gap"\n  - "Wrong Shift"\n  - "Other"\ntitle_signal_reasons:\n  - "Skills Gap"\n'
+        )
+        monkeypatch.setattr(config_loader, "_REJECT_REASONS_PATH", f)
+        config_loader._reset_cache()
+        reasons, title_signal = config_loader.load_reject_reasons()
+        assert reasons == ("Skills Gap", "Wrong Shift", "Other")
+        assert title_signal == frozenset({"Skills Gap"})
+
+    def test_empty_reasons_returns_defaults(self, monkeypatch, tmp_path):
+        f = tmp_path / "reject_reasons.yaml"
+        f.write_text("reasons: []\n")
+        monkeypatch.setattr(config_loader, "_REJECT_REASONS_PATH", f)
+        config_loader._reset_cache()
+        reasons, title_signal = config_loader.load_reject_reasons()
+        assert reasons == config_loader._DEFAULT_REJECT_REASONS
+        assert title_signal == config_loader._DEFAULT_TITLE_SIGNAL_REASONS
+
+    def test_missing_title_signal_returns_empty_frozenset(self, monkeypatch, tmp_path):
+        f = tmp_path / "reject_reasons.yaml"
+        f.write_text('reasons:\n  - "Skills Mismatch"\n')
+        monkeypatch.setattr(config_loader, "_REJECT_REASONS_PATH", f)
+        config_loader._reset_cache()
+        reasons, title_signal = config_loader.load_reject_reasons()
+        assert reasons == ("Skills Mismatch",)
+        assert title_signal == frozenset()
+
+    def test_reasons_as_dict_raises(self, monkeypatch, tmp_path):
+        bad = tmp_path / "reject_reasons.yaml"
+        bad.write_text("reasons:\n  nested: value\n")
+        monkeypatch.setattr(config_loader, "_REJECT_REASONS_PATH", bad)
+        config_loader._reset_cache()
+        with pytest.raises(ConfigError, match="'reasons' must be a list"):
+            config_loader.load_reject_reasons()
+
+    def test_title_signal_as_dict_raises(self, monkeypatch, tmp_path):
+        bad = tmp_path / "reject_reasons.yaml"
+        bad.write_text('reasons:\n  - "x"\ntitle_signal_reasons:\n  nested: value\n')
+        monkeypatch.setattr(config_loader, "_REJECT_REASONS_PATH", bad)
+        config_loader._reset_cache()
+        with pytest.raises(ConfigError, match="'title_signal_reasons' must be a list"):
+            config_loader.load_reject_reasons()
+
+    def test_non_string_reason_raises(self, monkeypatch, tmp_path):
+        bad = tmp_path / "reject_reasons.yaml"
+        bad.write_text("reasons:\n  - 42\n")
+        monkeypatch.setattr(config_loader, "_REJECT_REASONS_PATH", bad)
+        config_loader._reset_cache()
+        with pytest.raises(ConfigError, match="reasons entry is not a string"):
+            config_loader.load_reject_reasons()
+
+    def test_caches_result(self, monkeypatch, tmp_path):
+        f = tmp_path / "reject_reasons.yaml"
+        f.write_text('reasons:\n  - "x"\n')
+        monkeypatch.setattr(config_loader, "_REJECT_REASONS_PATH", f)
+        config_loader._reset_cache()
+        r1 = config_loader.load_reject_reasons()
+        r2 = config_loader.load_reject_reasons()
+        assert r1 is r2  # cache hit

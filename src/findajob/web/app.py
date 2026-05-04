@@ -43,6 +43,14 @@ def create_app(
     templates.env.globals["filter_qs_with"] = filter_qs_with
     templates.env.globals["operator_mode"] = os.environ.get("FINDAJOB_OPERATOR_MODE") == "1"
 
+    def _reject_reason_options() -> tuple[str, ...]:
+        from findajob.config_loader import load_reject_reasons
+
+        reasons, _title_signal = load_reject_reasons()
+        return reasons
+
+    templates.env.globals["reject_reason_options"] = _reject_reason_options
+
     # Helper exposed to base.html so the nav bar can render a lifetime
     # onboarding-cost badge on every page. Wrapped in a function (not a
     # static value) so each request reads fresh DB state without us having

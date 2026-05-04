@@ -27,17 +27,9 @@
       this.value='';
     }">
     <option value="">— No reason —</option>
-    <option value="Too Senior">Too Senior</option>
-    <option value="Too Junior">Too Junior</option>
-    <option value="Skills Mismatch">Skills Mismatch</option>
-    <option value="Too TPM-Heavy">Too TPM-Heavy</option>
-    <option value="Geography/Onsite">Geography/Onsite</option>
-    <option value="Company Not a Fit">Company Not a Fit</option>
-    <option value="Comp Too Low">Comp Too Low</option>
-    <option value="Low Fit Score">Low Fit Score</option>
-    <option value="Stale/Closed">Stale/Closed</option>
-    <option value="Already Applied">Already Applied</option>
-    <option value="Other">Other</option>
+    {% for reason in reject_reason_options() %}
+    <option value="{{ reason }}">{{ reason }}</option>
+    {% endfor %}
   </select>
   {% endif %}
 </td>

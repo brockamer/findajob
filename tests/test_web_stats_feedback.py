@@ -24,7 +24,31 @@ def _ts(days_ago: int, hour: int = 12) -> str:
 
 
 @pytest.fixture
-def client(tmp_path: Path) -> TestClient:
+def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
+    # Pin the canonical reject-reason taxonomy so legacy/extra ordering
+    # assertions remain stable. Mirrors what the operator's stack ships
+    # post-#429 migration; the loader's field-agnostic shipped default doesn't
+    # include "Too Senior" / "Comp Too Low" / etc.
+    from findajob import config_loader
+
+    reject_yaml = tmp_path / "reject_reasons.yaml"
+    reject_yaml.write_text(
+        "reasons:\n"
+        '  - "Too Senior"\n'
+        '  - "Too Junior"\n'
+        '  - "Skills Mismatch"\n'
+        '  - "Too TPM-Heavy"\n'
+        '  - "Geography/Onsite"\n'
+        '  - "Company Not a Fit"\n'
+        '  - "Comp Too Low"\n'
+        '  - "Low Fit Score"\n'
+        '  - "Stale/Closed"\n'
+        '  - "Already Applied"\n'
+        '  - "Other"\n'
+    )
+    monkeypatch.setattr(config_loader, "_REJECT_REASONS_PATH", reject_yaml)
+    config_loader._reset_cache()
+
     db = tmp_path / "pipeline.db"
     conn = sqlite3.connect(db)
     # jobs + audit_log exist because get_db is shared with funnel; feedback_log

@@ -24,6 +24,22 @@ _RULES_PATH = Path(BASE) / "config" / "prefilter_rules.yaml"
 _IN_DOMAIN_PATH = Path(BASE) / "config" / "in_domain_patterns.yaml"
 _TARGET_COMPANIES_PATH = Path(BASE) / "config" / "target_companies.md"
 _EXCLUDED_EMPLOYERS_PATH = Path(BASE) / "config" / "excluded_employers.yaml"
+_REJECT_REASONS_PATH = Path(BASE) / "config" / "reject_reasons.yaml"
+
+# Field-agnostic fallback used when `config/reject_reasons.yaml` is missing or
+# `reasons:` is empty. Operator stacks override via the file (interview-emitted
+# in a follow-up to #429); fresh installs and tester stacks see this default.
+_DEFAULT_REJECT_REASONS: tuple[str, ...] = (
+    "Skills Mismatch",
+    "Geography",
+    "Compensation",
+    "Company Not a Fit",
+    "Stale/Closed",
+    "Already Applied",
+    "Low Fit Score",
+    "Other",
+)
+_DEFAULT_TITLE_SIGNAL_REASONS: frozenset[str] = frozenset({"Skills Mismatch", "Low Fit Score"})
 
 # Tier 1 parser — moved from findajob.onboarding.injector (#211).
 _TIER1_HEADING_RE = re.compile(r"^##\s+tier\s*1\b[^\n]*", re.IGNORECASE | re.MULTILINE)
@@ -42,6 +58,7 @@ _companies_cache: frozenset[str] | None = None
 _indeed_title_allow_cache: re.Pattern[str] | None = None
 _indeed_title_allow_loaded: bool = False  # distinguishes "cached None" from "not yet loaded"
 _excluded_employers_cache: tuple[frozenset[str], re.Pattern[str] | None] | None = None
+_reject_reasons_cache: tuple[tuple[str, ...], frozenset[str]] | None = None
 
 # Warnings emitted (dedup per process)
 _warned: set[str] = set()
@@ -295,17 +312,66 @@ def load_excluded_employers() -> tuple[frozenset[str], re.Pattern[str] | None]:
     return _excluded_employers_cache
 
 
+def load_reject_reasons() -> tuple[tuple[str, ...], frozenset[str]]:
+    """`(reasons, title_signal_reasons)` from `config/reject_reasons.yaml`.
+
+    `reasons` is the ordered tuple of reject-reason labels — powers the
+    dropdown in `_reject_cell.html`, the canonical-order display in
+    `routes/stats.py`, and the filter-chip values in `web/filters/registry.py`.
+    Single source of truth: same values everywhere fixes the silent-filtering
+    drift bug surfaced by the #301 audit (§2.1).
+
+    `title_signal_reasons` is the subset of `reasons` that signals the SCORER
+    MISSED the title — used by `scripts/analyze_feedback.py` to identify
+    prefilter candidates. Reasons not in this set are excluded from that
+    analysis. May be empty (analysis becomes a no-op).
+
+    Missing file or empty `reasons:` → returns the field-agnostic defaults
+    (`_DEFAULT_REJECT_REASONS` / `_DEFAULT_TITLE_SIGNAL_REASONS`). Malformed
+    entries raise `ConfigError`.
+    """
+    global _reject_reasons_cache
+    if _reject_reasons_cache is not None:
+        return _reject_reasons_cache
+
+    data = _safe_load_yaml(_REJECT_REASONS_PATH, "reject_reasons.yaml")
+    if data is None:
+        _reject_reasons_cache = (_DEFAULT_REJECT_REASONS, _DEFAULT_TITLE_SIGNAL_REASONS)
+        return _reject_reasons_cache
+
+    raw_reasons = data.get("reasons", [])
+    if not isinstance(raw_reasons, list):
+        raise ConfigError(f"reject_reasons.yaml: 'reasons' must be a list, got {type(raw_reasons).__name__}")
+    for r in raw_reasons:
+        if not isinstance(r, str):
+            raise ConfigError(f"reject_reasons.yaml: reasons entry is not a string: {r!r}")
+    if not raw_reasons:
+        _reject_reasons_cache = (_DEFAULT_REJECT_REASONS, _DEFAULT_TITLE_SIGNAL_REASONS)
+        return _reject_reasons_cache
+
+    raw_title = data.get("title_signal_reasons", []) or []
+    if not isinstance(raw_title, list):
+        raise ConfigError(f"reject_reasons.yaml: 'title_signal_reasons' must be a list, got {type(raw_title).__name__}")
+    for t in raw_title:
+        if not isinstance(t, str):
+            raise ConfigError(f"reject_reasons.yaml: title_signal_reasons entry is not a string: {t!r}")
+
+    _reject_reasons_cache = (tuple(raw_reasons), frozenset(raw_title))
+    return _reject_reasons_cache
+
+
 def _reset_cache() -> None:
     """Test-only. Clears module-level caches and warning dedup."""
     global _hard_reject_cache, _in_domain_cache, _companies_cache
     global _indeed_title_allow_cache, _indeed_title_allow_loaded
-    global _excluded_employers_cache
+    global _excluded_employers_cache, _reject_reasons_cache
     _hard_reject_cache = None
     _in_domain_cache = None
     _companies_cache = None
     _indeed_title_allow_cache = None
     _indeed_title_allow_loaded = False
     _excluded_employers_cache = None
+    _reject_reasons_cache = None
     _warned.clear()
 
 

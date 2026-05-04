@@ -24,6 +24,7 @@ from datetime import UTC, date, datetime, timedelta
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from findajob.config_loader import load_reject_reasons
 from findajob.web.routes.materials import get_db
 
 router = APIRouter()
@@ -45,22 +46,12 @@ ALL_STAGES: tuple[str, ...] = FUNNEL_STAGES + TERMINAL_STAGES
 
 _FUNNEL_WINDOW_DAYS = 30
 
-# Canonical reject reason options — mirrors the dropdown in
-# board/_reject_cell.html. Reasons seen in feedback_log but not listed here
-# render after the canonical set (legacy / free-text entries).
-REJECT_REASONS: tuple[str, ...] = (
-    "Too Senior",
-    "Too Junior",
-    "Skills Mismatch",
-    "Too TPM-Heavy",
-    "Geography/Onsite",
-    "Company Not a Fit",
-    "Comp Too Low",
-    "Low Fit Score",
-    "Stale/Closed",
-    "Already Applied",
-    "Other",
-)
+# Canonical reject reason options now come from `config/reject_reasons.yaml`
+# via `findajob.config_loader.load_reject_reasons()` — single source of truth
+# shared with the dropdown in `board/_reject_cell.html`, the filter chips in
+# `web/filters/registry.py`, and the prefilter analyzer in
+# `scripts/analyze_feedback.py`. Reasons seen in feedback_log but not in the
+# config render after the canonical set (legacy / free-text entries).
 
 _FEEDBACK_WINDOW_DAYS = 28
 _FEEDBACK_WEEK_DAYS = 7
@@ -192,12 +183,13 @@ def feedback(
     ).fetchall()
 
     # Merge canonical reasons with anything else found in the window; stable order.
+    canonical_reasons, _title_signal = load_reject_reasons()
     extras: list[str] = []
     for row in daily_rows:
         reason = row["reason"] if isinstance(row, sqlite3.Row) else row[1]
-        if reason and reason not in REJECT_REASONS and reason not in extras:
+        if reason and reason not in canonical_reasons and reason not in extras:
             extras.append(reason)
-    reasons: tuple[str, ...] = REJECT_REASONS + tuple(sorted(extras))
+    reasons: tuple[str, ...] = canonical_reasons + tuple(sorted(extras))
 
     daily = _build_reason_matrix(daily_rows, reasons, window_start, today)
     window_totals = {r: sum(daily[d][r] for d in daily) for r in reasons}

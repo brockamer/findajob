@@ -48,6 +48,7 @@ config/prefilter_rules.yaml
 config/in_domain_patterns.yaml
 config/companies_of_interest.txt
 config/excluded_employers.yaml
+config/reject_reasons.yaml
 .worktrees/
 
 # Gmail integration credentials and state (#330)

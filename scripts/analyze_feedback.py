@@ -24,6 +24,7 @@ import sys
 from collections import Counter
 from datetime import datetime
 
+from findajob.config_loader import load_reject_reasons
 from findajob.paths import BASE
 from findajob.utils import load_env
 
@@ -234,19 +235,9 @@ def _ngrams(tokens, n):
 # Reject reasons that indicate the TITLE was the problem (not user already
 # applied, not the posting going stale, etc). Only these feed the prefilter
 # candidate analysis — we're looking for patterns the scorer keeps missing.
-_TITLE_SIGNAL_REASONS = frozenset(
-    {
-        "Too Senior",
-        "Too Junior",
-        "Skills Mismatch",
-        "Too TPM-Heavy",
-        "Too Software/Systems",
-        "Too Facilities/MEP",
-        "Too Manufacturing/Test",
-        "Wrong Niche",
-        "Low Fit Score",
-    }
-)
+# Single source of truth: `config/reject_reasons.yaml` (`title_signal_reasons:`
+# subset of `reasons:`).
+_, _TITLE_SIGNAL_REASONS = load_reject_reasons()
 
 
 def _prefilter_candidates(rejected_rows, applied_rows, min_recurrences=3):

@@ -8,6 +8,7 @@ tab — see docs/superpowers/specs/2026-04-25-board-filter-framework-design.md
 
 from __future__ import annotations
 
+from findajob.config_loader import load_reject_reasons
 from findajob.web.filters.spec import ColumnSpec, Kind, validate_specs
 
 # Source / stage / remote_status / reject_reason vocabularies. Single source of
@@ -38,19 +39,9 @@ _STAGE_VALUES = (
     "withdrew",
 )
 _REMOTE_VALUES = ("Remote", "Hybrid", "On-site", "Unknown")
-_REJECT_REASON_VALUES = (
-    "Low Fit Score",
-    "Not Interested",
-    "Compensation",
-    "Location",
-    "Company Culture",
-    "Role Mismatch",
-    "Already Applied",
-    "Stage Too Early",
-    "Stage Too Late",
-    "Recruiter Outreach",
-    "Other",
-)
+# Filter chip values come from the same source as the dropdown — fixes the
+# silent-filtering drift bug surfaced by the #301 audit (§2.1).
+_REJECT_REASON_VALUES, _ = load_reject_reasons()
 
 # ─── Dashboard ────────────────────────────────────────────────────────────────
 DASHBOARD_COLUMNS: tuple[ColumnSpec, ...] = (

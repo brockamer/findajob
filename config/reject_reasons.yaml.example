@@ -1,0 +1,58 @@
+# reject_reasons.yaml — single source of truth for the reject-reason taxonomy.
+# Copy this file to reject_reasons.yaml and edit. The .yaml file is gitignored.
+#
+# SHAPE:
+#   reasons:                 (required; ordered list of reject-reason labels)
+#     - "<label>"
+#   title_signal_reasons:    (optional; subset of `reasons` that signal the
+#                             SCORER MISSED the title — used by
+#                             `scripts/analyze_feedback.py` to identify
+#                             prefilter candidates)
+#     - "<label>"
+#
+# WHO READS THIS:
+#   - `src/findajob/web/templates/board/_reject_cell.html` — dropdown options
+#   - `src/findajob/web/routes/stats.py` — canonical-order display in the stats page
+#   - `src/findajob/web/filters/registry.py` — dashboard filter chip values
+#   - `scripts/analyze_feedback.py` — subset that signals scorer-miss
+#
+# Missing file → field-agnostic defaults (defined in
+# `src/findajob/config_loader.py:_DEFAULT_REJECT_REASONS`). Loader returns
+# the same defaults for empty `reasons:` lists.
+
+reasons:
+  # The labels you want available when rejecting jobs. Keep them short — they
+  # appear in dropdowns, filter chips, and the stats page. Order matters
+  # (this is the dropdown order). The shipped defaults below are field-
+  # agnostic; tailor them to how YOU think about why a posting isn't right.
+  #
+  # Field examples (pick what fits — don't try to be exhaustive):
+  #   Software / Data / Hardware:
+  #     - "Skills Mismatch"   - "Too Senior"      - "Too Junior"
+  #     - "Wrong Domain"      - "Comp Too Low"    - "Stack Mismatch"
+  #   Healthcare / Social Work / Education:
+  #     - "Caseload Too High" - "Population Mismatch"
+  #     - "Credential Gap"    - "Pay Band Wrong"
+  #   Skilled Trades / Operations:
+  #     - "Shift Wrong"       - "Travel Too High" - "License Mismatch"
+  #
+  - "Skills Mismatch"
+  - "Geography"
+  - "Compensation"
+  - "Company Not a Fit"
+  - "Stale/Closed"
+  - "Already Applied"
+  - "Low Fit Score"
+  - "Other"
+
+title_signal_reasons:
+  # Subset of `reasons` (above) where the rejection cause was the TITLE
+  # itself — i.e. the scorer should have caught this posting before it ever
+  # reached the operator. `scripts/analyze_feedback.py` uses this to mine
+  # for new prefilter candidates: n-grams that recur in title-signal
+  # rejections but never in applied jobs.
+  #
+  # Reasons NOT in this list are excluded from prefilter analysis (e.g.
+  # "Already Applied" or "Stale/Closed" don't indicate a scorer miss).
+  - "Skills Mismatch"
+  - "Low Fit Score"
