@@ -321,9 +321,6 @@ def main():
         prefiltered=prefilter_count,
     )
 
-    # Sync sheet
-    print("Syncing to Sheet...")
-    subprocess.run([sys.executable, f"{BASE}/scripts/sync_sheet.py"], check=False)
     print("Done.")
 
 

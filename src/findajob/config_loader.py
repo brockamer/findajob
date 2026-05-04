@@ -167,10 +167,9 @@ def parse_target_companies_tier1(target_companies_md: str) -> list[str]:
 def load_companies_of_interest() -> frozenset[str]:
     """Lowercase Tier 1 company names from `config/target_companies.md` (#211).
 
-    Reads the Tier 1 section directly — replaces the prior derived
-    `companies_of_interest.txt` path. Used for case-insensitive substring
+    Reads the Tier 1 section directly. Used for case-insensitive substring
     matching by `is_company_of_interest()` (consumed by `notify.py` mis-score
-    health check + sync_sheet archival exception).
+    health check).
     """
     global _companies_cache
     if _companies_cache is not None:
@@ -179,10 +178,7 @@ def load_companies_of_interest() -> frozenset[str]:
     try:
         raw = _TARGET_COMPANIES_PATH.read_text(encoding="utf-8")
     except FileNotFoundError:
-        _warn_once(
-            "config/target_companies.md missing — "
-            "sync_sheet archival exception and notify mis-score check will be disabled"
-        )
+        _warn_once("config/target_companies.md missing — notify mis-score check will be disabled")
         _companies_cache = frozenset()
         return _companies_cache
 
@@ -190,7 +186,7 @@ def load_companies_of_interest() -> frozenset[str]:
     if not names:
         _warn_once(
             "config/target_companies.md has no '## Tier 1' section (or it's empty) — "
-            "sync_sheet archival exception and notify mis-score check will be disabled"
+            "notify mis-score check will be disabled"
         )
 
     _companies_cache = frozenset(n.lower() for n in names)

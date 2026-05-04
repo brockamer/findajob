@@ -45,9 +45,9 @@ ALL_STAGES: tuple[str, ...] = FUNNEL_STAGES + TERMINAL_STAGES
 
 _FUNNEL_WINDOW_DAYS = 30
 
-# Canonical reject reason options — mirrors REJECT_OPTIONS in setup_sheets.py and
-# the dropdown in board/_reject_cell.html. Reasons seen in feedback_log but not
-# listed here render after the canonical set (legacy / free-text entries).
+# Canonical reject reason options — mirrors the dropdown in
+# board/_reject_cell.html. Reasons seen in feedback_log but not listed here
+# render after the canonical set (legacy / free-text entries).
 REJECT_REASONS: tuple[str, ...] = (
     "Too Senior",
     "Too Junior",

@@ -23,11 +23,9 @@ Do NOT decommission the source until you have confirmed a full triage cycle comp
 |---|---|---|
 | Job database | `data/pipeline.db` | Copy file directly (SQLite is portable) |
 | API keys | `data/.env` | Copy file, `chmod 600` |
-| Google Sheets credentials | `config/gsheets_creds.json` | Copy file |
-| Sheet ID | `config/sheet_id.txt` | Copy file |
 | Gmail integration config | `config/gmail.json` | Copy file |
 | Gmail integration state  | `config/gmail_state.json` | Copy file |
-| Form response sheet ID | `config/form_responses_sheet_id.txt` | Copy file |
+| Form response sheet ID | `config/form_responses_sheet_id.txt` | Copy file (only if you still drain Form stragglers via `ingest_form.py`) |
 | Candidate profile | `candidate_context/profile.md` | Copy file |
 | Master resume | `candidate_context/master_resume.md` | Copy file |
 | Target companies | `config/target_companies.md` | Copy file |
@@ -69,11 +67,8 @@ rsync -av \
   data/pipeline.db \
   data/.env \
   data/connections.csv \
-  config/gsheets_creds.json \
-  config/sheet_id.txt \
   config/gmail.json \
   config/gmail_state.json \
-  config/form_responses_sheet_id.txt \
   config/jsearch_queries.txt \
   config/feed_urls.txt \
   config/target_companies.md \
@@ -89,7 +84,6 @@ rsync -av CLAUDE.local.md ${TARGET}:${DEST}/
 **On the target**, verify permissions:
 ```bash
 chmod 600 ~/findajob/data/.env
-chmod 600 ~/findajob/config/gsheets_creds.json
 chmod 600 ~/findajob/config/gmail.json
 chmod 600 ~/findajob/config/gmail_state.json
 ```
@@ -128,22 +122,14 @@ The RAG index is not portable (it contains binary embeddings tied to the build).
 /usr/local/bin/aichat-ng --rag job_search_rag --rebuild-rag
 ```
 
-### Step 6: Validate Google Sheets Connection
-
-```bash
-python3 scripts/sync_sheet.py
-# Should print one "N rows synced" line per tab: Dashboard, Review,
-# Waitlist, Applied, Rejected Applications.
-```
-
-### Step 7: Validate aichat-ng
+### Step 6: Validate aichat-ng
 
 ```bash
 echo "Test" | /usr/local/bin/aichat-ng -m gemini:gemini-3-flash-preview -S "Reply with: OK"
 # Should return: OK
 ```
 
-### Step 8: Run a Validation Triage
+### Step 7: Run a Validation Triage
 
 This is the critical test. Run one full triage cycle and verify it completes without errors:
 
@@ -167,7 +153,7 @@ sqlite3 ~/findajob/data/pipeline.db \
   "SELECT count(*) FROM jobs WHERE created_at > datetime('now', '-2 hours');"
 ```
 
-### Step 9: Enable the Scheduler on the Target
+### Step 8: Enable the Scheduler on the Target
 
 Once the validation triage passes:
 
@@ -189,11 +175,10 @@ Verify all timers are loaded and show next trigger times:
 systemctl --user list-timers | grep findajob
 ```
 
-### Step 10: Decommission the Source
+### Step 9: Decommission the Source
 
 Only after:
 - [ ] At least one full triage cycle completed on target without errors
-- [ ] Google Sheet synced correctly from target
 - [ ] At least one ntfy notification fired from target
 - [ ] prep_application.py tested on target (flag one job manually)
 
@@ -204,16 +189,6 @@ Then on the **source machine**:
 systemctl --user stop 'findajob-*.timer'
 systemctl --user disable 'findajob-*.timer'
 ```
-
----
-
-## Google Sheets: Same Sheet or New?
-
-**Recommendation: keep the same sheet.** The existing sheet has your historical data and current queue. A new sheet would require re-importing everything.
-
-The target machine uses the same `config/gsheets_creds.json` and `config/sheet_id.txt`. It writes to the same Google Sheet. This is fine — only one machine runs at a time after step 10.
-
-If you want a fresh sheet (e.g., to experiment on the target without affecting your active queue), create a new Google Sheet, update `config/sheet_id.txt`, and run `scripts/setup_sheets.py` to format it.
 
 ---
 
@@ -284,39 +259,3 @@ Nothing automated. Drive folders that rclone synced remain at
 drive.google.com. Delete them manually if desired — findajob will
 never look at them again.
 
----
-
-## v0.1.2 → next: wiring `FINDAJOB_MATERIALS_BASE_URL` into an existing compose.yaml
-
-Applies to any operator whose deployed `compose.yaml` was copied from
-`ops/compose.yaml.example` on v0.1.2 or earlier. The template grew a new env
-var after that release; pulling `:latest` alone doesn't retrofit it. Without
-these edits, company cells on Dashboard / Applied / Waitlist / Rejected
-Applications stay plain text instead of hyperlinking into the materials viewer.
-
-Fresh installs that re-pulled the template on the current tag are unaffected.
-
-### Steps
-
-1. Edit `.env` to add the base URL for the viewer as reachable from the user's browser:
-   ```
-   FINDAJOB_MATERIALS_BASE_URL=http://<your-docker-host>:<FINDAJOB_MATERIALS_PORT>
-   ```
-   Typically `http://<deployment-host>:8090` — match the hostname and port already used for `FINDAJOB_MATERIALS_PORT`.
-
-2. Edit `compose.yaml` — add one line under `environment:` in the `scheduler` service (the `scheduler` service handles all env vars; there is no separate auth helper):
-   ```yaml
-   FINDAJOB_MATERIALS_BASE_URL: ${FINDAJOB_MATERIALS_BASE_URL:-}
-   ```
-
-3. Restart the stack so the new env reaches the container:
-   ```bash
-   docker compose up -d
-   ```
-
-4. Verify — wait for the next `sync_sheet.py` run (every 10 min via the poller, or trigger one manually) and click a company cell on the Dashboard tab. It should open the materials viewer folder for that application.
-
-   Manual trigger:
-   ```bash
-   docker compose exec scheduler python3 /app/scripts/sync_sheet.py
-   ```

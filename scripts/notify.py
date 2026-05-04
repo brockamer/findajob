@@ -211,11 +211,6 @@ def cmd_health_check():
     poll_events = [e for e in events if e.get("event") == "watchdog_run"]
     poll_ok = bool(poll_events)
 
-    # Check sync_sheet ran
-    sync_events = [e for e in events if e.get("event") == "sync_complete"]
-    sync_ok = bool(sync_events)
-    sync_failures = [e for e in events if e.get("event") == "sync_failed"]
-
     # Error events
     error_events = [
         e for e in events if any(k in e for k in ("error", "exception", "failed")) or "error" in e.get("event", "")
@@ -236,12 +231,6 @@ def cmd_health_check():
         issues.append("WARN: pipeline_complete not seen in last 25h")
     if not poll_ok:
         issues.append("WARN: watchdog_run not seen in last 25h")
-    if not sync_ok:
-        issues.append("WARN: sync_complete not seen in last 25h")
-    if sync_failures:
-        issues.append(f"ERROR: {len(sync_failures)} sync_sheet failure(s) in last 25h")
-        for e in sync_failures[:2]:
-            issues.append(f"  • {e.get('error', 'unknown')}")
     if error_events:
         issues.append(f"ERRORS: {len(error_events)} error events in log")
         for e in error_events[:3]:

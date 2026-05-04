@@ -24,9 +24,8 @@ Active job search targeting: [list your top 10–15 target companies]
 
 `[your-ntfy-topic]` — configured in `data/.env` as `NTFY_TOPIC`
 
-## Google Sheet / Form
+## Google Form (legacy manual-drain only — retired in #62, kept callable for stragglers)
 
-- Sheet ID: in `config/sheet_id.txt`
 - Form responses sheet ID: in `config/form_responses_sheet_id.txt`
 - Form URL: [your Google Form URL]
 

@@ -14,7 +14,7 @@ If you're just getting started, see [`setup/README.md`](setup/README.md). If you
 docker compose logs scheduler --tail 200 -f
 ```
 
-Shows everything the container has done recently: triage runs, scoring, watchdog wake-ups, sync_sheet calls, prep subprocesses, ntfy pings.
+Shows everything the container has done recently: triage runs, scoring, watchdog wake-ups, prep subprocesses, ntfy pings.
 
 ### Structured event log
 
@@ -24,7 +24,7 @@ One JSON object per line at `state/logs/pipeline.jsonl`. Every major pipeline ac
 jq -r '.event' state/logs/pipeline.jsonl | sort -u
 ```
 
-Lists every event type ever emitted. Common ones: `pipeline_complete`, `pipeline_started`, `jobs_fetched`, `scoring_complete`, `sync_complete`, `manual_job_ingested`, `prep_started`, `prep_complete`, `prep_failed`, `watchdog_run`.
+Lists every event type ever emitted. Common ones: `pipeline_complete`, `pipeline_started`, `jobs_fetched`, `scoring_complete`, `manual_job_ingested`, `prep_started`, `prep_complete`, `prep_failed`, `watchdog_run`.
 
 To find events of one type, last 25 hours:
 
@@ -92,22 +92,6 @@ jq -c 'select(.event | test("prep"))' state/logs/pipeline.jsonl | tail -10
 
 Common causes: Anthropic API rate limit, Perplexity rate limit, pandoc conversion failure on the `.docx` step.
 
-### "Google Sheet isn't updating"
-
-`sync_sheet.py` runs every 15 minutes.
-
-```bash
-jq -c 'select(.event == "sync_complete")' state/logs/pipeline.jsonl | tail -3
-```
-
-**No recent `sync_complete`?** Check for `sync_failed`:
-
-```bash
-jq -c 'select(.event == "sync_failed")' state/logs/pipeline.jsonl | tail -3
-```
-
-Common causes: GCP service-account JSON rotated or missing, wrong `config/sheet_id.txt`, quota exceeded on the Sheets API, or the sheet was deleted / access revoked.
-
 ### "The `/ingest/` web form isn't saving jobs"
 
 Web form at `http://<your-host>:${FINDAJOB_MATERIALS_PORT}/ingest/` is the primary manual-ingest path (replaced the Google Form in #62).
@@ -158,8 +142,6 @@ Typical failures on first boot:
 | **ERROR: triage was terminated (SIGTERM)** | Nightly triage was killed mid-run, usually by supercronic timeout | Investigate the job taking too long; raise the container-level timeout |
 | **WARN: pipeline_complete not seen in last 25h** | Triage didn't complete overnight | Check scheduler logs; verify supercronic is running |
 | **WARN: watchdog_run not seen in last 25h** | The 10-min watchdog cron never fired | Same as above |
-| **WARN: sync_complete not seen in last 25h** | `sync_sheet.py` hasn't completed successfully in 25h | Check service-account creds, sheet ID, Sheets API quota |
-| **ERROR: N sync_sheet failure(s) in last 25h** | `sync_sheet` crashed ≥1 time | See error detail in the alert; typical causes in §"Google Sheet isn't updating" above |
 | **ERRORS: N error events in log** | Any event with `error` / `exception` / `failed` fired | Read the alert for the first three; grep `pipeline.jsonl` for more |
 | **INFO: N jobs scored None (likely LLM timeout)** | Scoring LLM errored mid-batch | Usually transient; re-triage if it persists |
 | **WARN: N source(s) returned 0 jobs despite producing jobs in last 7d** | A feed silently broke | Check the named source — API key, quota, config file |
@@ -172,7 +154,7 @@ Typical failures on first boot:
 ---
 
 <details>
-<summary><strong>For advanced users: audit_log, manual re-triage, manual re-sync</strong></summary>
+<summary><strong>For advanced users: audit_log, manual re-triage</strong></summary>
 
 ### Reading `audit_log` in `pipeline.db`
 
@@ -192,14 +174,6 @@ docker compose exec scheduler sqlite3 /app/data/pipeline.db \
     WHERE j.fingerprint = '<fp>'
     ORDER BY a.timestamp"
 ```
-
-### Manually triggering resync
-
-```bash
-docker compose exec scheduler /app/scripts/sync_sheet.py
-```
-
-Writes a `sync_complete` (or `sync_failed`) event. Runs to completion in ~30 seconds depending on row count.
 
 ### Manually re-triaging
 

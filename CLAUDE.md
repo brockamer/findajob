@@ -100,8 +100,8 @@ file. If you're refactoring an old hardcoded section, add a note to `docs/GENERA
 | Profile | `candidate_context/profile.md` |
 | DB | `data/pipeline.db` |
 | Pre-filter | `src/findajob/scorer_prefilter.py` — Stage 1 regex hard reject, Stage 2 no-JD default |
-| Board writes | `src/findajob/web/routes/board_actions.py` — every STATUS / REJECT_REASON transition is a POST handler calling `findajob.actions`. Sheet is read-only. |
-| Watchdog | `scripts/watchdog.py` every 10 min — resets jobs stuck in `prep_in_progress` > 60 min. No Sheet reads. |
+| Board writes | `src/findajob/web/routes/board_actions.py` — every STATUS / REJECT_REASON transition is a POST handler calling `findajob.actions`. SQLite is the single source of truth. |
+| Watchdog | `scripts/watchdog.py` every 10 min — resets jobs stuck in `prep_in_progress` > 60 min. |
 | RAG index | `job_search_rag` — never passed to scorer/CL/outreach |
 | Scheduler | supercronic in-container; schedules declared in `ops/scheduled-jobs.yaml`, rendered to `/app/crontab` by `scripts/render_crontab.py` at entrypoint. Per-job env overrides: `FINDAJOB_<JOB>_SCHEDULE` / `FINDAJOB_<JOB>_ENABLED` (#344). |
 | ntfy topic | in `data/.env` as `NTFY_TOPIC`; also in `CLAUDE.local.md` |
@@ -179,8 +179,6 @@ When the pipeline runs inside the `ghcr.io/brockamer/findajob` image, paths shif
 # ── Entry point scripts (called by systemd / CLI) ──────────────────────────
 <repo>/scripts/triage.py                    # daily ingest → score → DB
 <repo>/scripts/watchdog.py                  # resets stuck prep_in_progress jobs > 60 min (every 10 min cron)
-<repo>/scripts/sync_sheet.py                # SQLite → Dashboard + Applied + Review + Waitlist + Rejected Applications tabs (one-way, no Sheet reads)
-<repo>/scripts/setup_sheets.py             # one-time sheet formatting (idempotent)
 <repo>/scripts/prep_application.py          # on-demand LLM material generation
 <repo>/scripts/find_contacts.py             # LinkedIn contact matching + outreach drafts
 <repo>/scripts/ingest_form.py               # Google Form → DB ingestion (retired; kept for manual drains)
@@ -274,10 +272,9 @@ Adding a new tab: declare ColumnSpec list in `registry.py`, add base WHERE + `_<
 ### Web is the Write Surface
 Every STATUS and REJECT_REASON transition runs through a POST handler in
 `findajob.web.routes.board_actions` that calls straight into
-`findajob.actions`. The Google Sheet is a one-way synced view (DB → Sheet);
-`sync_sheet.py` never reads from Sheets. Do not add new transition logic to
-`watchdog.py` or to any Sheet-reading path — every new action is a new web
-handler + a new `findajob.actions` helper.
+`findajob.actions`. SQLite is the single source of truth. Do not add
+new transition logic to `watchdog.py` or to any out-of-band path — every
+new action is a new web handler + a new `findajob.actions` helper.
 
 Some transitions also spawn detached generator subprocesses:
 - `POST /board/jobs/{fp}/prep` and `/regenerate` → `scripts/prep_application.py` (briefing, tailored resume, cover, recruiter critique, outreach drafts)
@@ -381,34 +378,13 @@ This applies to both `linkedin_jobsapi` and `gmail_linkedin` sources.
 `jsearch_queries.txt`: 3-4 word natural phrases only. Keyword-heavy strings (5+ words)
 return zero LinkedIn results. Validate each query manually before committing.
 
-### Google Sheet Architecture
+### Board Routes & Stage Lifecycle
 
-The Sheet is a read-only one-way mirror of DB state for mobile/glance use; `sync_sheet.py` never reads from it. All transitions go through `/board/*` POST handlers.
-
-**Dashboard** — pre-application queue (A–N), filter: `(score>=7 AND stage IN (scored,manual_review))` OR `stage IN (prep_in_progress, materials_drafted)`. Row columns:
-`STATUS(dropdown) | REJECT_REASON(dropdown) | fingerprint(hidden) | fit_score | probability_score | relevance_score | title(hyperlink) | company | location | remote | contacts | comp | notes | date`
-
-**Applied** — post-application queue (A–N), filter: `stage IN (applied, interview, offer)`.
-`STATUS(dropdown) | REJECT_REASON(dropdown) | fingerprint(hidden) | title(hyperlink) | company(viewer hyperlink) | applied_date | days_since_applied(formula) | stage | user_notes | known_contacts | location | remote | comp | ai_notes`
-- `STATUS` options (col A): `Interviewing` / `Offer` / `Not Selected` / `Withdrew`
-- `days_since_applied` = live `=IF(F2="","",TODAY()-F2)` formula — no re-sync needed
-- Row color by priority: Offer→gold, Interviewing→purple, >=21d→gray (silent = likely ghosted), 14–20d→red, 7–13d→yellow, 0–6d→green
-- `user_notes` (col I) is free-text; edited via the web `/board/applied` notes input, one-way synced to Sheet on the next `sync_sheet.py` pass
-- `applied_date` sourced from `audit_log` where `new_value='applied'` (first transition)
-
-**Review** — manual review triage (A–H), filter: `stage=manual_review`:
-`STATUS(dropdown:Promote) | REJECT_REASON(dropdown) | fingerprint(hidden) | title(hyperlink) | company | score_flag_reason | source | date`
-
-**Waitlist** — deferred jobs (A–K), filter: `stage=waitlisted`:
-`STATUS(dropdown:Reactivate) | REJECT_REASON(dropdown) | fingerprint(hidden) | title(hyperlink) | company | relevance_score | location | remote | ai_notes | date | blocking_app`
-- `blocking_app` = computed at sync time: title + stage of active application at same company
-
-**Write surface — `findajob.web.routes.board_actions`:**
-
-Every transition is a POST handler that calls straight into `findajob.actions`
-(handle_rejection, handle_not_selected, handle_waitlist, handle_reactivate,
+Every transition is a POST handler in `findajob.web.routes.board_actions`
+that calls straight into `findajob.actions` (handle_rejection,
+handle_not_selected, handle_waitlist, handle_reactivate,
 promote_to_scored, notify_waitlist_resurface, reset_prep_to_scored) and
-responds in the same request. No poll cycle, no Sheet readback.
+responds in the same request — no poll cycle, no mirror table.
 
 | Action | Endpoint | Where it lives |
 |---|---|---|
@@ -431,7 +407,7 @@ responds in the same request. No poll cycle, no Sheet readback.
 
 **Stage `waitlisted`:** Set by `POST /board/jobs/{fp}/waitlist`. Folder moves to `companies/_waitlisted/`. Not a rejection — does not write to feedback_log or contaminate scorer feedback loop. When an active application at the same company is rejected/withdrawn, ntfy notification surfaces waitlisted jobs.
 
-**Stage `not_selected`:** Set by `POST /board/jobs/{fp}/not-selected`. Only valid for post-application stages (`applied`, `interview`, `offer`); 409 otherwise. Folder stays in `companies/_applied/` with a `NOT_SELECTED_{reason}_{date}.txt` marker file. Does NOT write to `feedback_log` — company rejections must not contaminate the scorer's feedback loop. `notify_waitlist_resurface()` still fires. Appears on the Rejected Applications tab alongside user rejections.
+**Stage `not_selected`:** Set by `POST /board/jobs/{fp}/not-selected`. Only valid for post-application stages (`applied`, `interview`, `offer`); 409 otherwise. Folder stays in `companies/_applied/` with a `NOT_SELECTED_{reason}_{date}.txt` marker file. Does NOT write to `feedback_log` — company rejections must not contaminate the scorer's feedback loop. `notify_waitlist_resurface()` still fires.
 
 **Stage `prep_in_progress`:** Set by `POST /board/jobs/{fp}/prep` immediately before launching `prep_application.py` as a subprocess. Prevents duplicate prep runs (handler idempotency guard + 3-job concurrency cap). Cleared to `materials_drafted` on success. `scripts/watchdog.py` rolls any job stuck > 60 min back to `scored` so the operator can re-flag.
 
@@ -489,7 +465,7 @@ This is a solo repo. Default to committing directly to `main`. Use feature branc
 | Change type | Flow |
 |-------------|------|
 | Docs, board conventions, plan/spec files, jared skill tweaks, comment edits | Commit to `main` |
-| Code touching pipeline behavior (scoring, fetchers, sheet sync, DB schema, LLM roles) | Feature branch → PR → merge |
+| Code touching pipeline behavior (scoring, fetchers, DB schema, LLM roles) | Feature branch → PR → merge |
 | Anything qualifying for `migration-required` (schema, config, compose, crontab, mounts) | PR — release-notes workflow depends on it |
 
 Rationale: PRs exist to gate risky changes and to give the `migration-required` → release-notes pipeline something to attach to. A board-chore or docs-tweak PR is overhead without those benefits, and unmerged PRs cause drift (forgotten branches, misleading "merged in #N" references).

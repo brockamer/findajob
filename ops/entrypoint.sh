@@ -115,9 +115,9 @@ fi
 # --- 3d. Backfill derived companies_of_interest.txt (issue #222) ----------
 # Pre-#148 stacks have target_companies.md but lack the derived
 # companies_of_interest.txt; the onboarding injector only derives it on a
-# fresh paste-back. Derive here so config_loader stops warning and the two
-# features it gates (sync_sheet archival exception, notify mis-score check)
-# light back up. Idempotent: no-op when the destination already exists.
+# fresh paste-back. Derive here so config_loader stops warning and the
+# notify mis-score check it gates lights back up. Idempotent: no-op when
+# the destination already exists.
 gosu "$PUID:$PGID" python3 /app/scripts/seed_companies_of_interest.py >/dev/null || true
 
 # --- 3e-pre. Idempotent migration: RAPIDAPI_KEY → JOBS_API14_KEY (#408) ------

@@ -109,7 +109,7 @@ The `findajob` repo is designed to be public without exposing personal data.
 - `config/feed_urls.txt` — your Greenhouse company slugs
 - `config/target_companies.md` — your target list
 - `data/.env` — all API keys
-- `config/*.json`, `config/sheet_id.txt` — Google credentials
+- `config/gmail*.json` — Gmail OAuth credentials
 - `config/paths.env` — your local binary paths
 - `CLAUDE.local.md` — your personal Claude context
 - `data/connections.csv` — your LinkedIn connections

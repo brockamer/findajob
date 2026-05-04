@@ -81,9 +81,8 @@ Everything between them is mediated by SQLite. The Google Sheet is a synced view
                        │
           ┌────────────▼────────────────┐
           │  Web UI (/board/*)          │
-          │  + sync_sheet.py → Sheets   │
-          │     (Dashboard, Applied,    │
-          │      Review, Waitlist)      │
+          │  Dashboard, Applied,        │
+          │  Review, Waitlist tabs      │
           └─────────────────────────────┘
 ```
 
@@ -118,7 +117,6 @@ prep_application.py (detached subprocess, start_new_session=True)
     pandoc converts .md → .docx for each document
           │
     DB updated: stage = materials_drafted
-    sync_sheet.py runs at prep end (one-way DB → Sheet)
     ntfy notification sent
     Materials viewer reflects new folder immediately (no sync required)
 
@@ -188,119 +186,14 @@ logged_at TEXT DEFAULT (datetime('now'))
 
 ---
 
-## Google Sheet Layout
-
-> **One-way synced view.** As of #61 PR-B, `sync_sheet.py` writes DB state to
-> the Sheet but never reads from it. Operators drive every STATUS and
-> REJECT_REASON transition through the web UI at `/board/*`; edits made
-> directly in the Sheet are overwritten on the next sync cycle.
-
-### Dashboard — Pre-Application Queue (A–N)
-Filter: `(score >= 7 AND stage IN (scored, manual_review))` OR `stage IN (prep_in_progress, materials_drafted)`.
-The web UI at `/board/dashboard` renders the same rows live from the DB. `POST /board/jobs/{fp}/apply` transitions stage to `applied`; the row disappears from Dashboard and appears on `/board/applied` on the next render.
-
-| Col | Field | Notes |
-|---|---|---|
-| A | STATUS | Dropdown — user sets this |
-| B | REJECT_REASON | Dropdown — triggers rejection workflow |
-| C | fingerprint | Hidden |
-| D | fit_score | LLM-assigned fit score |
-| E | probability_score | LLM-assigned interview probability |
-| F | relevance_score | 1–10 composite score |
-| G | title | Hyperlink to job URL |
-| H | company | Company name |
-| I | location | |
-| J | remote_status | Color-coded |
-| K | known_contacts | Amber when non-empty |
-| L | comp_estimate | |
-| M | ai_notes | |
-| N | date_found | |
-
-**STATUS dropdown options (Dashboard — pre-application):** `Flag for Prep` → `Prep in Progress` *(system)* → `Ready to Apply` *(system)* → `Applied` *(user)*. Also: `Regenerate` (re-runs prep), `Waitlist` (defers the job). Once marked `Applied`, the row moves to the Applied tab where `Interviewing` / `Offer` / `Not Selected` / `Withdrew` are set.
-
-**REJECT_REASON:** behavior depends on STATUS. If STATUS = `Not Selected`: company rejection → `stage=not_selected`, no feedback_log, folder stays in `_applied/`. Otherwise: user rejection → `stage=rejected`, feedback_log entry, folder moved to `_rejected/`.
-
-### Applied — Post-Application Queue (A–N)
-Filter: `stage IN (applied, interview, offer)`. UI for managing jobs that have been submitted.
-
-| Col | Field | Notes |
-|---|---|---|
-| A | STATUS | Dropdown: `Interviewing` / `Offer` / `Not Selected` / `Withdrew` |
-| B | REJECT_REASON | Dropdown — same 11 options as Dashboard |
-| C | fingerprint | Hidden |
-| D | title | Hyperlink to job URL |
-| E | company | Company name |
-| F | applied_date | Date job was marked Applied (from `audit_log`) |
-| G | days_since_applied | Live `=IF(F2="","",TODAY()-F2)` formula |
-| H | stage | `applied` / `interview` / `offer` (read-only) |
-| I | user_notes | Free text, syncs back to `jobs.user_notes` |
-| J | known_contacts | |
-| K | location | |
-| L | remote_status | |
-| M | comp_estimate | |
-| N | ai_notes | Read-only (scorer output) |
-
-Row-color priority (first match wins): Offer→gold, Interviewing→purple, `>=21 days`→gray (silent = likely ghosted), 14–20d→red, 7–13d→yellow, 0–6d→green. Flip to `Not Selected` when giving up on a silent row.
-
-### Review — Manual Review Triage (A–H)
-Filter: `stage = manual_review` (scorer flagged for human review, e.g., null scores or schema failures).
-
-| Col | Field | Notes |
-|---|---|---|
-| A | STATUS | Dropdown: `Promote` |
-| B | REJECT_REASON | Dropdown — same options as Dashboard |
-| C | fingerprint | Hidden |
-| D | title | Hyperlink to job URL |
-| E | company | |
-| F | score_flag_reason | Why the scorer flagged this job |
-| G | source | |
-| H | date_found | |
-
-`Promote` sets score=7, stage=scored → job appears on Dashboard. REJECT_REASON rejects the job.
-
-### Waitlist — Deferred Jobs (A–K)
-Filter: `stage = waitlisted`.
-
-| Col | Field | Notes |
-|---|---|---|
-| A | STATUS | Dropdown: `Reactivate` |
-| B | REJECT_REASON | Dropdown — same options as Dashboard |
-| C | fingerprint | Hidden |
-| D | title | Hyperlink to job URL |
-| E | company | |
-| F | relevance_score | |
-| G | location | |
-| H | remote_status | |
-| I | ai_notes | |
-| J | date_found | |
-| K | blocking_app | Active application at same company (computed at sync time) |
-
-`Reactivate` restores to `scored` (no folder) or `materials_drafted` (has folder), moves folder back from `_waitlisted/`. When an active application at the same company is rejected/withdrawn, ntfy surfaces waitlisted jobs.
-
-### Rejected Applications (A–H)
-Jobs that were rejected after reaching `applied` stage. Read-only reference view.
-
-| Col | Field | Notes |
-|---|---|---|
-| A | title | Hyperlink to job URL |
-| B | company | Company name |
-| C | reject_reason | |
-| D | applied_date | Date the job was marked Applied |
-| E | rejected_date | Date the rejection was recorded |
-| F | fit_score | |
-| G | probability_score | |
-| H | ai_notes | |
-
----
-
 ## Key Design Decisions
 
 | Decision | Why |
 |---|---|
-| SQLite as canonical store | Sheets-as-database creates race conditions and blocks programmatic queries. SQLite is ACID, queryable, and zero-config. |
+| SQLite as canonical store | The DB is ACID, queryable, and zero-config. No external dependencies for the core data model. |
 | Direct profile injection (not RAG) | RAG chunking drops contact info, employer names, and dates. Profile is short enough to inject raw. |
 | Two-stage prefilter before LLM | Hard rejects (wrong domain, title-deterministic) don't need LLM calls. Saves ~$0.10/day and speeds triage. |
 | JSON output validation | `jsonschema` validates every LLM scoring response. Malformed output → manual_review, not a crash. |
 | Web materials viewer (not Drive) | Prep folders are served locally via uvicorn/FastAPI — no cloud sync dependency. Markdown rendered inline; `.docx` offered as download. Eliminates rclone auth complexity and Drive quota issues. |
-| Web POST handlers are the sole write surface | Operators used to edit the Google Sheet and wait up to 10 min for poll_flags.py to mirror it to the DB. Every handler in `findajob.web.routes.board_actions` calls straight into `findajob.actions` and responds in the same request, eliminating the poll-cycle race window. |
+| Web POST handlers are the sole write surface | Every handler in `findajob.web.routes.board_actions` calls straight into `findajob.actions` and responds in the same request — no poll cycle, no mirror table, single source of truth in SQLite. |
 | `abbrev_title()` in folder names | Same-day preps for the same company would overwrite each other without title disambiguation. HHMMSS suffix prevents same-title same-day overwrites. |

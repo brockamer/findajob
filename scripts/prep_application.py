@@ -4,8 +4,7 @@
 """Generate draft application materials for a flagged job.
 
 Launched as a detached subprocess from POST /board/jobs/{fp}/prep (see
-findajob.web.routes.board_actions). On success runs sync_sheet.py at
-the end to refresh the Sheet view.
+findajob.web.routes.board_actions).
 """
 
 import json
@@ -563,9 +562,6 @@ Generated: {date}
     notify(f"Drafts ready: {company} — {title}\n{outdir}")
 
     conn.close()
-
-    # ── Step 9: Sync sheets ──
-    subprocess.run([sys.executable, f"{BASE}/scripts/sync_sheet.py"], check=False)
 
     print(f"PREP_COMPLETE:{outdir}")
 

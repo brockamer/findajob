@@ -110,35 +110,14 @@ install procedure end-to-end, triggers `triage.py`, and asserts:
 
 Run locally on a docker-equipped host before proposing the tag. From the
 maintainer's dev laptop, the workflow is: build the image on `<deployment-host>` (or
-any docker-equipped host), then run the smoke script against it. Two env vars
-are required — the Google Sheet ID and the path to the service-account creds
-JSON (both from the operator's existing stack):
+any docker-equipped host), then run the smoke script against it.
 
 ```bash
 # On <deployment-host> (or any host with docker + this repo checked out)
 cd /path/to/findajob
 docker build -t findajob:local .
-FINDAJOB_SMOKE_SHEET_ID=<sheet-id> \
-FINDAJOB_SMOKE_SA_CREDS=/opt/stacks/findajob-<tag>/state/config/gsheets_creds.json \
-FINDAJOB_TEST_IMAGE=findajob:local \
-  scripts/test_container_integration.sh
+FINDAJOB_TEST_IMAGE=findajob:local scripts/test_container_integration.sh
 ```
-
-**Where to find the smoke sheet ID.** The operator stores it on the dev VM
-in `~/.secrets` under the variable name `FINDAJOB_SMOKE_SHEET` (a dedicated
-Google Sheet that's safe to overwrite — see `reference_smoke_sheet` memory).
-The smoke script expects `FINDAJOB_SMOKE_SHEET_ID`, so source and alias:
-
-```bash
-source ~/.secrets
-export FINDAJOB_SMOKE_SHEET_ID="$FINDAJOB_SMOKE_SHEET"
-```
-
-The aliasing is intentional — `FINDAJOB_SMOKE_SHEET` is the operator-side
-storage name (concise), `FINDAJOB_SMOKE_SHEET_ID` is the
-script-side input name (explicit). Don't print the value to chat —
-even though the sheet is overwriteable, sheet-IDs in the URL line are
-still personal infrastructure.
 
 The script takes 2–5 minutes (dominated by ~20 LLM scoring calls over the real
 network) and costs ≤$0.10 of API budget per run.

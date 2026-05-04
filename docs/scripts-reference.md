@@ -18,7 +18,7 @@ run from the repo root with the project venv active (`uv run python3 …`).
 **No arguments.**
 **Manual run:** `docker compose exec scheduler python3 scripts/triage.py`
 
-Fetches jobs from all sources, deduplicates, enriches with JD text, then scores with LLM in parallel (6 concurrent threads), writes to SQLite. Calls `sync_sheet.py` at the end.
+Fetches jobs from all sources, deduplicates, enriches with JD text, then scores with LLM in parallel (6 concurrent threads), writes to SQLite.
 
 **Sources:**
 - LinkedIn / Indeed via RapidAPI jobs-api14 + JSearch (per `config/active_sources.txt`)
@@ -45,7 +45,7 @@ Generates a full application package for one job. LLM calls run sequentially.
 - `job_description.txt`
 - `REVIEW_CHECKLIST.md`
 
-**After completion:** updates DB to `stage=materials_drafted`, calls `sync_sheet.py`, sends ntfy notification.
+**After completion:** updates DB to `stage=materials_drafted`, sends ntfy notification.
 
 ---
 
@@ -56,40 +56,7 @@ Generates a full application package for one job. LLM calls run sequentially.
 
 Single responsibility: resets any job stuck in `stage='prep_in_progress'` for more than 60 minutes back to `scored`. Calls `findajob.actions.reset_prep_to_scored()` which writes an `audit_log` row and emits `prep_failed_reset`. Emits a `watchdog_run` summary event at the end of each run.
 
-Replaced `poll_flags.py` in #61 PR-B — transition logic now lives in `findajob.actions` and is called from the web POST handlers in `findajob.web.routes.board_actions`. No Sheet reads.
-
----
-
-### `sync_sheet.py`
-**Run by:** end of triage, end of prep; also callable manually
-**No arguments.**
-**Manual run:** `docker compose exec scheduler python3 scripts/sync_sheet.py`
-
-One-way DB → Sheet. Reads SQLite, writes Dashboard (pre-application queue), Applied (post-application), Review (manual triage), Waitlist (deferred), and Rejected Applications. As of #61 PR-B, no reads from Sheets — the Sheet is a synced view, not a write surface.
-
-**Dashboard filter:** `(relevance_score >= 7 AND stage IN ('scored', 'manual_review'))` OR `stage IN ('prep_in_progress', 'materials_drafted')`. Materials_drafted jobs float to the top (sorted first).
-
-**Applied filter:** `stage IN ('applied', 'interview', 'offer')`. Sort: offer → interview → applied, most recently updated first.
-
-**STATUS value in Dashboard:** derived from DB — `Ready to Apply` if `stage=materials_drafted`, `Prep in Progress` if `stage=prep_in_progress`, `Applied/Interviewing/Offer` for post-application stages, else empty.
-
-**STATUS value in Applied:** derived from stage — `Offer` for `offer`, `Interviewing` for `interview`, empty for `applied` (user hasn't picked a sub-status yet). The web UI is where operators change status; the Sheet just reflects the current DB stage.
-
----
-
-### `setup_sheets.py`
-**Run by:** manually (once on new sheet; safe to re-run)
-**No arguments.**
-**Manual run:** `docker compose exec scheduler python3 scripts/setup_sheets.py`
-
-Creates and formats every tab (Dashboard, Review, Waitlist, Rejected Applications, Applied). One-time: if a legacy `Active` tab exists (from before #43), it is renamed to `Applied` on first run. Sets up:
-- STATUS dropdown (col A) with conditional row highlighting — per-tab option set
-- REJECT_REASON dropdown (col B) with per-option colors
-- Remote status color coding: Remote=red, Hybrid=yellow, On-site=green
-- Contacts amber highlight
-- Applied-tab row coloring by priority: Offer→gold, Interviewing→purple, `Ghosted` or ≥21d→gray, 14–20d→red, 7–13d→yellow, 0–6d→green
-- Row banding (where the tab doesn't conflict with full-row CF coloring)
-- Column widths, hidden fingerprint columns, number formats (dates, days count)
+Replaced `poll_flags.py` in #61 PR-B — transition logic now lives in `findajob.actions` and is called from the web POST handlers in `findajob.web.routes.board_actions`.
 
 ---
 

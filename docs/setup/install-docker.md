@@ -83,7 +83,7 @@ start — you do not run any of these commands manually:
   `model_pricing.yaml`, `reference.docx`, `strip-bookmarks.lua`) into
   `state/config/` on every start — these are always overwritten so image
   updates propagate on `docker compose up`. Your personal config files
-  (`sheet_id.txt`, `jsearch_queries.txt`, etc.) are left alone because
+  (`jsearch_queries.txt`, `feed_urls.txt`, etc.) are left alone because
   they don't exist in the bundled set.
 
 Fill in your personal config files above and run `docker compose up -d` —
@@ -112,29 +112,9 @@ curl http://<deployment-host>:8090/healthz    # expect: ok
 ```
 
 The viewer also serves six board pages under `/board/`: Dashboard, Applied,
-Review, Waitlist, Rejected, Archive. These mirror the Google Sheet tabs,
-reading the same database. `sync_sheet.py` keeps updating Sheets in
-parallel — use whichever view you prefer. The Archive page covers every
-job in the DB (10k+) with infinite-scroll pagination, per-column sort,
-and a live text filter.
-
-### Materials viewer base URL (for Sheet hyperlinks)
-
-`sync_sheet.py` hyperlinks the company cell on Dashboard / Applied / Waitlist / Rejected Applications tabs into the viewer, but only when `FINDAJOB_MATERIALS_BASE_URL` is set in the stack `.env` **and** the deployed `compose.yaml` passes it into the container. Unset → cells render as plain text, no crash.
-
-```
-FINDAJOB_MATERIALS_BASE_URL=http://<deployment-host>:8090
-```
-
-Match the hostname and port to what the user's browser can reach (LAN hostname or VPN hostname + `FINDAJOB_MATERIALS_PORT`).
-
-**If you deployed from `ops/compose.yaml.example` on v0.1.2 or earlier**, the env var isn't forwarded yet — the template was updated after that release. Add this line under `environment:` in the `scheduler` service:
-
-```yaml
-FINDAJOB_MATERIALS_BASE_URL: ${FINDAJOB_MATERIALS_BASE_URL:-}
-```
-
-Then `docker compose up -d` to restart with the new env. Full migration writeup in [`state-migration.md`](state-migration.md).
+Review, Waitlist, Rejected, Archive. The Archive page covers every job in
+the DB (10k+) with infinite-scroll pagination, per-column sort, and a
+live text filter.
 
 ## 4. Configure Gmail integration (optional)
 
@@ -215,21 +195,15 @@ ran it before step 7 — it would silently no-op.
 
 ## Driving the pipeline
 
-Once the scheduler is running, your daily workflow happens in two places:
-
-1. **`/board/*` in the web UI** — the primary interface. Open
-   `http://<host>:<FINDAJOB_MATERIALS_PORT>/board/dashboard` in a browser.
-   The Dashboard tab lists high-scoring jobs; click **Flag for Prep** on
-   the ones you want materials for. When prep completes, switch the status
-   to **Applied** to move the job to the Applied tab, then track it through
-   **Interviewing / Offer / Withdrew / Not Selected**. Review and Waitlist
-   tabs handle triage and deferred jobs respectively. Every click writes
-   to the DB in the same request — no polling delay.
-
-2. **The Google Sheet** — a read-only synced view. Useful for phone-glance
-   status checks or sharing a read-only link. Edits made directly in the
-   Sheet are **ignored by the pipeline** and overwritten on the next
-   `sync_sheet.py` run; always drive state changes from the web UI.
+Once the scheduler is running, your daily workflow happens at `/board/*`
+in the web UI. Open
+`http://<host>:<FINDAJOB_MATERIALS_PORT>/board/dashboard` in a browser.
+The Dashboard tab lists high-scoring jobs; click **Flag for Prep** on the
+ones you want materials for. When prep completes, switch the status to
+**Applied** to move the job to the Applied tab, then track it through
+**Interviewing / Offer / Withdrew / Not Selected**. Review and Waitlist
+tabs handle triage and deferred jobs respectively. Every click writes to
+the DB in the same request — no polling delay.
 
 `scripts/watchdog.py` runs every 10 min and resets any job stuck in
 `prep_in_progress` for more than 60 min back to `scored` so you can re-flag it.

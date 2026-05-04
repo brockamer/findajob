@@ -37,7 +37,7 @@ domain. Each item is a future task to make the pipeline domain-neutral.
 
 **Resolved 2026-04-17 (#10):**
 - `TIER1` was *dropped*, not externalized. The Tier-1 prefilter bonus (+1 score at the in-domain/no-JD floor) was removed entirely — the LLM already sees the target-companies list via prompt context, so the prefilter kludge is unnecessary.
-- The "companies I care about" concept lives on via the `## Tier 1` section of `config/target_companies.md`, parsed at runtime by `findajob.config_loader.load_companies_of_interest()` and consumed by `scripts/sync_sheet.py` (archival exception for low-score-old jobs at these companies) and `scripts/notify.py` (mis-score health check). The prefilter does NOT consult this list. The intermediate `companies_of_interest.txt` derived file was retired in #211 — `target_companies.md` is now the single source of truth.
+- The "companies I care about" concept lives on via the `## Tier 1` section of `config/target_companies.md`, parsed at runtime by `findajob.config_loader.load_companies_of_interest()` and consumed by `scripts/notify.py` (mis-score health check). The prefilter does NOT consult this list. The intermediate `companies_of_interest.txt` derived file was retired in #211 — `target_companies.md` is now the single source of truth.
 - Hard-reject + in-domain rules now load from `config/prefilter_rules.yaml` and `config/in_domain_patterns.yaml` through `src/findajob/config_loader.py`. Both files are gitignored; see `.example` siblings for templates.
 - Items 4 and 5 of #10 (prompt-level neutralization: `job_scorer.md` hard-reject enumerations + ENGINEER TITLE CALIBRATION move to `profile.md`) are **deferred** — they change LLM behavior and need their own validation loop. Tracked as a follow-up issue.
 
@@ -88,18 +88,11 @@ Remaining roles audited 2026-04-22 and found clean: `briefing_writer.md`, `fit_a
 - [ ] **`scripts/ingest_form.py`** — Google Form ingestion, fields assume job search
   - Generic enough but worth reviewing the field names
 
-### Google Sheets column names — `scripts/sync_sheet.py`, `scripts/setup_sheets.py`
-
-- [ ] Column headers include `comp_estimate`, `known_contacts`, `remote_status` — generic
-- [ ] `REJECT_REASON` dropdown options include "Too TPM-Heavy" and "Skills Mismatch" — need to verify these are configurable
-- [ ] No known domain leakage here
-
 ### Documentation — `docs/*.md`
 
 - [x] **`docs/architecture.md`** — generic, OK
 - [ ] **`docs/operations.md`** — may reference tech workflows; needs review
 - [ ] **`docs/setup/configure.md`** — may mention AI company examples
-- [ ] **`docs/google-sheets.md`** — verify neutral
 
 ### Search / ingestion logic — `scripts/triage.py`
 
@@ -113,7 +106,6 @@ Remaining roles audited 2026-04-22 and found clean: `briefing_writer.md`, `fit_a
 
 - [x] `scripts/utils.py` — pure utilities, no domain
 - [x] `scripts/poll_flags.py` — generic stage management
-- [x] `scripts/sync_sheet.py` — generic DB-to-Sheets sync
 - [x] `scripts/notify.py` — ntfy wrapper, generic
 - [x] `scripts/analyze_feedback.py` — reads feedback_log and jobs, no domain content
 - [x] `scripts/backfill_jd.py` — generic JD re-fetch

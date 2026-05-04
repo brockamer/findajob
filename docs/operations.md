@@ -35,12 +35,6 @@ Commands below are in their Docker form. For native installs, drop the
 docker compose exec scheduler python3 scripts/triage.py
 ```
 
-### Sync sheet immediately
-```bash
-docker compose exec scheduler python3 scripts/sync_sheet.py
-```
-Sheet sync is being retired (#331) — the web UI at `/board/*` is the canonical surface.
-
 ### Prep a specific job manually
 ```bash
 docker compose exec scheduler python3 scripts/prep_application.py "Company Name" "Job Title" "https://url" "job-db-id"
@@ -80,12 +74,6 @@ docker compose exec scheduler python3 scripts/notify.py feedback-review
 docker compose exec scheduler python3 scripts/rescore_all.py
 ```
 Use after changing the `job_scorer` role or switching models.
-
-### Rebuild Google Sheet formatting
-```bash
-docker compose exec scheduler python3 scripts/setup_sheets.py
-```
-Safe to re-run — idempotent. Will be unnecessary once #331 retires Sheet sync.
 
 ---
 

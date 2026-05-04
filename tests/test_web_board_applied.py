@@ -80,7 +80,7 @@ def test_applied_shows_row_with_age_class(client: TestClient) -> None:
 
 def test_applied_recruiter_flow_captures_interview_as_applied_date(client: TestClient) -> None:
     """A job that skipped 'applied' and went straight to 'interview' still
-    gets an applied_date so row-aging works (mirrors sync_sheet.py line 585)."""
+    gets an applied_date so row-aging works."""
     r = client.get("/board/applied")
     assert r.status_code == 200
     # 5-day-old interview row → row-applied-fresh (green bucket); without the

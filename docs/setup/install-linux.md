@@ -179,29 +179,13 @@ sqlite3 data/pipeline.db ".tables"
 
 ---
 
-## 9. Set Up Google Sheets
-
-Copy your credential files (from [prerequisites.md](prerequisites.md)):
-```bash
-# Copy from your existing machine or download fresh:
-cp /path/to/gsheets_creds.json config/gsheets_creds.json
-echo "YOUR_SHEET_ID" > config/sheet_id.txt
-```
-
-Run the sheet formatter:
-```bash
-uv run python scripts/setup_sheets.py
-```
-
----
-
-## 10. Configure Gmail integration (optional)
+## 9. Configure Gmail integration (optional)
 
 If you want findajob to ingest LinkedIn (and other) job-alert emails from your Gmail, follow [`gmail.md`](gmail.md) after the stack is up. The pipeline runs cleanly without Gmail integration — Greenhouse / Ashby / Lever direct fetches and RapidAPI LinkedIn search cover most ingestion volume.
 
 ---
 
-## 11. Set Up systemd Scheduler
+## 10. Set Up systemd Scheduler
 
 Create user service units for all scheduled jobs.
 
@@ -267,7 +251,7 @@ Prep folders are served locally via a FastAPI web viewer running on `localhost:8
 
 ---
 
-## 12. Verify the Install
+## 11. Verify the Install
 
 ```bash
 # Test aichat-ng can reach the API
@@ -275,9 +259,6 @@ echo "Hello" | /usr/local/bin/aichat-ng -m gemini:gemini-3-flash-preview -S "Say
 
 # Test DB
 sqlite3 ~/findajob/data/pipeline.db "SELECT count(*) FROM jobs;"
-
-# Test Sheet connection
-uv run python scripts/sync_sheet.py
 
 # Run a single triage cycle (may take 30–60 min)
 uv run python scripts/triage.py
@@ -289,9 +270,6 @@ uv run python scripts/triage.py
 
 **`aichat-ng: command not found`**
 Verify it's at `/usr/local/bin/aichat-ng`. If installed elsewhere, update `config/paths.env`.
-
-**`FileNotFoundError: config/sheet_id.txt`**
-You forgot to create this file. Run: `echo "YOUR_SHEET_ID" > config/sheet_id.txt`
 
 **systemd timer not running**
 Check: `systemctl --user status findajob-triage.timer`

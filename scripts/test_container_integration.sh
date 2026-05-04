@@ -4,11 +4,10 @@
 # v0.1.1+: Fresh-install smoke test for the findajob container image.
 #
 # Spins up a throwaway stack with EMPTY bind mounts, provides the minimum
-# realistic input (live API keys, a Google Sheet ID the service account can
-# write to, one fixture candidate profile), runs the full triage-to-
-# pipeline_complete cycle, and asserts a scored job lands in the DB. Proves
-# an external tester can go from "clone + configure" to working Dashboard
-# with no operator intervention.
+# realistic input (live API keys + one fixture candidate profile), runs the
+# full triage-to-pipeline_complete cycle, and asserts a scored job lands in
+# the DB. Proves an external tester can go from "clone + configure" to a
+# working pipeline with no operator intervention.
 #
 # This is the pre-tag release gate. Claude runs it from a docker-equipped
 # host before proposing any v0.1.x tag cut. See docs/release-process.md
@@ -20,12 +19,9 @@
 #   (build with `docker build -t findajob:local .` from the repo root first)
 # - A real data/.env with live API keys — either at
 #   $HOME/.findajob/state/data/.env or ./data/.env
-# - FINDAJOB_SMOKE_SHEET_ID env var — a Google Sheet the service account
-#   can write to (reuse the operator's test sheet or a dedicated smoke sheet)
 #
 # Usage:
-#   FINDAJOB_SMOKE_SHEET_ID=<sheet-id> FINDAJOB_TEST_IMAGE=findajob:local \
-#     scripts/test_container_integration.sh
+#   FINDAJOB_TEST_IMAGE=findajob:local scripts/test_container_integration.sh
 #
 # Expected runtime: 2–5 minutes (dominated by ~20 LLM scoring calls over
 # the real network). API budget: ≤$0.10 per run.
@@ -52,8 +48,7 @@ prevents the entrypoint from creating the unprivileged 'lad' user.
 
 Re-invoke as your normal docker-group user, without sudo:
 
-    FINDAJOB_SMOKE_SHEET_ID=<sheet-id> \
-      scripts/test_container_integration.sh
+    scripts/test_container_integration.sh
 
 If your account is not in the 'docker' group, add it once with
 `sudo usermod -aG docker $USER` and re-login — don't sudo this script.
@@ -81,27 +76,6 @@ done
 # ────────────────────────────────────────────────────────────────────────────
 
 IMAGE="${FINDAJOB_TEST_IMAGE:-findajob:local}"
-
-if [ -z "${FINDAJOB_SMOKE_SHEET_ID:-}" ] || [ -z "${FINDAJOB_SMOKE_SA_CREDS:-}" ]; then
-    cat >&2 <<EOF
-ERROR: two env vars are required:
-
-  FINDAJOB_SMOKE_SHEET_ID  — Google Sheet ID the service account can write to.
-  FINDAJOB_SMOKE_SA_CREDS  — Path to the gsheets service-account JSON file.
-
-Example:
-
-  export FINDAJOB_SMOKE_SHEET_ID=1AbCdEfGhIjKlMnOpQrStUvWxYz
-  export FINDAJOB_SMOKE_SA_CREDS=/opt/stacks/findajob-<tag>/state/config/gsheets_creds.json
-  scripts/test_container_integration.sh
-EOF
-    exit 2
-fi
-
-if [ ! -f "$FINDAJOB_SMOKE_SA_CREDS" ]; then
-    echo "ERROR: FINDAJOB_SMOKE_SA_CREDS file not found: $FINDAJOB_SMOKE_SA_CREDS" >&2
-    exit 2
-fi
 
 # Source .env either from the operator's standard location or from the
 # working copy — same fallback the old script used.
@@ -142,13 +116,6 @@ mkdir -p "$SCRATCH/state"/{data,config,candidate_context,companies,logs,aichat_n
 # API keys → state/data/.env (copied from live operator install)
 cp "$SRC_ENV" "$SCRATCH/state/data/.env"
 chmod 600 "$SCRATCH/state/data/.env"
-
-# Google Sheet ID → state/config/sheet_id.txt
-echo "$FINDAJOB_SMOKE_SHEET_ID" > "$SCRATCH/state/config/sheet_id.txt"
-
-# Service-account creds → state/config/gsheets_creds.json (needed by sync_sheet.py)
-cp "$FINDAJOB_SMOKE_SA_CREDS" "$SCRATCH/state/config/gsheets_creds.json"
-chmod 600 "$SCRATCH/state/config/gsheets_creds.json"
 
 # Candidate profile → state/candidate_context/profile.md
 cp "$FIXTURES/smoke_profile.md" "$SCRATCH/state/candidate_context/profile.md"
@@ -271,42 +238,7 @@ fi
 echo "  pipeline_complete.scored = $JSONL_SCORED"
 
 # ────────────────────────────────────────────────────────────────────────────
-# 9. Assert sync_sheet ran and wrote at least one row to the smoke sheet
-# ────────────────────────────────────────────────────────────────────────────
-
-echo "[assert] sync_complete event emitted (any counts)"
-SYNC_OK=$($EXEC python3 -c "
-import json, sys
-found = False
-counts = {}
-try:
-    with open('/app/logs/pipeline.jsonl') as fh:
-        for line in fh:
-            try:
-                ev = json.loads(line)
-            except Exception:
-                continue
-            if ev.get('event') == 'sync_complete':
-                found = True
-                counts = {k: ev.get(k) for k in ('dashboard', 'review', 'waitlist', 'applied') if k in ev}
-except FileNotFoundError:
-    print('ERROR: /app/logs/pipeline.jsonl not found', file=sys.stderr)
-    sys.exit(1)
-if not found:
-    print('')
-else:
-    print(counts)
-") || { echo "ERROR: sync_complete check failed" >&2; exit 1; }
-
-if [ -z "$SYNC_OK" ]; then
-    echo "ERROR: sync_complete event missing — sync_sheet.py crashed mid-run" >&2
-    echo "  check /app/logs/pipeline.jsonl for sync_failed events" >&2
-    exit 1
-fi
-echo "  sync_complete: $SYNC_OK"
-
-# ────────────────────────────────────────────────────────────────────────────
-# 11. Assert jobs table has rows in stage scored or manual_review
+# 9. Assert jobs table has rows in stage scored or manual_review
 # ────────────────────────────────────────────────────────────────────────────
 
 echo "[assert] jobs table has scored/manual_review rows"

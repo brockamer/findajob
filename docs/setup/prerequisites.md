@@ -33,17 +33,13 @@ Used by: LinkedIn and Indeed job search in `triage.py` (via pluggable adapter)
 
 ### 4. Google Cloud — Sheets API + Gmail API
 
-**Why:** The pipeline reads/writes Google Sheets and reads Gmail for job emails.
+**Why:** The pipeline reads Gmail for job-alert emails (optional integration).
 
 **Steps:**
 1. Go to https://console.cloud.google.com
 2. Create a new project (e.g. "findajob")
-3. Enable **Google Sheets API** and **Gmail API**
-4. Create a **Service Account** for Sheets access:
-   - IAM → Service Accounts → Create
-   - Download JSON key → save as `config/gsheets_creds.json`
-   - Share your Google Sheet with the service account email (Editor role)
-5. Create **OAuth2 credentials** for Gmail:
+3. Enable **Gmail API**
+4. Create **OAuth2 credentials** for Gmail:
    - Credentials → Create OAuth 2.0 Client ID → Desktop App
    - Download JSON → save as `config/gmail_oauth_client.json`
    - First run of triage.py will open a browser for OAuth consent
@@ -132,16 +128,6 @@ No system-level pip install required.
 > Ubuntu 22.04 → 3.10), avoiding `--break-system-packages` and PEP-668
 > conflicts. The Docker image pip-installs against a 3.12 base internally
 > — different concern, image-only.
-
----
-
-## Google Sheet Setup
-
-1. Create a new Google Sheet (blank)
-2. Copy the Sheet ID from the URL: `https://docs.google.com/spreadsheets/d/{SHEET_ID}/edit`
-3. Save to `config/sheet_id.txt`
-4. Share the sheet with your service account email (from `config/gsheets_creds.json`)
-5. Run `python3 scripts/setup_sheets.py` to create tabs, headers, and formatting
 
 ---
 

@@ -30,10 +30,7 @@ Six sequential LLM calls, each blocking on the previous. Resume tailor → chang
 **5. `triage.py` has no transaction safety**
 Jobs are committed one-by-one as they're processed. If triage crashes at job 400 out of 800, you have 400 partial records in inconsistent states. The fix is to wrap each job's ingest-enrich-score cycle in an explicit transaction and only commit on success.
 
-**6. ~~`sync_sheet.py` has an O(n²) bug in COL_MAP lookup~~** *(fixed 2026-04-08)*
-`S1_LOOKUP` and `DASH_LOOKUP` are now built once as reverse dicts. `build_row()` does a single dict lookup per cell.
-
-**~~7. `rclone bisync` path is fragile and inconsistently referenced~~** *(resolved 2026-04-20)*
+**~~6. `rclone bisync` path is fragile and inconsistently referenced~~** *(resolved 2026-04-20)*
 bisync and all rclone sync removed entirely. Local folder moves (`_applied/`, `_rejected/`, `_waitlisted/`) are now the source of truth; no longer synced to Google Drive. Users manage Drive content via the web viewer deployed on localhost:8080.
 
 ---

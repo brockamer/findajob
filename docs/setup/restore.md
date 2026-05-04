@@ -37,8 +37,7 @@ following layout reflecting the bind-mount structure of a running stack:
         # operator-curated locally). Includes profile-derived configs:
         # prefilter_rules.yaml, excluded_employers.yaml,
         # in_domain_patterns.yaml, jsearch_queries.txt,
-        # rapidapi_feeds.yaml, active_sources.txt,
-        # gsheets_creds.json, gmail.json, etc.
+        # rapidapi_feeds.yaml, active_sources.txt, gmail.json, etc.
       candidate_context/
         profile.md                   # operator-authored, hours of work
         master_resume.md
@@ -126,7 +125,6 @@ handle is just the per-stack directory name.
 
        sudo chmod 600 state/data/.env
        sudo chmod 600 state/config/gmail.json   # if present
-       sudo chmod 600 state/config/gsheets_creds.json   # if present
 
 7. **Pull the image and start the stack.**
 

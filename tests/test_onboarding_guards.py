@@ -1,13 +1,12 @@
 """Tests for #371 — graceful no-op for cron-fired scripts when the stack
-hasn't completed onboarding (or hasn't configured optional integrations).
+hasn't completed onboarding.
 
-Was: triage.py crashed on missing profile.md (`pipeline_crash`),
-sync_sheet.py exited 1 on missing sheet_id.txt (`triage_sync_failed`),
-and discover_companies failed similarly. Each cron tick on a deployed
-but never-onboarded tester stack emitted noise into pipeline.jsonl.
+Was: triage.py crashed on missing profile.md (`pipeline_crash`) and
+discover_companies failed similarly. Each cron tick on a deployed but
+never-onboarded tester stack emitted noise into pipeline.jsonl.
 
-Now: each script checks the onboarding sentinel + relevant config and
-emits a structured `*_skipped` event before returning 0.
+Now: each script checks the onboarding sentinel and emits a structured
+`*_skipped` event before returning 0.
 """
 
 from __future__ import annotations
@@ -28,13 +27,7 @@ def _load_script(name: str):
     sys.path.insert(0, str(SCRIPTS_DIR))
     try:
         with patch.dict(sys.modules, {"findajob.scoring": MagicMock()}):
-            try:
-                spec.loader.exec_module(mod)
-            except Exception:
-                # sync_sheet.py reads sheet_id.txt at module import; on a
-                # bare test env that file may not exist. The guard is what
-                # we're testing — let the import partially succeed.
-                pass
+            spec.loader.exec_module(mod)
     finally:
         sys.path.remove(str(SCRIPTS_DIR))
     return mod
@@ -78,63 +71,6 @@ def test_triage_runs_when_onboarded(tmp_path: Path, monkeypatch):
 
     assert any(e["event"] == "pipeline_started" for e in events)
     assert not any(e["event"] == "triage_skipped" for e in events)
-
-
-def test_sync_sheet_skipped_when_not_onboarded(tmp_path: Path, monkeypatch):
-    """sync_sheet.py is a triage subprocess; on a never-onboarded stack
-    the supercronic-driven triage skips first, but operator-pulled manual
-    runs and module imports still need to behave. Assert the guard."""
-    sync_sheet = _load_script("sync_sheet")
-    events: list[dict] = []
-    monkeypatch.setattr(sync_sheet, "BASE", str(tmp_path))
-    monkeypatch.setattr(sync_sheet, "SHEET_ID", "fake-sheet-id")
-    monkeypatch.setattr(sync_sheet, "log_event", lambda event, **kw: events.append({"event": event, **kw}))
-
-    sync_sheet.main()
-
-    skipped = [e for e in events if e["event"] == "sync_skipped"]
-    assert len(skipped) == 1
-    assert skipped[0]["reason"] == "not_onboarded"
-
-
-def test_sync_sheet_skipped_when_no_sheet_id(tmp_path: Path, monkeypatch):
-    """Onboarded stack but Sheet integration optional / not configured —
-    papa's case. sync_sheet emits `sync_skipped: sheet_not_configured`
-    instead of crashing on missing config/sheet_id.txt."""
-    (tmp_path / "data").mkdir(parents=True)
-    (tmp_path / "data" / ".onboarding-complete").write_text("2026-05-01T00:00:00Z\n")
-
-    sync_sheet = _load_script("sync_sheet")
-    events: list[dict] = []
-    monkeypatch.setattr(sync_sheet, "BASE", str(tmp_path))
-    monkeypatch.setattr(sync_sheet, "SHEET_ID", "")
-    monkeypatch.setattr(sync_sheet, "log_event", lambda event, **kw: events.append({"event": event, **kw}))
-
-    sync_sheet.main()
-
-    skipped = [e for e in events if e["event"] == "sync_skipped"]
-    assert len(skipped) == 1
-    assert skipped[0]["reason"] == "sheet_not_configured"
-
-
-def test_sync_sheet_skipped_when_creds_missing(tmp_path: Path, monkeypatch):
-    """Sheet ID configured but service-account creds file absent — skip
-    rather than crash on the credentials load."""
-    (tmp_path / "data").mkdir(parents=True)
-    (tmp_path / "data" / ".onboarding-complete").write_text("2026-05-01T00:00:00Z\n")
-
-    sync_sheet = _load_script("sync_sheet")
-    events: list[dict] = []
-    monkeypatch.setattr(sync_sheet, "BASE", str(tmp_path))
-    monkeypatch.setattr(sync_sheet, "SHEET_ID", "fake-sheet-id")
-    monkeypatch.setattr(sync_sheet, "SA_FILE", str(tmp_path / "missing.json"))
-    monkeypatch.setattr(sync_sheet, "log_event", lambda event, **kw: events.append({"event": event, **kw}))
-
-    sync_sheet.main()
-
-    skipped = [e for e in events if e["event"] == "sync_skipped"]
-    assert len(skipped) == 1
-    assert skipped[0]["reason"] == "gsheets_creds_missing"
 
 
 def test_discover_companies_skipped_when_not_onboarded(tmp_path: Path, monkeypatch, capsys):

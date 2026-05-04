@@ -2,7 +2,6 @@ data/.env
 config/gmail_token.json
 config/gmail_oauth_client.json
 config/gsheets_creds.json
-config/sheet_id.txt
 config/ntfy_topic.txt
 config/form_responses_sheet_id.txt
 config/paths.env

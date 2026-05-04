@@ -191,10 +191,8 @@ def main():
             body={"valueInputOption": "RAW", "data": batch_data},
         ).execute()
 
-    # Trigger sync_sheet to push new jobs to the Dashboard
     if processed_count > 0:
-        subprocess.run([sys.executable, f"{BASE}/scripts/sync_sheet.py"], check=False)
-        print(f"\nDone. {processed_count} new job(s) ingested and synced to Dashboard.")
+        print(f"\nDone. {processed_count} new job(s) ingested.")
     else:
         print("No new submissions to process.")
 

@@ -208,7 +208,7 @@ A filter row sits under each column header: substring inputs for Title, Company,
 
 ### `days_since_applied` is live
 
-The column is a spreadsheet-formula field — it updates every time the Sheet refreshes, no re-sync required. On the web page it renders from the DB directly so it's always current.
+The column renders from the DB on every page load, so it's always current.
 
 ### `user_notes` — free text
 
@@ -288,7 +288,7 @@ Each folder renders its Markdown files inline and offers `.docx` downloads. The 
 ---
 
 <details>
-<summary><strong>For advanced users: stage names, POST handlers, and Sheet mirror</strong></summary>
+<summary><strong>For advanced users: stage names and POST handlers</strong></summary>
 
 **Canonical stage names in the DB** (`jobs.stage` column):
 
@@ -317,7 +317,7 @@ Each folder renders its Markdown files inline and offers `.docx` downloads. The 
 - `/board/jobs/{fp}/reactivate` — Waitlist → scored
 - `/board/jobs/{fp}/notes` — user_notes save
 
-No poll cycle. The Google Sheet (Dashboard, Applied, Review, Waitlist, Rejected Applications tabs) is a one-way synced mirror via `sync_sheet.py` every 15 min — a glance-at-your-phone view, not a write surface.
+No poll cycle. The web UI is the canonical surface for everything — board state, materials, stats, ingest.
 
 **Scheduler timing:**
 
@@ -325,7 +325,6 @@ No poll cycle. The Google Sheet (Dashboard, Applied, Review, Waitlist, Rejected 
 |---|---|---|
 | triage | 00:00 daily | Fetch + clean + score; writes `pipeline_complete` event |
 | watchdog | every 10 min | Resets jobs stuck in `prep_in_progress` > 60 min |
-| sync_sheet | every 15 min | One-way DB → Google Sheet mirror |
 | notify-apply | 06:00 daily | "Time to triage" ntfy |
 | notify-stats | 06:15 daily | Morning funnel summary |
 | notify-health | 07:00 daily | Health-check alerts via ntfy |
