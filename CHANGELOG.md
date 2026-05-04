@@ -10,6 +10,10 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+## [0.17.0] — 2026-05-04
+
+Minor bump shipping the in-app notification dashboard + history (#440) plus the reject_reason vocabulary hygiene cleanup (#445). User-visible: notification bell + HTMX-polled unread badge in the top nav, new `/notifications/` page with kind/read filters, dashboard reads from a new `notifications` SQLite table; ntfy outages no longer lose the audit trail. Operator-required action: run the one-shot `reject_reason` cleanup script (idempotent) and add `"Company passed"` to operator stack's `config/reject_reasons.yaml`. Operator's stack and `findajob-test` track `:latest`; tester stacks (alice, papa, dave, judy, tango) currently on `:v0.15` bump straight to `:v0.17` in this cohort wave.
+
 ### Added
 - **In-app notification dashboard + history (#440).** Pipeline notifications (daily stats, apply reminders, health checks, scoreboard, feedback reviews, CI alerts, discovery runs, gmail-auth failures, manual sends) now persist to a new `notifications` table. New `/notifications/` page renders a reverse-chronological list with filters by kind + read/unread state; bell icon + HTMX-polled unread badge in the top nav (every 60s); `POST /notifications/{id}/read` and `/notifications/mark-all-read` for triage. `scripts/notify.py:send()` now writes the row BEFORE the ntfy.sh POST so ntfy outages don't lose the audit trail (`delivery_status='failed'` + `delivery_error` populated when curl exits non-zero). Operator-mode `/admin/stacks/` table gains an "Unread notifs" column. Generalizes the ntfy fire-and-forget surface and lays the foundation for the rejection-detection signal coming in #362.
 - `"Company passed"` added to `_DEFAULT_REJECT_REASONS` (#445). It was already the system-default fill-in at `findajob.web.routes.board_actions._board_not_selected` (when operator clicks "Not Selected" without picking a sub-reason) but wasn't in the canonical vocabulary, so it got flagged as a non-canonical drift value. Now first-class. Onboarding interviewer prompt updated to always emit it alongside the other operational universals (`Already Applied`, `Stale/Closed`, `Other`).
@@ -769,7 +773,8 @@ from GHCR and deployed via Docker Compose on a shared Docker host.
 - Documentation cleanup — removing `sigoden/aichat` references in favor of
   `blob42/aichat-ng` — is tracked in #70
 
-[Unreleased]: https://github.com/brockamer/findajob/compare/v0.16.0...HEAD
+[Unreleased]: https://github.com/brockamer/findajob/compare/v0.17.0...HEAD
+[0.17.0]: https://github.com/brockamer/findajob/releases/tag/v0.17.0
 [0.16.0]: https://github.com/brockamer/findajob/releases/tag/v0.16.0
 [0.15.0]: https://github.com/brockamer/findajob/releases/tag/v0.15.0
 [0.14.0]: https://github.com/brockamer/findajob/releases/tag/v0.14.0
