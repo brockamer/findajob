@@ -11,6 +11,14 @@ permissions:
   contents: read
   packages: write
 
+# Serialize per-ref so two pushes to the same branch / tag never race on
+# `:latest` (or `:pr-{N}`). Earlier runs finish; later runs queue rather than
+# clobber. Without this, two main merges in close succession can publish
+# `:latest` pointing at the second-to-finish push instead of HEAD (#438).
+concurrency:
+  group: build-image-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build-push:
     runs-on: ubuntu-latest
