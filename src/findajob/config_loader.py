@@ -37,6 +37,7 @@ _DEFAULT_REJECT_REASONS: tuple[str, ...] = (
     "Stale/Closed",
     "Already Applied",
     "Low Fit Score",
+    "Company passed",
     "Other",
 )
 _DEFAULT_TITLE_SIGNAL_REASONS: frozenset[str] = frozenset({"Skills Mismatch", "Low Fit Score"})

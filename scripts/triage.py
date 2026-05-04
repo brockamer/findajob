@@ -430,11 +430,13 @@ def main():
                 )
                 conn.commit()
             else:
-                # Company unresolvable — reject immediately, don't waste a scorer call
+                # Company unresolvable — reject immediately, don't waste a scorer call.
+                # reject_reason is "Other" (canonical) so it doesn't pollute the user-facing
+                # vocabulary; per-row diagnostic lives in pipeline.jsonl via log_event below.
                 conn.execute(
                     """
                     UPDATE jobs SET stage='rejected', stage_updated=?, status='rejected',
-                           reject_reason='Blank Company', updated_at=?
+                           reject_reason='Other', updated_at=?
                     WHERE id=?
                 """,
                     (now, now, job_id),

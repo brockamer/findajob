@@ -531,11 +531,13 @@ Capture the title-signal subset. This becomes `title_signal_reasons:` in
 the emitted YAML — `scripts/analyze_feedback.py` uses exactly this subset
 to mine the prefilter.
 
-Always include the universal `"Already Applied"` and `"Stale/Closed"`
-labels in the final list (they're operational, not field-specific) — and
-always include `"Other"` as the last entry (escape hatch for novel
-reasons). Do **not** include these three in `title_signal_reasons:` — they
-don't represent scorer misses.
+Always include the universal `"Already Applied"`, `"Stale/Closed"`, and
+`"Company passed"` labels in the final list (they're operational, not
+field-specific — `"Company passed"` is the system default when the user
+clicks "Not Selected" without picking a sub-reason, meaning the company
+rejected the application) — and always include `"Other"` as the last
+entry (escape hatch for novel reasons). Do **not** include these four in
+`title_signal_reasons:` — they don't represent scorer misses.
 
 The emitted file is `reject_reasons.yaml` in Group 3 (Filters). See the
 schema exemplar below.
@@ -1193,13 +1195,15 @@ reasons:
   # Ordered list of labels for the reject-cell dropdown. Order matters
   # (it's the dropdown order — most-common first). Pulled from the
   # candidate's Phase 3i answers. Always include "Already Applied",
-  # "Stale/Closed", and "Other" — they're universal and operational.
+  # "Stale/Closed", "Company passed", and "Other" — they're universal
+  # and operational.
   - '[user_label_1]'
   - '[user_label_2]'
   - '[user_label_3]'
   # ... 6–10 labels typical
   - "Already Applied"
   - "Stale/Closed"
+  - "Company passed"
   - "Other"
 
 title_signal_reasons:
@@ -1208,8 +1212,8 @@ title_signal_reasons:
   # showing it. `scripts/analyze_feedback.py` mines title n-grams
   # from these rejections to propose new prefilter rules.
   #
-  # Do NOT include "Already Applied", "Stale/Closed", or "Other" —
-  # those are not scorer misses.
+  # Do NOT include "Already Applied", "Stale/Closed", "Company passed",
+  # or "Other" — those are not scorer misses.
   - '[user_label_1]'   # subset only
   - '[user_label_2]'
 ```
@@ -1217,7 +1221,8 @@ title_signal_reasons:
 Pull `reasons:` directly from the candidate's Phase 3i first answer (in their
 order of importance to them). Pull `title_signal_reasons:` from their second
 answer (the title-only subset). Always append `"Already Applied"`,
-`"Stale/Closed"`, `"Other"` as the last three entries of `reasons:`.
+`"Stale/Closed"`, `"Company passed"`, `"Other"` as the last four entries of
+`reasons:`.
 
 ### `display_name.txt`, `timezone.txt`, `ntfy_topic.txt` (the three plain-text files)
 
