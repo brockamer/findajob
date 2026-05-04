@@ -10,6 +10,10 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+## [0.16.0] — 2026-05-04
+
+Minor bump shipping the Google Sheets sync retirement (#331, closes #209) plus the aichat-ng config/catalog cleanup (#67). User-visible: the Sheet at the previously-synced ID stops updating — use the web UI at `/board/*` instead. Operator's stack and `findajob-test` track `:latest`; tester stacks (alice, papa, dave, judy, tango) currently on `:v0.15` stay on `:v0.15` until the next cohort wave.
+
 ### Changed
 - **aichat-ng config slimmed to the two clients the pipeline actually uses (#67).** After the OpenRouter Phase 2 cutover (#250) the `openai`, `gemini` (chat), `groq`, and `xai` direct-client blocks in `ops/aichat-ng/config.yaml.example` were dead — every chat model now reaches its provider through `openrouter`. Removed those four blocks plus the corresponding env-var placeholders from `ops/entrypoint.sh`'s sed-seed loop (`OPENAI_API_KEY`, `GROQ_API_KEY`, `XAI_API_KEY` no longer substituted). Remaining direct clients are `openrouter` (every chat call) and `gemini-embed` (RAG embeddings only — REPL-opt-in; #267 tracks deprecation). First-seed now has 2 plaintext keys instead of 5. `data/.env.example` and the test fixtures dropped the dead env-var entries to match.
 - **`ops/aichat-ng/models-override.yaml` trimmed from 25 providers to 1 (`openrouter`)** — 2080 lines → 468. The pipeline only ever resolves `model: openrouter:<provider>/<model>` strings; the other 24 provider sections (openai, claude, mistral, gemini chat, vertexai, bedrock, cohere, perplexity, etc.) were dead catalog data. Verified end-to-end against the installed `aichat-ng v0.31.0` binary: all 6 model strings invoked by `config/roles/*.md` resolve correctly post-trim. The lone exception (`openrouter:anthropic/claude-sonnet-4-6` referenced by `speculative_roles_synth.md` with a dash instead of dot) was a pre-existing typo unaffected by this change; filed for follow-up.
@@ -751,7 +755,8 @@ from GHCR and deployed via Docker Compose on a shared Docker host.
 - Documentation cleanup — removing `sigoden/aichat` references in favor of
   `blob42/aichat-ng` — is tracked in #70
 
-[Unreleased]: https://github.com/brockamer/findajob/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/brockamer/findajob/compare/v0.16.0...HEAD
+[0.16.0]: https://github.com/brockamer/findajob/releases/tag/v0.16.0
 [0.15.0]: https://github.com/brockamer/findajob/releases/tag/v0.15.0
 [0.14.0]: https://github.com/brockamer/findajob/releases/tag/v0.14.0
 [0.13.0]: https://github.com/brockamer/findajob/releases/tag/v0.13.0
