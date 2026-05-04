@@ -49,6 +49,7 @@ _ALL_DESTINATIONS: dict[str, str] = {
     "business_sector_employers_reference.md": "config/business_sector_employers_reference.md",
     "prefilter_rules.yaml": "config/prefilter_rules.yaml",
     "in_domain_patterns.yaml": "config/in_domain_patterns.yaml",
+    "reject_reasons.yaml": "config/reject_reasons.yaml",
     "display_name.txt": "candidate_context/display_name.txt",
     "timezone.txt": "data/timezone",
 }

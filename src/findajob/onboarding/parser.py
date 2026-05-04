@@ -21,6 +21,7 @@ ALLOWED_FILENAMES: tuple[str, ...] = (
     "business_sector_employers_reference.md",
     "prefilter_rules.yaml",
     "in_domain_patterns.yaml",
+    "reject_reasons.yaml",
     "display_name.txt",
     "timezone.txt",
     "ntfy_topic.txt",

@@ -17,6 +17,10 @@ _CLEAN_BLOCKS = {
     "jsearch_queries.txt": "senior backend engineer\n",
     "prefilter_rules.yaml": "hard_rejects:\n  spam:\n    - '\\bspam\\b'\n",
     "in_domain_patterns.yaml": "positive:\n  - '\\bbackend\\s+engineer\\b'\n",
+    "reject_reasons.yaml": (
+        "reasons:\n  - 'Skills Mismatch'\n  - 'Already Applied'\n  - 'Other'\n"
+        "title_signal_reasons:\n  - 'Skills Mismatch'\n"
+    ),
     "display_name.txt": "Test Operator",
     "timezone.txt": "America/Los_Angeles",
     "ntfy_topic.txt": "tester-jobsearch-2026-17",
@@ -27,15 +31,15 @@ def _clean_emission() -> str:
     return "\n\n".join(_wrap(n, b) for n, b in _CLEAN_BLOCKS.items())
 
 
-def test_allowed_filenames_are_exactly_nine() -> None:
-    """#283: jsearch_queries.txt moved to OPTIONAL (was 10, now 9 ALLOWED).
+def test_allowed_filenames_are_exactly_ten() -> None:
+    """#437: reject_reasons.yaml added (was 9, now 10 ALLOWED).
 
-    Pre-#283: profile.md, master_resume.md, target_companies.md,
-    business_sector_employers_reference.md, jsearch_queries.txt,
-    prefilter_rules.yaml, in_domain_patterns.yaml, display_name.txt,
-    timezone.txt, ntfy_topic.txt.
+    Pre-#437: profile.md, master_resume.md, target_companies.md,
+    business_sector_employers_reference.md, prefilter_rules.yaml,
+    in_domain_patterns.yaml, display_name.txt, timezone.txt, ntfy_topic.txt.
     """
-    assert len(ALLOWED_FILENAMES) == 9
+    assert len(ALLOWED_FILENAMES) == 10
+    assert "reject_reasons.yaml" in ALLOWED_FILENAMES
     assert "jsearch_queries.txt" not in ALLOWED_FILENAMES
     assert "jsearch_queries.txt" in OPTIONAL_FILENAMES
 

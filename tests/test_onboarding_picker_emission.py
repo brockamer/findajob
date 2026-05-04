@@ -35,6 +35,12 @@ patterns: []
 patterns: []
 <<<END FILE: in_domain_patterns.yaml>>>
 
+<<<FILE: reject_reasons.yaml>>>
+reasons:
+  - 'Other'
+title_signal_reasons: []
+<<<END FILE: reject_reasons.yaml>>>
+
 <<<FILE: display_name.txt>>>
 Test Candidate
 <<<END FILE: display_name.txt>>>

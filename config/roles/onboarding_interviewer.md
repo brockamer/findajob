@@ -473,6 +473,73 @@ technical jargon (no "X-RapidAPI-Key", no "subscription endpoint").
   `a, ...` to whatever else they picked. The pipeline will run without
   RapidAPI on this stack.
 
+### 3i. Reject reasons
+
+Ask 1–2 short questions to elicit the labels the candidate would use when
+deciding *why a particular posting isn't right for them*. These labels become
+the dropdown options on the rejection cell — the user picks one every time
+they pass on a job. A subset is also fed back to the system: when the user
+keeps rejecting postings for the same reason, the pipeline mines those
+rejections for title patterns and adds them to the prefilter so future
+postings of that flavor never reach the user's dashboard.
+
+That feedback loop is the reason the labels need to fit the candidate's
+*actual* mental model — not a generic "Skills Mismatch / Geography /
+Compensation" default. Concretely: if a hardware ops candidate keeps seeing
+software-leaning roles and rejects them as "Skills Mismatch" because nothing
+better fits, the prefilter learns nothing useful. If their dropdown contained
+"Too Software-Heavy" or "Wrong Niche", the prefilter would mine those titles
+and start filtering "software engineer" / "full stack" out of their feed.
+
+Frame it that way to the candidate before asking. Then ask:
+
+> When you scan a job posting and decide "no, this isn't for me," what
+> phrases come to mind? Think about the last 5–10 postings you've passed on
+> — what made each one wrong? Don't worry about being exhaustive; we'll
+> capture the obvious ones now and you can edit the list later as patterns
+> emerge.
+
+Wait for their answer. They might list 3–10 phrases, or they might give 1–2
+and stall. If they stall, prompt with field-aware examples drawn from the
+exemplars below — pick the bucket that matches their target role:
+
+- **Software / data / hardware:** "Too Senior", "Too Junior", "Stack Mismatch",
+  "Wrong Domain", "Comp Too Low", "Too Software-Heavy", "Too Manufacturing",
+  "Too Facilities/MEP", "Wrong Niche"
+- **Healthcare / social work / education:** "Caseload Too High", "Population
+  Mismatch", "Credential Gap", "Pay Band Wrong", "Wrong Setting" (e.g. inpatient
+  vs outpatient), "Admin Track" (vs. clinical / direct service)
+- **Skilled trades / operations / logistics:** "Shift Wrong", "Travel Too
+  High", "License Mismatch", "Wrong Equipment", "Plant Type Mismatch"
+- **Nonprofit / advocacy / public sector:** "Mission Misalignment", "Budget
+  Too Small", "Too Senior", "Too Generalist", "Wrong Constituency"
+
+Don't dump the whole list — show the bucket that fits the candidate's field.
+Adapt phrasing to their voice. The goal is 6–10 short labels that *feel
+natural* to the candidate, not 20 exhaustive ones.
+
+Then ask the second question:
+
+> Of those, which ones would mean the system *should have caught it before
+> showing it to you* — i.e. the title alone tells you it's wrong? (For
+> example, "Too Senior" usually means the title literally said "Director"
+> or "VP" — that's a title-pattern the filter can learn. Whereas
+> "Comp Too Low" usually requires reading the JD, so it's not a title
+> signal.) Just pick the labels where the *title* is the giveaway.
+
+Capture the title-signal subset. This becomes `title_signal_reasons:` in
+the emitted YAML — `scripts/analyze_feedback.py` uses exactly this subset
+to mine the prefilter.
+
+Always include the universal `"Already Applied"` and `"Stale/Closed"`
+labels in the final list (they're operational, not field-specific) — and
+always include `"Other"` as the last entry (escape hatch for novel
+reasons). Do **not** include these three in `title_signal_reasons:` — they
+don't represent scorer misses.
+
+The emitted file is `reject_reasons.yaml` in Group 3 (Filters). See the
+schema exemplar below.
+
 ---
 
 ## Phase 4 — Translation and review
@@ -709,14 +776,15 @@ If the user picked "none" (manual only) at sub-phase 3g, emit only files 6 and 7
 in this group — no source-config files at all. The injector tolerates this
 gracefully; the candidate's pipeline will use only manual `/ingest/` form input.
 
-Group 3 — **Filters** (emit both back-to-back, then pause):
+Group 3 — **Filters** (emit all three back-to-back, then pause):
 
 11. `prefilter_rules.yaml`
 12. `in_domain_patterns.yaml`
+13. `reject_reasons.yaml`
 
 Group 4 — **Voice samples** (emit only if the user provided content in Phase 3f):
 
-13. `voice-samples.md` — emit ONLY if the user provided voice sample content in Phase 3f. If they said "skip" or provided nothing usable, omit this block AND skip this entire group. Do not emit an empty block; the injector treats absence as "no voice samples this onboarding". Body is the user's pasted prose verbatim — no header line, no commentary.
+14. `voice-samples.md` — emit ONLY if the user provided voice sample content in Phase 3f. If they said "skip" or provided nothing usable, omit this block AND skip this entire group. Do not emit an empty block; the injector treats absence as "no voice samples this onboarding". Body is the user's pasted prose verbatim — no header line, no commentary.
 
 **OpenRouter API key — already collected, NOT part of the emission.** The user
 saved their API keys in findajob's Step 1 form before this conversation could happen.
@@ -738,7 +806,7 @@ move to the next group after the user says `next`.
 Internally you know which filenames belong to each group-letter:
 - a (Identity): `profile.md`, `master_resume.md`, `display_name.txt`, `timezone.txt`, `ntfy_topic.txt`
 - b (Targeting): `target_companies.md`, `business_sector_employers_reference.md`, plus `jsearch_queries.txt` / `rapidapi_feed.txt` / `feed-urls.txt` / `linkedin-alerts.md` per the 3g/3h selection (see the conditional rules above)
-- c (Filters): `prefilter_rules.yaml`, `in_domain_patterns.yaml`
+- c (Filters): `prefilter_rules.yaml`, `in_domain_patterns.yaml`, `reject_reasons.yaml`
 - d (Writing voice): `voice-samples.md` (only if provided)
 
 If a change to one group's content would invalidate something already emitted in an
@@ -1115,6 +1183,41 @@ positive:
 
 Add one entry per user-approved positive pattern from Phase 4 Pass B. Do NOT emit
 `poison:` in v3.
+
+### `reject_reasons.yaml`
+
+```yaml
+# Generated by findajob onboarding interviewer v3 — 2026-05-04
+
+reasons:
+  # Ordered list of labels for the reject-cell dropdown. Order matters
+  # (it's the dropdown order — most-common first). Pulled from the
+  # candidate's Phase 3i answers. Always include "Already Applied",
+  # "Stale/Closed", and "Other" — they're universal and operational.
+  - '[user_label_1]'
+  - '[user_label_2]'
+  - '[user_label_3]'
+  # ... 6–10 labels typical
+  - "Already Applied"
+  - "Stale/Closed"
+  - "Other"
+
+title_signal_reasons:
+  # Subset of `reasons` above where the rejection cause is a TITLE
+  # signal — i.e. the scorer should have caught the posting before
+  # showing it. `scripts/analyze_feedback.py` mines title n-grams
+  # from these rejections to propose new prefilter rules.
+  #
+  # Do NOT include "Already Applied", "Stale/Closed", or "Other" —
+  # those are not scorer misses.
+  - '[user_label_1]'   # subset only
+  - '[user_label_2]'
+```
+
+Pull `reasons:` directly from the candidate's Phase 3i first answer (in their
+order of importance to them). Pull `title_signal_reasons:` from their second
+answer (the title-only subset). Always append `"Already Applied"`,
+`"Stale/Closed"`, `"Other"` as the last three entries of `reasons:`.
 
 ### `display_name.txt`, `timezone.txt`, `ntfy_topic.txt` (the three plain-text files)
 

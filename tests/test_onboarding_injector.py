@@ -36,6 +36,10 @@ _MIN_FILES = {
     "jsearch_queries.txt": "senior backend engineer\n",
     "prefilter_rules.yaml": "hard_rejects:\n  spam:\n    - '\\bspam\\b'\n",
     "in_domain_patterns.yaml": "positive:\n  - '\\bbackend\\b'\n",
+    "reject_reasons.yaml": (
+        "reasons:\n  - 'Skills Mismatch'\n  - 'Already Applied'\n  - 'Other'\n"
+        "title_signal_reasons:\n  - 'Skills Mismatch'\n"
+    ),
     "display_name.txt": "Test Operator",
     "timezone.txt": "America/Los_Angeles",
     "ntfy_topic.txt": "tester-jobsearch-2026-17",
@@ -55,6 +59,10 @@ def _minimal_found_dict() -> dict[str, str]:
         "business_sector_employers_reference.md": "## Categories\n### Foo\n- Acme\n",
         "prefilter_rules.yaml": "hard_rejects:\n  spam:\n    - '\\bspam\\b'\n",
         "in_domain_patterns.yaml": "positive:\n  - '\\bbackend\\s+engineer\\b'\n",
+        "reject_reasons.yaml": (
+            "reasons:\n  - 'Skills Mismatch'\n  - 'Already Applied'\n  - 'Other'\n"
+            "title_signal_reasons:\n  - 'Skills Mismatch'\n"
+        ),
         "display_name.txt": "Test User",
         "timezone.txt": "America/Los_Angeles",
         "ntfy_topic.txt": "test-topic-2026",

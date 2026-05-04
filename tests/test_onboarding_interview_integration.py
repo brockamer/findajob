@@ -262,6 +262,7 @@ def test_full_interview_flow_writes_all_files_and_sentinel(
         base_root / "config" / "jsearch_queries.txt",
         base_root / "config" / "prefilter_rules.yaml",
         base_root / "config" / "in_domain_patterns.yaml",
+        base_root / "config" / "reject_reasons.yaml",
         base_root / "data" / "timezone",
         base_root / "data" / ".env",  # ntfy_topic merged here
     ]
