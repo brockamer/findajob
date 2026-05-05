@@ -94,7 +94,16 @@ def gather(stack: StackPath, *, now: datetime | None = None) -> StackHealth:
                     unread_notifications = 0
         except sqlite3.Error as e:
             error = f"sqlite: {e}"
-        except Exception as e:  # defensive — don't let one stack crash the page
+        except Exception as e:
+            # Intentionally broad. The narrower sqlite3.Error arm above
+            # covers DB-engine failures, but this gather() runs under a
+            # TOCTOU race (the stack's container can rotate the DB out
+            # from under us between is_file() and connect()) and against
+            # foreign-uid bind mounts whose surface includes raw OSError,
+            # PermissionError, and unicode failures from corrupted paths.
+            # The "one broken stack must not crash the dashboard" invariant
+            # is load-bearing here — do not narrow this arm without first
+            # filing a per-source coroutine refactor.
             logger.warning("admin_stacks: gather failed for %s: %s", stack.handle, e)
             error = f"{type(e).__name__}: {e}"
 
@@ -113,15 +122,20 @@ def gather(stack: StackPath, *, now: datetime | None = None) -> StackHealth:
             if ts is None:
                 continue
             ev = event.get("event")
+            # `ts > cutoff_24h` (strict) matches `_freshness` below, which
+            # uses `age < 24h` (strict) — both treat exactly-24h-ago as
+            # OUT of the window. Was `>=` before #359; the asymmetric
+            # case was never hit in production but the convention drift
+            # was real.
             if ev == "pipeline_complete":
                 if last_triage_complete is None:
                     last_triage_complete = ts
-                if ts >= cutoff_24h:
+                if ts > cutoff_24h:
                     success_24h += 1
             elif ev == "pipeline_terminated":
                 if last_triage_failed is None:
                     last_triage_failed = ts
-                if ts >= cutoff_24h:
+                if ts > cutoff_24h:
                     failure_24h += 1
             elif ev == "aichat_failure":
                 if last_aichat is None:
@@ -153,12 +167,22 @@ def gather(stack: StackPath, *, now: datetime | None = None) -> StackHealth:
 
 
 def _parse_ts(raw: object) -> datetime | None:
+    """Parse an ISO-8601 timestamp; coerce naïve values to UTC.
+
+    `findajob.utils.log_event` always emits tz-aware ISO strings, but a
+    hand-edited or older log file may contain naïve timestamps. Comparing
+    those against `cutoff_24h` (tz-aware) raises TypeError and crashes
+    the dashboard render. Coerce here so the comparison is always valid.
+    """
     if not isinstance(raw, str):
         return None
     try:
-        return datetime.fromisoformat(raw)
+        dt = datetime.fromisoformat(raw)
     except ValueError:
         return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC)
+    return dt
 
 
 def _freshness(last: datetime | None, now: datetime) -> Freshness:

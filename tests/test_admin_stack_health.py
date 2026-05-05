@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from unittest.mock import patch
 
 from findajob.admin.stack_discovery import StackPath
 from findajob.admin.stack_health import StackHealth, gather
@@ -161,3 +162,65 @@ def test_returns_stackhealth_dataclass(tmp_path: Path) -> None:
     sp = _stackpath(tmp_path)
     h = gather(sp, now=NOW)
     assert isinstance(h, StackHealth)
+
+
+def test_naive_timestamp_is_coerced_to_utc(tmp_path: Path) -> None:
+    """A naïve ISO timestamp (older log file or hand-edited entry) must
+    not crash the dashboard with a TypeError on comparison against the
+    tz-aware cutoff. Coerced to UTC and counted normally.
+    """
+    sp = _stackpath(tmp_path)
+    build_pipeline_db(sp.db_path)
+    naive = (NOW.replace(tzinfo=None) - timedelta(hours=10)).isoformat()
+    build_pipeline_jsonl(
+        sp.jsonl_path,
+        [{"ts": naive, "event": "pipeline_complete"}],
+    )
+    h = gather(sp, now=NOW)
+    assert h.last_triage_complete is not None
+    assert h.triage_success_24h == 1
+    assert h.freshness == "fresh"
+
+
+def test_connect_uri_includes_immutable_flag(tmp_path: Path) -> None:
+    """gather() MUST connect with `immutable=1` in the URI so cross-uid
+    bind-mount reads (operator container reading a tester DB owned by a
+    different host uid) don't fail on the WAL/shm sidecars whose perms
+    `mode=ro` alone doesn't relax.
+
+    Asserted via mock because tmp DBs are owned by the test process,
+    so a regression that drops `immutable=1` wouldn't surface in the
+    other tests in this file.
+    """
+    sp = _stackpath(tmp_path)
+    build_pipeline_db(sp.db_path)
+    build_pipeline_jsonl(sp.jsonl_path, [])
+
+    with patch("findajob.admin.stack_health.sqlite3.connect", wraps=__import__("sqlite3").connect) as mock_connect:
+        gather(sp, now=NOW)
+
+    assert mock_connect.called, "gather() did not call sqlite3.connect"
+    uri = mock_connect.call_args.args[0]
+    assert "immutable=1" in uri, f"sqlite3.connect URI lost immutable=1 flag: {uri!r}"
+    assert "mode=ro" in uri, f"sqlite3.connect URI lost mode=ro flag: {uri!r}"
+    assert mock_connect.call_args.kwargs.get("uri") is True
+
+
+def test_24h_window_excludes_exact_24h_boundary(tmp_path: Path) -> None:
+    """24h-window count uses strict `>`, matching `_freshness`'s strict
+    `<` (where exactly 24h ago is "late", not "fresh"). An event at
+    exactly the cutoff is out of the window.
+    """
+    sp = _stackpath(tmp_path)
+    build_pipeline_db(sp.db_path)
+    boundary = (NOW - timedelta(hours=24)).isoformat()
+    just_inside = (NOW - timedelta(hours=23, minutes=59)).isoformat()
+    build_pipeline_jsonl(
+        sp.jsonl_path,
+        [
+            {"ts": boundary, "event": "pipeline_complete"},
+            {"ts": just_inside, "event": "pipeline_complete"},
+        ],
+    )
+    h = gather(sp, now=NOW)
+    assert h.triage_success_24h == 1

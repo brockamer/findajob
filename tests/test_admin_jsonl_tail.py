@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
+
+import pytest
 
 from findajob.admin.jsonl_tail import tail_events
 
@@ -56,6 +59,23 @@ def test_malformed_line_is_skipped(tmp_path: Path) -> None:
     )
     events = list(tail_events(p))
     assert [e["event"] for e in events] == ["pipeline_complete", "pipeline_started"]
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses chmod 0o000")
+def test_unreadable_file_returns_empty(tmp_path: Path) -> None:
+    """A chmod-0o000 JSONL (bind-mount perm flip / cross-uid) yields []
+    rather than raising PermissionError into the dashboard handler.
+    """
+    p = tmp_path / "locked.jsonl"
+    _write_events(
+        p,
+        [{"ts": "2026-04-30T00:00:00+00:00", "event": "pipeline_complete"}],
+    )
+    p.chmod(0o000)
+    try:
+        assert list(tail_events(p)) == []
+    finally:
+        p.chmod(0o644)  # let pytest clean up
 
 
 def test_partial_first_line_at_buffer_boundary_is_dropped(tmp_path: Path) -> None:

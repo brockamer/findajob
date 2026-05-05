@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
+
+import pytest
 
 from findajob.admin.stack_discovery import StackPath, discover_stacks
 
@@ -57,6 +60,21 @@ def test_paths_resolve_to_state_subdirs(tmp_path: Path) -> None:
     assert s.root == tmp_path / "findajob-alice"
     assert s.db_path == tmp_path / "findajob-alice" / "state" / "data" / "pipeline.db"
     assert s.jsonl_path == tmp_path / "findajob-alice" / "state" / "logs" / "pipeline.jsonl"
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses chmod 0o000")
+def test_unreadable_root_returns_empty(tmp_path: Path) -> None:
+    """A stacks_root with restrictive perms (foreign-uid bind mount,
+    chmod-stripped parent) yields [] rather than 500-ing the dashboard.
+    """
+    root = tmp_path / "stacks"
+    root.mkdir()
+    _make_stack(root, "alice")
+    root.chmod(0o000)
+    try:
+        assert discover_stacks(root) == []
+    finally:
+        root.chmod(0o755)  # let pytest clean up
 
 
 def test_stackpath_is_frozen_dataclass(tmp_path: Path) -> None:

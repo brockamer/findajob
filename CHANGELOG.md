@@ -10,6 +10,9 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Changed
+- **Operator-mode dashboard hardened against bind-mount edge cases (#359).** `findajob.admin.jsonl_tail.tail_events` now catches `OSError` (covers `PermissionError`, not just `FileNotFoundError`) at both `os.path.getsize` and `open()`, so a chmod-stripped or mid-remount log file degrades to "no events" rather than 500-ing the page. `findajob.admin.stack_discovery.discover_stacks` catches `OSError` on `iterdir()` and returns `[]` with a logger warning rather than letting a restrictive `stacks_root` blank the dashboard. `findajob.admin.stack_health._parse_ts` coerces naïve ISO timestamps to UTC so a hand-edited or older log entry can't crash the render with a TypeError. The 24h-window event count now uses strict `>` (matching `_freshness`'s strict `<` — exactly-24h-ago is OUT of both windows) instead of mismatched `>=`. Operator-only impact; no schema or config changes.
+
 ## [0.18.0] — 2026-05-05
 
 Minor bump shipping per-tenant geography filtering for the three RapidAPI adapters (#372 / #450) plus two observability/correctness fixes: gmail per-sender logging + diagnostic override (#449) and the notify dead-feed detector false-positive correction. User-visible: each tenant can now write `config/target_locations.txt` to scope `jobs-api14`, `jobs-api14-indeed`, and `jsearch` queries to specific cities/regions instead of the hardcoded `United States`. Existing stacks without the file continue fetching `United States`-wide — no breaking change. Operator's stack and `findajob-test` track `:latest`; tester stacks (alice, papa, dave, judy, tango) currently on `:v0.17` bump to `:v0.18` in this cohort wave.

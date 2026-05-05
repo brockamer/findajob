@@ -19,22 +19,33 @@ def tail_events(path: Path, *, max_bytes: int = 1_048_576) -> Iterator[dict]:
     """Yield decoded JSON events from the last ~`max_bytes` of `path`,
     newest first.
 
-    Returns an empty iterator when the file is missing or empty. Skips
-    malformed lines with a single WARNING log per occurrence. When the
-    tail buffer cuts mid-line, the partial first line is discarded so
-    every yielded value is valid JSON.
+    Returns an empty iterator when the file is missing, empty, or
+    unreadable (e.g. a bind mount mid-remount, or a stack whose log
+    file landed at a restrictive mode). Skips malformed lines with a
+    single WARNING log per occurrence. When the tail buffer cuts
+    mid-line, the partial first line is discarded so every yielded
+    value is valid JSON.
     """
+    # Catch OSError (parent of FileNotFoundError AND PermissionError) so
+    # a foreign-uid / chmod-stripped log file degrades to "no events"
+    # rather than 500-ing the operator dashboard. The bounded-tail
+    # design exists exactly to keep this path defensive.
     try:
         size = os.path.getsize(path)
-    except FileNotFoundError:
+    except OSError:
+        logger.warning("admin_stacks.jsonl_tail: cannot stat %s", path)
         return
     if size == 0:
         return
 
     read_len = min(size, max_bytes)
-    with open(path, "rb") as f:
-        f.seek(size - read_len)
-        chunk = f.read(read_len)
+    try:
+        with open(path, "rb") as f:
+            f.seek(size - read_len)
+            chunk = f.read(read_len)
+    except OSError:
+        logger.warning("admin_stacks.jsonl_tail: cannot open %s", path)
+        return
 
     text = chunk.decode("utf-8", errors="replace")
     lines = text.splitlines()
