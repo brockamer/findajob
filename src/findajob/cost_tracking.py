@@ -25,6 +25,33 @@ import yaml
 from findajob.paths import BASE
 
 _PRICING_PATH = Path(BASE) / "config" / "model_pricing.yaml"
+_ROLES_DIR = Path(BASE) / "config" / "roles"
+
+
+def role_model(role_name: str, roles_dir: Path | None = None) -> str:
+    """Read the ``model:`` field from a role's YAML frontmatter.
+
+    Returns ``"unknown"`` if the role file is missing or has no ``model:``
+    line; the heuristic in ``estimate_cost_usd`` then falls back to the
+    conservative default rate from ``config/model_pricing.yaml``.
+
+    ``roles_dir`` is for tests; production callers omit it and read from
+    ``$BASE/config/roles/``.
+    """
+    base = roles_dir if roles_dir is not None else _ROLES_DIR
+    role_path = base / f"{role_name}.md"
+    try:
+        with open(role_path) as f:
+            in_front = False
+            for line in f:
+                if line.strip() == "---":
+                    in_front = not in_front
+                    continue
+                if in_front and line.startswith("model:"):
+                    return line.split(":", 1)[1].strip()
+    except OSError:
+        pass
+    return "unknown"
 
 
 def _load_pricing() -> tuple[dict, dict]:

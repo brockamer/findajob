@@ -20,6 +20,7 @@ import sys
 import time
 from datetime import UTC, datetime
 
+from findajob.cost_tracking import role_model
 from findajob.paths import AICHAT, BASE
 from findajob.scorer_prefilter import prefilter_score
 from findajob.utils import jd_is_usable, load_env, log_event, validate_llm_json, write_audit
@@ -29,24 +30,7 @@ SCHEMA_PATH = f"{BASE}/config/scoring_schema.json"
 PROFILE_PATH = f"{BASE}/candidate_context/profile.md"
 
 
-def _role_model(role_name):
-    """Read the model: field from a role's YAML frontmatter."""
-    role_path = f"{BASE}/config/roles/{role_name}.md"
-    try:
-        with open(role_path) as f:
-            in_front = False
-            for line in f:
-                if line.strip() == "---":
-                    in_front = not in_front
-                    continue
-                if in_front and line.startswith("model:"):
-                    return line.split(":", 1)[1].strip()
-    except OSError:
-        pass
-    return "unknown"
-
-
-SCORER_MODEL = _role_model("job_scorer")
+SCORER_MODEL = role_model("job_scorer")
 
 load_env()
 

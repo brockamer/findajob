@@ -21,7 +21,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from findajob.cleaning import fingerprint, is_coarse_location, loose_fingerprint, normalize
-from findajob.cost_tracking import log_call
+from findajob.cost_tracking import log_call, role_model
 from findajob.fetchers import (
     fetch_ashby_jobs,
     fetch_gmail_jobs,
@@ -60,24 +60,7 @@ CONNECTIONS = f"{BASE}/data/connections.csv"
 PROFILE_PATH = f"{BASE}/candidate_context/profile.md"
 
 
-def _role_model(role_name):
-    """Read the model: field from a role's YAML frontmatter."""
-    role_path = f"{BASE}/config/roles/{role_name}.md"
-    try:
-        with open(role_path) as f:
-            in_front = False
-            for line in f:
-                if line.strip() == "---":
-                    in_front = not in_front
-                    continue
-                if in_front and line.startswith("model:"):
-                    return line.split(":", 1)[1].strip()
-    except OSError:
-        pass
-    return "unknown"
-
-
-SCORER_MODEL = _role_model("job_scorer")
+SCORER_MODEL = role_model("job_scorer")
 SCORE_WORKERS = 6  # concurrent LLM scoring threads (each spawns aichat subprocess)
 
 load_env()
