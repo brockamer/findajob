@@ -7,7 +7,7 @@
 # aichat-ng model string, so "claude:claude-opus-4-6:thinking" matches
 # "claude:claude-opus-4-6" if ":thinking" isn't explicitly listed.
 #
-# Last updated: 2026-04-16
+# Last updated: 2026-05-05
 
 default:
   input_per_mtok: 1.00
@@ -31,11 +31,30 @@ models:
   "perplexity:sonar-reasoning-pro":
     input_per_mtok: 2.0
     output_per_mtok: 8.0
-  # OpenRouter
+  # OpenRouter — every production role routes through these strings post-#250.
+  # Legacy `claude:` / `gemini:` / `perplexity:` entries below are kept for any
+  # ad-hoc aichat-ng invocations that still use the direct provider prefix.
   "openrouter:deepseek/deepseek-v3.2":
     input_per_mtok: 0.27
     output_per_mtok: 1.10
-  # Google Gemini (via aichat-ng direct)
+  "openrouter:anthropic/claude-opus-4.7":
+    input_per_mtok: 15.0
+    output_per_mtok: 75.0
+  "openrouter:anthropic/claude-sonnet-4.6":
+    input_per_mtok: 3.0
+    output_per_mtok: 15.0
+  "openrouter:google/gemini-3-flash-preview":
+    input_per_mtok: 0.10
+    output_per_mtok: 0.40
+  "openrouter:perplexity/sonar-reasoning-pro":
+    # Per-request search fee (~$0.005/call) NOT modeled — char-heuristic will
+    # under-attribute by that amount per call. Acceptable within ±30% target.
+    input_per_mtok: 2.0
+    output_per_mtok: 8.0
+  "openrouter:perplexity/sonar-deep-research":
+    input_per_mtok: 5.0
+    output_per_mtok: 20.0
+  # Google Gemini (via aichat-ng direct, legacy)
   "gemini:gemini-3-flash-preview":
     input_per_mtok: 0.10
     output_per_mtok: 0.40
