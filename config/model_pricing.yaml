@@ -7,7 +7,8 @@
 # aichat-ng model string, so "claude:claude-opus-4-6:thinking" matches
 # "claude:claude-opus-4-6" if ":thinking" isn't explicitly listed.
 #
-# Last updated: 2026-05-05
+# Last updated: 2026-05-05 (v2 — opus-4.7 and gemini-3-flash rates corrected
+# against empirical CoreWeave prep verification, #460)
 
 default:
   input_per_mtok: 1.00
@@ -38,14 +39,22 @@ models:
     input_per_mtok: 0.27
     output_per_mtok: 1.10
   "openrouter:anthropic/claude-opus-4.7":
-    input_per_mtok: 15.0
-    output_per_mtok: 75.0
+    # Opus 4.7 priced lower than Opus 4 ($15/$75) at launch. Empirically
+    # verified 2026-05-05 against 5 separate Opus calls in CoreWeave prep:
+    # actual cost = 0.333× of $15/$75 rate-card across 6,769–44,048 input
+    # tokens, ruling out caching as the explanation. (#460)
+    input_per_mtok: 5.0
+    output_per_mtok: 25.0
   "openrouter:anthropic/claude-sonnet-4.6":
     input_per_mtok: 3.0
     output_per_mtok: 15.0
   "openrouter:google/gemini-3-flash-preview":
-    input_per_mtok: 0.10
-    output_per_mtok: 0.40
+    # Gemini 3 Flash Preview is priced higher than Gemini 2 Flash ($0.10/$0.40,
+    # which is what the legacy `gemini:gemini-3-flash-preview` entry below
+    # carried). Back-calculated 2026-05-05 from one Vertex-routed call:
+    # 11,370 in × X + 876 out × 4X = $0.00831 → X ≈ $0.55/Mtok. (#460)
+    input_per_mtok: 0.55
+    output_per_mtok: 2.20
   "openrouter:perplexity/sonar-reasoning-pro":
     # Per-request search fee (~$0.005/call) NOT modeled — char-heuristic will
     # under-attribute by that amount per call. Acceptable within ±30% target.
