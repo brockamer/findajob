@@ -230,14 +230,14 @@ def scrub(config_dir: Path) -> int:
             if changed1:
                 modified = True
                 did_something = True
-                print(f"{PREFIX}: removed rag_embedding_model setting from {config_path}")
+                print(f"{PREFIX}: removed rag_embedding_model setting from {config_path}", file=sys.stderr)
 
             # Op 2: remove gemini-embed client block
             lines, changed2 = remove_gemini_embed_client(lines)
             if changed2:
                 modified = True
                 did_something = True
-                print(f"{PREFIX}: removed gemini-embed client from {config_path}")
+                print(f"{PREFIX}: removed gemini-embed client from {config_path}", file=sys.stderr)
 
             if modified:
                 _write_atomic(config_path, lines)
@@ -246,10 +246,10 @@ def scrub(config_dir: Path) -> int:
     rag_path = config_dir / "rags" / "job_search_rag.yaml"
     if remove_rag_index(config_dir):
         did_something = True
-        print(f"{PREFIX}: removed rag index {rag_path}")
+        print(f"{PREFIX}: removed rag index {rag_path}", file=sys.stderr)
 
     if not did_something:
-        print(f"{PREFIX}: no-op (nothing to remove)")
+        print(f"{PREFIX}: no-op (nothing to remove)", file=sys.stderr)
 
     return 0
 

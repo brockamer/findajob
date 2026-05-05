@@ -174,12 +174,15 @@ def test_fresh_state_all_removed(tmp_path: Path) -> None:
 
     result = run_scrub(tmp_path)
     assert result.returncode == 0
+    # Operational logs go to stderr (stdout must stay clean for entrypoint
+    # smoke tests that capture the output of unrelated container commands).
+    assert result.stdout == ""
 
-    stdout = result.stdout
-    assert "removed rag_embedding_model setting from" in stdout
-    assert "removed gemini-embed client from" in stdout
-    assert "removed rag index" in stdout
-    assert "no-op" not in stdout
+    stderr = result.stderr
+    assert "removed rag_embedding_model setting from" in stderr
+    assert "removed gemini-embed client from" in stderr
+    assert "removed rag index" in stderr
+    assert "no-op" not in stderr
 
     # --- Content assertions ---
     after = cfg.read_text(encoding="utf-8")
@@ -232,7 +235,8 @@ def test_already_clean_noop(tmp_path: Path) -> None:
 
     result = run_scrub(tmp_path)
     assert result.returncode == 0
-    assert "no-op (nothing to remove)" in result.stdout
+    assert result.stdout == ""
+    assert "no-op (nothing to remove)" in result.stderr
 
     # File is unchanged
     assert cfg.read_text(encoding="utf-8") == CLEAN_CONFIG
@@ -247,7 +251,7 @@ def test_already_clean_second_run_noop(tmp_path: Path) -> None:
 
     result2 = run_scrub(tmp_path)  # second run
     assert result2.returncode == 0
-    assert "no-op (nothing to remove)" in result2.stdout
+    assert "no-op (nothing to remove)" in result2.stderr
     assert cfg.read_text(encoding="utf-8") == CLEAN_CONFIG
 
 
@@ -268,14 +272,14 @@ def test_idempotent_fresh_state(tmp_path: Path) -> None:
     # First run — does work
     r1 = run_scrub(tmp_path)
     assert r1.returncode == 0
-    assert "no-op" not in r1.stdout
+    assert "no-op" not in r1.stderr
 
     after_first = cfg.read_text(encoding="utf-8")
 
     # Second run — must no-op
     r2 = run_scrub(tmp_path)
     assert r2.returncode == 0
-    assert "no-op (nothing to remove)" in r2.stdout
+    assert "no-op (nothing to remove)" in r2.stderr
 
     # File unchanged between runs
     assert cfg.read_text(encoding="utf-8") == after_first
@@ -433,7 +437,7 @@ def test_missing_rags_dir_noop(tmp_path: Path) -> None:
     result = run_scrub(tmp_path)
     assert result.returncode == 0
     # Since everything's clean and no rag dir, should be a full no-op
-    assert "no-op (nothing to remove)" in result.stdout
+    assert "no-op (nothing to remove)" in result.stderr
 
 
 # ---------------------------------------------------------------------------

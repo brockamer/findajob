@@ -90,7 +90,7 @@ fi
 # — second-boot is a clean no-op once a stack has been scrubbed.
 if [ -f /app/data/.env ] && grep -q '^GOOGLE_API_KEY=' /app/data/.env; then
     sed -i '/^GOOGLE_API_KEY=/d' /app/data/.env
-    echo "scrub_embedding_client: removed GOOGLE_API_KEY from /app/data/.env"
+    echo "scrub_embedding_client: removed GOOGLE_API_KEY from /app/data/.env" >&2
 fi
 gosu "$PUID:$PGID" python3 /app/scripts/scrub_embedding_client.py --config-dir "$AICHAT_CFG_DIR" || true
 
