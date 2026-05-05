@@ -10,6 +10,13 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Added
+- **Unified LLM cost tracking across all aichat-ng call sites (#48).** Cost-log instrumentation now covers prep_application's 8 stages (company_researcher, briefing_writer, fit_analyst, resume_tailor, resume_change_reviewer, cover_letter_writer, recruiter_critic — including the briefing_writer retry path which writes 2 rows per the billing-truth rule), find_contacts (outreach_drafter), interview_prep, run_speculative_research (candidate_led_briefing + speculative_roles_synth), and company_discoverer. Pre-#48 only the scoring stage populated `cost_log.cost_usd` (~$0.0026/job × 13.5K rows); the higher-spend prep stages (~$2/job per body) had zero telemetry. Mechanism is the existing char-heuristic at `findajob.cost_tracking.log_call` — concurrency-safe by construction, ±20-30% absolute precision, reliable for relative comparisons (which prep stage costs most, week-over-week trend). Reuses `OPENROUTER_API_KEY`; no new credentials required. Unblocks #87 (real-time dashboard + ntfy projection) and #240 (cost-observability epic).
+- **Centralized `role_model` helper at `findajob.cost_tracking.role_model`.** Hoisted from duplicated definitions in `scripts/triage.py:63` and `scripts/rescore_all.py:32`. Reads a role's frontmatter `model:` value with a `"unknown"` fallback for missing files or absent fields.
+
+### Fixed
+- **`scripts/rescore_all.py` populated cost_usd is no longer NULL (#48 AC 6).** The pre-#48 INSERT at line 271 left `cost_usd` NULL for all 3,384 rescore rows in production. Replaced with `log_call` so the char-heuristic populates the column going forward — non-zero on the LLM path, exactly 0.0 on the prefilter path (no LLM call to bill).
+
 ## [0.19.0] — 2026-05-05
 
 Minor bump shipping the embedding/RAG retirement (#267 / #455) plus the operator-mode dashboard hardening for bind-mount edge cases (#359). User-visible: the project's only non-OpenRouter API-key dependency is gone — single-key onboarding (just OpenRouter) is now the entire required surface. The active scrub on existing stacks is fully idempotent and fail-open. Operator's stack and `findajob-test` track `:latest`; tester stacks (alice, papa, dave, judy, tango) currently on `:v0.18` bump to `:v0.19` in this cohort wave.

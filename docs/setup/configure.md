@@ -143,6 +143,13 @@ Protect this file: `chmod 600 data/.env`
 
 Design details for the in-app onboarding interview live in operator-private notes.
 
+The pipeline writes a `cost_log` row per LLM call across every aichat-ng
+invocation site (scoring, prep, find-contacts, interview-prep, speculative
+research, company discovery, rescore). Cost is estimated from prompt and
+response character lengths via the rate table at `config/model_pricing.yaml`
+(±20-30% absolute precision; reliable for relative comparisons). Reuses
+`OPENROUTER_API_KEY` — no separate credential needed (#48).
+
 ---
 
 ## aichat-ng config.yaml
