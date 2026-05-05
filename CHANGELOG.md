@@ -10,6 +10,24 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+## [0.18.0] — 2026-05-05
+
+Minor bump shipping per-tenant geography filtering for the three RapidAPI adapters (#372 / #450) plus two observability/correctness fixes: gmail per-sender logging + diagnostic override (#449) and the notify dead-feed detector false-positive correction. User-visible: each tenant can now write `config/target_locations.txt` to scope `jobs-api14`, `jobs-api14-indeed`, and `jsearch` queries to specific cities/regions instead of the hardcoded `United States`. Existing stacks without the file continue fetching `United States`-wide — no breaking change. Operator's stack and `findajob-test` track `:latest`; tester stacks (alice, papa, dave, judy, tango) currently on `:v0.17` bump to `:v0.18` in this cohort wave.
+
+### Added
+- **Per-tenant geography filter via `config/target_locations.txt` (#372 / #450).** One location per line; lines starting with `#` are comments. Missing/empty file falls back to `["United States"]` — no behavior change for stacks without the file. The onboarding interviewer Phase 3b now extracts machine-readable location values, and Phase 5 emits `target_locations.txt` whenever the operator selects RapidAPI as the active source. JSearch interprets `location=` as a metro area (e.g. NYC includes Brooklyn + NJ + CT commute zone — expected, not a bug); probe runs confirmed comma-joined and pipe-separated multi-location formats fail silently on both APIs, so per-location iteration is the only correct shape. `location=` is logged on every `jobsapi_fetched` / `jsearch_fetched` event for observability.
+- `--gmail-since-days N` diagnostic flag on `scripts/triage.py` plus a `since_days` parameter on `fetch_gmail_jobs` / `fetch_new_messages` — triggers a SINCE-N-days IMAP search instead of the normal UID-incremental path. State still advances normally so the next scheduled run stays clean (#449).
+
+### Changed
+- **The three RapidAPI adapters (`jobs_api14`, `jobs_api14_indeed`, `jsearch`) now loop per-location × per-query**, calling the upstream API once for each combination instead of using the hardcoded `"United States"`. Per-call billing scales by `len(locations) × len(queries)`; an example 3 locations × 10 queries = 30 calls/day sits comfortably within RapidAPI PRO's 20K/month envelope (#450).
+- **`gmail_messages_found` event now includes `by_sender` counts** so each of the configured Gmail senders is visible in `pipeline.jsonl`. A silent 0 from one sender is now distinguishable from a silent 0 across all senders (#449).
+
+### Fixed
+- **Notify dead-feed detector takes the max across all `jobs_fetched` events in the 25h window** rather than only `latest_fetch`. Eliminates the false-positive WARN that fired when a mid-day manual triage (gmail=0, healthy) followed a scheduled run that had already consumed the day's messages — a source is now only flagged dead if every run in the window returned 0 (commit `6f56807`).
+
+### Migration required
+- **`config/target_locations.txt` is opt-in (#450).** `docker compose pull && up -d` is the entire mandatory migration path; the fallback to `"United States"` preserves existing behavior. To opt into per-tenant geography, drop a file at `state/config/target_locations.txt` with one location per line. The file is read at each triage run; no container restart needed.
+
 ## [0.17.0] — 2026-05-04
 
 Minor bump shipping the in-app notification dashboard + history (#440) plus the reject_reason vocabulary hygiene cleanup (#445). User-visible: notification bell + HTMX-polled unread badge in the top nav, new `/notifications/` page with kind/read filters, dashboard reads from a new `notifications` SQLite table; ntfy outages no longer lose the audit trail. Operator-required action: run the one-shot `reject_reason` cleanup script (idempotent) and add `"Company passed"` to operator stack's `config/reject_reasons.yaml`. Operator's stack and `findajob-test` track `:latest`; tester stacks (alice, papa, dave, judy, tango) currently on `:v0.15` bump straight to `:v0.17` in this cohort wave.
@@ -773,7 +791,8 @@ from GHCR and deployed via Docker Compose on a shared Docker host.
 - Documentation cleanup — removing `sigoden/aichat` references in favor of
   `blob42/aichat-ng` — is tracked in #70
 
-[Unreleased]: https://github.com/brockamer/findajob/compare/v0.17.0...HEAD
+[Unreleased]: https://github.com/brockamer/findajob/compare/v0.18.0...HEAD
+[0.18.0]: https://github.com/brockamer/findajob/releases/tag/v0.18.0
 [0.17.0]: https://github.com/brockamer/findajob/releases/tag/v0.17.0
 [0.16.0]: https://github.com/brockamer/findajob/releases/tag/v0.16.0
 [0.15.0]: https://github.com/brockamer/findajob/releases/tag/v0.15.0
