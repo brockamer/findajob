@@ -180,18 +180,37 @@ def test_basic_auth_inherited_when_set(tmp_path: Path, monkeypatch: pytest.Monke
 
 
 def test_render_under_2s(operator_app, tmp_path: Path) -> None:
-    """Performance budget per spec §4.6 — <2s for 6 stacks."""
+    """Performance budget per spec §4.6 — <2s for 6 stacks even with multi-MB
+    pipeline.jsonl files. The bounded-tail design (tail_events max_bytes=1MB)
+    is what makes this hold; seeding ~6MB JSONL per stack proves it instead
+    of running the test against trivial fixtures (the previous 500-event ~30KB
+    files exercised the happy path without proving the bound matters).
+
+    Operator's stack pipeline.jsonl was ~10MB on 2026-04-30; long-running
+    tester stacks will land in the same range.
+    """
+    import json
     import time
 
     stacks = tmp_path / "stacks"
     stacks.mkdir()
+    # ~61 bytes/line × 90_000 ≈ 5.5 MB per stack. String-multiply instead of
+    # json.dumps-per-event to keep setup cost out of the perf measurement.
+    filler_line = json.dumps({"ts": "2026-04-30T11:00:00+00:00", "event": "watchdog_run"}) + "\n"
+    filler_block = filler_line * 90_000
+    completion_line = json.dumps({"ts": "2026-04-30T11:30:00+00:00", "event": "pipeline_complete"}) + "\n"
+
     for h in ("alice", "dave", "ed", "judy", "papa", "tango"):
         sp_root = stacks / f"findajob-{h}" / "state"
         rows = [{"id": f"{h}-{i}", "stage": "scored"} for i in range(50)]
         build_pipeline_db(sp_root / "data" / "pipeline.db", rows=rows)
-        events = [{"ts": "2026-04-30T11:00:00+00:00", "event": "watchdog_run"} for _ in range(500)]
-        events.append({"ts": "2026-04-30T11:30:00+00:00", "event": "pipeline_complete"})
-        build_pipeline_jsonl(sp_root / "logs" / "pipeline.jsonl", events)
+        jsonl_path = sp_root / "logs" / "pipeline.jsonl"
+        jsonl_path.parent.mkdir(parents=True, exist_ok=True)
+        # Completion event LAST so newest-first tail starts there and freshness
+        # is computed without reading the whole file.
+        jsonl_path.write_text(filler_block + completion_line)
+        # Sanity: prove fixture actually produced multi-MB files.
+        assert jsonl_path.stat().st_size > 5_000_000, f"fixture for {h} only {jsonl_path.stat().st_size} bytes"
 
     client = TestClient(operator_app)
     t0 = time.perf_counter()

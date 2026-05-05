@@ -15,8 +15,6 @@ logger = logging.getLogger(__name__)
 
 Freshness = Literal["fresh", "late", "stale", "unknown"]
 
-_FAILURE_EVENTS = ("aichat_failure", "discovery_failed", "prep_failed", "prep_failed_reset")
-
 
 @dataclass(frozen=True)
 class StackHealth:

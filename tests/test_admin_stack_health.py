@@ -224,3 +224,30 @@ def test_24h_window_excludes_exact_24h_boundary(tmp_path: Path) -> None:
     )
     h = gather(sp, now=NOW)
     assert h.triage_success_24h == 1
+
+
+def test_only_pipeline_terminated_leaves_freshness_unknown(tmp_path: Path) -> None:
+    """A stack that has started runs but never completed one (cron firing
+    but every triage crashing) must surface freshness="unknown" — not
+    "fresh" off the start event, not "stale" off some default. The
+    completion timestamp drives freshness; failures alone do not.
+    """
+    sp = _stackpath(tmp_path)
+    build_pipeline_db(sp.db_path)
+    recent = (NOW - timedelta(hours=2)).isoformat()
+    older = (NOW - timedelta(hours=14)).isoformat()
+    build_pipeline_jsonl(
+        sp.jsonl_path,
+        [
+            {"ts": older, "event": "pipeline_started"},
+            {"ts": older, "event": "pipeline_terminated"},
+            {"ts": recent, "event": "pipeline_started"},
+            {"ts": recent, "event": "pipeline_terminated"},
+        ],
+    )
+    h = gather(sp, now=NOW)
+    assert h.last_triage_complete is None
+    assert h.last_triage_failed is not None
+    assert h.freshness == "unknown"
+    assert h.triage_success_24h == 0
+    assert h.triage_failure_24h == 2

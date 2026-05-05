@@ -79,7 +79,9 @@ def test_unreadable_file_returns_empty(tmp_path: Path) -> None:
 
 
 def test_partial_first_line_at_buffer_boundary_is_dropped(tmp_path: Path) -> None:
-    """When the tail-window cuts mid-line, the partial first line is discarded."""
+    """When the tail-window cuts mid-line, the partial first line is discarded
+    AND the surviving complete event is yielded intact.
+    """
     p = tmp_path / "boundary.jsonl"
     # Two events; force max_bytes to land mid-first-line.
     events = [
@@ -91,6 +93,10 @@ def test_partial_first_line_at_buffer_boundary_is_dropped(tmp_path: Path) -> Non
     full = p.read_text()
     cut_at = len(full) - 100  # well into line 2
     out = list(tail_events(p, max_bytes=full[cut_at:].__len__() + 5))
-    # Whatever survives, every yielded entry must be valid JSON (no half-line).
-    for e in out:
-        assert isinstance(e, dict)
+    # Surviving event must be the complete second event, not [] and not the
+    # partial-first-line garbage. Asserting on the event field — not just
+    # `isinstance(e, dict)` — would catch a regression that yields [] or
+    # malformed-but-still-dict output.
+    assert len(out) == 1
+    assert out[0]["event"] == "pipeline_complete"
+    assert out[0]["ts"] == "2026-04-30T00:05:00+00:00"

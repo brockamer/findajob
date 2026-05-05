@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import os
 from pathlib import Path
 
@@ -81,7 +82,9 @@ def test_stackpath_is_frozen_dataclass(tmp_path: Path) -> None:
     _make_stack(tmp_path, "alice")
     s = discover_stacks(tmp_path)[0]
     assert isinstance(s, StackPath)
-    # Frozen dataclasses raise on mutation.
-    import dataclasses
-
     assert dataclasses.is_dataclass(s)
+    # Frozen dataclasses raise FrozenInstanceError on field assignment.
+    # Without this assertion, dropping `frozen=True` on the @dataclass
+    # decorator would silently regress the immutability contract.
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        s.handle = "mutated"  # type: ignore[misc]
