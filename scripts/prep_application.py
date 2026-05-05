@@ -14,9 +14,11 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import time
 from datetime import UTC, datetime
 
 from findajob.actions import reset_prep_to_scored
+from findajob.cost_tracking import log_call, role_model
 from findajob.paths import AICHAT, BASE, PANDOC
 from findajob.utils import (
     JD_MAX_CHARS,
@@ -36,18 +38,43 @@ MASTER_RESUME_PATH = f"{BASE}/candidate_context/master_resume.md"
 load_env()
 
 
-def aichat(role, prompt, model_override=None, timeout=300):
-    """Call aichat-ng and return stdout. No RAG — all context injected directly."""
+def aichat(role, prompt, model_override=None, timeout=300, *, conn=None, job_id=None):
+    """Call aichat-ng and return stdout. No RAG — all context injected directly.
+
+    When ``conn`` is provided, a cost_log row is written after a successful
+    subprocess return. ``job_id`` is the prep target's id (or None for
+    non-job-scoped calls). Cost-log failures are swallowed so they cannot
+    break prep. Each call writes one row — the briefing_writer retry path
+    intentionally produces 2 rows.
+    """
     cmd = [AICHAT, "--role", role]
     if model_override:
         cmd += ["-m", model_override]
     cmd += ["-S", prompt]
+    start = time.time()
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-    output = result.stdout.strip()
-    if result.returncode != 0 or not output:
+    latency_ms = int((time.time() - start) * 1000)
+    raw_output = result.stdout.strip()
+    success = result.returncode == 0 and bool(raw_output)
+    if not success:
         log_event("aichat_failure", role=role, returncode=result.returncode, stderr=result.stderr.strip()[:500])
+    if conn is not None and success:
+        try:
+            log_call(
+                conn,
+                job_id=job_id,
+                operation=role,
+                model=model_override or role_model(role),
+                input_text=prompt,
+                output_text=raw_output,
+                latency_ms=latency_ms,
+                success=True,
+            )
+            conn.commit()
+        except Exception as e:  # noqa: BLE001 — cost tracking is best-effort
+            log_event("cost_log_failed", operation=role, error=f"{type(e).__name__}: {e}")
     # Strip <think>...</think> blocks that leak from :thinking models
-    output = re.sub(r"<think>.*?</think>", "", output, flags=re.DOTALL).strip()
+    output = re.sub(r"<think>.*?</think>", "", raw_output, flags=re.DOTALL).strip()
     return output
 
 
@@ -270,7 +297,7 @@ def main():
     if not briefing:
         # Real-row flow OR synthetic-fallback when the speculative briefing is missing.
         brief_prompt = f"Research {company} thoroughly.\nJob title: {title}\nJD:\n{jd_text}"
-        raw_briefing = aichat("company_researcher", brief_prompt)
+        raw_briefing = aichat("company_researcher", brief_prompt, conn=conn, job_id=job_id)
 
         # Pass raw research through briefing_writer with candidate context for stories
         formatted_brief_prompt = (
@@ -281,14 +308,14 @@ def main():
             f"MASTER RESUME:\n{master_text}\n\n"
             f"JD:\n{jd_text}"
         )
-        briefing = aichat("briefing_writer", formatted_brief_prompt)
+        briefing = aichat("briefing_writer", formatted_brief_prompt, conn=conn, job_id=job_id)
 
         # ── Validate: briefing must end with an Overall Recommendation section ──
         # The role prompt requires this verdict heading; model sometimes drops it.
         # Retry once; if still missing, let downstream validator fail prep cleanly.
         if not briefing or not rec_re.search(briefing):
             log_event("briefing_missing_recommendation", job_id=job_id, company=company, retry=1)
-            briefing = aichat("briefing_writer", formatted_brief_prompt)
+            briefing = aichat("briefing_writer", formatted_brief_prompt, conn=conn, job_id=job_id)
 
     # Fit analysis: multi-dimensional assessment appended to briefing
     fit_prompt = (
@@ -299,7 +326,7 @@ def main():
         f"JD:\n{jd_text}\n\n"
         f"COMPANY BRIEFING:\n{briefing}"
     )
-    fit_analysis = aichat("fit_analyst", fit_prompt)
+    fit_analysis = aichat("fit_analyst", fit_prompt, conn=conn, job_id=job_id)
 
     # Combine briefing and fit analysis into one document.
     # The briefing ends with an Overall Recommendation verdict; fit analysis
@@ -368,7 +395,7 @@ def main():
         f"JD:\n{jd_text}\n\n"
         f"COMPANY BRIEFING AND FIT ANALYSIS:\n{briefing_context}"
     )
-    resume_md = aichat("resume_tailor", resume_prompt)
+    resume_md = aichat("resume_tailor", resume_prompt, conn=conn, job_id=job_id)
     # Strip [VERIFY: ...] lines that appear before the first # header
     rlines = resume_md.split("\n")
     first_hdr = next((i for i, line in enumerate(rlines) if line.startswith("#")), 0)
@@ -416,7 +443,7 @@ def main():
 
     # Generate change log
     changes_prompt = f"ORIGINAL MASTER RESUME:\n{master_text}\n\nTAILORED RESUME:\n{resume_md}\n\nTARGET JD:\n{jd_text}"
-    changes_md = aichat("resume_change_reviewer", changes_prompt)
+    changes_md = aichat("resume_change_reviewer", changes_prompt, conn=conn, job_id=job_id)
     with open(out["changes_md"], "w") as f:
         f.write(changes_md)
 
@@ -434,7 +461,7 @@ def main():
         f"JD:\n{jd_text}\n\n"
         f"COMPANY BRIEFING AND FIT ANALYSIS:\n{briefing_context}"
     )
-    cover_md_text = aichat("cover_letter_writer", cover_prompt)
+    cover_md_text = aichat("cover_letter_writer", cover_prompt, conn=conn, job_id=job_id)
     # Strip horizontal rules — the LLM inserts "---" between header and body,
     # but it renders as an ugly line in the docx. Paragraph spacing handles separation.
     cover_md_text = re.sub(r"\n---\n", "\n\n", cover_md_text)
@@ -465,7 +492,7 @@ def main():
         f"TAILORED RESUME:\n{resume_md}\n\n"
         f"COVER LETTER:\n{cover_md_text}"
     )
-    critique_md = aichat("recruiter_critic", critique_prompt)
+    critique_md = aichat("recruiter_critic", critique_prompt, conn=conn, job_id=job_id)
     if critique_md:
         with open(out["critique_md"], "w") as f:
             f.write(critique_md)
