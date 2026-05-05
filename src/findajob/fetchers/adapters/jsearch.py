@@ -12,6 +12,7 @@ from findajob.cleaning import clean_company, clean_title
 from findajob.utils import log_event
 
 from ._keys import resolve_rapidapi_key
+from ._locations import read_target_locations
 from .base import LiveTestResult, QueryResult
 
 __all__ = ("JSearchAdapter",)
@@ -74,38 +75,42 @@ class JSearchAdapter:
 
         num_pages = self._num_pages()
         headers = self._headers(api_key)
+        locations = read_target_locations()
         rows: list[dict] = []
-        last_idx = len(queries) - 1
-        for i, query in enumerate(queries):
-            try:
-                response = requests.get(
-                    self._ENDPOINT,
-                    headers=headers,
-                    params=self._params(query, num_pages),
-                    timeout=30,
-                )
-                if response.status_code == 429:
-                    wait = min(int(response.headers.get("Retry-After", "10")), 60)
-                    log_event("jsearch_rate_limit", query=query, wait=wait)
-                    time.sleep(wait)
+        last_loc = len(locations) - 1
+        last_q = len(queries) - 1
+        for loc_i, location in enumerate(locations):
+            for q_i, query in enumerate(queries):
+                try:
                     response = requests.get(
                         self._ENDPOINT,
                         headers=headers,
-                        params=self._params(query, num_pages),
+                        params=self._params(query, num_pages, location),
                         timeout=30,
                     )
-                response.raise_for_status()
-                data = response.json()
-            except (requests.RequestException, ValueError) as e:
-                log_event("jsearch_error", query=query, error=str(e))
-                continue
+                    if response.status_code == 429:
+                        wait = min(int(response.headers.get("Retry-After", "10")), 60)
+                        log_event("jsearch_rate_limit", query=query, wait=wait)
+                        time.sleep(wait)
+                        response = requests.get(
+                            self._ENDPOINT,
+                            headers=headers,
+                            params=self._params(query, num_pages, location),
+                            timeout=30,
+                        )
+                    response.raise_for_status()
+                    data = response.json()
+                except (requests.RequestException, ValueError) as e:
+                    log_event("jsearch_error", query=query, location=location, error=str(e))
+                    if loc_i < last_loc or q_i < last_q:
+                        time.sleep(0.6)
+                    continue
 
-            new_rows = self._parse_rows(data, query)
-            rows.extend(new_rows)
-            count = len(new_rows)
-            log_event("jsearch_fetched", query=query, count=count, num_pages=num_pages)
-            if i < last_idx:
-                time.sleep(0.6)
+                new_rows = self._parse_rows(data, query)
+                rows.extend(new_rows)
+                log_event("jsearch_fetched", query=query, location=location, count=len(new_rows), num_pages=num_pages)
+                if loc_i < last_loc or q_i < last_q:
+                    time.sleep(0.6)
 
         return rows
 
@@ -119,6 +124,7 @@ class JSearchAdapter:
                 auth_error="No API key configured.",
             )
 
+        location = read_target_locations()[0]
         headers = self._headers(api_key)
         per_query: list[QueryResult] = []
         rate_limited = False
@@ -127,7 +133,7 @@ class JSearchAdapter:
                 response = requests.get(
                     self._ENDPOINT,
                     headers=headers,
-                    params=self._params(query),
+                    params=self._params(query, location=location),
                     timeout=30,
                 )
             except requests.RequestException as e:
@@ -191,12 +197,13 @@ class JSearchAdapter:
             "x-rapidapi-key": api_key,
         }
 
-    def _params(self, query: str, num_pages: int = 1) -> dict[str, str]:
+    def _params(self, query: str, num_pages: int = 1, location: str = "United States") -> dict[str, str]:
         return {
             "query": query,
             "page": "1",
             "num_pages": str(num_pages),
             "country": "us",
+            "location": location,
         }
 
     def _parse_rows(self, data: dict, query: str) -> list[dict]:

@@ -12,6 +12,7 @@ from findajob.cleaning import clean_company, clean_title
 from findajob.utils import log_event
 
 from ._keys import resolve_rapidapi_key
+from ._locations import read_target_locations
 from .base import LiveTestResult, QueryResult
 
 # Bind module-level imports so tests can patch them via the public path
@@ -73,30 +74,40 @@ class JobsApi14Adapter:
 
         max_pages = self._max_pages()
         headers = self._headers(api_key)
+        locations = read_target_locations()
         rows: list[dict] = []
-        last_idx = len(queries) - 1
-        for i, query in enumerate(queries):
-            token: str | None = None
-            pages_fetched = 0
-            query_rows = 0
-            for _page_idx in range(max_pages):
-                # Per the API contract, paginated calls send token alone — the
-                # original query/location params are no-ops once token is set.
-                params = {"token": token} if token is not None else self._params(query, date_posted)
-                data = self._call_with_retry(headers, params, query)
-                if data is None:
-                    break
-                new_rows = self._parse_rows(data, query)
-                rows.extend(new_rows)
-                query_rows += len(new_rows)
-                pages_fetched += 1
-                token = (data.get("meta") or {}).get("nextToken")
-                if not token:
-                    break
-                time.sleep(0.6)  # intra-query pacing for the 2 req/sec PRO ceiling
-            log_event("jobsapi_fetched", source="linkedin", query=query, count=query_rows, pages=pages_fetched)
-            if i < last_idx:
-                time.sleep(0.6)
+        last_loc = len(locations) - 1
+        last_q = len(queries) - 1
+        for loc_i, location in enumerate(locations):
+            for q_i, query in enumerate(queries):
+                token: str | None = None
+                pages_fetched = 0
+                query_rows = 0
+                for _page_idx in range(max_pages):
+                    # Per the API contract, paginated calls send token alone — the
+                    # original query/location params are no-ops once token is set.
+                    params = {"token": token} if token is not None else self._params(query, date_posted, location)
+                    data = self._call_with_retry(headers, params, query)
+                    if data is None:
+                        break
+                    new_rows = self._parse_rows(data, query)
+                    rows.extend(new_rows)
+                    query_rows += len(new_rows)
+                    pages_fetched += 1
+                    token = (data.get("meta") or {}).get("nextToken")
+                    if not token:
+                        break
+                    time.sleep(0.6)  # intra-query pacing for the 2 req/sec PRO ceiling
+                log_event(
+                    "jobsapi_fetched",
+                    source="linkedin",
+                    query=query,
+                    location=location,
+                    count=query_rows,
+                    pages=pages_fetched,
+                )
+                if loc_i < last_loc or q_i < last_q:
+                    time.sleep(0.6)
         return rows
 
     def live_test(self, queries: list[str]) -> LiveTestResult:
@@ -110,11 +121,12 @@ class JobsApi14Adapter:
             )
 
         date_posted = _date_posted_for_install()
+        location = read_target_locations()[0]
         headers = self._headers(api_key)
         per_query: list[QueryResult] = []
         rate_limited = False
         for i, query in enumerate(queries):
-            params = self._params(query, date_posted)
+            params = self._params(query, date_posted, location)
             try:
                 response = requests.get(self._ENDPOINT, headers=headers, params=params, timeout=30)
             except requests.RequestException as e:
@@ -187,10 +199,10 @@ class JobsApi14Adapter:
             "Content-Type": "application/json",
         }
 
-    def _params(self, query: str, date_posted: str) -> dict[str, str]:
+    def _params(self, query: str, date_posted: str, location: str = "United States") -> dict[str, str]:
         return {
             "query": query,
-            "location": "United States",
+            "location": location,
             "datePosted": date_posted,
             "employmentTypes": "fulltime",
             "experienceLevels": "midSenior;director",

@@ -35,6 +35,7 @@ OPTIONAL_FILENAMES: tuple[str, ...] = (
     "feed-urls.txt",
     "linkedin-alerts.md",
     "rapidapi_feed.txt",
+    "target_locations.txt",
 )
 
 _KNOWN_FILENAMES: frozenset[str] = frozenset(ALLOWED_FILENAMES) | frozenset(OPTIONAL_FILENAMES)

@@ -69,6 +69,7 @@ _OPTIONAL_DESTINATIONS: dict[str, str] = {
     "feed-urls.txt": "config/feed_urls.txt",
     "linkedin-alerts.md": "candidate_context/linkedin-alerts.md",
     "rapidapi_feed.txt": "config/active_sources.txt",
+    "target_locations.txt": "config/target_locations.txt",
 }
 
 _SENTINEL_RELPATH = "data/.onboarding-complete"

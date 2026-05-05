@@ -30,6 +30,7 @@ from findajob.config_loader import load_indeed_title_allow_rules
 from findajob.utils import log_event
 
 from ._keys import resolve_rapidapi_key
+from ._locations import read_target_locations
 from .base import LiveTestResult, QueryResult
 
 __all__ = ("JobsApi14IndeedAdapter",)
@@ -59,17 +60,22 @@ class JobsApi14IndeedAdapter:
             return []
 
         headers = self._headers(api_key)
+        locations = read_target_locations()
         rows: list[dict] = []
-        last_idx = len(queries) - 1
-        for i, query in enumerate(queries):
-            data = self._call_with_retry(headers, self._params(query), query)
-            if data is None:
-                continue
-            new_rows = self._parse_rows(data, query)
-            rows.extend(new_rows)
-            log_event("jobsapi_indeed_fetched", query=query, count=len(new_rows))
-            if i < last_idx:
-                time.sleep(0.6)
+        last_loc = len(locations) - 1
+        last_q = len(queries) - 1
+        for loc_i, location in enumerate(locations):
+            for q_i, query in enumerate(queries):
+                data = self._call_with_retry(headers, self._params(query, location), query)
+                if data is None:
+                    if loc_i < last_loc or q_i < last_q:
+                        time.sleep(0.6)
+                    continue
+                new_rows = self._parse_rows(data, query)
+                rows.extend(new_rows)
+                log_event("jobsapi_indeed_fetched", query=query, location=location, count=len(new_rows))
+                if loc_i < last_loc or q_i < last_q:
+                    time.sleep(0.6)
         return rows
 
     def live_test(self, queries: list[str]) -> LiveTestResult:
@@ -82,12 +88,15 @@ class JobsApi14IndeedAdapter:
                 auth_error="No API key configured.",
             )
 
+        location = read_target_locations()[0]
         headers = self._headers(api_key)
         per_query: list[QueryResult] = []
         rate_limited = False
         for i, query in enumerate(queries):
             try:
-                response = requests.get(self._ENDPOINT, headers=headers, params=self._params(query), timeout=30)
+                response = requests.get(
+                    self._ENDPOINT, headers=headers, params=self._params(query, location), timeout=30
+                )
             except requests.RequestException as e:
                 if i == 0:
                     return LiveTestResult(ok=False, bucket="network", per_query=[], auth_error=str(e))
@@ -160,14 +169,14 @@ class JobsApi14IndeedAdapter:
             "Content-Type": "application/json",
         }
 
-    def _params(self, query: str) -> dict[str, str]:
+    def _params(self, query: str, location: str = "United States") -> dict[str, str]:
         # Indeed has no datePosted / experienceLevels / employmentTypes filters.
         # Compensating: sortType=date (recency-as-filter) + countryCode=us +
         # location filter. The remaining off-target rows are dropped by the
         # title regex post-filter in _parse_rows.
         return {
             "query": query,
-            "location": "United States",
+            "location": location,
             "countryCode": "us",
             "sortType": "date",
         }
