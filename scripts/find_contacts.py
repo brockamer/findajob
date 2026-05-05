@@ -11,10 +11,13 @@ script reads the prefix from profile.md and generates its own timestamp
 import csv
 import os
 import re
+import sqlite3
 import subprocess
 import sys
+import time
 from datetime import datetime
 
+from findajob.cost_tracking import log_call, role_model
 from findajob.paths import AICHAT, BASE
 from findajob.utils import (
     build_outreach_filename,
@@ -24,6 +27,8 @@ from findajob.utils import (
     read_candidate_name,
     read_file_prefix,
 )
+
+DB_PATH = f"{BASE}/data/pipeline.db"
 
 
 def company_match(search, contact_company):
@@ -102,8 +107,16 @@ def generate_outreach(
     candidate_name,
     voice_samples,
     is_synthetic=False,
+    *,
+    conn: sqlite3.Connection | None = None,
+    job_id: str | None = None,
 ):
-    """Call aichat-ng outreach_drafter role. Profile + voice samples injected directly — no RAG."""
+    """Call aichat-ng outreach_drafter role. Profile + voice samples injected directly — no RAG.
+
+    When ``conn`` is provided, a cost_log row is written after a successful
+    subprocess return. Cost-log failures are swallowed so they cannot break
+    outreach drafting.
+    """
     voice_section = f"VOICE SAMPLES:\n{voice_samples}\n\n" if voice_samples else ""
     mode_marker = "<<SPECULATIVE_MODE>>\n\n" if is_synthetic else ""
     prompt = (
@@ -116,8 +129,25 @@ def generate_outreach(
         f"JD:\n{jd_text}"
     )
     cmd = [AICHAT, "--role", "outreach_drafter", "-S", prompt]
+    start = time.time()
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+    latency_ms = int((time.time() - start) * 1000)
     draft = result.stdout.strip()
+    if conn is not None and result.returncode == 0 and draft:
+        try:
+            log_call(
+                conn,
+                job_id=job_id,
+                operation="outreach_drafter",
+                model=role_model("outreach_drafter"),
+                input_text=prompt,
+                output_text=draft,
+                latency_ms=latency_ms,
+                success=True,
+            )
+            conn.commit()
+        except Exception as e:  # noqa: BLE001 — cost tracking is best-effort
+            log_event("cost_log_failed", operation="outreach_drafter", error=f"{type(e).__name__}: {e}")
 
     filename = build_outreach_filename(contact["name"], company, timestamp_fn, file_prefix)
     outpath = os.path.join(outdir, filename)
@@ -136,7 +166,9 @@ def generate_outreach(
 
 def main():
     if len(sys.argv) < 4:
-        print("Usage: find_contacts.py <company> <jd_text> <outdir> [file_prefix] [timestamp_fn] [is_synthetic]")
+        print(
+            "Usage: find_contacts.py <company> <jd_text> <outdir> [file_prefix] [timestamp_fn] [is_synthetic] [job_id]"
+        )
         sys.exit(1)
 
     company = sys.argv[1]
@@ -145,6 +177,7 @@ def main():
     file_prefix = sys.argv[4] if len(sys.argv) > 4 else read_file_prefix()
     timestamp_fn = sys.argv[5] if len(sys.argv) > 5 else datetime.now().strftime("%Y%m%d-%H%M%S")
     is_synthetic = sys.argv[6] == "1" if len(sys.argv) > 6 else False
+    job_id = sys.argv[7] if len(sys.argv) > 7 else None
 
     try:
         with open(PROFILE_PATH) as f:
@@ -166,19 +199,25 @@ def main():
 
     log_event("find_contacts", company=company, found=len(contacts), drafting=len(top))
 
-    for contact in top:
-        generate_outreach(
-            contact,
-            company,
-            jd_text,
-            outdir,
-            profile_text,
-            file_prefix,
-            timestamp_fn,
-            candidate_name,
-            voice_samples,
-            is_synthetic=is_synthetic,
-        )
+    conn = sqlite3.connect(DB_PATH, timeout=30)
+    try:
+        for contact in top:
+            generate_outreach(
+                contact,
+                company,
+                jd_text,
+                outdir,
+                profile_text,
+                file_prefix,
+                timestamp_fn,
+                candidate_name,
+                voice_samples,
+                is_synthetic=is_synthetic,
+                conn=conn,
+                job_id=job_id,
+            )
+    finally:
+        conn.close()
 
     print(f"Generated {len(top)} outreach drafts for {company}")
 

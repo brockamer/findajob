@@ -509,6 +509,7 @@ def main():
             file_prefix,
             timestamp_fn,
             "1" if is_synthetic else "0",
+            job_id,
         ],
         check=False,
     )
