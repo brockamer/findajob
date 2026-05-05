@@ -21,6 +21,7 @@ import sys
 import time
 from datetime import datetime
 
+from findajob.cost_tracking import log_call, role_model
 from findajob.paths import AICHAT, BASE, PANDOC
 from findajob.utils import (
     load_env,
@@ -72,19 +73,49 @@ def _sentinel_blocks_run(sentinel_path: str, *, log_kwargs: dict[str, object]) -
 load_env()
 
 
-def aichat(role: str, prompt: str, timeout: int = 300) -> str:
-    """Call aichat-ng and return stdout. No RAG — all context injected directly."""
+def aichat(
+    role: str,
+    prompt: str,
+    timeout: int = 300,
+    *,
+    conn: sqlite3.Connection | None = None,
+    job_id: str | None = None,
+) -> str:
+    """Call aichat-ng and return stdout. No RAG — all context injected directly.
+
+    When ``conn`` is provided, a cost_log row is written after a successful
+    subprocess return. Cost-log failures are swallowed so they cannot break
+    interview-prep generation.
+    """
     cmd = [AICHAT, "--role", role, "-S", prompt]
+    start = time.time()
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-    output = result.stdout.strip()
-    if result.returncode != 0 or not output:
+    latency_ms = int((time.time() - start) * 1000)
+    raw_output = result.stdout.strip()
+    success = result.returncode == 0 and bool(raw_output)
+    if not success:
         log_event(
             "aichat_failure",
             role=role,
             returncode=result.returncode,
             stderr=result.stderr.strip()[:500],
         )
-    output = re.sub(r"<think>.*?</think>", "", output, flags=re.DOTALL).strip()
+    if conn is not None and success:
+        try:
+            log_call(
+                conn,
+                job_id=job_id,
+                operation=role,
+                model=role_model(role),
+                input_text=prompt,
+                output_text=raw_output,
+                latency_ms=latency_ms,
+                success=True,
+            )
+            conn.commit()
+        except Exception as e:  # noqa: BLE001 — cost tracking is best-effort
+            log_event("cost_log_failed", operation=role, error=f"{type(e).__name__}: {e}")
+    output = re.sub(r"<think>.*?</think>", "", raw_output, flags=re.DOTALL).strip()
     return output
 
 
@@ -157,54 +188,65 @@ def main() -> None:
         "SELECT prep_folder_path, raw_jd_text, stage FROM jobs WHERE id=?",
         (job_id,),
     ).fetchone()
-    conn.close()
 
     if not row:
+        conn.close()
         log_event("interview_prep_error", job_id=job_id, reason="job_not_found")
         return
 
-    prep_folder = row["prep_folder_path"]
-    if not prep_folder or not os.path.isdir(prep_folder):
-        log_event(
-            "interview_prep_error",
-            job_id=job_id,
-            company=company,
-            title=title,
-            reason="no_prep_folder",
-            folder=prep_folder,
-        )
-        notify(f"INTERVIEW PREP SKIPPED: {company} — {title}\nNo prep folder; apply was likely manual.")
-        return
-
-    # ── Concurrency guard: refuse if a fresh run is already in flight for this folder ──
-    sentinel = os.path.join(prep_folder, SENTINEL_NAME)
-    log_kwargs: dict[str, object] = {
-        "job_id": job_id,
-        "company": company,
-        "title": title,
-        "folder": prep_folder,
-    }
-    if _sentinel_blocks_run(sentinel, log_kwargs=log_kwargs):
-        log_event("interview_prep_skipped_in_flight", **log_kwargs)
-        return
-
-    # Touch sentinel; remove on exit.
     try:
-        with open(sentinel, "w") as f:
-            f.write(datetime.now().isoformat())
-    except OSError:
-        pass
+        prep_folder = row["prep_folder_path"]
+        if not prep_folder or not os.path.isdir(prep_folder):
+            log_event(
+                "interview_prep_error",
+                job_id=job_id,
+                company=company,
+                title=title,
+                reason="no_prep_folder",
+                folder=prep_folder,
+            )
+            notify(f"INTERVIEW PREP SKIPPED: {company} — {title}\nNo prep folder; apply was likely manual.")
+            return
 
-    try:
-        _generate(prep_folder, company, title, job_id, row["raw_jd_text"] or "")
-    finally:
+        # ── Concurrency guard: refuse if a fresh run is already in flight for this folder ──
+        sentinel = os.path.join(prep_folder, SENTINEL_NAME)
+        log_kwargs: dict[str, object] = {
+            "job_id": job_id,
+            "company": company,
+            "title": title,
+            "folder": prep_folder,
+        }
+        if _sentinel_blocks_run(sentinel, log_kwargs=log_kwargs):
+            log_event("interview_prep_skipped_in_flight", **log_kwargs)
+            return
+
+        # Touch sentinel; remove on exit.
         try:
-            os.remove(sentinel)
+            with open(sentinel, "w") as f:
+                f.write(datetime.now().isoformat())
         except OSError:
             pass
 
+        try:
+            _generate(prep_folder, company, title, job_id, row["raw_jd_text"] or "", conn=conn)
+        finally:
+            try:
+                os.remove(sentinel)
+            except OSError:
+                pass
+    finally:
+        conn.close()
 
-def _generate(prep_folder: str, company: str, title: str, job_id: str, jd_text: str) -> None:
+
+def _generate(
+    prep_folder: str,
+    company: str,
+    title: str,
+    job_id: str,
+    jd_text: str,
+    *,
+    conn: sqlite3.Connection | None = None,
+) -> None:
     log_event(
         "interview_prep_started",
         job_id=job_id,
@@ -272,7 +314,7 @@ def _generate(prep_folder: str, company: str, title: str, job_id: str, jd_text: 
     )
 
     # ── Generate ──
-    output_md = aichat("interview_prep", prompt)
+    output_md = aichat("interview_prep", prompt, conn=conn, job_id=job_id)
 
     if not output_md or len(output_md) < 500:
         log_event(
