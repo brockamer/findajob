@@ -17,9 +17,11 @@ from __future__ import annotations
 import re
 import sqlite3
 import subprocess
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 
+from findajob.cost_tracking import log_call, role_model
 from findajob.paths import AICHAT
 from findajob.speculative.parser import parse_role_cards
 from findajob.speculative.storage import write_briefing
@@ -74,6 +76,7 @@ def run_research(
                     "candidate_profile": profile,
                     "master_resume": master_resume,
                 },
+                conn=conn,
             )
         except Exception as e:
             _mark_failed(conn, request_id, f"briefing failed: {e}")
@@ -94,6 +97,7 @@ def run_research(
                 "master_resume": master_resume,
                 "briefing": briefing_md,
             },
+            conn=conn,
         )
         # Validate parses cleanly so the review page never sees garbage.
         _ = parse_role_cards(synth_raw)
@@ -127,7 +131,7 @@ def _mark_failed(conn: sqlite3.Connection, request_id: int, msg: str) -> None:
     conn.commit()
 
 
-def _call_aichat(role: str, *, vars_: dict[str, str]) -> str:
+def _call_aichat(role: str, *, vars_: dict[str, str], conn: sqlite3.Connection | None = None) -> str:
     """Invoke aichat-ng with the named role, passing template vars as a single prompt string.
 
     Convention matches prep_application.py and interview_prep.py:
@@ -136,17 +140,38 @@ def _call_aichat(role: str, *, vars_: dict[str, str]) -> str:
     The prompt body is a concatenation of all template variables as labeled
     sections, matching the pattern used elsewhere in the pipeline for direct
     context injection.
+
+    When ``conn`` is provided, a cost_log row is written after a successful
+    subprocess return (operation = role name). Cost-log failures are
+    swallowed so they cannot break the speculative-research pipeline.
     """
     body = "\n\n".join(f"# {k}\n{v}" for k, v in vars_.items())
+    start = time.time()
     proc = subprocess.run(
         [AICHAT, "--role", role, "-S", body],
         capture_output=True,
         text=True,
         timeout=600,  # 10 min: deep-research can take 1-5 min, plus margin
     )
+    latency_ms = int((time.time() - start) * 1000)
     if proc.returncode != 0:
         raise RuntimeError(f"aichat-ng exit {proc.returncode}: {proc.stderr.strip()[-500:]}")
     output = proc.stdout.strip()
+    if conn is not None:
+        try:
+            log_call(
+                conn,
+                job_id=None,
+                operation=role,
+                model=role_model(role),
+                input_text=body,
+                output_text=output,
+                latency_ms=latency_ms,
+                success=True,
+            )
+            conn.commit()
+        except Exception as e:  # noqa: BLE001 — cost tracking is best-effort
+            log_event("cost_log_failed", operation=role, error=f"{type(e).__name__}: {e}")
     # Strip <think>...</think> blocks that leak from reasoning models
     output = re.sub(r"<think>.*?</think>", "", output, flags=re.DOTALL).strip()
     return output
