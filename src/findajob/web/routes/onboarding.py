@@ -2,8 +2,8 @@
 
 The flow has two steps that share the ``onboarding_sessions`` table:
 
-- ``POST /onboarding/keys`` collects the tester's OpenRouter / RapidAPI /
-  Google credentials and persists them on a credentials-only session row.
+- ``POST /onboarding/keys`` collects the tester's OpenRouter / RapidAPI
+  credentials and persists them on a credentials-only session row.
 - ``POST /onboarding/interview/start`` (lives in
   :mod:`findajob.web.routes.onboarding_interview`) promotes that row into
   an active interview session.
@@ -22,7 +22,6 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from findajob.onboarding.key_validation import (
-    validate_google_format,
     validate_openrouter_format,
     validate_rapidapi_format,
 )
@@ -191,10 +190,8 @@ def onboarding_index(request: Request, mode: str = "") -> HTMLResponse:
             "keys_collected": keys_collected,
             "openrouter_last4": _last4(creds.openrouter_api_key) if creds else "",
             "rapidapi_last4": _last4(creds.rapidapi_key) if creds else "",
-            "google_last4": _last4(creds.google_api_key) if creds else "",
             "keys_error": None,
             "rapidapi_input": "",
-            "google_input": "",
             "show_already_onboarded_hint": show_already_onboarded_hint,
         },
     )
@@ -205,15 +202,14 @@ def _render_keys_error(
     *,
     error: str,
     rapidapi_input: str = "",
-    google_input: str = "",
 ) -> HTMLResponse:
     """Re-render the index page with a Step 1 error, preserving optional inputs.
 
     OpenRouter input is intentionally NOT preserved — when verification fails
     the user typically re-pastes from the provider's key page rather than
     correcting in place, and reflowing a password-class field across requests
-    invites confusion. RapidAPI / Google are preserved because the user may
-    only need to fix one of them.
+    invites confusion. RapidAPI is preserved because the user may only need
+    to fix the OpenRouter key.
     """
     templates = request.app.state.templates
     return templates.TemplateResponse(
@@ -226,10 +222,8 @@ def _render_keys_error(
             "keys_collected": False,
             "openrouter_last4": "",
             "rapidapi_last4": "",
-            "google_last4": "",
             "keys_error": error,
             "rapidapi_input": rapidapi_input,
-            "google_input": google_input,
             "show_already_onboarded_hint": False,
         },
         status_code=400,
@@ -241,10 +235,9 @@ def onboarding_keys(
     request: Request,
     openrouter_api_key: str = Form(default=""),
     rapidapi_key: str = Form(default=""),
-    google_api_key: str = Form(default=""),
     reset: str = Form(default=""),
 ) -> HTMLResponse | RedirectResponse:
-    """Step 1 of #339: collect three API keys; persist to the credentials session.
+    """Step 1 of #339: collect two API keys; persist to the credentials session.
 
     Idempotent on retry: ``UPDATE``s the existing credentials-only session
     when present rather than creating a new one. Format / smoke-check
@@ -267,7 +260,6 @@ def onboarding_keys(
                     existing.id,
                     openrouter_api_key="",
                     rapidapi_key="",
-                    google_api_key="",
                 )
             return RedirectResponse(url="/onboarding/", status_code=303)
 
@@ -277,7 +269,6 @@ def onboarding_keys(
                 request,
                 error=err,
                 rapidapi_input=rapidapi_key,
-                google_input=google_api_key,
             )
         ok, err = validate_rapidapi_format(rapidapi_key)
         if not ok:
@@ -285,15 +276,6 @@ def onboarding_keys(
                 request,
                 error=err,
                 rapidapi_input=rapidapi_key,
-                google_input=google_api_key,
-            )
-        ok, err = validate_google_format(google_api_key)
-        if not ok:
-            return _render_keys_error(
-                request,
-                error=err,
-                rapidapi_input=rapidapi_key,
-                google_input=google_api_key,
             )
 
         smoke_ok, smoke_err = verify_openrouter_key(openrouter_api_key.strip())
@@ -305,7 +287,6 @@ def onboarding_keys(
                     f"{smoke_err or ''} Fix the key and click Save again."
                 ).strip(),
                 rapidapi_input=rapidapi_key,
-                google_input=google_api_key,
             )
 
         # All validations passed — UPDATE existing credentials session, or
@@ -321,7 +302,6 @@ def onboarding_keys(
             session_id,
             openrouter_api_key=openrouter_api_key.strip(),
             rapidapi_key=rapidapi_key.strip(),
-            google_api_key=google_api_key.strip(),
         )
         return RedirectResponse(url="/onboarding/", status_code=303)
     finally:

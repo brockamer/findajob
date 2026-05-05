@@ -200,7 +200,6 @@ def test_full_interview_flow_writes_all_files_and_sentinel(
             creds_sid,
             openrouter_api_key=_USER_KEY,
             rapidapi_key="",
-            google_api_key="",
         )
     finally:
         conn.close()
@@ -315,7 +314,6 @@ def test_full_interview_flow_skips_finalize_when_blocks_missing(
             creds_sid,
             openrouter_api_key=_USER_KEY,
             rapidapi_key="",
-            google_api_key="",
         )
     finally:
         conn.close()

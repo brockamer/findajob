@@ -39,7 +39,6 @@ class Credentials:
 
     openrouter_api_key: str | None
     rapidapi_key: str | None
-    google_api_key: str | None
 
 
 # Schema additions layered on the original #336 onboarding_sessions table.
@@ -49,23 +48,31 @@ _ADDED_COLUMNS: tuple[tuple[str, str], ...] = (
     # Credential columns (#339) — per-tester API keys collected at Step 1.
     ("tester_openrouter_key", "TEXT DEFAULT NULL"),
     ("tester_rapidapi_key", "TEXT DEFAULT NULL"),
-    ("tester_google_key", "TEXT DEFAULT NULL"),
     # Cumulative chat cost in USD (2026-05-02). OpenRouter returns
     # `usage.cost` per response (in credits, 1:1 with USD); we sum it onto
     # this column on every turn so the chat UI can show a live total.
     ("cumulative_cost_usd", "REAL NOT NULL DEFAULT 0"),
 )
 
+# Columns removed from onboarding_sessions (SQLite 3.40+, DROP COLUMN).
+# migrate_schema() drops these idempotently at app startup so existing stacks
+# shed the column automatically on the next container restart.
+_REMOVED_COLUMNS: tuple[str, ...] = ("tester_google_key",)
+
 
 def migrate_schema(db: sqlite3.Connection) -> None:
-    """Add layered columns to onboarding_sessions if they don't exist yet.
+    """Add layered columns and drop removed columns on onboarding_sessions.
 
-    Safe to call on every app start — skips columns that are already present.
+    Safe to call on every app start — skips columns that are already present
+    (for ADD) and columns that are already absent (for DROP).
     """
     existing = {row[1] for row in db.execute("PRAGMA table_info(onboarding_sessions)").fetchall()}
     for col_name, col_def in _ADDED_COLUMNS:
         if col_name not in existing:
             db.execute(f"ALTER TABLE onboarding_sessions ADD COLUMN {col_name} {col_def}")
+    for col_name in _REMOVED_COLUMNS:
+        if col_name in existing:
+            db.execute(f"ALTER TABLE onboarding_sessions DROP COLUMN {col_name}")
     db.commit()
 
 
@@ -229,7 +236,6 @@ def set_credentials(
     *,
     openrouter_api_key: str,
     rapidapi_key: str,
-    google_api_key: str,
 ) -> None:
     """Persist API credentials on an existing session row.
 
@@ -242,13 +248,11 @@ def set_credentials(
     db.execute(
         """UPDATE onboarding_sessions
            SET tester_openrouter_key = ?,
-               tester_rapidapi_key   = ?,
-               tester_google_key     = ?
+               tester_rapidapi_key   = ?
            WHERE id = ?""",
         (
             openrouter_api_key.strip() or None,
             rapidapi_key.strip() or None,
-            google_api_key.strip() or None,
             session_id,
         ),
     )
@@ -259,23 +263,22 @@ def get_credentials(db: sqlite3.Connection, session_id: str) -> Credentials | No
     """Return the stored credentials for a session, or ``None`` if all are NULL.
 
     A ``Credentials`` instance is returned whenever at least one field is
-    non-NULL.  Returns ``None`` when all three columns are NULL (i.e. not
-    yet collected).
+    non-NULL.  Returns ``None`` when both columns are NULL (i.e. not yet
+    collected).
     """
     row = db.execute(
-        """SELECT tester_openrouter_key, tester_rapidapi_key, tester_google_key
+        """SELECT tester_openrouter_key, tester_rapidapi_key
            FROM onboarding_sessions WHERE id = ?""",
         (session_id,),
     ).fetchone()
     if row is None:
         return None
-    or_key, rapi_key, g_key = row
-    if or_key is None and rapi_key is None and g_key is None:
+    or_key, rapi_key = row
+    if or_key is None and rapi_key is None:
         return None
     return Credentials(
         openrouter_api_key=or_key,
         rapidapi_key=rapi_key,
-        google_api_key=g_key,
     )
 
 
@@ -337,7 +340,6 @@ def find_credentials_only(db: sqlite3.Connection) -> Session | None:
               AND (
                     tester_openrouter_key IS NOT NULL
                  OR tester_rapidapi_key   IS NOT NULL
-                 OR tester_google_key     IS NOT NULL
               )
             ORDER BY last_turn_at DESC
             LIMIT 1"""

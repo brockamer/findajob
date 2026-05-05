@@ -73,9 +73,3 @@ jobs:
     command: "timeout 600 python3 /app/scripts/discover_companies.py"
     description: "Sunday 02:00 — competency-driven company discovery (#284)."
     enabled: true
-
-  rag-rebuild:
-    schedule: "0 3 * * 0"
-    command: "/usr/local/bin/aichat-ng --rag job_search_rag --rebuild-rag"
-    description: "Sunday 03:00 — rebuild candidate-context RAG index."
-    enabled: true

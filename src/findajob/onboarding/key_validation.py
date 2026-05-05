@@ -60,21 +60,3 @@ def validate_rapidapi_format(key: str) -> tuple[bool, str]:
         )
 
     return True, ""
-
-
-def validate_google_format(key: str) -> tuple[bool, str]:
-    """Validate the format of a Google AI Studio API key.
-
-    Optional field — blank input returns (True, "").
-    When non-blank (after strip): must start with ``AIza`` (case-sensitive;
-    documented prefix for Google API keys as of April 2026).
-    """
-    stripped = key.strip()
-    if not stripped:
-        return True, ""
-    if not stripped.startswith("AIza"):
-        return (
-            False,
-            'Google API key must start with "AIza". Copy it from aistudio.google.com → API keys.',
-        )
-    return True, ""

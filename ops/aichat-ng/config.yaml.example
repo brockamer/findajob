@@ -7,14 +7,13 @@
 # into this template — they are injected once when config.yaml is first
 # created and live only in the gitignored state/aichat_ng/config.yaml.
 #
-# As of #67 (2026-05-04), the only direct provider clients the pipeline
-# uses are:
+# As of #67 (2026-05-04), the only direct provider client the pipeline
+# uses is:
 #   - openrouter (every chat call: scoring, prep, briefing, outreach, ...)
-#   - gemini-embed (RAG embeddings only — opt-in REPL feature)
-# Direct openai / claude / perplexity / gemini-chat / groq / xai clients
-# were retired (#250 + #251 + #67); all chat models now reach those
-# providers through the openrouter client.  This collapses the plaintext-
-# keys surface from 7 → 2 keys at first-seed.
+# Direct openai / claude / perplexity / gemini-chat / groq / xai / gemini-embed
+# clients were retired (#250 + #251 + #67 + #455); all chat models now reach those
+# providers through the openrouter client. This collapses the plaintext-
+# keys surface to 1 key at first-seed.
 #
 # See https://github.com/sigoden/aichat/blob/main/config.example.yaml
 # for the full set of supported options.
@@ -26,7 +25,6 @@
 
 model: openrouter:google/gemini-3-flash-preview
 temperature: 0
-rag_embedding_model: gemini-embed:gemini-embedding-001
 rag_reranker_model: null
 rag_top_k: 6
 rag_chunk_size: 1200
@@ -47,18 +45,3 @@ clients:
     name: openrouter
     api_base: https://openrouter.ai/api/v1
     api_key: ${OPENROUTER_API_KEY}
-
-  # gemini-embed: dedicated embedding endpoint. Declared inline (not
-  # cataloged in models-override.yaml) because the pipeline uses
-  # gemini-embedding-001, which differs from the upstream catalog's
-  # gemini text-embedding-004. RAG is the only consumer; see #267 for
-  # the deprecation track.
-  - type: gemini
-    name: gemini-embed
-    api_base: https://generativelanguage.googleapis.com/v1beta
-    api_key: ${GOOGLE_API_KEY}
-    models:
-      - name: gemini-embedding-001
-        type: embedding
-        default_chunk_size: 1500
-        max_batch_size: 100

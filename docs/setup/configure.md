@@ -133,7 +133,6 @@ API keys and secrets. See `data/.env.example` for the full list.
 
 ```bash
 OPENROUTER_API_KEY=sk-or-...
-GOOGLE_API_KEY=AIza...
 RAPIDAPI_KEY=...        # canonical key for all RapidAPI feeds (optional; set by onboarding picker)
 # JOBS_API14_KEY=...   # legacy per-adapter fallback — still works; RAPIDAPI_KEY preferred (#414)
 # JSEARCH_API_KEY=...  # legacy per-adapter fallback — still works; RAPIDAPI_KEY preferred (#414)
@@ -155,26 +154,10 @@ Full template:
 model: openrouter:google/gemini-3-flash-preview
 
 clients:
-  - type: gemini
-    api_key: ${GOOGLE_API_KEY}
-
   - type: openrouter
     api_key: ${OPENROUTER_API_KEY}
 
-  # Dedicated embedding client — name must match what triage.py passes to --rag
-  # Do NOT include this client in --sync-models runs
-  - type: gemini
-    name: gemini-embed
-    api_key: ${GOOGLE_API_KEY}
-    models:
-      - name: gemini-embedding-001
-        max_input_tokens: 2048
-
 roles_dir: ~/findajob/config/roles
-
-# RAG configuration
-rag_embedding_model: gemini-embed:gemini-embedding-001
-rag_reranker_model: ~
 ```
 
 **Critical:** API keys MUST use `${VAR_NAME}` syntax, not literal values. The variables must be in your environment when you run aichat-ng. The pipeline's scripts load `data/.env` at startup, but REPL usage needs the env vars set in your shell profile.
@@ -325,9 +308,8 @@ With Phase 2 of the OpenRouter cutover, 10 of 11 roles depend on
 4. Verify with a smoke call: `docker compose exec scheduler aichat-ng --model openrouter:google/gemini-3-flash-preview "say hello"`.
    If the call succeeds, revoke the old key in the OpenRouter dashboard.
 
-`GOOGLE_API_KEY` remains live after Phase 2 — it still powers the
-Gemini embedding client (`gemini-embed:gemini-embedding-001`) that
-the RAG index uses. Rotate it the same way. `ANTHROPIC_API_KEY` and
+`GOOGLE_API_KEY` was removed in v0.19.0 (#455); RAG infrastructure
+(including the Gemini embedding client) was retired. `ANTHROPIC_API_KEY` and
 `PERPLEXITY_API_KEY` were retired in v0.4.0 — both providers are
 reached through OpenRouter now. Keep rotations staggered — don't
 revoke the old key until the new one has served at least one live

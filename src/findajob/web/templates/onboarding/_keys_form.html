@@ -25,11 +25,6 @@ with a "Change keys" link that posts back to /onboarding/keys with a
       {% else %}
       <li>RapidAPI — <span class="text-slate-500">not provided (LinkedIn / Indeed search inactive)</span></li>
       {% endif %}
-      {% if google_last4 %}
-      <li>Google — <code>***{{ google_last4 }}</code></li>
-      {% else %}
-      <li>Google — <span class="text-slate-500">not provided (RAG embeddings inactive)</span></li>
-      {% endif %}
     </ul>
     <form method="post" action="/onboarding/keys" class="inline">
       <input type="hidden" name="reset" value="1">
@@ -76,18 +71,6 @@ with a "Change keys" link that posts back to /onboarding/keys with a
              class="w-full border rounded p-2 font-mono text-xs"
              placeholder="(optional)"
              value="{{ rapidapi_input|default('') }}">
-    </div>
-
-    <div>
-      <label class="block text-sm font-medium" for="keys_google">
-        Google API key (Gemini)
-        <span class="text-xs font-normal text-slate-600">— optional. Only used by the optional RAG index for the REPL workflow. Daily pipeline runs without it. <a class="underline" href="/docs/setup/api-keys" target="_blank">How to get one</a>.</span>
-      </label>
-      <input type="password" name="google_api_key" id="keys_google"
-             autocomplete="off" spellcheck="false"
-             class="w-full border rounded p-2 font-mono text-xs"
-             placeholder="AIza... (optional)"
-             value="{{ google_input|default('') }}">
     </div>
 
     <button type="submit"

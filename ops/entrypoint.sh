@@ -64,11 +64,11 @@ if [ -d /opt/findajob/bundled-aichat ]; then
     fi
     if [ ! -f "$AICHAT_CFG_DIR/config.yaml" ] && [ -f /opt/findajob/bundled-aichat/config.yaml.example ]; then
         cp /opt/findajob/bundled-aichat/config.yaml.example "$AICHAT_CFG_DIR/config.yaml"
-        # aichat-ng does not perform ${VAR} substitution at load time — inject keys now.
-        # Per #67 (post-OpenRouter cutover) the only direct clients in the
-        # template are openrouter + gemini-embed; openai / groq / xai placeholders
-        # were retired with their client blocks.
-        for _var in OPENROUTER_API_KEY GOOGLE_API_KEY; do
+        # aichat-ng does not perform ${VAR} substitution at load time — inject
+        # keys now. Per #67 + #455 (embedding/RAG retirement) the only direct
+        # client in the template is openrouter; gemini-embed + openai / groq /
+        # xai placeholders were retired with their client blocks.
+        for _var in OPENROUTER_API_KEY; do
             eval "_val=\"\${${_var}:-}\""
             sed -i "s|\${${_var}}|${_val}|g" "$AICHAT_CFG_DIR/config.yaml"
         done
@@ -79,6 +79,20 @@ fi
 if [ ! -e "$AICHAT_CFG_DIR/roles" ]; then
     ln -s /app/config/roles "$AICHAT_CFG_DIR/roles"
 fi
+
+# --- 2c. Scrub retired embedding/RAG state on existing stacks (#455) ------
+# Active scrub of legacy embedding-API state on stacks upgraded from <v0.19.0:
+#   - drops `GOOGLE_API_KEY=` line from data/.env (if present)
+#   - removes `gemini-embed` client + `rag_embedding_model:` from config.yaml
+#   - deletes the `job_search_rag.yaml` index file
+# The Python helper is fail-open: malformed YAML / permission errors log
+# SKIPPED to stderr and exit 0, so this never bricks the boot path. Idempotent
+# — second-boot is a clean no-op once a stack has been scrubbed.
+if [ -f /app/data/.env ] && grep -q '^GOOGLE_API_KEY=' /app/data/.env; then
+    sed -i '/^GOOGLE_API_KEY=/d' /app/data/.env
+    echo "scrub_embedding_client: removed GOOGLE_API_KEY from /app/data/.env"
+fi
+gosu "$PUID:$PGID" python3 /app/scripts/scrub_embedding_client.py --config-dir "$AICHAT_CFG_DIR" || true
 
 # --- 3. Chown writable dirs if any content doesn't match PUID:PGID --------
 # Uses find to detect mismatched files/subdirs inside each dir, not just the

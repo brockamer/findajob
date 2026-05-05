@@ -26,8 +26,7 @@ Secrets file format (one per line, optionally quoted, # = comment):
 The file can equivalently use shell-sourceable ``export KEY=value`` lines so
 it can double as a script you ``source`` in your shell.
   FINDAJOB_TEST_OR_KEY=sk-or-v1-...
-  FINDAJOB_TEST_RAPIDAPI_KEY=abc...
-  FINDAJOB_TEST_GOOGLE_KEY=AIza...   # optional
+  FINDAJOB_TEST_RAPIDAPI_KEY=abc...   # optional
 
 Exit codes:
   0 — all acceptance criteria PASS
@@ -75,11 +74,10 @@ _REQUIRED_SECRET_VARS = [
 _OPTIONAL_SECRET_VARS = [
     "FINDAJOB_TEST_USER",
     "FINDAJOB_TEST_PASS",
-    "FINDAJOB_TEST_GOOGLE_KEY",
 ]
 
 # Input field names on the Step 1 form that carry API key values.
-_KEY_INPUT_NAMES = {"openrouter_api_key", "rapidapi_key", "google_api_key"}
+_KEY_INPUT_NAMES = {"openrouter_api_key", "rapidapi_key"}
 
 
 def load_secrets(path: Path) -> dict[str, str]:
@@ -492,7 +490,6 @@ def run_walkthrough(
     password = secrets.get("FINDAJOB_TEST_PASS", "")
     or_key = secrets["FINDAJOB_TEST_OR_KEY"]
     rapidapi_key = secrets["FINDAJOB_TEST_RAPIDAPI_KEY"]
-    google_key = secrets.get("FINDAJOB_TEST_GOOGLE_KEY", "")
 
     # Normalize base URL
     base_url = base_url.rstrip("/")
@@ -562,11 +559,6 @@ def run_walkthrough(
         print("[harness] Filling Step 1 API keys...")
         page.fill('input[name="openrouter_api_key"]', or_key)
         page.fill('input[name="rapidapi_key"]', rapidapi_key)
-        if google_key:
-            try:
-                page.fill('input[name="google_api_key"]', google_key)
-            except Exception:
-                pass  # Field may not exist
         # Scope the submit click to the keys form — the page also has the
         # disabled Step 2 form whose generic `button[type="submit"]` selector
         # would otherwise match first and hang waiting for it to enable.

@@ -47,7 +47,6 @@ CREATE TABLE onboarding_sessions (
 
 _VALID_OR = "sk-or-v1-tester-fake-test-1234"
 _VALID_RAPID = "fakeRapidApiTesterKey1234567890abcdef"
-_VALID_GOOGLE = "AIzaFakeGoogleTesterKey1234567890ab"
 
 
 @pytest.fixture
@@ -89,11 +88,11 @@ def _row_count(base_root: Path) -> int:
         conn.close()
 
 
-def _stored_credentials(base_root: Path) -> tuple[str | None, str | None, str | None] | None:
+def _stored_credentials(base_root: Path) -> tuple[str | None, str | None] | None:
     conn = sqlite3.connect(base_root / "data" / "pipeline.db")
     try:
         row = conn.execute(
-            """SELECT tester_openrouter_key, tester_rapidapi_key, tester_google_key
+            """SELECT tester_openrouter_key, tester_rapidapi_key
                FROM onboarding_sessions ORDER BY started_at DESC LIMIT 1"""
         ).fetchone()
         return row if row else None
@@ -101,19 +100,18 @@ def _stored_credentials(base_root: Path) -> tuple[str | None, str | None, str | 
         conn.close()
 
 
-def test_post_all_three_valid_creates_one_row(client: TestClient, base_root: Path) -> None:
+def test_post_both_valid_creates_one_row(client: TestClient, base_root: Path) -> None:
     r = client.post(
         "/onboarding/keys",
         data={
             "openrouter_api_key": _VALID_OR,
             "rapidapi_key": _VALID_RAPID,
-            "google_api_key": _VALID_GOOGLE,
         },
     )
     assert r.status_code == 303
     assert r.headers["location"] == "/onboarding/"
     assert _row_count(base_root) == 1
-    assert _stored_credentials(base_root) == (_VALID_OR, _VALID_RAPID, _VALID_GOOGLE)
+    assert _stored_credentials(base_root) == (_VALID_OR, _VALID_RAPID)
 
 
 def test_post_only_openrouter_stores_optional_fields_null(client: TestClient, base_root: Path) -> None:
@@ -123,7 +121,7 @@ def test_post_only_openrouter_stores_optional_fields_null(client: TestClient, ba
     )
     assert r.status_code == 303
     assert _row_count(base_root) == 1
-    assert _stored_credentials(base_root) == (_VALID_OR, None, None)
+    assert _stored_credentials(base_root) == (_VALID_OR, None)
 
 
 def test_post_malformed_openrouter_does_not_write_db(client: TestClient, base_root: Path) -> None:
@@ -160,13 +158,13 @@ def test_post_twice_with_different_keys_keeps_one_row_with_second_values(client:
     second_or = "sk-or-v1-tester-different-key-xyz"
     r = client.post(
         "/onboarding/keys",
-        data={"openrouter_api_key": second_or, "google_api_key": _VALID_GOOGLE},
+        data={"openrouter_api_key": second_or},
     )
     assert r.status_code == 303
     assert _row_count(base_root) == 1
     # Second submission's values win; UPDATE semantic preserved.
     creds = _stored_credentials(base_root)
-    assert creds == (second_or, None, _VALID_GOOGLE)
+    assert creds == (second_or, None)
 
 
 def test_post_fail_fail_success_results_in_one_row(client: TestClient, base_root: Path) -> None:
@@ -184,7 +182,7 @@ def test_post_fail_fail_success_results_in_one_row(client: TestClient, base_root
     )
     assert r3.status_code == 303
     assert _row_count(base_root) == 1
-    assert _stored_credentials(base_root) == (_VALID_OR, None, None)
+    assert _stored_credentials(base_root) == (_VALID_OR, None)
 
 
 def test_get_index_after_collection_renders_step2_enabled(client: TestClient, base_root: Path) -> None:
@@ -208,13 +206,13 @@ def test_get_index_before_collection_renders_step2_disabled(client: TestClient, 
 
 def test_post_reset_clears_credentials(client: TestClient, base_root: Path) -> None:
     client.post("/onboarding/keys", data={"openrouter_api_key": _VALID_OR})
-    assert _stored_credentials(base_root) == (_VALID_OR, None, None)
+    assert _stored_credentials(base_root) == (_VALID_OR, None)
     r = client.post("/onboarding/keys", data={"reset": "1"})
     assert r.status_code == 303
     # Row stays; just credentials columns are cleared (chat history would also
     # remain if any existed — Task 4's "Change keys" semantic per plan).
     assert _row_count(base_root) == 1
-    assert _stored_credentials(base_root) == (None, None, None)
+    assert _stored_credentials(base_root) == (None, None)
 
 
 def test_post_invalid_rapidapi_does_not_write_db(client: TestClient, base_root: Path) -> None:
@@ -229,31 +227,17 @@ def test_post_invalid_rapidapi_does_not_write_db(client: TestClient, base_root: 
     assert _row_count(base_root) == 0
 
 
-def test_post_invalid_google_does_not_write_db(client: TestClient, base_root: Path) -> None:
-    r = client.post(
-        "/onboarding/keys",
-        data={
-            "openrouter_api_key": _VALID_OR,
-            "google_api_key": "wrong-prefix-key",  # missing AIza
-        },
-    )
-    assert r.status_code == 400
-    assert _row_count(base_root) == 0
-
-
-def test_post_preserves_optional_inputs_on_failure(client: TestClient, base_root: Path) -> None:
+def test_post_preserves_rapidapi_on_failure(client: TestClient, base_root: Path) -> None:
     r = client.post(
         "/onboarding/keys",
         data={
             "openrouter_api_key": "garbage",
             "rapidapi_key": _VALID_RAPID,
-            "google_api_key": _VALID_GOOGLE,
         },
     )
     assert r.status_code == 400
-    # OpenRouter is intentionally NOT preserved; RapidAPI and Google are.
+    # OpenRouter is intentionally NOT preserved; RapidAPI is.
     assert _VALID_RAPID in r.text
-    assert _VALID_GOOGLE in r.text
 
 
 # test_inject_uses_credentials_from_step1_when_present — deleted 2026-05-02

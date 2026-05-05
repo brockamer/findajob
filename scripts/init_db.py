@@ -159,7 +159,6 @@ CREATE TABLE IF NOT EXISTS onboarding_sessions (
     -- Per-tester credentials (#339). Older DBs back-fill via session_store.migrate_schema().
     tester_openrouter_key TEXT DEFAULT NULL,
     tester_rapidapi_key   TEXT DEFAULT NULL,
-    tester_google_key     TEXT DEFAULT NULL,
     -- Running interview cost (2026-05-02). Sum of OpenRouter's per-turn `usage.cost`.
     cumulative_cost_usd REAL NOT NULL DEFAULT 0
 );

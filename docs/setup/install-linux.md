@@ -139,18 +139,8 @@ Create `~/.config/aichat_ng/config.yaml`:
 model: openrouter:google/gemini-3-flash-preview
 
 clients:
-  - type: gemini
-    api_key: ${GOOGLE_API_KEY}
-
   - type: openrouter
     api_key: ${OPENROUTER_API_KEY}
-
-  - type: gemini
-    name: gemini-embed
-    api_key: ${GOOGLE_API_KEY}
-    models:
-      - name: gemini-embedding-001
-        max_input_tokens: 2048
 
 roles_dir: ~/findajob/config/roles
 ```

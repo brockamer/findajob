@@ -485,20 +485,16 @@ def test_inject_preserves_other_env_keys(tmp_path: Path) -> None:
     assert "OPENROUTER_API_KEY=user-own-key" in env_content
     assert "old-shared-key" not in env_content
     assert "RAPIDAPI_KEY=preserve-me" in env_content
+    # GOOGLE_API_KEY from the existing .env must be preserved by merge_env_content.
     assert "GOOGLE_API_KEY=preserve-me-too" in env_content
 
 
-# ── #339: per-tester RapidAPI + Google key injection ─────────────────────────
+# ── #339: per-tester RapidAPI key injection ───────────────────────────────────
 
 # Minimal .env.example content that mirrors the real file's key ordering.
 # Tests that verify "placeholder preserved" must seed this into tmp_path so
 # that merge_env_content() can use the template as its starting base.
-_ENV_EXAMPLE_CONTENT = (
-    "OPENROUTER_API_KEY=your_key_here\n"
-    "GOOGLE_API_KEY=your_key_here\n"
-    "RAPIDAPI_KEY=your_key_here\n"
-    "NTFY_TOPIC=your-ntfy-topic\n"
-)
+_ENV_EXAMPLE_CONTENT = "OPENROUTER_API_KEY=your_key_here\nRAPIDAPI_KEY=your_key_here\nNTFY_TOPIC=your-ntfy-topic\n"
 
 
 def _seed_env_example(base: Path) -> None:
@@ -507,92 +503,47 @@ def _seed_env_example(base: Path) -> None:
     (base / "data" / ".env.example").write_text(_ENV_EXAMPLE_CONTENT, encoding="utf-8")
 
 
-def test_inject_all_three_keys_merged_in_env_example_order(tmp_path: Path) -> None:
-    """All three keys provided → env contains all three with the new values.
+def test_inject_both_keys_merged_in_env_example_order(tmp_path: Path) -> None:
+    """Both keys provided → env contains both with the new values.
 
     Order in the merged output follows .env.example: OPENROUTER_API_KEY
-    (line 9), then GOOGLE_API_KEY (line 10), then RAPIDAPI_KEY (line 15).
-    We verify each key is present and that OPENROUTER precedes GOOGLE which
-    precedes RAPIDAPI in the merged content.
+    (line 1), then RAPIDAPI_KEY (line 2).
     """
     inject(
         tmp_path,
         _MIN_FILES,
         openrouter_api_key="sk-or-v1-fake-test",
         rapidapi_key="fakeRapidApiTestKey",
-        google_api_key="AIzaFakeGoogleTest",
         skip_smoke_check=True,
     )
     env_content = (tmp_path / "data" / ".env").read_text()
     assert "OPENROUTER_API_KEY=sk-or-v1-fake-test" in env_content
-    assert "GOOGLE_API_KEY=AIzaFakeGoogleTest" in env_content
     assert "RAPIDAPI_KEY=fakeRapidApiTestKey" in env_content
-    # Verify ordering: OPENROUTER before GOOGLE before RAPIDAPI
     or_pos = env_content.index("OPENROUTER_API_KEY=sk-or-v1-fake-test")
-    google_pos = env_content.index("GOOGLE_API_KEY=AIzaFakeGoogleTest")
     rapid_pos = env_content.index("RAPIDAPI_KEY=fakeRapidApiTestKey")
-    assert or_pos < google_pos < rapid_pos, (
-        f"Expected OPENROUTER < GOOGLE < RAPIDAPI in merged env, got positions {or_pos}, {google_pos}, {rapid_pos}"
-    )
+    assert or_pos < rapid_pos, f"Expected OPENROUTER < RAPIDAPI in merged env, got positions {or_pos}, {rapid_pos}"
 
 
-def test_inject_openrouter_only_leaves_other_keys_as_placeholder(tmp_path: Path) -> None:
-    """OpenRouter only (RapidAPI + Google blank) → only OPENROUTER_API_KEY updated;
-    RAPIDAPI_KEY and GOOGLE_API_KEY stay at their .env.example placeholder values."""
+def test_inject_openrouter_only_leaves_rapidapi_as_placeholder(tmp_path: Path) -> None:
+    """OpenRouter only (RapidAPI blank) → only OPENROUTER_API_KEY updated;
+    RAPIDAPI_KEY stays at its .env.example placeholder value."""
     _seed_env_example(tmp_path)
     inject(
         tmp_path,
         _MIN_FILES,
         openrouter_api_key="sk-or-v1-fake-test",
         rapidapi_key="",
-        google_api_key="",
         skip_smoke_check=True,
     )
     env_content = (tmp_path / "data" / ".env").read_text()
     assert "OPENROUTER_API_KEY=sk-or-v1-fake-test" in env_content
     assert "RAPIDAPI_KEY=your_key_here" in env_content
-    assert "GOOGLE_API_KEY=your_key_here" in env_content
     # No accidental blank-value writes
     assert "RAPIDAPI_KEY=\n" not in env_content
-    assert "GOOGLE_API_KEY=\n" not in env_content
 
 
-def test_inject_openrouter_and_rapidapi_only_google_stays_placeholder(tmp_path: Path) -> None:
-    """OpenRouter + RapidAPI, no Google → two lines updated; GOOGLE_API_KEY stays as placeholder."""
-    _seed_env_example(tmp_path)
-    inject(
-        tmp_path,
-        _MIN_FILES,
-        openrouter_api_key="sk-or-v1-fake-test",
-        rapidapi_key="fakeRapidApiTestKey",
-        google_api_key="",
-        skip_smoke_check=True,
-    )
-    env_content = (tmp_path / "data" / ".env").read_text()
-    assert "OPENROUTER_API_KEY=sk-or-v1-fake-test" in env_content
-    assert "RAPIDAPI_KEY=fakeRapidApiTestKey" in env_content
-    assert "GOOGLE_API_KEY=your_key_here" in env_content
-
-
-def test_inject_openrouter_and_google_only_rapidapi_stays_placeholder(tmp_path: Path) -> None:
-    """OpenRouter + Google, no RapidAPI → two lines updated; RAPIDAPI_KEY stays as placeholder."""
-    _seed_env_example(tmp_path)
-    inject(
-        tmp_path,
-        _MIN_FILES,
-        openrouter_api_key="sk-or-v1-fake-test",
-        rapidapi_key="",
-        google_api_key="AIzaFakeGoogleTest",
-        skip_smoke_check=True,
-    )
-    env_content = (tmp_path / "data" / ".env").read_text()
-    assert "OPENROUTER_API_KEY=sk-or-v1-fake-test" in env_content
-    assert "GOOGLE_API_KEY=AIzaFakeGoogleTest" in env_content
-    assert "RAPIDAPI_KEY=your_key_here" in env_content
-
-
-def test_inject_all_three_blank_env_unchanged_from_example(tmp_path: Path) -> None:
-    """All three blank → no env_updates produced; merged env equals .env.example
+def test_inject_both_blank_env_unchanged_from_example(tmp_path: Path) -> None:
+    """Both blank → no env_updates produced; merged env equals .env.example
     content (modulo NTFY_TOPIC which comes from captured blocks in _MIN_FILES)."""
     _seed_env_example(tmp_path)
     inject(
@@ -600,34 +551,30 @@ def test_inject_all_three_blank_env_unchanged_from_example(tmp_path: Path) -> No
         _MIN_FILES,
         openrouter_api_key="",
         rapidapi_key="",
-        google_api_key="",
         skip_smoke_check=True,
     )
     env_content = (tmp_path / "data" / ".env").read_text()
-    # Placeholder values preserved for all three API keys
+    # Placeholder values preserved for both API keys
     assert "OPENROUTER_API_KEY=your_key_here" in env_content
-    assert "GOOGLE_API_KEY=your_key_here" in env_content
     assert "RAPIDAPI_KEY=your_key_here" in env_content
     # NTFY_TOPIC from _MIN_FILES emission is still merged
     assert "NTFY_TOPIC=tester-jobsearch-2026-17" in env_content
 
 
-def test_inject_whitespace_only_rapidapi_and_google_treated_as_blank(tmp_path: Path) -> None:
-    """Whitespace-only RapidAPI/Google input → treated as blank, not written."""
+def test_inject_whitespace_only_rapidapi_treated_as_blank(tmp_path: Path) -> None:
+    """Whitespace-only RapidAPI input → treated as blank, not written."""
     _seed_env_example(tmp_path)
     inject(
         tmp_path,
         _MIN_FILES,
         openrouter_api_key="sk-or-v1-fake-test",
         rapidapi_key="   ",
-        google_api_key="\t\n  ",
         skip_smoke_check=True,
     )
     env_content = (tmp_path / "data" / ".env").read_text()
     assert "OPENROUTER_API_KEY=sk-or-v1-fake-test" in env_content
-    # Whitespace-only values → placeholder preserved
+    # Whitespace-only value → placeholder preserved
     assert "RAPIDAPI_KEY=your_key_here" in env_content
-    assert "GOOGLE_API_KEY=your_key_here" in env_content
 
 
 # ── #283: new OPTIONAL destinations (feed-urls.txt, linkedin-alerts.md) ─────

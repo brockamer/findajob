@@ -59,7 +59,6 @@ def _plant_credentials(
     *,
     openrouter: str = _USER_KEY,
     rapidapi: str = "",
-    google: str = "",
 ) -> str:
     """Insert a credentials-only session row directly via session_store.
 
@@ -77,7 +76,6 @@ def _plant_credentials(
             sid,
             openrouter_api_key=openrouter,
             rapidapi_key=rapidapi,
-            google_api_key=google,
         )
     finally:
         conn.close()
@@ -95,7 +93,6 @@ def _set_credentials_on_session(base_root: Path, session_id: str, *, openrouter:
             session_id,
             openrouter_api_key=openrouter,
             rapidapi_key="",
-            google_api_key="",
         )
     finally:
         conn.close()
@@ -327,7 +324,6 @@ def _create_session_directly(base_root: Path, *, with_credentials: bool = True) 
                 sid,
                 openrouter_api_key=_USER_KEY,
                 rapidapi_key="",
-                google_api_key="",
             )
     finally:
         conn.close()
@@ -519,7 +515,6 @@ def test_finalize_calls_inject_and_marks_complete(
         *,
         openrouter_api_key,
         rapidapi_key="",
-        google_api_key="",
     ):
         inject_calls.append(
             {
@@ -527,7 +522,6 @@ def test_finalize_calls_inject_and_marks_complete(
                 "parsed_files": dict(parsed_files),
                 "openrouter_api_key": openrouter_api_key,
                 "rapidapi_key": rapidapi_key,
-                "google_api_key": google_api_key,
             }
         )
         return InjectResult(

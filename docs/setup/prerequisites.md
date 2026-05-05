@@ -14,15 +14,8 @@ Used by: 10 of 11 pipeline roles — `job_scorer`, `resume_tailor`, `cover_lette
 - Add to `data/.env` as `OPENROUTER_API_KEY`
 - Models routed: `anthropic/claude-opus-4.7`, `anthropic/claude-sonnet-4.6`, `google/gemini-3-flash-preview`, `deepseek/deepseek-v3.2`, `perplexity/sonar-reasoning-pro`
 
-### 2. Google AI (Gemini)
-Used by: embedding model only (`gemini-embedding-001`) for RAG indexing of `candidate_context/`. Direct-Gemini chat models were retired from the pipeline in v0.4.0 — Gemini chat now routes through OpenRouter as well.
 
-- Sign up at https://aistudio.google.com
-- Create an API key
-- Add to `data/.env` as `GOOGLE_API_KEY`
-- Model: `gemini-embedding-001` (embedding endpoint; no OpenRouter equivalent)
-
-### 3. RapidAPI feed (jobs-api14 or JSearch)
+### 2. RapidAPI feed (jobs-api14 or JSearch)
 Used by: LinkedIn and Indeed job search in `triage.py` (via pluggable adapter)
 
 - Sign up at https://rapidapi.com
@@ -31,7 +24,7 @@ Used by: LinkedIn and Indeed job search in `triage.py` (via pluggable adapter)
 - Add API key to `data/.env` as `RAPIDAPI_KEY` (canonical, covers all RapidAPI feeds) — legacy per-adapter vars `JOBS_API14_KEY` / `JSEARCH_API_KEY` still work as fallback (#414)
 - See `docs/setup/api-keys.md` for per-feed sign-up walkthroughs
 
-### 4. Google Cloud — Sheets API + Gmail API
+### 3. Google Cloud — Sheets API + Gmail API
 
 **Why:** The pipeline reads Gmail for job-alert emails (optional integration).
 
@@ -45,7 +38,7 @@ Used by: LinkedIn and Indeed job search in `triage.py` (via pluggable adapter)
    - First run of triage.py will open a browser for OAuth consent
    - Token is cached in `config/gmail_token.json`
 
-### 7. ntfy.sh (notifications)
+### 4. ntfy.sh (notifications)
 Used by: `notify.py`
 
 - No account required for basic use

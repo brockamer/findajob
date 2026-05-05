@@ -113,23 +113,14 @@ sqlite3 ~/findajob/data/pipeline.db "SELECT count(*) FROM jobs;"
 # Should match your source machine count
 ```
 
-### Step 5: Rebuild the RAG Index
-
-The RAG index is not portable (it contains binary embeddings tied to the build). Rebuild it:
-
-```bash
-# This takes a few minutes
-/usr/local/bin/aichat-ng --rag job_search_rag --rebuild-rag
-```
-
-### Step 6: Validate aichat-ng
+### Step 5: Validate aichat-ng
 
 ```bash
 echo "Test" | /usr/local/bin/aichat-ng -m gemini:gemini-3-flash-preview -S "Reply with: OK"
 # Should return: OK
 ```
 
-### Step 7: Run a Validation Triage
+### Step 6: Run a Validation Triage
 
 This is the critical test. Run one full triage cycle and verify it completes without errors:
 
@@ -167,7 +158,6 @@ systemctl --user enable --now findajob-notify-health.timer
 systemctl --user enable --now findajob-notify-issues.timer
 systemctl --user enable --now findajob-notify-apply.timer
 systemctl --user enable --now findajob-notify-feedback.timer
-systemctl --user enable --now findajob-rag-rebuild.timer
 ```
 
 Verify all timers are loaded and show next trigger times:

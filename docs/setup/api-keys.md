@@ -211,17 +211,6 @@ As of April 2026, Google's Gemini free tier provides:
 - 100–1,000 requests per day (per model)
 - A universal cap of 250,000 tokens per minute across all models
 
-findajob's RAG rebuild runs once weekly (Sunday 03:00 PT) and embeds
-your candidate context plus any indexed company research. A typical
-candidate context fits well under the daily quota in a single rebuild
-pass.
-
-> **Note (April 2026 free-tier change):** Google removed Gemini Pro
-> models from the free tier on April 1, 2026. Gemini 2.5 Flash and
-> Flash-Lite remain free. findajob uses the embedding model
-> (`gemini-embedding-001`), which is on the free tier — pipeline
-> behavior is unaffected by the Pro-model change.
-
 ---
 
 ## Replacing a key later

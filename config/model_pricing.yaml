@@ -39,6 +39,3 @@ models:
   "gemini:gemini-3-flash-preview":
     input_per_mtok: 0.10
     output_per_mtok: 0.40
-  "gemini-embed:gemini-embedding-001":
-    input_per_mtok: 0.02
-    output_per_mtok: 0.00

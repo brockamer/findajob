@@ -166,22 +166,8 @@ setup_aichat_config_dir() {
 model: openrouter:google/gemini-3-flash-preview
 
 clients:
-  - type: gemini
-    api_key: ${GOOGLE_API_KEY}
-
   - type: openrouter
     api_key: ${OPENROUTER_API_KEY}
-
-  # Dedicated embedding client — name must match what triage.py passes to --rag
-  # Do NOT include in --sync-models runs
-  - type: gemini
-    name: gemini-embed
-    api_key: ${GOOGLE_API_KEY}
-    models:
-      - name: gemini-embedding-001
-        max_input_tokens: 2048
-
-rag_embedding_model: gemini-embed:gemini-embedding-001
 EOF
     warn "  aichat-ng config created at ${aichat_dir}/config.yaml"
   else
@@ -393,11 +379,6 @@ Persistent=true
 WantedBy=timers.target
 EOF
 
-  # RAG rebuild — Sunday 6:00 AM
-  AICHAT_BIN="${aichat_bin}"
-  write_aichat_service "rag-rebuild" "RAG index rebuild" "--rag job_search_rag --rebuild-rag"
-  write_timer_unit     "rag-rebuild" "findajob RAG rebuild (Sunday)" "Sun *-*-* 03:00:00 America/Los_Angeles"
-
   ok "  systemd unit files written to ${SYSTEMD_DIR}"
 
   # Reload and enable
@@ -406,7 +387,7 @@ EOF
 
   local timers=(
     triage poller form-ingest notify-stats notify-health notify-apply
-    notify-issues notify-scoreboard notify-feedback rag-rebuild
+    notify-issues notify-scoreboard notify-feedback
   )
   for t in "${timers[@]}"; do
     systemctl --user enable "findajob-${t}.timer" 2>/dev/null || true
@@ -414,7 +395,7 @@ EOF
 
   ok "  All timers enabled. Start them with:"
   echo "     systemctl --user start findajob-triage.timer"
-  echo "     (or start all: systemctl --user start findajob-{triage,poller,form-ingest,notify-stats,notify-health,notify-apply,notify-issues,notify-scoreboard,notify-feedback,rag-rebuild}.timer)"
+  echo "     (or start all: systemctl --user start findajob-{triage,poller,form-ingest,notify-stats,notify-health,notify-apply,notify-issues,notify-scoreboard,notify-feedback}.timer)"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────

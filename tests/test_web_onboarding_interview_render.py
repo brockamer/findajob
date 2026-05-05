@@ -125,7 +125,6 @@ def _plant_credentials(base_root: Path) -> str:
             sid,
             openrouter_api_key="sk-or-v1-render-test",
             rapidapi_key="",
-            google_api_key="",
         )
     finally:
         conn.close()
@@ -310,7 +309,7 @@ def test_turn_response_renders_user_and_assistant_bubbles(
 
     conn = sqlite3.connect(base_root / "data" / "pipeline.db")
     try:
-        set_credentials(conn, sid, openrouter_api_key="sk-or-v1-render-test", rapidapi_key="", google_api_key="")
+        set_credentials(conn, sid, openrouter_api_key="sk-or-v1-render-test", rapidapi_key="")
     finally:
         conn.close()
 
@@ -354,7 +353,7 @@ def _bind_credentials(base_root: Path, session_id: str) -> None:
 
     conn = sqlite3.connect(base_root / "data" / "pipeline.db")
     try:
-        set_credentials(conn, session_id, openrouter_api_key="sk-or-v1-render-test", rapidapi_key="", google_api_key="")
+        set_credentials(conn, session_id, openrouter_api_key="sk-or-v1-render-test", rapidapi_key="")
     finally:
         conn.close()
 

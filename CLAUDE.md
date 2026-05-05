@@ -79,7 +79,6 @@ file. If you're refactoring an old hardcoded section, add a note to `docs/GENERA
 | Item | Value |
 |------|-------|
 | Default model | `openrouter:google/gemini-3-flash-preview` |
-| Embedding model | `gemini-embed:gemini-embedding-001` — dedicated named client, never touched by `--sync-models` |
 | `job_scorer` | `openrouter:deepseek/deepseek-v3.2` — profile.md injected directly; `--rag` NEVER used |
 | `resume_tailor` / `cover_letter_writer` | `openrouter:anthropic/claude-opus-4.7`, `max_tokens: 4096` |
 | `company_discoverer` | `openrouter:perplexity/sonar-reasoning-pro` — runs weekly Sun 02:00; emits `candidate_context/discovered_companies.md` + `.json`; field-agnostic, augments static `## Target Companies`. Surfaced to operator via Dashboard widget (banner showing count + last-run date) and a success ntfy on each run (#288). |
@@ -102,7 +101,6 @@ file. If you're refactoring an old hardcoded section, add a note to `docs/GENERA
 | Pre-filter | `src/findajob/scorer_prefilter.py` — Stage 1 regex hard reject, Stage 2 no-JD default |
 | Board writes | `src/findajob/web/routes/board_actions.py` — every STATUS / REJECT_REASON transition is a POST handler calling `findajob.actions`. SQLite is the single source of truth. |
 | Watchdog | `scripts/watchdog.py` every 10 min — resets jobs stuck in `prep_in_progress` > 60 min. |
-| RAG index | `job_search_rag` — never passed to scorer/CL/outreach |
 | Scheduler | supercronic in-container; schedules declared in `ops/scheduled-jobs.yaml`, rendered to `/app/crontab` by `scripts/render_crontab.py` at entrypoint. Per-job env overrides: `FINDAJOB_<JOB>_SCHEDULE` / `FINDAJOB_<JOB>_ENABLED` (#344). |
 | ntfy topic | in `data/.env` as `NTFY_TOPIC`; also in `CLAUDE.local.md` |
 | Google Form | URL and response sheet ID in `CLAUDE.local.md` and `config/form_responses_sheet_id.txt` |
@@ -159,7 +157,6 @@ Audit anchor — classifies persisted state by ownership and recoverability. Whe
 | `logs/{form-ingest,jobsync,poller,triage,notify,ci-check,rescore_backfill}.log` | Legacy / pipeline-generated | No | **Yes** — mostly stale; safe to drop |
 | `aichat_ng/config.yaml` | Operator-curated mirror of `data/.env` | No (duplicates `data/.env`) | **Yes** — `data/.env` is source of truth |
 | `aichat_ng/models-override.yaml` | Repo-shipped + operator overrides | No | **Yes** — repo-shipped baseline |
-| `aichat_ng/rags/` | Pipeline-generated (REPL RAG index) | No | **Yes** — rebuilt weekly Sun 03:00 cron |
 
 The data layer is the only thing `docker compose pull` + a fresh interview can't regenerate.
 
@@ -184,12 +181,12 @@ Foundational decisions (design rationale lives in operator-private specs):
 
 **`/onboarding/`** — first-run NUX. Two-step structure:
 
-- **Step 1 — API keys.** Tester provides own OpenRouter (required) + RapidAPI account key (optional; one account-level key authorizes every API the user has subscribed to under that RapidAPI account, collected uniformly as `RAPIDAPI_KEY` per #414; the Step 2 Section 3h picker selects which adapter is active, not which credential is collected) + Google (optional, RAG embeddings). Collected via `POST /onboarding/keys`; persisted into the credentials-only row in `onboarding_sessions` (UPDATE-not-INSERT on retry). Format validators in `findajob.onboarding.key_validation`; OpenRouter live smoke check at collection. Linked help: `docs/setup/api-keys.md`.
+- **Step 1 — API keys.** Tester provides own OpenRouter (required) + RapidAPI account key (optional; one account-level key authorizes every API the user has subscribed to under that RapidAPI account, collected uniformly as `RAPIDAPI_KEY` per #414; the Step 2 Section 3h picker selects which adapter is active, not which credential is collected). Collected via `POST /onboarding/keys`; persisted into the credentials-only row in `onboarding_sessions` (UPDATE-not-INSERT on retry). Format validators in `findajob.onboarding.key_validation`; OpenRouter live smoke check at collection. Linked help: `docs/setup/api-keys.md`.
 - **Step 2 — Run the interview.** Disabled until Step 1 succeeds. Tester runs the entire interview as a chat inside findajob's UI. Server-side persistent — close the tab and reload to resume. Routes live in `findajob.web.routes.onboarding_interview`; runtime-gate per request via `_resolved_chat_key`. Chat is funded by the tester's own OpenRouter key collected in Step 1 — the pipeline (triage, scoring, prep) and the in-app interview both run on that key. There is no operator-funded fallback (the `OPENROUTER_OPERATOR_KEY` env var that briefly existed in v0.11.0 was reverted in v0.11.1 / #401 — operator clarified that path was never supposed to be supported). ~$3-6 per onboarding for Sonnet 4.6 with prompt caching (system-prompt `cache_control` breakpoint; voice-samples emission is the dominant cost driver in long interviews).
 
 The earlier paste-back path (run the interview in another LLM, paste the emission back into a textarea on /onboarding/) was retired 2026-05-02 — it created a phantom OpenRouter input on the finalize form that broke the smoke check when Step 1 had already collected a key, and it doubled the prompt-rewrite surface area whenever the role changed. The in-app flow is the single supported path.
 
-The interview shares: parser (`<<<FILE: name>>>` block protocol — emission delimited blocks are extracted from the cumulative assistant transcript on every turn), injector (atomic file writes + backup + per-stack `data/.env` merge for the three keys), and the `findajob.web.onboarding_guard` dependency that redirects `/`, `/board/*`, `/materials/*`, `/stats/*` to `/onboarding/` when `data/.onboarding-complete` is missing. Re-triggerable via `/onboarding/?mode=rerun`. The injector atomically writes ~10 canonical files under `candidate_context/`/`config/`/`data/`, merges OpenRouter / RapidAPI account (`RAPIDAPI_KEY`, #414) / Google keys into `data/.env` (blank-not-written semantic — `findajob.fetchers` uses `os.environ.get(K, "")` truthiness for skip-vs-call routing), backs up existing destinations to `.backups/{UTC-stamp}/`, optionally processes pasted `voice-samples.md` (markdown-strip + PII-generalization), and verifies the OpenRouter key with a 1-token live call. The injector itself **never writes the sentinel** (#407) — every onboarding flow ends at the Gmail-config gate (`/onboarding/gmail-config/{sid}/`), whose `/finish` (verified IMAP) or `/skip` endpoint is the single sentinel-write site. See `findajob.onboarding.{parser,injector,voice_processor,openrouter_smoke,session_store,interview_runner,key_validation}` for boundaries.
+The interview shares: parser (`<<<FILE: name>>>` block protocol — emission delimited blocks are extracted from the cumulative assistant transcript on every turn), injector (atomic file writes + backup + per-stack `data/.env` merge for collected keys), and the `findajob.web.onboarding_guard` dependency that redirects `/`, `/board/*`, `/materials/*`, `/stats/*` to `/onboarding/` when `data/.onboarding-complete` is missing. Re-triggerable via `/onboarding/?mode=rerun`. The injector atomically writes ~10 canonical files under `candidate_context/`/`config/`/`data/`, merges OpenRouter + RapidAPI account (`RAPIDAPI_KEY`, #414) keys into `data/.env` (blank-not-written semantic — `findajob.fetchers` uses `os.environ.get(K, "")` truthiness for skip-vs-call routing), backs up existing destinations to `.backups/{UTC-stamp}/`, optionally processes pasted `voice-samples.md` (markdown-strip + PII-generalization), and verifies the OpenRouter key with a 1-token live call. The injector itself **never writes the sentinel** (#407) — every onboarding flow ends at the Gmail-config gate (`/onboarding/gmail-config/{sid}/`), whose `/finish` (verified IMAP) or `/skip` endpoint is the single sentinel-write site. See `findajob.onboarding.{parser,injector,voice_processor,openrouter_smoke,session_store,interview_runner,key_validation}` for boundaries.
 
 **Per-stack key isolation invariant (#339):** every tester stack's `data/.env` carries only that tester's collected credentials; no operator-key leakage. The schema migration (`migrate_schema()` in `session_store.py`) runs idempotently at app startup. Existing tester stacks with the sentinel already present skip the new collection flow — migration applies only to net-new onboardings.
 
@@ -235,11 +232,8 @@ For subprocess calls to other pipeline scripts, always use `sys.executable`, not
 Library code lives in `src/findajob/` (installed editable into the project venv via `uv sync` for local dev, `pip install -e .` inside the Docker image — #126). Entry point scripts in `scripts/` import via `from findajob.* import ...`. No `sys.path.insert` hacks.
 
 ### RAG Policy
-RAG (`--rag job_search_rag`) is NEVER passed to `job_scorer`, `cover_letter_writer`,
-`outreach_drafter`, or any role needing candidate-specific context. RAG chunking drops
-contact info, employer names, and dates. All candidate context injected directly via
-`candidate_context/profile.md` and `candidate_context/master_resume.md` string interpolation.
-RAG indexes `candidate_context/` but is used only in REPL mode.
+
+RAG was retired in v0.19.0 (#267, #455). The pipeline never consumed embeddings in production code; operator REPL queries are now an off-pipeline opt-in via a personal aichat-ng install outside the stack.
 
 ### Source Adapters are Pluggable
 Every RapidAPI-flavored job source implements `JobSourceAdapter`

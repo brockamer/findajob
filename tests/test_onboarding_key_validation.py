@@ -4,12 +4,10 @@ Coverage goals:
 - Each validator: happy path, empty/blank input, format failures.
 - RapidAPI edge cases: leading/trailing whitespace stripped → bare key passes;
   embedded whitespace → fails; pasted curl header style → fails.
-- Google edge cases: lowercase prefix → fails (case-sensitive); whitespace-only → pass.
 - OpenRouter edge cases: missing prefix → fails with clear message; correct prefix → pass.
 """
 
 from findajob.onboarding.key_validation import (
-    validate_google_format,
     validate_openrouter_format,
     validate_rapidapi_format,
 )
@@ -120,53 +118,3 @@ class TestValidateRapidapiFormat:
         ok, msg = validate_rapidapi_format("abc-123_XYZ-fake-key")
         assert ok is True
         assert msg == ""
-
-
-# ---------------------------------------------------------------------------
-# validate_google_format
-# ---------------------------------------------------------------------------
-
-
-class TestValidateGoogleFormat:
-    def test_pass_blank_input(self) -> None:
-        # Optional field
-        ok, msg = validate_google_format("")
-        assert ok is True
-        assert msg == ""
-
-    def test_pass_whitespace_only_treated_as_blank(self) -> None:
-        ok, msg = validate_google_format("   ")
-        assert ok is True
-        assert msg == ""
-
-    def test_pass_valid_key(self) -> None:
-        ok, msg = validate_google_format("AIzaFakeGoogleAPIKeyAbc123XYZ")
-        assert ok is True
-        assert msg == ""
-
-    def test_pass_with_surrounding_whitespace_stripped(self) -> None:
-        ok, msg = validate_google_format("  AIzaFakeGoogleAPIKeyAbc123XYZ  ")
-        assert ok is True
-        assert msg == ""
-
-    def test_fail_lowercase_prefix(self) -> None:
-        # Prefix is case-sensitive per Google docs
-        ok, msg = validate_google_format("aizaFakeGoogleAPIKeyAbc123XYZ")
-        assert ok is False
-        assert "AIza" in msg
-
-    def test_fail_wrong_prefix(self) -> None:
-        ok, msg = validate_google_format("sk-google-fake-key-123")
-        assert ok is False
-        assert "AIza" in msg
-
-    def test_fail_no_prefix_at_all(self) -> None:
-        ok, msg = validate_google_format("FakeGoogleKeyNoPrefix123")
-        assert ok is False
-        assert msg
-
-    def test_fail_partial_prefix(self) -> None:
-        # "AIz" but not "AIza"
-        ok, msg = validate_google_format("AIzFakeNotQuite123")
-        assert ok is False
-        assert msg

@@ -91,8 +91,7 @@ def secrets_file(tmp_path: Path) -> Path:
         "FINDAJOB_TEST_USER=myuser\n"
         "FINDAJOB_TEST_PASS=mypass\n"
         "FINDAJOB_TEST_OR_KEY=sk-or-v1-testkey\n"
-        "FINDAJOB_TEST_RAPIDAPI_KEY=rapidtest\n"
-        "# FINDAJOB_TEST_GOOGLE_KEY is optional\n",
+        "FINDAJOB_TEST_RAPIDAPI_KEY=rapidtest\n",
         encoding="utf-8",
     )
     return p
@@ -173,7 +172,7 @@ class TestSecretsLoading:
 
     def test_skips_comments_and_blanks(self, secrets_file: Path) -> None:
         secrets = load_secrets(secrets_file)
-        # Comment line (# FINDAJOB_TEST_GOOGLE_KEY...) should not appear as a key
+        # Comment lines should not appear as keys
         assert not any(k.startswith("#") for k in secrets)
 
     def test_missing_required_raises(self, tmp_path: Path) -> None:
@@ -188,22 +187,19 @@ class TestSecretsLoading:
 
     def test_optional_var_absent_is_ok(self, secrets_file: Path) -> None:
         secrets = load_secrets(secrets_file)
-        # Google key is optional — not in file, should not raise
-        assert "FINDAJOB_TEST_GOOGLE_KEY" not in secrets or secrets.get("FINDAJOB_TEST_GOOGLE_KEY") == ""
+        # Optional vars absent from file — should not raise
+        assert "FINDAJOB_TEST_USER" in secrets  # present optional var works fine
 
     def test_accepts_shell_export_prefix(self, tmp_path: Path) -> None:
         """Lines may use ``export KEY=value`` so the file doubles as a
         shell-sourceable script."""
         path = tmp_path / "secrets-export"
         path.write_text(
-            "export FINDAJOB_TEST_OR_KEY=or-key-export\n"
-            "export FINDAJOB_TEST_RAPIDAPI_KEY=rapid-key-export\n"
-            "FINDAJOB_TEST_GOOGLE_KEY=plain-form\n"
+            "export FINDAJOB_TEST_OR_KEY=or-key-export\nexport FINDAJOB_TEST_RAPIDAPI_KEY=rapid-key-export\n"
         )
         secrets = load_secrets(path)
         assert secrets["FINDAJOB_TEST_OR_KEY"] == "or-key-export"
         assert secrets["FINDAJOB_TEST_RAPIDAPI_KEY"] == "rapid-key-export"
-        assert secrets["FINDAJOB_TEST_GOOGLE_KEY"] == "plain-form"
 
 
 # ---------------------------------------------------------------------------
@@ -222,12 +218,6 @@ class TestDomRedaction:
         html = '<input type="text" name="rapidapi_key" value="abc123secret">'
         result = redact_dom_snapshot(html)
         assert "abc123secret" not in result
-        assert "***REDACTED***" in result
-
-    def test_redacts_google_key_value(self) -> None:
-        html = '<input name="google_api_key" value="AIzaXXXXsecret">'
-        result = redact_dom_snapshot(html)
-        assert "AIzaXXXXsecret" not in result
         assert "***REDACTED***" in result
 
     def test_non_key_fields_not_redacted(self) -> None:

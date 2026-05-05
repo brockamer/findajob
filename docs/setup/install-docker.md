@@ -323,7 +323,7 @@ sudo docker compose restart scheduler
 
 Per the project memory `feedback_never_print_secrets`, never `cat` or
 echo the `.env` to your terminal — copy + edit server-side only.
-Repeat for `RAPIDAPI_KEY` / `GOOGLE_API_KEY` as needed. Stacks with legacy
+Repeat for `RAPIDAPI_KEY` as needed. Stacks with legacy
 per-adapter vars (`JOBS_API14_KEY` / `JSEARCH_API_KEY`) can rotate those
 the same way — both still work as fallback (#414).
 
