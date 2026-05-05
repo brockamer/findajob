@@ -1,9 +1,35 @@
 import json
+import sqlite3
 import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from findajob.discoverer.runner import run
+
+
+def _setup_cost_log_db(db_path: Path) -> None:
+    """Initialize a minimal cost_log schema mirroring scripts/init_db.py."""
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """
+        CREATE TABLE cost_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id TEXT,
+            operation TEXT NOT NULL,
+            model TEXT NOT NULL,
+            latency_ms INTEGER,
+            success INTEGER DEFAULT 1,
+            error_message TEXT,
+            logged_at TEXT DEFAULT (datetime('now')),
+            input_tokens INTEGER,
+            output_tokens INTEGER,
+            cost_usd REAL
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
+
 
 VALID_LLM_OUTPUT = """\
 # Discovered Companies — generated 2026-04-26
@@ -189,6 +215,56 @@ def test_run_failure_paths_do_not_emit_success_ntfy(tmp_path: Path) -> None:
     titles = [call.args[0] for call in notify_mock.call_args_list]
     assert not any(t.startswith("findajob: discovered") for t in titles)
     assert any("aichat" in t for t in titles)
+
+
+def test_run_writes_cost_log_row_on_success(tmp_path: Path) -> None:
+    """Successful run inserts one cost_log row with operation='company_discoverer'
+    and a non-NULL cost_usd derived from the char-heuristic.
+    """
+    _setup_profile(tmp_path)
+    db_path = tmp_path / "pipeline.db"
+    _setup_cost_log_db(db_path)
+    with patch("findajob.discoverer.runner.subprocess.run", _stub_subprocess_run(VALID_LLM_OUTPUT)):
+        result = run(tmp_path, ntfy_enabled=False, db_path=db_path)
+    assert result.success is True
+    conn = sqlite3.connect(db_path)
+    rows = conn.execute("SELECT operation, model, cost_usd, latency_ms, success FROM cost_log").fetchall()
+    conn.close()
+    assert len(rows) == 1
+    operation, model, cost_usd, latency_ms, success = rows[0]
+    assert operation == "company_discoverer"
+    assert model.startswith("openrouter:")
+    assert cost_usd is not None and cost_usd > 0
+    assert success == 1
+
+
+def test_run_does_not_write_cost_log_on_subprocess_failure(tmp_path: Path) -> None:
+    """A failed subprocess (returncode != 0) does NOT write a cost_log row —
+    we only attribute cost when the call actually produced output.
+    """
+    _setup_profile(tmp_path)
+    db_path = tmp_path / "pipeline.db"
+    _setup_cost_log_db(db_path)
+    with patch(
+        "findajob.discoverer.runner.subprocess.run",
+        _stub_subprocess_run("", returncode=1),
+    ):
+        run(tmp_path, ntfy_enabled=False, db_path=db_path)
+    conn = sqlite3.connect(db_path)
+    count = conn.execute("SELECT COUNT(*) FROM cost_log").fetchone()[0]
+    conn.close()
+    assert count == 0
+
+
+def test_run_succeeds_when_db_path_does_not_exist(tmp_path: Path) -> None:
+    """A missing or unwritable DB must NOT break the discovery run —
+    cost-tracking is best-effort and never raises.
+    """
+    _setup_profile(tmp_path)
+    bogus_db = tmp_path / "no" / "such" / "dir" / "pipeline.db"
+    with patch("findajob.discoverer.runner.subprocess.run", _stub_subprocess_run(VALID_LLM_OUTPUT)):
+        result = run(tmp_path, ntfy_enabled=False, db_path=bogus_db)
+    assert result.success is True
 
 
 def test_send_success_ntfy_zero_count_uses_sentinel_body() -> None:

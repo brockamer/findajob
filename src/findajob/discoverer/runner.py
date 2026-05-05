@@ -12,12 +12,15 @@ from __future__ import annotations
 
 import os
 import re
+import sqlite3
 import subprocess
 import sys
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import NamedTuple
 
+from findajob.cost_tracking import log_call, role_model
 from findajob.discoverer.parser import DiscoveryParseError, parse_markdown
 from findajob.discoverer.prompt import build_prompt
 from findajob.discoverer.writer import commit_atomically
@@ -98,16 +101,51 @@ def _cost_threshold() -> float:
         return _DEFAULT_COST_THRESHOLD_USD
 
 
+def _log_cost_safely(
+    db_path: Path,
+    *,
+    operation: str,
+    model: str,
+    input_text: str,
+    output_text: str,
+    latency_ms: int,
+    success: bool,
+) -> None:
+    """Best-effort cost_log write. Swallows all errors so cost tracking
+    can never break the discovery run's never-raise contract.
+    """
+    try:
+        conn = sqlite3.connect(db_path)
+        try:
+            log_call(
+                conn,
+                job_id=None,
+                operation=operation,
+                model=model,
+                input_text=input_text,
+                output_text=output_text,
+                latency_ms=latency_ms,
+                success=success,
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as e:  # noqa: BLE001 — cost tracking is best-effort
+        log_event("cost_log_failed", operation=operation, error=f"{type(e).__name__}: {e}")
+
+
 def run(
     base_root: Path,
     profile_path: Path | None = None,
     ntfy_enabled: bool = True,
+    db_path: Path | None = None,
 ) -> RunResult:
     """Run the full discovery pipeline. Never raises.
 
     Returns a :class:`RunResult` describing success/failure and metadata.
     """
     profile = profile_path or (base_root / "candidate_context" / "profile.md")
+    resolved_db = db_path or (base_root / "data" / "pipeline.db")
     if not profile.is_file():
         msg = f"profile not found at {profile}"
         log_event("discovery_failed", reason="profile_missing", path=str(profile))
@@ -118,12 +156,14 @@ def run(
     try:
         profile_text = profile.read_text(encoding="utf-8")
         prompt = build_prompt(profile_text)
+        start = time.time()
         completed = subprocess.run(
             [AICHAT, "--role", "company_discoverer", "-S", prompt],
             capture_output=True,
             text=True,
             timeout=_DEFAULT_TIMEOUT_S,
         )
+        latency_ms = int((time.time() - start) * 1000)
         if completed.returncode != 0 or not completed.stdout.strip():
             stderr = (completed.stderr or "")[:500]
             log_event(
@@ -159,6 +199,16 @@ def run(
             ],
         }
         commit_atomically(base_root, parsed.markdown_clean + "\n", json_payload)
+
+        _log_cost_safely(
+            resolved_db,
+            operation="company_discoverer",
+            model=role_model("company_discoverer"),
+            input_text=prompt,
+            output_text=completed.stdout,
+            latency_ms=latency_ms,
+            success=True,
+        )
 
         cost = _extract_cost_usd(completed.stderr)
         log_event(
