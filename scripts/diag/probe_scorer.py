@@ -1,17 +1,15 @@
 #!/usr/bin/env python3
 # ~/JobSearchPipeline/scripts/probe_scorer.py
 """
-Show raw aichat-ng scorer output for manual_review rows.
-Prints title, company, raw stdout, and parsed score_status.
-Run manually.
+Show raw scorer output for manual_review rows via findajob.llm.openrouter (#470).
+Prints title, company, raw stdout, and parsed score_status. Run manually.
 """
 
-import json
 import os
 import sqlite3
-import subprocess
 
-from findajob.paths import AICHAT, BASE
+from findajob.llm.openrouter import OpenRouterError, complete
+from findajob.paths import BASE
 
 DB_PATH = f"{BASE}/data/pipeline.db"
 PROFILE_PATH = f"{BASE}/candidate_context/profile.md"
@@ -84,32 +82,42 @@ for row in rows:
     jd = row["raw_jd_text"]
     effective_jd = jd if jd_is_usable(jd) else "[Job description unavailable — score from title and company only]"
 
-    prompt = f"""CANDIDATE PROFILE:
-{profile}
+    cached_prefix = f"CANDIDATE PROFILE:\n{profile}\n\n---\n\n"
+    job_tail = (
+        f"Evaluate this job posting for the candidate described above.\n"
+        f"Job: {title} at {company}\n"
+        f"Location: {location}\n"
+        f"JD:\n{effective_jd[:6000]}"
+    )
 
----
-
-Evaluate this job posting for the candidate described above.
-Job: {title} at {company}
-Location: {location}
-JD:
-{effective_jd[:6000]}"""
-
-    result = subprocess.run([AICHAT, "--role", "job_scorer", "-S", prompt], capture_output=True, text=True, timeout=60)
-
-    raw = result.stdout.strip()
-
-    # Try to parse score_status and relevance_score for quick summary
     try:
-        clean = raw
-        if clean.startswith("```"):
-            clean = "\n".join(clean.split("\n")[1:])
-        if clean.endswith("```"):
-            clean = clean[: clean.rfind("```")]
-        parsed = json.loads(clean.strip())
-        summary = f"score_status={parsed.get('score_status')} score={parsed.get('relevance_score')} flag={parsed.get('score_flag_reason')}"
-    except Exception as e:
-        summary = f"PARSE ERROR: {e}"
+        result = complete(
+            role="job_scorer",
+            prompt=job_tail,
+            cached_prefix=cached_prefix,
+            timeout_s=60,
+        )
+        raw = result.text.strip()
+        # Try to parse score_status and relevance_score for quick summary
+        import json as _json
+
+        try:
+            clean = raw
+            if clean.startswith("```"):
+                clean = "\n".join(clean.split("\n")[1:])
+            if clean.endswith("```"):
+                clean = clean[: clean.rfind("```")]
+            parsed = _json.loads(clean.strip())
+            summary = (
+                f"score_status={parsed.get('score_status')} "
+                f"score={parsed.get('relevance_score')} "
+                f"flag={parsed.get('score_flag_reason')}"
+            )
+        except Exception as e:  # noqa: BLE001
+            summary = f"PARSE ERROR: {e}"
+    except OpenRouterError as e:
+        raw = ""
+        summary = f"WRAPPER ERROR: kind={e.kind} status={e.status_code}"
 
     print(f"\nTITLE: {title}")
     print(f"COMPANY: {company}")

@@ -107,7 +107,7 @@ def main() -> int:
         return 0
     print("VERDICT: cache hit below 80% threshold — investigate before Phase 2.")
     print("  Possible causes:")
-    print("  - provider routing variance (try pin_provider='Anthropic')")
+    print("  - provider routing variance (verify pin_provider='anthropic' is set; lowercase slug)")
     print("  - TTL expiry (>5min between calls)")
     print("  - payload mismatch (verify byte-identical cached_prefix on both calls)")
     return 1
