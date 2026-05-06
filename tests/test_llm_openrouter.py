@@ -264,3 +264,134 @@ def test_default_no_cache_emits_plain_strings(monkeypatch, tmp_path):
 
     assert captured["body"]["messages"][0] == {"role": "system", "content": "SYS"}
     assert captured["body"]["messages"][1] == {"role": "user", "content": "hi"}
+
+
+# ── Provider pinning ────────────────────────────────────────────────────
+
+
+def test_pin_provider_adds_provider_only_block(monkeypatch, tmp_path):
+    roles = tmp_path / "roles"
+    roles.mkdir()
+    (roles / "r.md").write_text(
+        "---\nmodel: openrouter:anthropic/claude-sonnet-4-6\n---\n"
+    )
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-test")
+    captured: dict = {}
+
+    def _capture(req, timeout=None):
+        captured["body"] = json.loads(req.data.decode("utf-8"))
+        return _ok_resp(_success_body())
+
+    with patch("findajob.llm.openrouter.urllib.request.urlopen", side_effect=_capture):
+        complete(role="r", prompt="hi", pin_provider="Anthropic", roles_dir=roles)
+
+    assert captured["body"]["provider"] == {"only": ["Anthropic"]}
+
+
+def test_no_pin_provider_omits_provider_block(monkeypatch, tmp_path):
+    roles = tmp_path / "roles"
+    roles.mkdir()
+    (roles / "r.md").write_text("---\nmodel: openrouter:foo/bar\n---\n")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-test")
+    captured: dict = {}
+
+    def _capture(req, timeout=None):
+        captured["body"] = json.loads(req.data.decode("utf-8"))
+        return _ok_resp(_success_body())
+
+    with patch("findajob.llm.openrouter.urllib.request.urlopen", side_effect=_capture):
+        complete(role="r", prompt="hi", roles_dir=roles)
+
+    assert "provider" not in captured["body"]
+
+
+# ── Error taxonomy ──────────────────────────────────────────────────────
+
+
+def _http_error(code: int, body: str = "") -> HTTPError:
+    return HTTPError(
+        url="https://openrouter.ai/api/v1/chat/completions",
+        code=code,
+        msg="error",
+        hdrs=None,  # type: ignore[arg-type]
+        fp=io.BytesIO(body.encode("utf-8")),
+    )
+
+
+@pytest.mark.parametrize(
+    "code,kind",
+    [
+        (401, "auth"),
+        (402, "payment"),
+        (429, "rate_limit"),
+        (500, "upstream"),
+        (502, "upstream"),
+        (503, "upstream"),
+        (418, "upstream"),
+    ],
+)
+def test_http_error_maps_to_kind(monkeypatch, tmp_path, code, kind):
+    roles = tmp_path / "roles"
+    roles.mkdir()
+    (roles / "r.md").write_text("---\nmodel: openrouter:foo/bar\n---\n")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-test")
+    with patch(
+        "findajob.llm.openrouter.urllib.request.urlopen",
+        side_effect=_http_error(code, "{}"),
+    ):
+        with pytest.raises(OpenRouterError) as exc:
+            complete(role="r", prompt="hi", roles_dir=roles)
+    assert exc.value.kind == kind
+    assert exc.value.status_code == code
+
+
+def test_url_error_maps_to_network(monkeypatch, tmp_path):
+    roles = tmp_path / "roles"
+    roles.mkdir()
+    (roles / "r.md").write_text("---\nmodel: openrouter:foo/bar\n---\n")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-test")
+    with patch(
+        "findajob.llm.openrouter.urllib.request.urlopen",
+        side_effect=URLError("DNS failure"),
+    ):
+        with pytest.raises(OpenRouterError) as exc:
+            complete(role="r", prompt="hi", roles_dir=roles)
+    assert exc.value.kind == "network"
+
+
+def test_non_json_response_maps_to_malformed(monkeypatch, tmp_path):
+    roles = tmp_path / "roles"
+    roles.mkdir()
+    (roles / "r.md").write_text("---\nmodel: openrouter:foo/bar\n---\n")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-test")
+    with patch(
+        "findajob.llm.openrouter.urllib.request.urlopen",
+        return_value=_FakeResp(b"<html>nope</html>"),
+    ):
+        with pytest.raises(OpenRouterError) as exc:
+            complete(role="r", prompt="hi", roles_dir=roles)
+    assert exc.value.kind == "malformed"
+
+
+def test_missing_choices_maps_to_malformed(monkeypatch, tmp_path):
+    roles = tmp_path / "roles"
+    roles.mkdir()
+    (roles / "r.md").write_text("---\nmodel: openrouter:foo/bar\n---\n")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-test")
+    with patch(
+        "findajob.llm.openrouter.urllib.request.urlopen",
+        return_value=_ok_resp({"id": "x", "usage": {}}),
+    ):
+        with pytest.raises(OpenRouterError) as exc:
+            complete(role="r", prompt="hi", roles_dir=roles)
+    assert exc.value.kind == "malformed"
+
+
+def test_empty_api_key_maps_to_config(monkeypatch, tmp_path):
+    roles = tmp_path / "roles"
+    roles.mkdir()
+    (roles / "r.md").write_text("---\nmodel: openrouter:foo/bar\n---\n")
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    with pytest.raises(OpenRouterError) as exc:
+        complete(role="r", prompt="hi", roles_dir=roles)
+    assert exc.value.kind == "config"
