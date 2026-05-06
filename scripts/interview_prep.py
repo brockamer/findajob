@@ -22,7 +22,8 @@ import time
 from datetime import datetime
 
 from findajob.cost_tracking import log_call, role_model
-from findajob.paths import AICHAT, BASE, PANDOC
+from findajob.llm.openrouter import OpenRouterError, complete
+from findajob.paths import BASE, PANDOC
 from findajob.utils import (
     load_env,
     log_event,
@@ -73,34 +74,39 @@ def _sentinel_blocks_run(sentinel_path: str, *, log_kwargs: dict[str, object]) -
 load_env()
 
 
-def aichat(
+def run_role(
     role: str,
     prompt: str,
-    timeout: int = 300,
     *,
+    cached_prefix: str | None = None,
+    pin_provider: str | None = None,
     conn: sqlite3.Connection | None = None,
     job_id: str | None = None,
+    timeout: int = 300,
 ) -> str:
-    """Call aichat-ng and return stdout. No RAG — all context injected directly.
+    """Call openrouter.complete() and return assistant text.
 
     When ``conn`` is provided, a cost_log row is written after a successful
-    subprocess return. Cost-log failures are swallowed so they cannot break
+    response. Cost-log failures are swallowed so they cannot break
     interview-prep generation.
     """
-    cmd = [AICHAT, "--role", role, "-S", prompt]
     start = time.time()
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-    latency_ms = int((time.time() - start) * 1000)
-    raw_output = result.stdout.strip()
-    success = result.returncode == 0 and bool(raw_output)
-    if not success:
-        log_event(
-            "aichat_failure",
+    try:
+        result = complete(
             role=role,
-            returncode=result.returncode,
-            stderr=result.stderr.strip()[:500],
+            prompt=prompt,
+            cached_prefix=cached_prefix,
+            pin_provider=pin_provider,
+            timeout_s=timeout,
         )
-    if conn is not None and success:
+    except OpenRouterError as e:
+        log_event("openrouter_failure", role=role, kind=e.kind, status_code=e.status_code, message=str(e)[:300])
+        return ""
+    latency_ms = int((time.time() - start) * 1000)
+
+    text = re.sub(r"<think>.*?</think>", "", result.text, flags=re.DOTALL).strip()
+
+    if conn is not None and text:
         try:
             log_call(
                 conn,
@@ -108,15 +114,17 @@ def aichat(
                 operation=role,
                 model=role_model(role),
                 input_text=prompt,
-                output_text=raw_output,
+                output_text=result.text,
                 latency_ms=latency_ms,
                 success=True,
+                cost_usd_override=result.cost_usd,
+                input_tokens_override=result.prompt_tokens,
+                output_tokens_override=result.completion_tokens,
             )
             conn.commit()
         except Exception as e:  # noqa: BLE001 — cost tracking is best-effort
             log_event("cost_log_failed", operation=role, error=f"{type(e).__name__}: {e}")
-    output = re.sub(r"<think>.*?</think>", "", raw_output, flags=re.DOTALL).strip()
-    return output
+    return text
 
 
 def _latest(folder: str, pattern: re.Pattern[str]) -> str | None:
@@ -297,14 +305,16 @@ def _generate(
         return
 
     # ── Build prompt ──
+    # cached_prefix: profile + master_resume — stable across all jobs in a day;
+    # enables same-role cache hits. Per-job content (JD, briefing, company) goes in prompt.
+    cached_prefix = f"CANDIDATE PROFILE:\n{profile}\n\nMASTER RESUME:\n{master}"
+
     cover_section = f"\nCOVER LETTER (the version submitted):\n{cover}\n" if cover else ""
     critique_section = f"\nRECRUITER CRITIQUE:\n{critique}\n" if critique else ""
     briefing_header = (
         "COMPANY BRIEFING (canonical — your STAR section MUST expand its questions+stories, not re-derive):"
     )
     prompt = (
-        f"CANDIDATE PROFILE:\n{profile}\n\n"
-        f"MASTER RESUME:\n{master}\n\n"
         f"Company: {company}\nTitle: {title}\n\n"
         f"JOB DESCRIPTION:\n{jd_text}\n\n"
         f"{briefing_header}\n{briefing}\n\n"
@@ -314,7 +324,14 @@ def _generate(
     )
 
     # ── Generate ──
-    output_md = aichat("interview_prep", prompt, conn=conn, job_id=job_id)
+    output_md = run_role(
+        "interview_prep",
+        prompt,
+        cached_prefix=cached_prefix,
+        pin_provider="anthropic",
+        conn=conn,
+        job_id=job_id,
+    )
 
     if not output_md or len(output_md) < 500:
         log_event(
