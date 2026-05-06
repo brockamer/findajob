@@ -15,140 +15,23 @@ Usage:
 
 import argparse
 import sqlite3
-import subprocess
 import sys
 import time
 from datetime import UTC, datetime
 
 from findajob.cost_tracking import log_call, role_model
-from findajob.paths import AICHAT, BASE
-from findajob.scorer_prefilter import prefilter_score
-from findajob.utils import jd_is_usable, load_env, log_event, validate_llm_json, write_audit
+from findajob.paths import BASE
+from findajob.scoring import _build_feedback_block, score_job
+from findajob.utils import load_env, log_event, write_audit
 
 DB_PATH = f"{BASE}/data/pipeline.db"
-SCHEMA_PATH = f"{BASE}/config/scoring_schema.json"
 PROFILE_PATH = f"{BASE}/candidate_context/profile.md"
-
 
 SCORER_MODEL = role_model("job_scorer")
 
 load_env()
 
-
-def _build_feedback_block():
-    """Query feedback_log and return a compact rejection-history block for the scorer prompt."""
-    try:
-        conn = sqlite3.connect(DB_PATH, timeout=30)
-        conn.row_factory = sqlite3.Row
-        rows = conn.execute("""
-            SELECT reject_reason, title, relevance_score
-            FROM feedback_log
-            WHERE reject_reason NOT IN ('Stale/Closed', 'Already Applied', 'Other')
-            ORDER BY reject_reason, title
-        """).fetchall()
-        conn.close()
-    except Exception:
-        return ""
-    if not rows:
-        return ""
-    clusters = {}
-    for r in rows:
-        reason = r["reject_reason"]
-        clusters.setdefault(reason, []).append(r["title"])
-    lines = ["", "---", "", "USER REJECTION HISTORY (from manual feedback — consider when scoring similar jobs):"]
-    for reason, titles in sorted(clusters.items(), key=lambda x: -len(x[1])):
-        unique = list(dict.fromkeys(titles))
-        sample = ", ".join(t[:40] for t in unique[:6])
-        if len(unique) > 6:
-            sample += f", ... (+{len(unique) - 6} more)"
-        lines.append(f'- {len(unique)}x "{reason}": {sample}')
-    lines.append(
-        "If this job closely matches rejected patterns above, reduce your score by 2-3 points. "
-        "The user has explicitly rejected similar jobs. Minimum score is always 1."
-    )
-    return "\n".join(lines)
-
-
 _FEEDBACK_BLOCK = _build_feedback_block()
-
-
-def score_job(title, company, location, jd_text, candidate_profile=""):
-    """Re-score a job. Returns ``(parsed, latency_ms, prompt, raw_output)``.
-
-    Prefilter path: ``prompt`` and ``raw_output`` are empty strings (no LLM
-    call was made). LLM path: both are populated so the caller can pass
-    them to ``log_call`` for cost_usd estimation.
-    """
-    usable = jd_is_usable(jd_text)
-
-    # Stage 1 & 2: deterministic pre-filter — no LLM call
-    pre, reason = prefilter_score(title, company, usable)
-    if pre is not None:
-        log_event("rescore_prefilter", title=title, company=company, reason=reason, score=pre.get("relevance_score"))
-        return pre, 0, "", ""
-
-    # Stage 3: LLM scoring
-    effective_jd = jd_text if usable else "[Job description unavailable — score from title and company only]"
-    prompt = f"""CANDIDATE PROFILE:
-{candidate_profile}
-{_FEEDBACK_BLOCK}
-
----
-
-Evaluate this job posting for the candidate described above.
-Job: {title} at {company}
-Location: {location}
-JD:
-{effective_jd[:6000]}"""
-
-    start = time.time()
-    result = subprocess.run([AICHAT, "--role", "job_scorer", "-S", prompt], capture_output=True, text=True, timeout=60)
-    latency_ms = int((time.time() - start) * 1000)
-    raw_output = result.stdout or ""
-
-    from findajob.scoring import _normalize_llm_output
-
-    parsed, error = validate_llm_json(_normalize_llm_output(result.stdout), SCHEMA_PATH)
-    if error:
-        log_event("rescore_validation_failed", error=error, title=title, company=company)
-        # Stage 1.5: if LLM failed AND title matches a hard reject pattern, auto-reject
-        from findajob.scorer_prefilter import _hard_reject_match
-
-        if _hard_reject_match(title):
-            return (
-                {
-                    "score_status": "scored",
-                    "score_flag_reason": f"Validation: {error}",
-                    "relevance_score": 1,
-                    "interview_likelihood": 1,
-                    "strengths_alignment": "LLM failed + title is outside candidate domain.",
-                    "industry_sector": "",
-                    "comp_estimate": "",
-                    "ai_notes": "LLM validation failed; hard-reject title pattern matched",
-                    "remote_status": "Unknown",
-                },
-                latency_ms,
-                prompt,
-                raw_output,
-            )
-        return (
-            {
-                "score_status": "manual_review",
-                "score_flag_reason": f"Validation: {error}",
-                "relevance_score": None,
-                "interview_likelihood": None,
-                "strengths_alignment": None,
-                "industry_sector": "",
-                "comp_estimate": "",
-                "ai_notes": "Scorer output failed validation",
-                "remote_status": "Unknown",
-            },
-            latency_ms,
-            prompt,
-            raw_output,
-        )
-
-    return parsed, latency_ms, prompt, raw_output
 
 
 def main():
@@ -200,7 +83,6 @@ def main():
 
     rows = conn.execute(query, params).fetchall()
 
-    # Load candidate profile for direct injection
     with open(PROFILE_PATH) as f:
         candidate_profile = f.read()
 
@@ -243,8 +125,8 @@ def main():
         print(f"[{i}/{total}] {title} @ {company}", flush=True)
 
         try:
-            scored, latency_ms, score_prompt, score_output = score_job(
-                title, company, location, jd_text, candidate_profile
+            scored, latency_ms, completion = score_job(
+                title, company, location, jd_text, candidate_profile, _FEEDBACK_BLOCK
             )
         except Exception as e:
             print(f"  ERROR: {e}")
@@ -287,15 +169,17 @@ def main():
         if old_stage != new_stage:
             write_audit(conn, job_id, "stage", old_stage, new_stage)
 
+        # cost_usd_override comes from response.usage.cost when the LLM was
+        # actually called (#470). Prefilter hits return completion=None and
+        # the row records the trivial heuristic cost.
         log_call(
             conn,
             job_id=job_id,
             operation="rescore",
             model=SCORER_MODEL,
-            input_text=score_prompt,
-            output_text=score_output,
             latency_ms=latency_ms,
             success=True,
+            cost_usd_override=(completion.cost_usd if completion is not None else None),
         )
         conn.commit()
 
