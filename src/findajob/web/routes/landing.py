@@ -50,7 +50,7 @@ def landing(
             "projected_monthly": projected_monthly(db),
             "runway_weeks": runway_weeks(db),
         }
-    except Exception:  # noqa: BLE001 — cost tables may not exist on fresh stacks
+    except sqlite3.OperationalError:
         cost_widget = None
 
     templates = request.app.state.templates
