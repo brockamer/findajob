@@ -147,7 +147,8 @@ def complete(
             f"Role '{role}' has no model: in frontmatter.",
             kind="config",
         )
-    max_tokens = int(overrides.get("max_tokens", front.get("max_tokens", DEFAULT_MAX_TOKENS)))
+    raw_max = overrides.get("max_tokens", front.get("max_tokens", DEFAULT_MAX_TOKENS))
+    max_tokens = int(raw_max)  # type: ignore[call-overload]
     temperature = overrides.get("temperature", front.get("temperature"))
 
     if cache_system:
@@ -189,7 +190,7 @@ def complete(
         "max_tokens": max_tokens,
     }
     if temperature is not None:
-        payload["temperature"] = float(temperature)
+        payload["temperature"] = float(temperature)  # type: ignore[arg-type]
     if pin_provider:
         payload["provider"] = {"only": [pin_provider]}
 
@@ -232,6 +233,7 @@ def complete(
                 kind="unknown",
             ) from e
 
+        assert last_err is not None  # set in every except branch above
         if last_err.kind not in RETRY_KINDS:
             raise last_err
         if attempt < DEFAULT_MAX_ATTEMPTS - 1:
