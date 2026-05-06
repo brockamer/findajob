@@ -31,12 +31,31 @@ def landing(
     request: Request,
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
 ) -> HTMLResponse:
+    from findajob.cost_rollups import (
+        current_calibration,
+        projected_monthly,
+        runway_weeks,
+        weekly_spend,
+    )
+
     rows = db.execute("SELECT stage, COUNT(*) AS n FROM jobs GROUP BY stage").fetchall()
     counts = {r["stage"]: r["n"] for r in rows}
     ordered = [(s, counts.get(s, 0)) for s in _STAGES_ORDER]
+
+    try:
+        weeks = weekly_spend(db, weeks=4)
+        cost_widget = {
+            "calibration": current_calibration(db),
+            "weekly_total": weeks[-1].total_usd if weeks else None,
+            "projected_monthly": projected_monthly(db),
+            "runway_weeks": runway_weeks(db),
+        }
+    except Exception:  # noqa: BLE001 — cost tables may not exist on fresh stacks
+        cost_widget = None
+
     templates = request.app.state.templates
     return templates.TemplateResponse(
         request=request,
         name="landing.html",
-        context={"ordered": ordered},
+        context={"ordered": ordered, "cost_widget": cost_widget},
     )
