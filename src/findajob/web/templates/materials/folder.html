@@ -149,4 +149,27 @@
   {% endfor %}
 </div>
 
+{% if breakdown %}
+<section class="mt-6 bg-white rounded-md shadow-sm p-4 max-w-md">
+  <h3 class="text-sm font-semibold text-slate-700 mb-2">LLM Cost Breakdown</h3>
+  <table class="w-full text-sm">
+    {% for row in breakdown %}
+      <tr class="border-b border-slate-100">
+        <td class="py-1 text-slate-600">{{ row.operation }}</td>
+        <td class="py-1 text-right font-mono">${{ '%.4f' | format(row.cost_usd) }}</td>
+        <td class="py-1 text-right text-slate-400 text-xs">×{{ row.n_calls }}</td>
+      </tr>
+    {% endfor %}
+    {% if breakdown_total is not none %}
+      <tr>
+        <td class="py-1 font-semibold">Total</td>
+        <td class="py-1 text-right font-mono font-semibold">${{ '%.4f' | format(breakdown_total) }}</td>
+        <td></td>
+      </tr>
+    {% endif %}
+  </table>
+  <p class="text-xs text-slate-400 mt-2">Estimated; calibrated.</p>
+</section>
+{% endif %}
+
 {% endblock %}

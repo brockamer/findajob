@@ -238,6 +238,8 @@ def folder_view(
     request: Request,
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
 ) -> HTMLResponse | RedirectResponse:
+    from findajob.cost_rollups import per_job_breakdown
+
     root: Path = request.app.state.companies_root
     folder = resolve_folder(fingerprint, db, root)
     if folder is None:
@@ -247,10 +249,23 @@ def folder_view(
         if synth_row is not None and synth_row["synthetic"]:
             return RedirectResponse(url=f"/jobs/{fingerprint}/jd", status_code=303)
         raise HTTPException(status_code=404, detail="folder not found")
-    row = db.execute("SELECT title, company, stage FROM jobs WHERE fingerprint = ?", (fingerprint,)).fetchone()
+    row = db.execute("SELECT id, title, company, stage FROM jobs WHERE fingerprint = ?", (fingerprint,)).fetchone()
     title = row["title"] if row else ""
     company = row["company"] if row else ""
     groups = _group_files(folder, title=title, company=company)
+
+    # #87 — per-operation cost breakdown (only if cost tables exist; fail open)
+    breakdown = []
+    breakdown_total = None
+    if row is not None:
+        try:
+            breakdown = per_job_breakdown(db, row["id"])
+            if breakdown:
+                breakdown_total = sum(r.cost_usd for r in breakdown)
+        except sqlite3.OperationalError:
+            # Test fixtures or pre-Task-1 stacks may lack cost_log/cost_calibration.
+            breakdown = []
+
     templates = request.app.state.templates
     return templates.TemplateResponse(
         request=request,
@@ -262,6 +277,8 @@ def folder_view(
             "company": company,
             "stage": row["stage"] if row else "",
             "groups": groups,
+            "breakdown": breakdown,
+            "breakdown_total": breakdown_total,
         },
     )
 
