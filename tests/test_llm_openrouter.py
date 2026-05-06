@@ -49,13 +49,19 @@ def _success_body(
     cost: float = 0.001234,
     generation_id: str = "gen-abc-123",
 ) -> dict:
+    """Build a fixture matching OpenRouter's real response shape.
+
+    cached_tokens lives under usage.prompt_tokens_details (same as Anthropic
+    native), not at usage top level — earlier versions of this fixture had it
+    top-level, which mirrored a parser bug; corrected after #470 review.
+    """
     return {
         "id": generation_id,
         "choices": [{"message": {"role": "assistant", "content": text}}],
         "usage": {
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
-            "cached_tokens": cached_tokens,
+            "prompt_tokens_details": {"cached_tokens": cached_tokens},
             "cost": cost,
         },
     }

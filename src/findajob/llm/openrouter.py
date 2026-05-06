@@ -339,11 +339,15 @@ def _parse_response(raw: str) -> CompletionResult:
             kind="malformed",
         )
     usage = data.get("usage") or {}
+    # OpenRouter nests cached_tokens under usage.prompt_tokens_details.cached_tokens
+    # (matches Anthropic's native shape). A top-level usage.cached_tokens does not
+    # exist in real responses — only the nested form returns from production.
+    ptd = usage.get("prompt_tokens_details") or {}
     return CompletionResult(
         text=text,
         prompt_tokens=int(usage.get("prompt_tokens", 0)),
         completion_tokens=int(usage.get("completion_tokens", 0)),
-        cached_tokens=int(usage.get("cached_tokens", 0)),
+        cached_tokens=int(ptd.get("cached_tokens", 0)),
         cost_usd=float(usage.get("cost", 0.0)),
         generation_id=data.get("id"),
     )

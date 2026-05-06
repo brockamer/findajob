@@ -555,11 +555,11 @@ def main(gmail_since_days: int | None = None):
                 write_audit(conn, job_id, "stage", "enriched", stage)
                 scored_count += 1
 
-                # Input estimate: raw JD + profile + feedback block + title/company framing.
-                # Output estimate: the JSON scorer response.
-                # cost_usd_override comes from response.usage.cost when the LLM
-                # was actually called (#470). Prefilter hits return completion=None
-                # — the heuristic kicks in and the row records the trivial cost.
+                # cost_usd_override + token overrides come from response.usage when
+                # the LLM was actually called (#470). All three travel together so
+                # the row is fully API-authoritative on the wrapper path. Prefilter
+                # hits (completion=None) fall back to the heuristic against the
+                # reconstructed input/output text — same behavior as pre-#470.
                 scoring_input = (row["raw_jd_text"] or "") + candidate_profile + (_FEEDBACK_BLOCK or "")
                 scoring_output = str(scored)
                 log_call(
@@ -572,6 +572,8 @@ def main(gmail_since_days: int | None = None):
                     latency_ms=latency_ms,
                     success=True,
                     cost_usd_override=(completion.cost_usd if completion is not None else None),
+                    input_tokens_override=(completion.prompt_tokens if completion is not None else None),
+                    output_tokens_override=(completion.completion_tokens if completion is not None else None),
                 )
                 conn.commit()
 

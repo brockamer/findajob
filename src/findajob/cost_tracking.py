@@ -155,16 +155,22 @@ def log_call(
     success: bool = True,
     error_message: str | None = None,
     cost_usd_override: float | None = None,
+    input_tokens_override: int | None = None,
+    output_tokens_override: int | None = None,
 ) -> None:
     """Insert a cost_log row.
 
-    By default, ``cost_usd`` is the chars/4 heuristic + pricing-table
-    estimate. Pass ``cost_usd_override`` (e.g. from
-    ``CompletionResult.cost_usd``) to write the API-reported billed
-    amount directly and bypass the heuristic. Token columns are still
-    computed via the heuristic so the row stays well-formed.
+    By default, every column comes from the chars/4 heuristic + pricing
+    table. Wrapper-driven callers (``findajob.llm.openrouter``) pass the
+    three ``*_override`` kwargs together so the row is fully
+    API-authoritative — billed dollars and token counts both from
+    ``response.usage``. Mixing overrides (e.g. cost from API but tokens
+    from heuristic) creates rows where ``cost / token`` ratios are
+    inconsistent, so use the trio together when on the wrapper path.
     """
-    in_tok, out_tok, heuristic_cost = estimate_cost_usd(model, input_text, output_text)
+    heuristic_in, heuristic_out, heuristic_cost = estimate_cost_usd(model, input_text, output_text)
+    in_tok = input_tokens_override if input_tokens_override is not None else heuristic_in
+    out_tok = output_tokens_override if output_tokens_override is not None else heuristic_out
     cost = cost_usd_override if cost_usd_override is not None else heuristic_cost
     conn.execute(
         """

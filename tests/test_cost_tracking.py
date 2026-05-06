@@ -119,6 +119,47 @@ def test_log_call_with_cost_usd_override_bypasses_heuristic(tmp_path: Path) -> N
     assert row[2] > 0
 
 
+def test_log_call_with_token_overrides_writes_authoritative_counts(tmp_path: Path) -> None:
+    """input_tokens_override + output_tokens_override bypass the heuristic.
+
+    When all three overrides travel together (cost + input + output), the row
+    is fully API-authoritative — cost / token ratios stay internally consistent.
+    """
+    import sqlite3
+
+    from findajob.cost_tracking import log_call
+
+    db = tmp_path / "test.db"
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """
+        CREATE TABLE cost_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id TEXT, operation TEXT, model TEXT, latency_ms INTEGER,
+            success INTEGER, error_message TEXT, input_tokens INTEGER,
+            output_tokens INTEGER, cost_usd REAL,
+            created_at TEXT DEFAULT (datetime('now'))
+        )
+        """
+    )
+
+    log_call(
+        conn,
+        job_id="j-3",
+        operation="score",
+        model="openrouter:anthropic/claude-opus-4-7",
+        input_text="x" * 4000,
+        output_text="y" * 200,
+        cost_usd_override=0.005,
+        input_tokens_override=2500,
+        output_tokens_override=42,
+    )
+    row = conn.execute("SELECT cost_usd, input_tokens, output_tokens FROM cost_log WHERE job_id = 'j-3'").fetchone()
+    assert row[0] == pytest.approx(0.005)
+    assert row[1] == 2500
+    assert row[2] == 42
+
+
 def test_log_call_without_override_uses_heuristic(tmp_path: Path) -> None:
     """Default behavior (no override) still computes cost_usd via the heuristic."""
     import sqlite3

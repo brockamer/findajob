@@ -169,17 +169,26 @@ def main():
         if old_stage != new_stage:
             write_audit(conn, job_id, "stage", old_stage, new_stage)
 
-        # cost_usd_override comes from response.usage.cost when the LLM was
-        # actually called (#470). Prefilter hits return completion=None and
-        # the row records the trivial heuristic cost.
+        # cost_usd_override + token overrides come from response.usage when
+        # the LLM was actually called (#470). All three travel together so the
+        # row is fully API-authoritative on the wrapper path. Prefilter hits
+        # (completion=None) fall back to the heuristic against the reconstructed
+        # input/output text — matches the pre-#470 behavior of the local
+        # score_job duplicate this commit replaced.
+        scoring_input = (jd_text or "") + candidate_profile + (_FEEDBACK_BLOCK or "")
+        scoring_output = str(scored)
         log_call(
             conn,
             job_id=job_id,
             operation="rescore",
             model=SCORER_MODEL,
+            input_text=scoring_input,
+            output_text=scoring_output,
             latency_ms=latency_ms,
             success=True,
             cost_usd_override=(completion.cost_usd if completion is not None else None),
+            input_tokens_override=(completion.prompt_tokens if completion is not None else None),
+            output_tokens_override=(completion.completion_tokens if completion is not None else None),
         )
         conn.commit()
 
