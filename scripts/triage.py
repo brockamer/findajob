@@ -106,7 +106,7 @@ def score_null_manual_review_rows(
     for row in rows:
         job_id = row["id"]
         try:
-            scored, _ = score_job(
+            scored, _, _completion = score_job(
                 row["title"],
                 row["company"] or "",
                 row["location"] or "",
@@ -495,7 +495,7 @@ def main(gmail_since_days: int | None = None):
         score_errors = 0
 
         def _score_worker(row):
-            """Score a single job. Returns (job_id, scored_dict, latency_ms)."""
+            """Score a single job. Returns (job_id, scored, latency_ms, completion)."""
             return (
                 row["id"],
                 *score_job(
@@ -514,7 +514,7 @@ def main(gmail_since_days: int | None = None):
             for i, future in enumerate(as_completed(futures), 1):
                 row = futures[future]
                 try:
-                    job_id, scored, latency_ms = future.result()
+                    job_id, scored, latency_ms, completion = future.result()
                 except Exception as e:
                     log_event("score_error", job_id=row["id"], error=str(e))
                     score_errors += 1
@@ -557,6 +557,9 @@ def main(gmail_since_days: int | None = None):
 
                 # Input estimate: raw JD + profile + feedback block + title/company framing.
                 # Output estimate: the JSON scorer response.
+                # cost_usd_override comes from response.usage.cost when the LLM
+                # was actually called (#470). Prefilter hits return completion=None
+                # — the heuristic kicks in and the row records the trivial cost.
                 scoring_input = (row["raw_jd_text"] or "") + candidate_profile + (_FEEDBACK_BLOCK or "")
                 scoring_output = str(scored)
                 log_call(
@@ -568,6 +571,7 @@ def main(gmail_since_days: int | None = None):
                     output_text=scoring_output,
                     latency_ms=latency_ms,
                     success=True,
+                    cost_usd_override=(completion.cost_usd if completion is not None else None),
                 )
                 conn.commit()
 

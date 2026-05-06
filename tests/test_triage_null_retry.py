@@ -107,7 +107,7 @@ def test_null_score_row_rescored_to_scored(db):
     # Import the function under test (extracted from triage.py)
     from triage import score_null_manual_review_rows  # noqa: PLC0415
 
-    with patch("triage.score_job", return_value=(fake_score, fake_latency)):
+    with patch("triage.score_job", return_value=(fake_score, fake_latency, None)):
         count = score_null_manual_review_rows(db, "profile text", "", limit=50)
 
     assert count == 1
@@ -155,7 +155,7 @@ def test_limit_caps_retry_batch(db):
 
     from triage import score_null_manual_review_rows  # noqa: PLC0415
 
-    with patch("triage.score_job", return_value=(fake_score, 100)):
+    with patch("triage.score_job", return_value=(fake_score, 100, None)):
         count = score_null_manual_review_rows(db, "profile text", "", limit=3)
 
     assert count == 3
