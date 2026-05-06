@@ -12,13 +12,13 @@ import csv
 import os
 import re
 import sqlite3
-import subprocess
 import sys
 import time
 from datetime import datetime
 
 from findajob.cost_tracking import log_call, role_model
-from findajob.paths import AICHAT, BASE
+from findajob.llm.openrouter import OpenRouterError, complete
+from findajob.paths import BASE
 from findajob.utils import (
     build_outreach_filename,
     load_env,
@@ -111,29 +111,49 @@ def generate_outreach(
     conn: sqlite3.Connection | None = None,
     job_id: str | None = None,
 ):
-    """Call aichat-ng outreach_drafter role. Profile + voice samples injected directly — no RAG.
+    """Call openrouter outreach_drafter role. Profile + voice samples injected as cached_prefix.
 
-    When ``conn`` is provided, a cost_log row is written after a successful
-    subprocess return. Cost-log failures are swallowed so they cannot break
-    outreach drafting.
+    cached_prefix (profile + voice samples) is byte-identical across all contacts in a run,
+    enabling Anthropic prompt-cache hits when drafting for multiple people at the same company.
+    The contact-specific text lives in the per-call prompt tail.
+
+    When ``conn`` is provided, a cost_log row is written after a successful response.
+    Cost-log failures are swallowed so they cannot break outreach drafting.
+    Returns the outpath on success or None on LLM failure.
     """
     voice_section = f"VOICE SAMPLES:\n{voice_samples}\n\n" if voice_samples else ""
+    cached_prefix = f"CANDIDATE PROFILE:\n{profile_text}\n\n{voice_section}---\n\n"
     mode_marker = "<<SPECULATIVE_MODE>>\n\n" if is_synthetic else ""
     prompt = (
         f"{mode_marker}"
-        f"CANDIDATE PROFILE:\n{profile_text}\n\n"
-        f"{voice_section}"
         f"Draft a LinkedIn outreach message from {candidate_name} to {contact['name']}, "
         f"who is a {contact['title']} at {company}.\n\n"
         f"Context: {candidate_name} is exploring a role at {company}.\n\n"
         f"JD:\n{jd_text}"
     )
-    cmd = [AICHAT, "--role", "outreach_drafter", "-S", prompt]
+
     start = time.time()
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+    try:
+        result = complete(
+            role="outreach_drafter",
+            prompt=prompt,
+            cached_prefix=cached_prefix,
+            pin_provider="anthropic",
+            timeout_s=300,
+        )
+    except OpenRouterError as e:
+        log_event(
+            "openrouter_failure",
+            role="outreach_drafter",
+            kind=e.kind,
+            status_code=e.status_code,
+            message=str(e)[:300],
+        )
+        return None
     latency_ms = int((time.time() - start) * 1000)
-    draft = result.stdout.strip()
-    if conn is not None and result.returncode == 0 and draft:
+
+    draft = result.text.strip()
+    if conn is not None and draft:
         try:
             log_call(
                 conn,
@@ -141,9 +161,12 @@ def generate_outreach(
                 operation="outreach_drafter",
                 model=role_model("outreach_drafter"),
                 input_text=prompt,
-                output_text=draft,
+                output_text=result.text,
                 latency_ms=latency_ms,
                 success=True,
+                cost_usd_override=result.cost_usd,
+                input_tokens_override=result.prompt_tokens,
+                output_tokens_override=result.completion_tokens,
             )
             conn.commit()
         except Exception as e:  # noqa: BLE001 — cost tracking is best-effort
