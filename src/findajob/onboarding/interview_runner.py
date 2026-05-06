@@ -1,26 +1,21 @@
-"""Multi-turn LLM interview runner for the in-app onboarding flow (#336 Task 3).
+"""Multi-turn LLM interview runner — Phase 2 thin delegate around the canonical wrapper.
 
-Extends the ``openrouter_smoke.py`` urllib pattern to multi-turn chat
-completions. Pure stdlib — no new dependencies.
+Delegates to :func:`findajob.llm.openrouter.complete`. Translates
+:class:`OpenRouterError` to :class:`InterviewRunnerError` so the route
+layer's verbatim user_message render contract (#336 Task 6) is preserved.
 
-Used by ``routes/onboarding_interview.py`` (Task 4) — one ``run_turn``
-call per HTMX-posted user turn from the chat UI.
-
-Every non-success path raises :class:`InterviewRunnerError` with a
-``user_message`` attribute suitable for verbatim render in the chat
-UI's error banner (Task 6). Never raises a generic exception.
+Signature change from Phase 1: ``run_turn`` no longer accepts a
+``system_prompt`` parameter. The wrapper reads ``config/roles/onboarding_interviewer.md``
+directly. Callers (``routes/onboarding_interview.py``) must drop that argument.
 """
 
 from __future__ import annotations
 
-import json
-import urllib.error
-import urllib.request
+from findajob.llm.openrouter import OpenRouterError, complete
 
-OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
-
+# Model pin retained as module-level constants so existing imports in
+# test_onboarding_interview_runner.py continue to resolve.
 INTERVIEW_MODEL = "anthropic/claude-sonnet-4-6"
-INTERVIEW_TIMEOUT_S = 120
 INTERVIEW_MAX_TOKENS = 4096
 
 
@@ -28,10 +23,10 @@ class InterviewRunnerError(Exception):
     """Raised by :func:`run_turn` on any non-success path.
 
     ``user_message`` is rendered verbatim in the chat UI's error banner.
-    ``kind`` classifies the failure so the route layer (#336 Task 7) can
-    pick a UX variant (auth/payment/rate-limit/upstream/network/malformed/
-    config) without re-parsing the message string. ``status_code`` is the
-    HTTP status from OpenRouter when available.
+    ``kind`` classifies the failure so the route layer can pick a UX
+    variant (auth/payment/rate_limit/upstream/network/malformed/config)
+    without re-parsing the message string. ``status_code`` is the HTTP
+    status from OpenRouter when available.
     """
 
     def __init__(
@@ -47,28 +42,111 @@ class InterviewRunnerError(Exception):
         self.status_code = status_code
 
 
+def _translate(e: OpenRouterError) -> InterviewRunnerError:
+    """Map OpenRouterError to an InterviewRunnerError with a user-facing message.
+
+    Strings are byte-identical to the messages that the Phase 1 inline HTTP
+    client produced. Dynamic data (status_code, reason, body snippet) is
+    reconstructed from the wrapper's kind/status_code/message fields so the
+    chat UI banner renders the same text it always has.
+    """
+    kind = e.kind
+    code = e.status_code
+    raw = str(e)  # the wrapper's internal message — used for dynamic strings
+
+    if kind == "auth":
+        msg = "OpenRouter rejected the API key (401 Unauthorized). Visit /onboarding/ to update your OpenRouter key."
+    elif kind == "payment":
+        msg = (
+            "Your OpenRouter account is out of credit (402 Payment "
+            "Required). Add prepaid credit at "
+            "https://openrouter.ai/credits, then continue the interview."
+        )
+    elif kind == "rate_limit":
+        msg = "OpenRouter rate-limited the request (429). Wait a moment and try again."
+    elif kind == "upstream":
+        # Wrapper produces "OpenRouter/upstream server error (NNN)." for 5xx
+        # and "OpenRouter returned HTTP NNN: <body>" for other 4xx codes.
+        # Re-emit the original Phase 1 strings using status_code.
+        if code is not None and 500 <= code < 600:
+            msg = (
+                f"OpenRouter or the upstream model returned a server error "
+                f"({code}). Try again in a moment; the issue is on their side."
+            )
+        elif code is not None:
+            # Other HTTP errors (e.g. 418) — wrapper embeds body snippet in raw
+            # "OpenRouter returned HTTP NNN: <body>" format; preserve as-is.
+            msg = raw if raw.startswith("OpenRouter returned HTTP") else f"OpenRouter returned HTTP {code}: {raw[:200]}"
+        else:
+            msg = "OpenRouter returned an unexpected error. Try again in a moment."
+    elif kind == "network":
+        # Wrapper: "Could not reach OpenRouter (reason)."
+        # Phase 1 added "Check the deployment's network connectivity and try again."
+        # Extract reason from wrapper message for byte-fidelity.
+        reason = _extract_network_reason(raw)
+        msg = f"Could not reach OpenRouter ({reason}). Check the deployment's network connectivity and try again."
+    elif kind == "malformed":
+        # Wrapper uses short prefixes; map to Phase 1's longer strings.
+        msg = _map_malformed(raw)
+    elif kind == "config":
+        msg = (
+            "No OpenRouter key on file for this stack. Visit /onboarding/ "
+            "Step 1 to provide your API keys, then return here to start "
+            "the interview."
+        )
+    else:
+        msg = f"Unexpected error talking to OpenRouter: {raw[:200]}"
+
+    return InterviewRunnerError(msg, kind=kind, status_code=code)
+
+
+def _extract_network_reason(raw: str) -> str:
+    """Pull the reason from 'Could not reach OpenRouter (reason).' wrapper message."""
+    prefix = "Could not reach OpenRouter ("
+    if raw.startswith(prefix) and raw.endswith(")."):
+        return raw[len(prefix) : -2]
+    # Fallback: return the whole wrapper message as the reason
+    return raw
+
+
+def _map_malformed(raw: str) -> str:
+    """Map wrapper's short malformed messages to Phase 1's longer strings."""
+    # Wrapper prefix → Phase 1 prefix mapping
+    if raw.startswith("Non-JSON response:"):
+        body_snippet = raw[len("Non-JSON response:") :].lstrip()
+        return f"OpenRouter returned non-JSON response: {body_snippet}"
+    if raw.startswith("Unexpected shape:"):
+        body_snippet = raw[len("Unexpected shape:") :].lstrip()
+        return f"OpenRouter returned unexpected response shape: {body_snippet}"
+    if raw.startswith("Could not parse content:"):
+        body_snippet = raw[len("Could not parse content:") :].lstrip()
+        return f"Could not parse assistant content from OpenRouter response: {body_snippet}"
+    if raw.startswith("Content not a string:"):
+        type_name = raw[len("Content not a string:") :].lstrip()
+        return f"Assistant content was not a string: {type_name}"
+    # Fallback — preserve wrapper's message unchanged
+    return raw
+
+
 def run_turn(
     api_key: str,
-    system_prompt: str,
     history: list[dict[str, str]],
     user_message: str,
 ) -> tuple[str, dict]:
-    """Submit one user turn + receive the assistant turn.
+    """Submit one user turn and receive the assistant turn.
 
     Args:
         api_key: tester's OpenRouter key (collected at /onboarding/ Step 1).
             The chat is funded by this key — there is no operator-funded
             fallback.
-        system_prompt: full role system prompt (typically the contents of
-            ``config/roles/onboarding_interviewer.md``).
         history: prior turns as ``[{"role":"user"|"assistant","content":"..."}, ...]``.
-            May be an empty list for the first turn — caller supplies a
-            synthetic kick-off via ``user_message``.
+            May be an empty list for the first turn.
         user_message: the new user turn text.
 
     Returns:
-        ``(assistant_text, usage_dict)``. ``usage_dict`` carries OpenRouter's
-        reported token + cost fields when present (empty dict otherwise).
+        ``(assistant_text, usage_dict)``. ``usage_dict`` carries token + cost
+        fields: prompt_tokens, completion_tokens, cached_tokens, cost,
+        generation_id.
 
     Raises:
         InterviewRunnerError: every non-success path — empty key, network,
@@ -82,126 +160,23 @@ def run_turn(
             kind="config",
         )
 
-    # Mark the system prompt cacheable via OpenRouter's `cache_control`
-    # breakpoint. Anthropic providers honor this and bill cached system
-    # tokens at ~10% on subsequent turns — the system prompt is ~25KB and
-    # is re-sent every turn, so caching meaningfully cuts cost on long
-    # interviews. Cost figures live in user-facing docs, not here.
-    messages: list[dict] = [
-        {
-            "role": "system",
-            "content": [
-                {
-                    "type": "text",
-                    "text": system_prompt,
-                    "cache_control": {"type": "ephemeral"},
-                }
-            ],
-        }
-    ]
-    messages.extend(history)
-    messages.append({"role": "user", "content": user_message})
-
-    payload = json.dumps(
-        {
-            "model": INTERVIEW_MODEL,
-            "messages": messages,
-            "max_tokens": INTERVIEW_MAX_TOKENS,
-        }
-    ).encode("utf-8")
-
-    req = urllib.request.Request(  # noqa: S310 — POSTing to a fixed https URL
-        OPENROUTER_API_URL,
-        data=payload,
-        headers={
-            "Authorization": f"Bearer {api_key.strip()}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://github.com/brockamer/findajob",
-            "X-Title": "findajob in-app onboarding",
-        },
-        method="POST",
-    )
-
     try:
-        with urllib.request.urlopen(req, timeout=INTERVIEW_TIMEOUT_S) as resp:  # noqa: S310
-            body = resp.read().decode("utf-8")
-    except urllib.error.HTTPError as e:
-        try:
-            error_body = e.read().decode("utf-8", errors="replace")
-        except Exception:  # noqa: BLE001
-            error_body = ""
-        if e.code == 401:
-            raise InterviewRunnerError(
-                "OpenRouter rejected the API key (401 Unauthorized). Visit /onboarding/ to update your OpenRouter key.",
-                kind="auth",
-                status_code=401,
-            ) from e
-        if e.code == 402:
-            raise InterviewRunnerError(
-                "Your OpenRouter account is out of credit (402 Payment "
-                "Required). Add prepaid credit at "
-                "https://openrouter.ai/credits, then continue the interview.",
-                kind="payment",
-                status_code=402,
-            ) from e
-        if e.code == 429:
-            raise InterviewRunnerError(
-                "OpenRouter rate-limited the request (429). Wait a moment and try again.",
-                kind="rate_limit",
-                status_code=429,
-            ) from e
-        if 500 <= e.code < 600:
-            raise InterviewRunnerError(
-                f"OpenRouter or the upstream model returned a server error "
-                f"({e.code}). Try again in a moment; the issue is on their side.",
-                kind="upstream",
-                status_code=e.code,
-            ) from e
-        raise InterviewRunnerError(
-            f"OpenRouter returned HTTP {e.code}: {error_body[:200]}",
-            kind="upstream",
-            status_code=e.code,
-        ) from e
-    except urllib.error.URLError as e:
-        raise InterviewRunnerError(
-            f"Could not reach OpenRouter ({e.reason}). Check the deployment's network connectivity and try again.",
-            kind="network",
-        ) from e
-    except Exception as e:  # noqa: BLE001
-        raise InterviewRunnerError(
-            f"Unexpected error talking to OpenRouter: {type(e).__name__}: {str(e)[:200]}",
-            kind="unknown",
-        ) from e
-
-    try:
-        data = json.loads(body)
-    except json.JSONDecodeError as e:
-        raise InterviewRunnerError(
-            f"OpenRouter returned non-JSON response: {body[:200]}",
-            kind="malformed",
-        ) from e
-
-    if not isinstance(data, dict) or not data.get("choices"):
-        raise InterviewRunnerError(
-            f"OpenRouter returned unexpected response shape: {body[:200]}",
-            kind="malformed",
+        result = complete(
+            role="onboarding_interviewer",
+            prompt=user_message,
+            cache_system=True,
+            pin_provider="anthropic",
+            history=history,
+            api_key=api_key,
         )
+    except OpenRouterError as e:
+        raise _translate(e) from e
 
-    try:
-        assistant_text = data["choices"][0]["message"]["content"]
-    except (KeyError, IndexError, TypeError) as e:
-        raise InterviewRunnerError(
-            f"Could not parse assistant content from OpenRouter response: {body[:200]}",
-            kind="malformed",
-        ) from e
-
-    if not isinstance(assistant_text, str):
-        raise InterviewRunnerError(
-            f"Assistant content was not a string: {type(assistant_text).__name__}",
-            kind="malformed",
-        )
-
-    usage_raw = data.get("usage")
-    usage: dict = usage_raw if isinstance(usage_raw, dict) else {}
-
-    return assistant_text, usage
+    usage = {
+        "prompt_tokens": result.prompt_tokens,
+        "completion_tokens": result.completion_tokens,
+        "cached_tokens": result.cached_tokens,
+        "cost": result.cost_usd,
+        "generation_id": result.generation_id,
+    }
+    return result.text, usage

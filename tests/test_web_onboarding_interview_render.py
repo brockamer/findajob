@@ -313,7 +313,7 @@ def test_turn_response_renders_user_and_assistant_bubbles(
     finally:
         conn.close()
 
-    def _fake(api_key, system_prompt, history, user_message):
+    def _fake(api_key, history, user_message):
         return "ASSISTANT_REPLY_MARKER", {}
 
     monkeypatch.setattr("findajob.web.routes.onboarding_interview.run_turn", _fake)

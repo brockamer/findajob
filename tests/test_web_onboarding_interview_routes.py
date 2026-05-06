@@ -152,14 +152,17 @@ def client_no_key(client: TestClient) -> TestClient:
 
 
 def _stub_run_turn(monkeypatch: pytest.MonkeyPatch, assistant_text: str) -> list[dict[str, Any]]:
-    """Replace run_turn with a stub that records calls and returns a fixed reply."""
+    """Replace run_turn with a stub that records calls and returns a fixed reply.
+
+    Phase 2: run_turn no longer accepts system_prompt — it is read from the
+    role file by the wrapper. Stub matches the new signature.
+    """
     calls: list[dict[str, Any]] = []
 
-    def _fake(api_key: str, system_prompt: str, history: list, user_message: str):
+    def _fake(api_key: str, history: list, user_message: str):
         calls.append(
             {
                 "api_key": api_key,
-                "system_prompt": system_prompt,
                 "history": list(history),
                 "user_message": user_message,
             }
@@ -258,10 +261,10 @@ def test_start_creates_session_and_runs_first_turn(
     assert location.startswith("/onboarding/interview/")
     sid = location.rsplit("/", 1)[-1]
 
-    # run_turn was called exactly once with the tester's key + non-empty system prompt + empty history
+    # run_turn was called exactly once with the tester's key + empty history + kickoff message.
+    # Phase 2: system_prompt is no longer passed (the wrapper reads the role file directly).
     assert len(calls) == 1
     assert calls[0]["api_key"] == _USER_KEY
-    assert "interviewer" in calls[0]["system_prompt"].lower() or len(calls[0]["system_prompt"]) > 100
     assert calls[0]["history"] == []
     assert calls[0]["user_message"]  # synthetic kickoff non-empty
 

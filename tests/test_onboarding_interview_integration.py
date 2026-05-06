@@ -185,7 +185,7 @@ def test_full_interview_flow_writes_all_files_and_sentinel(
         return _ok_resp(next(response_iter))
 
     monkeypatch.setattr(
-        "findajob.onboarding.interview_runner.urllib.request.urlopen",
+        "findajob.llm.openrouter.urllib.request.urlopen",
         _fake_urlopen,
     )
 
@@ -299,7 +299,7 @@ def test_full_interview_flow_skips_finalize_when_blocks_missing(
     ]
     response_iter = iter(canned_responses)
     monkeypatch.setattr(
-        "findajob.onboarding.interview_runner.urllib.request.urlopen",
+        "findajob.llm.openrouter.urllib.request.urlopen",
         lambda req, timeout=None: _ok_resp(next(response_iter)),
     )
 

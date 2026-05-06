@@ -44,7 +44,6 @@ from findajob.web.markdown import render_chat_assistant_html
 
 router = APIRouter()
 
-_SYSTEM_PROMPT_RELPATH = Path("config") / "roles" / "onboarding_interviewer.md"
 _KICKOFF_USER_MESSAGE = "Begin the interview."
 
 
@@ -94,11 +93,6 @@ def _conn(request: Request) -> sqlite3.Connection:
     conn = sqlite3.connect(str(db_path), timeout=30)
     conn.row_factory = sqlite3.Row
     return conn
-
-
-def _system_prompt(request: Request) -> str:
-    base_root: Path = request.app.state.base_root
-    return (base_root / _SYSTEM_PROMPT_RELPATH).read_text(encoding="utf-8")
 
 
 def _captured_from_history(history: list[dict[str, str]]) -> dict[str, str]:
@@ -258,7 +252,6 @@ def start_interview(request: Request) -> HTMLResponse | RedirectResponse:
         try:
             assistant_text, usage = run_turn(
                 api_key=chat_key,
-                system_prompt=_system_prompt(request),
                 history=[],
                 user_message=_KICKOFF_USER_MESSAGE,
             )
@@ -316,7 +309,6 @@ def post_turn(
         try:
             assistant_text, usage = run_turn(
                 api_key=chat_key,
-                system_prompt=_system_prompt(request),
                 history=sess.history,
                 user_message=message,
             )

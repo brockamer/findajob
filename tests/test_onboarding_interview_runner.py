@@ -1,16 +1,20 @@
-"""Tests for findajob.onboarding.interview_runner (#336 Task 3).
+"""Tests for findajob.onboarding.interview_runner (#336 Task 3, Phase 2 refactor #471).
 
-Stub urllib.request.urlopen at the module level — no real network calls.
-Mirrors the test pattern in test_openrouter_smoke.py but validates the
-multi-turn semantics: payload includes the full prior history, every
-non-success path raises InterviewRunnerError with a user_message, and
-the (assistant_text, usage) tuple round-trips cleanly.
+Phase 2: interview_runner is a thin delegate around findajob.llm.openrouter.complete().
+All HTTP-boundary mocking now patches findajob.llm.openrouter.urllib.request.urlopen.
+
+Tests verify:
+- Pre-flight empty-key guard (still in run_turn)
+- Happy path returns (assistant_text, usage_dict)
+- Error translation: every OpenRouterError.kind → InterviewRunnerError with
+  byte-identical user_message (the route layer renders this verbatim)
+- INTERVIEW_MODEL / INTERVIEW_MAX_TOKENS constants still importable (existing callers)
 """
 
 from __future__ import annotations
 
-import io
 import json
+from io import BytesIO
 from unittest.mock import patch
 from urllib.error import HTTPError, URLError
 
@@ -22,6 +26,9 @@ from findajob.onboarding.interview_runner import (
     InterviewRunnerError,
     run_turn,
 )
+
+# Patch point — the wrapper's HTTP boundary.
+_URLOPEN = "findajob.llm.openrouter.urllib.request.urlopen"
 
 
 class _FakeResp:
@@ -45,7 +52,10 @@ def _ok_resp(body: dict) -> _FakeResp:
 
 
 def _success_body(text: str = "hello", usage: dict | None = None) -> dict:
-    body = {"choices": [{"message": {"role": "assistant", "content": text}}]}
+    body: dict = {
+        "choices": [{"message": {"role": "assistant", "content": text}}],
+        "id": "gen-test-id",
+    }
     if usage is not None:
         body["usage"] = usage
     return body
@@ -56,290 +66,252 @@ def _success_body(text: str = "hello", usage: dict | None = None) -> dict:
 
 def test_empty_api_key_raises_immediately() -> None:
     """No network call when the API key is empty."""
-    with patch("findajob.onboarding.interview_runner.urllib.request.urlopen") as mock_urlopen:
+    with patch(_URLOPEN) as mock_urlopen:
         with pytest.raises(InterviewRunnerError) as exc:
-            run_turn("", "system", [], "hi")
+            run_turn("", [], "hi")
         mock_urlopen.assert_not_called()
-    # User-facing message points the user back to /onboarding/ Step 1.
     assert "Step 1" in exc.value.user_message or "onboarding" in exc.value.user_message.lower()
+    assert exc.value.kind == "config"
 
 
 def test_whitespace_api_key_raises_immediately() -> None:
-    with patch("findajob.onboarding.interview_runner.urllib.request.urlopen") as mock_urlopen:
-        with pytest.raises(InterviewRunnerError):
-            run_turn("   \t\n  ", "system", [], "hi")
+    with patch(_URLOPEN) as mock_urlopen:
+        with pytest.raises(InterviewRunnerError) as exc:
+            run_turn("   \t\n  ", [], "hi")
         mock_urlopen.assert_not_called()
+    assert exc.value.kind == "config"
 
 
-# ── Happy path + payload contract ───────────────────────────────────────
+# ── Happy path ───────────────────────────────────────────────────────────
 
 
 def test_successful_turn_returns_text_and_usage() -> None:
     body = _success_body(
         text="Hi! What role are you targeting?",
-        usage={"prompt_tokens": 100, "completion_tokens": 20, "total_tokens": 120},
-    )
-    with patch(
-        "findajob.onboarding.interview_runner.urllib.request.urlopen",
-        return_value=_ok_resp(body),
-    ):
-        text, usage = run_turn("sk-or-v1-operator", "ROLE PROMPT", [], "begin")
-    assert text == "Hi! What role are you targeting?"
-    assert usage == {"prompt_tokens": 100, "completion_tokens": 20, "total_tokens": 120}
-
-
-def test_payload_contains_system_history_and_user_in_order() -> None:
-    """Multi-turn contract: system + full prior history + new user_message."""
-    history = [
-        {"role": "user", "content": "begin"},
-        {"role": "assistant", "content": "What role?"},
-        {"role": "user", "content": "DC ops"},
-        {"role": "assistant", "content": "Tell me about your team."},
-    ]
-    captured: dict = {}
-
-    def _capture(req, timeout=None):
-        captured["url"] = req.full_url
-        captured["headers"] = dict(req.headers)
-        captured["body"] = json.loads(req.data.decode("utf-8"))
-        return _ok_resp(_success_body("Got it."))
-
-    with patch(
-        "findajob.onboarding.interview_runner.urllib.request.urlopen",
-        side_effect=_capture,
-    ):
-        run_turn("sk-or-v1-operator", "SYSTEM", history, "Founded RTP Labs at Meta.")
-
-    assert captured["url"] == "https://openrouter.ai/api/v1/chat/completions"
-    assert captured["body"]["model"] == INTERVIEW_MODEL
-    assert captured["body"]["max_tokens"] == INTERVIEW_MAX_TOKENS
-    # System message uses the cache-control breakpoint shape so OpenRouter
-    # bills cached system tokens at ~10% on subsequent turns. Subsequent
-    # messages are still the simple {role, content} form.
-    assert captured["body"]["messages"] == [
-        {
-            "role": "system",
-            "content": [{"type": "text", "text": "SYSTEM", "cache_control": {"type": "ephemeral"}}],
+        usage={
+            "prompt_tokens": 100,
+            "completion_tokens": 20,
+            "total_tokens": 120,
+            "cost": 0.003,
+            "prompt_tokens_details": {"cached_tokens": 0},
         },
-        {"role": "user", "content": "begin"},
-        {"role": "assistant", "content": "What role?"},
-        {"role": "user", "content": "DC ops"},
-        {"role": "assistant", "content": "Tell me about your team."},
-        {"role": "user", "content": "Founded RTP Labs at Meta."},
-    ]
+    )
+    with patch(_URLOPEN, return_value=_ok_resp(body)):
+        text, usage = run_turn("sk-or-v1-operator", [], "begin")
+    assert text == "Hi! What role are you targeting?"
+    assert usage["prompt_tokens"] == 100
+    assert usage["completion_tokens"] == 20
+    assert usage["cost"] == 0.003
+    assert "cached_tokens" in usage
+    assert "generation_id" in usage
 
 
-def test_authorization_header_uses_api_key() -> None:
-    captured: dict = {}
-
-    def _capture(req, timeout=None):
-        captured["headers"] = dict(req.headers)
-        return _ok_resp(_success_body())
-
-    with patch(
-        "findajob.onboarding.interview_runner.urllib.request.urlopen",
-        side_effect=_capture,
-    ):
-        run_turn("  sk-or-v1-tester-with-spaces  ", "SYSTEM", [], "hi")
-
-    # urllib title-cases header keys.
-    assert captured["headers"]["Authorization"] == "Bearer sk-or-v1-tester-with-spaces"
-    assert captured["headers"]["Content-type"] == "application/json"
-    assert "findajob" in captured["headers"]["X-title"].lower()
+def test_usage_has_expected_keys() -> None:
+    """Phase 2 usage dict shape: prompt_tokens, completion_tokens, cached_tokens, cost, generation_id."""
+    body = _success_body(
+        text="ok",
+        usage={
+            "prompt_tokens": 50,
+            "completion_tokens": 10,
+            "cost": 0.001,
+            "prompt_tokens_details": {"cached_tokens": 5},
+        },
+    )
+    body["id"] = "gen-abc"
+    with patch(_URLOPEN, return_value=_ok_resp(body)):
+        _, usage = run_turn("sk-or-v1-operator", [], "hi")
+    assert set(usage.keys()) == {"prompt_tokens", "completion_tokens", "cached_tokens", "cost", "generation_id"}
+    assert usage["generation_id"] == "gen-abc"
+    assert usage["cached_tokens"] == 5
 
 
 def test_empty_history_works_for_first_turn() -> None:
-    """First turn: history=[] + user kick-off → still valid payload."""
-    captured: dict = {}
-
-    def _capture(req, timeout=None):
-        captured["body"] = json.loads(req.data.decode("utf-8"))
-        return _ok_resp(_success_body("Welcome."))
-
-    with patch(
-        "findajob.onboarding.interview_runner.urllib.request.urlopen",
-        side_effect=_capture,
-    ):
-        text, _ = run_turn("sk-or-v1-operator", "SYSTEM", [], "begin the interview")
+    body = _success_body("Welcome.")
+    with patch(_URLOPEN, return_value=_ok_resp(body)):
+        text, _ = run_turn("sk-or-v1-operator", [], "begin the interview")
     assert text == "Welcome."
-    assert captured["body"]["messages"] == [
-        {
-            "role": "system",
-            "content": [{"type": "text", "text": "SYSTEM", "cache_control": {"type": "ephemeral"}}],
-        },
-        {"role": "user", "content": "begin the interview"},
-    ]
 
 
-def test_usage_defaults_to_empty_dict_when_omitted() -> None:
-    body = _success_body("ok")  # no usage field
-    with patch(
-        "findajob.onboarding.interview_runner.urllib.request.urlopen",
-        return_value=_ok_resp(body),
-    ):
-        _, usage = run_turn("sk-or-v1-operator", "SYSTEM", [], "hi")
-    assert usage == {}
-
-
-def test_usage_defaults_to_empty_dict_when_non_dict() -> None:
-    """Defensive: OpenRouter returns 'usage': null or some unexpected shape."""
-    body = {"choices": [{"message": {"content": "ok"}}], "usage": None}
-    with patch(
-        "findajob.onboarding.interview_runner.urllib.request.urlopen",
-        return_value=_ok_resp(body),
-    ):
-        _, usage = run_turn("sk-or-v1-operator", "SYSTEM", [], "hi")
-    assert usage == {}
-
-
-# ── HTTP error paths ────────────────────────────────────────────────────
-
-
-def test_401_raises_with_friendly_message() -> None:
-    err = HTTPError("u", 401, "Unauthorized", {}, fp=io.BytesIO(b'{"error":"bad key"}'))  # type: ignore[arg-type]
-    with patch(
-        "findajob.onboarding.interview_runner.urllib.request.urlopen",
-        side_effect=err,
-    ):
-        with pytest.raises(InterviewRunnerError) as exc:
-            run_turn("sk-or-v1-tester", "SYSTEM", [], "hi")
-    msg = exc.value.user_message
-    assert "401" in msg
-    # User is pointed to /onboarding/ to update their own key.
-    assert "/onboarding/" in msg
-
-
-def test_402_raises_with_credit_message() -> None:
-    err = HTTPError("u", 402, "Payment Required", {}, fp=io.BytesIO(b""))  # type: ignore[arg-type]
-    with patch(
-        "findajob.onboarding.interview_runner.urllib.request.urlopen",
-        side_effect=err,
-    ):
-        with pytest.raises(InterviewRunnerError) as exc:
-            run_turn("sk-or-v1-operator", "SYSTEM", [], "hi")
-    msg = exc.value.user_message
-    assert "credit" in msg.lower()
-    assert "https://openrouter.ai/credits" in msg
-
-
-def test_429_raises_with_rate_limit_message() -> None:
-    err = HTTPError("u", 429, "Too Many Requests", {}, fp=io.BytesIO(b""))  # type: ignore[arg-type]
-    with patch(
-        "findajob.onboarding.interview_runner.urllib.request.urlopen",
-        side_effect=err,
-    ):
-        with pytest.raises(InterviewRunnerError) as exc:
-            run_turn("sk-or-v1-operator", "SYSTEM", [], "hi")
-    assert "429" in exc.value.user_message or "rate" in exc.value.user_message.lower()
-
-
-@pytest.mark.parametrize("code", [500, 502, 503, 504, 599])
-def test_5xx_raises_with_server_error_message(code: int) -> None:
-    err = HTTPError("u", code, "Server Error", {}, fp=io.BytesIO(b""))  # type: ignore[arg-type]
-    with patch(
-        "findajob.onboarding.interview_runner.urllib.request.urlopen",
-        side_effect=err,
-    ):
-        with pytest.raises(InterviewRunnerError) as exc:
-            run_turn("sk-or-v1-operator", "SYSTEM", [], "hi")
-    msg = exc.value.user_message
-    assert str(code) in msg
-    assert "server error" in msg.lower() or "their side" in msg.lower()
-
-
-def test_other_4xx_raises_with_generic_http_message() -> None:
-    err = HTTPError("u", 418, "I'm a teapot", {}, fp=io.BytesIO(b'{"detail":"teapot"}'))  # type: ignore[arg-type]
-    with patch(
-        "findajob.onboarding.interview_runner.urllib.request.urlopen",
-        side_effect=err,
-    ):
-        with pytest.raises(InterviewRunnerError) as exc:
-            run_turn("sk-or-v1-operator", "SYSTEM", [], "hi")
-    assert "418" in exc.value.user_message
-
-
-# ── Network + parse error paths ─────────────────────────────────────────
-
-
-def test_network_error_raises_with_connectivity_message() -> None:
-    with patch(
-        "findajob.onboarding.interview_runner.urllib.request.urlopen",
-        side_effect=URLError("Name or service not known"),
-    ):
-        with pytest.raises(InterviewRunnerError) as exc:
-            run_turn("sk-or-v1-operator", "SYSTEM", [], "hi")
-    assert "OpenRouter" in exc.value.user_message
-    assert "network" in exc.value.user_message.lower()
-
-
-def test_unexpected_exception_raises_friendly_wrapper() -> None:
-    """If urlopen raises something completely unexpected, we still wrap it."""
-    with patch(
-        "findajob.onboarding.interview_runner.urllib.request.urlopen",
-        side_effect=RuntimeError("disk on fire"),
-    ):
-        with pytest.raises(InterviewRunnerError) as exc:
-            run_turn("sk-or-v1-operator", "SYSTEM", [], "hi")
-    assert "Unexpected error" in exc.value.user_message
-    assert "RuntimeError" in exc.value.user_message
-
-
-def test_non_json_response_raises() -> None:
-    with patch(
-        "findajob.onboarding.interview_runner.urllib.request.urlopen",
-        return_value=_FakeResp(b"<html>500 Bad Gateway</html>"),
-    ):
-        with pytest.raises(InterviewRunnerError) as exc:
-            run_turn("sk-or-v1-operator", "SYSTEM", [], "hi")
-    assert "non-JSON" in exc.value.user_message
-
-
-def test_response_missing_choices_raises() -> None:
-    with patch(
-        "findajob.onboarding.interview_runner.urllib.request.urlopen",
-        return_value=_ok_resp({"unexpected": "shape"}),
-    ):
-        with pytest.raises(InterviewRunnerError) as exc:
-            run_turn("sk-or-v1-operator", "SYSTEM", [], "hi")
-    assert "unexpected response shape" in exc.value.user_message.lower()
-
-
-def test_response_with_empty_choices_raises() -> None:
-    with patch(
-        "findajob.onboarding.interview_runner.urllib.request.urlopen",
-        return_value=_ok_resp({"choices": []}),
-    ):
-        with pytest.raises(InterviewRunnerError):
-            run_turn("sk-or-v1-operator", "SYSTEM", [], "hi")
-
-
-def test_response_missing_message_content_raises() -> None:
-    """choices[0] exists but has no 'message' field."""
-    body = {"choices": [{"index": 0, "finish_reason": "stop"}]}
-    with patch(
-        "findajob.onboarding.interview_runner.urllib.request.urlopen",
-        return_value=_ok_resp(body),
-    ):
-        with pytest.raises(InterviewRunnerError) as exc:
-            run_turn("sk-or-v1-operator", "SYSTEM", [], "hi")
-    assert "Could not parse assistant content" in exc.value.user_message
-
-
-def test_assistant_content_non_string_raises() -> None:
-    """Defensive: some models return content as a list of blocks."""
-    body = {"choices": [{"message": {"role": "assistant", "content": [{"type": "text", "text": "hi"}]}}]}
-    with patch(
-        "findajob.onboarding.interview_runner.urllib.request.urlopen",
-        return_value=_ok_resp(body),
-    ):
-        with pytest.raises(InterviewRunnerError) as exc:
-            run_turn("sk-or-v1-operator", "SYSTEM", [], "hi")
-    assert "not a string" in exc.value.user_message
-
-
-# ── Model pin sanity ────────────────────────────────────────────────────
+# ── Model pin constant ───────────────────────────────────────────────────
 
 
 def test_interview_model_is_sonnet_4_6() -> None:
     """Model pin: see issue #336 'Decisions adopted'."""
     assert INTERVIEW_MODEL == "anthropic/claude-sonnet-4-6"
+
+
+def test_interview_max_tokens_is_4096() -> None:
+    assert INTERVIEW_MAX_TOKENS == 4096
+
+
+# ── Error translation — kind + user_message byte-identical to Phase 1 ──
+
+
+def test_translates_auth_401() -> None:
+    """auth kind → exact Phase 1 user_message string."""
+    err = HTTPError(url="x", code=401, msg="Unauthorized", hdrs=None, fp=BytesIO(b""))  # type: ignore[arg-type]
+    with patch(_URLOPEN, side_effect=err):
+        with pytest.raises(InterviewRunnerError) as excinfo:
+            run_turn(api_key="sk-or-v1-test", history=[], user_message="hi")
+    e = excinfo.value
+    assert e.kind == "auth"
+    assert e.status_code == 401
+    assert e.user_message == (
+        "OpenRouter rejected the API key (401 Unauthorized). Visit /onboarding/ to update your OpenRouter key."
+    )
+
+
+def test_translates_payment_402() -> None:
+    """payment kind → exact Phase 1 user_message string."""
+    err = HTTPError(url="x", code=402, msg="Payment Required", hdrs=None, fp=BytesIO(b""))  # type: ignore[arg-type]
+    with patch(_URLOPEN, side_effect=err):
+        with pytest.raises(InterviewRunnerError) as excinfo:
+            run_turn(api_key="sk-or-v1-test", history=[], user_message="hi")
+    e = excinfo.value
+    assert e.kind == "payment"
+    assert e.status_code == 402
+    assert e.user_message == (
+        "Your OpenRouter account is out of credit (402 Payment "
+        "Required). Add prepaid credit at "
+        "https://openrouter.ai/credits, then continue the interview."
+    )
+
+
+def test_translates_rate_limit_429() -> None:
+    """rate_limit kind → exact Phase 1 user_message string."""
+    err = HTTPError(url="x", code=429, msg="Too Many Requests", hdrs=None, fp=BytesIO(b""))  # type: ignore[arg-type]
+    with patch(_URLOPEN, side_effect=err):
+        with pytest.raises(InterviewRunnerError) as excinfo:
+            run_turn(api_key="sk-or-v1-test", history=[], user_message="hi")
+    e = excinfo.value
+    assert e.kind == "rate_limit"
+    assert e.status_code == 429
+    assert e.user_message == ("OpenRouter rate-limited the request (429). Wait a moment and try again.")
+
+
+@pytest.mark.parametrize("code", [500, 502, 503, 504, 599])
+def test_translates_upstream_5xx(code: int) -> None:
+    """upstream kind (5xx) → Phase 1's f-string with the specific status code."""
+    err = HTTPError(url="x", code=code, msg="Server Error", hdrs=None, fp=BytesIO(b""))  # type: ignore[arg-type]
+    with patch(_URLOPEN, side_effect=err):
+        with pytest.raises(InterviewRunnerError) as excinfo:
+            run_turn(api_key="sk-or-v1-test", history=[], user_message="hi")
+    e = excinfo.value
+    assert e.kind == "upstream"
+    assert e.status_code == code
+    assert e.user_message == (
+        f"OpenRouter or the upstream model returned a server error "
+        f"({code}). Try again in a moment; the issue is on their side."
+    )
+    # Backward-compat substring checks from old tests
+    assert str(code) in e.user_message
+    assert "server error" in e.user_message.lower() or "their side" in e.user_message.lower()
+
+
+def test_translates_upstream_other_4xx() -> None:
+    """upstream kind (other 4xx, e.g. 418) → Phase 1-style message with HTTP code."""
+    err = HTTPError(url="x", code=418, msg="I'm a teapot", hdrs=None, fp=BytesIO(b'{"detail":"teapot"}'))  # type: ignore[arg-type]
+    with patch(_URLOPEN, side_effect=err):
+        with pytest.raises(InterviewRunnerError) as excinfo:
+            run_turn(api_key="sk-or-v1-test", history=[], user_message="hi")
+    e = excinfo.value
+    assert e.kind == "upstream"
+    assert e.status_code == 418
+    assert "418" in e.user_message
+
+
+def test_translates_network_urlerror() -> None:
+    """network kind → Phase 1's connectivity message with reason embedded."""
+    with patch(_URLOPEN, side_effect=URLError("Name or service not known")):
+        with pytest.raises(InterviewRunnerError) as excinfo:
+            run_turn(api_key="sk-or-v1-test", history=[], user_message="hi")
+    e = excinfo.value
+    assert e.kind == "network"
+    assert e.status_code is None
+    assert "Could not reach OpenRouter" in e.user_message
+    assert "network" in e.user_message.lower()
+    # Matches Phase 1: "Could not reach OpenRouter ({reason}). Check the deployment's..."
+    assert "Check the deployment's network connectivity and try again." in e.user_message
+
+
+def test_translates_malformed_non_json() -> None:
+    """malformed (non-JSON) → Phase 1's 'non-JSON response' string prefix."""
+    with patch(_URLOPEN, return_value=_FakeResp(b"<html>500 Bad Gateway</html>")):
+        with pytest.raises(InterviewRunnerError) as excinfo:
+            run_turn(api_key="sk-or-v1-test", history=[], user_message="hi")
+    e = excinfo.value
+    assert e.kind == "malformed"
+    assert "non-JSON" in e.user_message
+
+
+def test_translates_malformed_unexpected_shape() -> None:
+    """malformed (no choices) → Phase 1's 'unexpected response shape' string."""
+    with patch(_URLOPEN, return_value=_ok_resp({"unexpected": "shape"})):
+        with pytest.raises(InterviewRunnerError) as excinfo:
+            run_turn(api_key="sk-or-v1-test", history=[], user_message="hi")
+    e = excinfo.value
+    assert e.kind == "malformed"
+    assert "unexpected response shape" in e.user_message.lower()
+
+
+def test_translates_malformed_empty_choices() -> None:
+    with patch(_URLOPEN, return_value=_ok_resp({"choices": []})):
+        with pytest.raises(InterviewRunnerError) as excinfo:
+            run_turn(api_key="sk-or-v1-test", history=[], user_message="hi")
+    assert excinfo.value.kind == "malformed"
+
+
+def test_translates_malformed_missing_message_content() -> None:
+    """malformed (content parse fail) → Phase 1's 'Could not parse assistant content' string."""
+    body = {"choices": [{"index": 0, "finish_reason": "stop"}]}
+    with patch(_URLOPEN, return_value=_ok_resp(body)):
+        with pytest.raises(InterviewRunnerError) as excinfo:
+            run_turn(api_key="sk-or-v1-test", history=[], user_message="hi")
+    e = excinfo.value
+    assert e.kind == "malformed"
+    assert "Could not parse assistant content" in e.user_message
+
+
+def test_translates_malformed_non_string_content() -> None:
+    """malformed (content not a string) → Phase 1's 'not a string' string."""
+    body = {"choices": [{"message": {"role": "assistant", "content": [{"type": "text", "text": "hi"}]}}]}
+    with patch(_URLOPEN, return_value=_ok_resp(body)):
+        with pytest.raises(InterviewRunnerError) as excinfo:
+            run_turn(api_key="sk-or-v1-test", history=[], user_message="hi")
+    e = excinfo.value
+    assert e.kind == "malformed"
+    assert "not a string" in e.user_message
+
+
+def test_translates_config_missing_key() -> None:
+    """config kind (no key in env) → Phase 1's Step 1 redirect message."""
+    # Simulate a state where api_key arg is non-empty but env key lookup fails
+    # by passing a valid-looking key that gets accepted by run_turn's pre-flight
+    # but then the wrapper raises config (e.g. role file missing model).
+    # For this test, just verify the kind→message mapping for "config" directly.
+    from findajob.llm.openrouter import OpenRouterError
+    from findajob.onboarding.interview_runner import _translate
+
+    oe = OpenRouterError("OPENROUTER_API_KEY not set.", kind="config")
+    ie = _translate(oe)
+    assert ie.kind == "config"
+    assert ie.status_code is None
+    assert "Step 1" in ie.user_message
+    assert "onboarding" in ie.user_message.lower()
+    assert ie.user_message == (
+        "No OpenRouter key on file for this stack. Visit /onboarding/ "
+        "Step 1 to provide your API keys, then return here to start "
+        "the interview."
+    )
+
+
+def test_translates_unknown_kind_fallback() -> None:
+    """unknown kind → fallback message with the wrapper's raw message snippet."""
+    from findajob.llm.openrouter import OpenRouterError
+    from findajob.onboarding.interview_runner import _translate
+
+    oe = OpenRouterError("something exploded", kind="unknown")
+    ie = _translate(oe)
+    assert ie.kind == "unknown"
+    assert "Unexpected error talking to OpenRouter" in ie.user_message
+    assert "something exploded" in ie.user_message
