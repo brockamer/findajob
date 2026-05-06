@@ -119,3 +119,34 @@ def test_poll_no_ops_on_missing_key(db: sqlite3.Connection, monkeypatch: pytest.
     # We DO record the missing-key state so /admin/ surfaces can show "no key configured".
     assert len(rows) == 1
     assert rows[0]["poll_status"] == "missing_key"
+
+
+def test_main_resolves_db_path_against_BASE_str(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression for #87: findajob.paths.BASE is a str (not a Path), so
+    main() must wrap in Path() before path-joining. The original main()
+    used `BASE / "data" / ...` which raised TypeError every cron tick in
+    production, leaving cost_calibration empty post-merge."""
+    db_path = tmp_path / "data" / "pipeline.db"
+    db_path.parent.mkdir()
+    subprocess.run(
+        [sys.executable, "scripts/init_db.py", str(db_path)],
+        check=True,
+        cwd=Path(__file__).resolve().parent.parent,
+    )
+
+    from scripts import poll_openrouter_credits
+
+    monkeypatch.setattr(poll_openrouter_credits, "BASE", str(tmp_path))
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+
+    rc = poll_openrouter_credits.main()
+    assert rc == 0
+
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute("SELECT poll_status FROM cost_calibration").fetchall()
+    conn.close()
+    assert len(rows) == 1
+    assert rows[0]["poll_status"] == "missing_key"

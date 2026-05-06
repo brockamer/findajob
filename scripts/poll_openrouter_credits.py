@@ -157,7 +157,7 @@ def main() -> int:
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
-    db_path = BASE / "data" / "pipeline.db"
+    db_path = Path(BASE) / "data" / "pipeline.db"
     conn = sqlite3.connect(str(db_path))
     try:
         poll_once(conn)
