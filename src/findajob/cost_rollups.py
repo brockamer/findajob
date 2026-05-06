@@ -111,3 +111,101 @@ def per_job_breakdown(conn: sqlite3.Connection, job_id: str) -> list[OpRow]:
         )
         for r in rows
     ]
+
+
+@dataclass(frozen=True)
+class WeekRow:
+    week_start: str  # YYYY-MM-DD, container-local (PT)
+    total_usd: float
+
+
+def weekly_spend(conn: sqlite3.Connection, weeks: int = 4) -> list[WeekRow]:
+    """Calibrated prep spend per week, oldest-first.
+
+    Always returns exactly ``weeks`` rows, oldest first, with zero-filled
+    entries for weeks that have no spend. Container TZ is
+    America/Los_Angeles, so SQLite's date() runs in PT. Excludes 'score'
+    operation (out of scope per AC 2; surface is prep-spend specific).
+    Excludes NULL cost_usd rows.
+
+    Week anchors use ``date(d, '-' || strftime('%w', d) || ' days')`` to
+    compute the Sunday that starts each week. This is correct for all
+    days including Sunday itself (the ``'weekday 0', '-7 days'`` idiom
+    is broken on Sundays — it returns the previous Sunday instead of the
+    day itself).
+    """
+    multiplier = _multiplier(conn)
+    oldest_weeks = weeks - 1
+    rows = conn.execute(
+        """WITH RECURSIVE week_series(week_start, n) AS (
+               -- Start at the oldest Sunday anchor and walk forward
+               SELECT date('now', '-' || strftime('%w', 'now') || ' days',
+                           ?),
+                      0
+               UNION ALL
+               SELECT date(week_start, '+7 days'), n + 1
+               FROM week_series
+               WHERE n + 1 < ?
+           ),
+           spend AS (
+               SELECT date(logged_at,
+                           '-' || strftime('%w', logged_at) || ' days'
+                     ) AS week_start,
+                      SUM(cost_usd) AS total
+               FROM cost_log
+               WHERE cost_usd IS NOT NULL
+                 AND operation != 'score'
+                 AND logged_at >= date('now', ?)
+               GROUP BY 1
+           )
+           SELECT ws.week_start,
+                  COALESCE(s.total, 0.0) AS total
+           FROM week_series ws
+           LEFT JOIN spend s ON s.week_start = ws.week_start
+           ORDER BY ws.week_start ASC""",
+        (f"-{oldest_weeks * 7} days", weeks, f"-{(weeks + 1) * 7} days"),
+    ).fetchall()
+    return [
+        WeekRow(
+            week_start=_get(r, 0, "week_start"),
+            total_usd=float(_get(r, 1, "total")) * multiplier,
+        )
+        for r in rows
+    ]
+
+
+def runway_weeks(conn: sqlite3.Connection) -> float | None:
+    """Credits remaining ÷ 4-week-rolling avg weekly spend.
+
+    Returns None if there's no spend history (fresh stack) or no
+    calibration row (no credits_remaining known).
+    """
+    cal = current_calibration(conn)
+    if cal is None or cal.credits_remaining_usd is None:
+        return None
+    weeks = weekly_spend(conn, weeks=4)
+    if not weeks:
+        return None
+    avg = sum(w.total_usd for w in weeks) / len(weeks)
+    if avg <= 0:
+        return None
+    return cal.credits_remaining_usd / avg
+
+
+def projected_monthly(conn: sqlite3.Connection) -> float | None:
+    """7-day calibrated spend extrapolated to 30 days.
+
+    Returns None if there's no spend in the last 7 days.
+    """
+    multiplier = _multiplier(conn)
+    row = conn.execute(
+        """SELECT SUM(cost_usd) AS total
+           FROM cost_log
+           WHERE cost_usd IS NOT NULL
+             AND operation != 'score'
+             AND logged_at >= datetime('now', '-7 days')"""
+    ).fetchone()
+    total = _get(row, 0, "total")
+    if total is None:
+        return None
+    return float(total) * multiplier * 30.0 / 7.0

@@ -173,3 +173,65 @@ def test_per_job_breakdown_groups_by_operation(db: sqlite3.Connection) -> None:
     assert by_op["briefing"] == pytest.approx(0.25, rel=1e-3)  # 0.20 + 0.05
     assert by_op["resume_tailor"] == pytest.approx(0.30, rel=1e-3)
     assert by_op["cover_letter"] == pytest.approx(0.25, rel=1e-3)
+
+
+def _insert_cost_log(
+    conn: sqlite3.Connection,
+    *,
+    days_ago: int,
+    cost: float,
+    operation: str = "briefing",
+) -> None:
+    """Insert one cost_log row stamped N days ago in PT-local idiom."""
+    conn.execute(
+        """INSERT INTO cost_log
+           (job_id, operation, model, cost_usd, success, logged_at)
+           VALUES (NULL, ?, 'google/gemini-3-flash-preview', ?, 1,
+                   datetime('now', ?))""",
+        (operation, cost, f"-{days_ago} days"),
+    )
+    conn.commit()
+
+
+def test_weekly_spend_returns_n_weeks_oldest_first(db: sqlite3.Connection) -> None:
+    from findajob.cost_rollups import weekly_spend
+
+    _insert_calibration(db, multiplier=1.0)
+    _insert_cost_log(db, days_ago=2, cost=1.00)  # current week
+    _insert_cost_log(db, days_ago=10, cost=2.00)  # 1 week ago
+    _insert_cost_log(db, days_ago=20, cost=3.00)  # 2-3 weeks ago
+
+    weeks = weekly_spend(db, weeks=4)
+    assert len(weeks) == 4
+    # Last entry = current week.
+    assert weeks[-1].total_usd == pytest.approx(1.00, rel=1e-3)
+
+
+def test_runway_weeks_uses_4wk_average(db: sqlite3.Connection) -> None:
+    from findajob.cost_rollups import runway_weeks
+
+    _insert_calibration(db, credits_remaining_usd=40.0, multiplier=1.0)
+    # $10/wk for 4 weeks → 4-week avg = $10/wk → runway = 40 / 10 = 4
+    for i in range(4):
+        _insert_cost_log(db, days_ago=i * 7 + 3, cost=10.0)
+
+    weeks = runway_weeks(db)
+    assert weeks == pytest.approx(4.0, rel=0.1)
+
+
+def test_runway_weeks_none_when_no_history(db: sqlite3.Connection) -> None:
+    from findajob.cost_rollups import runway_weeks
+
+    _insert_calibration(db, credits_remaining_usd=40.0, multiplier=1.0)
+    assert runway_weeks(db) is None
+
+
+def test_projected_monthly_scales_7d(db: sqlite3.Connection) -> None:
+    from findajob.cost_rollups import projected_monthly
+
+    _insert_calibration(db, multiplier=1.0)
+    _insert_cost_log(db, days_ago=1, cost=2.10)
+    _insert_cost_log(db, days_ago=3, cost=3.50)
+    _insert_cost_log(db, days_ago=5, cost=1.40)
+    # 7d sum = 7.0 → projected = 7.0 × 30/7 = 30.0
+    assert projected_monthly(db) == pytest.approx(30.0, rel=1e-3)
