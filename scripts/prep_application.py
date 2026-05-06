@@ -19,7 +19,8 @@ from datetime import UTC, datetime
 
 from findajob.actions import reset_prep_to_scored
 from findajob.cost_tracking import log_call, role_model
-from findajob.paths import AICHAT, BASE, PANDOC
+from findajob.llm.openrouter import OpenRouterError, complete
+from findajob.paths import BASE, PANDOC
 from findajob.utils import (
     JD_MAX_CHARS,
     build_prep_filenames,
@@ -38,44 +39,59 @@ MASTER_RESUME_PATH = f"{BASE}/candidate_context/master_resume.md"
 load_env()
 
 
-def aichat(role, prompt, model_override=None, timeout=300, *, conn=None, job_id=None):
-    """Call aichat-ng and return stdout. No RAG — all context injected directly.
+def run_role(
+    role,
+    prompt,
+    *,
+    cached_prefix=None,
+    pin_provider=None,
+    conn=None,
+    job_id=None,
+    timeout=300,
+):
+    """Call openrouter.complete() and return assistant text.
 
     When ``conn`` is provided, a cost_log row is written after a successful
-    subprocess return. ``job_id`` is the prep target's id (or None for
-    non-job-scoped calls). Cost-log failures are swallowed so they cannot
-    break prep. Each call writes one row — the briefing_writer retry path
-    intentionally produces 2 rows.
+    response. ``job_id`` is the prep target's id (or None for non-job-scoped
+    calls). Cost-log failures are swallowed — they cannot break prep. Each
+    call writes one row — the briefing_writer retry path intentionally
+    produces 2 rows.
     """
-    cmd = [AICHAT, "--role", role]
-    if model_override:
-        cmd += ["-m", model_override]
-    cmd += ["-S", prompt]
     start = time.time()
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    try:
+        result = complete(
+            role=role,
+            prompt=prompt,
+            cached_prefix=cached_prefix,
+            pin_provider=pin_provider,
+            timeout_s=timeout,
+        )
+    except OpenRouterError as e:
+        log_event("openrouter_failure", role=role, kind=e.kind, status_code=e.status_code, message=str(e)[:300])
+        return ""
     latency_ms = int((time.time() - start) * 1000)
-    raw_output = result.stdout.strip()
-    success = result.returncode == 0 and bool(raw_output)
-    if not success:
-        log_event("aichat_failure", role=role, returncode=result.returncode, stderr=result.stderr.strip()[:500])
-    if conn is not None and success:
+
+    text = re.sub(r"<think>.*?</think>", "", result.text, flags=re.DOTALL).strip()
+
+    if conn is not None and text:
         try:
             log_call(
                 conn,
                 job_id=job_id,
                 operation=role,
-                model=model_override or role_model(role),
+                model=role_model(role),
                 input_text=prompt,
-                output_text=raw_output,
+                output_text=result.text,
                 latency_ms=latency_ms,
                 success=True,
+                cost_usd_override=result.cost_usd,
+                input_tokens_override=result.prompt_tokens,
+                output_tokens_override=result.completion_tokens,
             )
             conn.commit()
         except Exception as e:  # noqa: BLE001 — cost tracking is best-effort
             log_event("cost_log_failed", operation=role, error=f"{type(e).__name__}: {e}")
-    # Strip <think>...</think> blocks that leak from :thinking models
-    output = re.sub(r"<think>.*?</think>", "", raw_output, flags=re.DOTALL).strip()
-    return output
+    return text
 
 
 def abbrev_title(title, max_words=3):
@@ -263,6 +279,23 @@ def main():
         notify(f"PREP ABORTED (missing candidate files): {company} — {title}\n{'; '.join(missing_files)}")
         return
 
+    # ── Build shared cached_prefix strings for Opus stages ──
+    # Stable content shared across briefing_writer, resume_tailor, cover_letter_writer,
+    # and recruiter_critic. Placed as cache_control-marked blocks so Anthropic can
+    # serve a prompt-cache hit on the second+ call within a batch prep session.
+    # Cross-role caching within a single prep run is deferred to #478.
+    voice_samples = load_voice_samples()
+    log_event("voice_samples_loaded", caller="cover_letter_writer", chars=len(voice_samples))
+    voice_section = f"VOICE SAMPLES:\n{voice_samples}\n\n" if voice_samples else ""
+    shared_candidate_jd = (
+        f"CANDIDATE PROFILE:\n{profile_text}\n\n"
+        f"MASTER RESUME:\n{master_text}\n\n"
+        f"Company: {company}\nTitle: {title}\n\n"
+        f"JD:\n{jd_text}\n\n"
+        f"---\n\n"
+    )
+    shared_with_voice = f"{shared_candidate_jd}{voice_section}---\n\n"
+
     # ── Step 2: Company briefing FIRST — gives all downstream steps rich context ──
     # For synthetic rows (#131 speculative), the deep-research briefing was
     # already generated at submission time and approved by the operator on the
@@ -297,27 +330,41 @@ def main():
     if not briefing:
         # Real-row flow OR synthetic-fallback when the speculative briefing is missing.
         brief_prompt = f"Research {company} thoroughly.\nJob title: {title}\nJD:\n{jd_text}"
-        raw_briefing = aichat("company_researcher", brief_prompt, conn=conn, job_id=job_id)
+        # Stage 1 — company_researcher (Perplexity, no caching)
+        raw_briefing = run_role("company_researcher", brief_prompt, conn=conn, job_id=job_id)
 
-        # Pass raw research through briefing_writer with candidate context for stories
-        formatted_brief_prompt = (
+        # Pass raw research through briefing_writer with candidate context for stories.
+        # Stage 2 — briefing_writer (Opus, cached_prefix=shared_candidate_jd)
+        briefing_tail = (
             f"Format the following company research into a structured briefing 1-pager "
             f"for {company}. Job: {title}.\n\n"
-            f"RAW RESEARCH:\n{raw_briefing}\n\n"
-            f"CANDIDATE PROFILE:\n{profile_text}\n\n"
-            f"MASTER RESUME:\n{master_text}\n\n"
-            f"JD:\n{jd_text}"
+            f"RAW RESEARCH:\n{raw_briefing}"
         )
-        briefing = aichat("briefing_writer", formatted_brief_prompt, conn=conn, job_id=job_id)
+        briefing = run_role(
+            "briefing_writer",
+            briefing_tail,
+            cached_prefix=shared_candidate_jd,
+            pin_provider="anthropic",
+            conn=conn,
+            job_id=job_id,
+        )
 
         # ── Validate: briefing must end with an Overall Recommendation section ──
         # The role prompt requires this verdict heading; model sometimes drops it.
         # Retry once; if still missing, let downstream validator fail prep cleanly.
         if not briefing or not rec_re.search(briefing):
             log_event("briefing_missing_recommendation", job_id=job_id, company=company, retry=1)
-            briefing = aichat("briefing_writer", formatted_brief_prompt, conn=conn, job_id=job_id)
+            briefing = run_role(
+                "briefing_writer",
+                briefing_tail,
+                cached_prefix=shared_candidate_jd,
+                pin_provider="anthropic",
+                conn=conn,
+                job_id=job_id,
+            )
 
     # Fit analysis: multi-dimensional assessment appended to briefing
+    # Stage 3 — fit_analyst (Perplexity, no caching)
     fit_prompt = (
         f"Analyze the fit between this candidate and this role.\n\n"
         f"CANDIDATE PROFILE:\n{profile_text}\n\n"
@@ -326,7 +373,7 @@ def main():
         f"JD:\n{jd_text}\n\n"
         f"COMPANY BRIEFING:\n{briefing}"
     )
-    fit_analysis = aichat("fit_analyst", fit_prompt, conn=conn, job_id=job_id)
+    fit_analysis = run_role("fit_analyst", fit_prompt, conn=conn, job_id=job_id)
 
     # Combine briefing and fit analysis into one document.
     # The briefing ends with an Overall Recommendation verdict; fit analysis
@@ -388,14 +435,15 @@ def main():
 
     # ── Step 3: Resume — briefing + fit analysis context now available ──
     briefing_context = full_briefing if full_briefing else ""
-    resume_prompt = (
-        f"MASTER RESUME:\n{master_text}\n\n"
-        f"CANDIDATE PROFILE:\n{profile_text}\n\n"
-        f"Company: {company}\nTitle: {title}\n\n"
-        f"JD:\n{jd_text}\n\n"
-        f"COMPANY BRIEFING AND FIT ANALYSIS:\n{briefing_context}"
+    # Stage 4 — resume_tailor (Opus, cached_prefix=shared_candidate_jd)
+    resume_md = run_role(
+        "resume_tailor",
+        f"COMPANY BRIEFING AND FIT ANALYSIS:\n{briefing_context}",
+        cached_prefix=shared_candidate_jd,
+        pin_provider="anthropic",
+        conn=conn,
+        job_id=job_id,
     )
-    resume_md = aichat("resume_tailor", resume_prompt, conn=conn, job_id=job_id)
     # Strip [VERIFY: ...] lines that appear before the first # header
     rlines = resume_md.split("\n")
     first_hdr = next((i for i, line in enumerate(rlines) if line.startswith("#")), 0)
@@ -442,26 +490,23 @@ def main():
     )
 
     # Generate change log
+    # Stage 5 — resume_change_reviewer (Gemini, no caching)
     changes_prompt = f"ORIGINAL MASTER RESUME:\n{master_text}\n\nTAILORED RESUME:\n{resume_md}\n\nTARGET JD:\n{jd_text}"
-    changes_md = aichat("resume_change_reviewer", changes_prompt, conn=conn, job_id=job_id)
+    changes_md = run_role("resume_change_reviewer", changes_prompt, conn=conn, job_id=job_id)
     with open(out["changes_md"], "w") as f:
         f.write(changes_md)
 
     # ── Step 4: Cover letter — briefing + fit analysis for company signals ──
     today_str = datetime.now().strftime("%B %d, %Y")
-    voice_samples = load_voice_samples()
-    log_event("voice_samples_loaded", caller="cover_letter_writer", chars=len(voice_samples))
-    voice_section = f"VOICE SAMPLES:\n{voice_samples}\n\n" if voice_samples else ""
-    cover_prompt = (
-        f"{mode_marker}"
-        f"CANDIDATE PROFILE:\n{profile_text}\n\n"
-        f"MASTER RESUME:\n{master_text}\n\n"
-        f"{voice_section}"
-        f"Company: {company}\nTitle: {title}\nDate: {today_str}\n\n"
-        f"JD:\n{jd_text}\n\n"
-        f"COMPANY BRIEFING AND FIT ANALYSIS:\n{briefing_context}"
+    # Stage 6 — cover_letter_writer (Opus, cached_prefix=shared_with_voice)
+    cover_md_text = run_role(
+        "cover_letter_writer",
+        f"{mode_marker}Date: {today_str}\n\nCOMPANY BRIEFING AND FIT ANALYSIS:\n{briefing_context}",
+        cached_prefix=shared_with_voice,
+        pin_provider="anthropic",
+        conn=conn,
+        job_id=job_id,
     )
-    cover_md_text = aichat("cover_letter_writer", cover_prompt, conn=conn, job_id=job_id)
     # Strip horizontal rules — the LLM inserts "---" between header and body,
     # but it renders as an ugly line in the docx. Paragraph spacing handles separation.
     cover_md_text = re.sub(r"\n---\n", "\n\n", cover_md_text)
@@ -486,13 +531,15 @@ def main():
     # Sees only what an actual recruiter sees: company, title, JD, resume, cover.
     # No profile / briefing / fit analysis — the point is to simulate a reader who
     # has NOT done background research on the candidate.
-    critique_prompt = (
-        f"Company: {company}\nTitle: {title}\n\n"
-        f"JD:\n{jd_text}\n\n"
-        f"TAILORED RESUME:\n{resume_md}\n\n"
-        f"COVER LETTER:\n{cover_md_text}"
+    # Stage 7 — recruiter_critic (Opus, cached_prefix=jd-only)
+    critique_md = run_role(
+        "recruiter_critic",
+        f"Company: {company}\nTitle: {title}\n\nTAILORED RESUME:\n{resume_md}\n\nCOVER LETTER:\n{cover_md_text}",
+        cached_prefix=f"JD:\n{jd_text}\n\n---\n\n",
+        pin_provider="anthropic",
+        conn=conn,
+        job_id=job_id,
     )
-    critique_md = aichat("recruiter_critic", critique_prompt, conn=conn, job_id=job_id)
     if critique_md:
         with open(out["critique_md"], "w") as f:
             f.write(critique_md)
