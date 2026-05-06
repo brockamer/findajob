@@ -8,6 +8,8 @@ to prevent regression against production.
 """
 
 import sqlite3
+import subprocess
+import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -22,38 +24,19 @@ from findajob.web.app import create_app
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setenv("FINDAJOB_MATERIALS_BASE_URL", "http://test:8090")
     db = tmp_path / "pipeline.db"
+    subprocess.run(
+        [sys.executable, "scripts/init_db.py", str(db)],
+        check=True,
+        cwd=Path(__file__).resolve().parent.parent,
+    )
     conn = sqlite3.connect(db)
-    conn.execute(
-        "CREATE TABLE jobs (id TEXT PRIMARY KEY, fingerprint TEXT, title TEXT, company TEXT, "
-        "stage TEXT, location TEXT, remote_status TEXT, known_contacts TEXT, "
-        "comp_estimate TEXT, ai_notes TEXT, user_notes TEXT, url TEXT, "
-        "created_at TEXT, stage_updated TEXT)"
-    )
-    conn.execute(
-        "CREATE TABLE audit_log (id INTEGER PRIMARY KEY, job_id TEXT, field_changed TEXT, "
-        "old_value TEXT, new_value TEXT, changed_at TEXT, changed_by TEXT)"
-    )
-    conn.execute(
-        "CREATE TABLE cost_log (id INTEGER PRIMARY KEY AUTOINCREMENT, job_id TEXT, "
-        "operation TEXT NOT NULL, model TEXT NOT NULL, latency_ms INTEGER, "
-        "success INTEGER DEFAULT 1, error_message TEXT, input_tokens INTEGER, "
-        "output_tokens INTEGER, cost_usd REAL, logged_at TEXT DEFAULT (datetime('now')))"
-    )
-    conn.execute(
-        "CREATE TABLE cost_calibration (id INTEGER PRIMARY KEY AUTOINCREMENT, "
-        "polled_at TEXT NOT NULL DEFAULT (datetime('now')), credits_total_usd REAL, "
-        "credits_used_usd REAL, credits_remaining_usd REAL, onboarding_total_usd REAL, "
-        "pipeline_actual_usd REAL, heuristic_sum_usd REAL, multiplier REAL, "
-        "multiplier_clamped INTEGER NOT NULL DEFAULT 0, poll_status TEXT NOT NULL, "
-        "error_message TEXT)"
-    )
     ten_days_ago = (datetime.now(UTC) - timedelta(days=10)).isoformat()
     five_days_ago = (datetime.now(UTC) - timedelta(days=5)).isoformat()
 
     # Normal flow: user applied 10 days ago → row-applied-week bucket
     conn.execute(
-        "INSERT INTO jobs (id, fingerprint, title, company, stage) "
-        "VALUES ('id-app','fp-app','Eng Mgr','Anthropic','applied')"
+        "INSERT INTO jobs (id, fingerprint, title, company, stage, url, source) "
+        "VALUES ('id-app','fp-app','Eng Mgr','Anthropic','applied','http://a','test')"
     )
     conn.execute(
         "INSERT INTO audit_log (job_id, field_changed, old_value, new_value, changed_at, changed_by) "
@@ -64,8 +47,8 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     # Recruiter flow: skipped 'applied', went straight to 'interview' 5 days ago.
     # applied_date should resolve via the new_value IN (...) clause.
     conn.execute(
-        "INSERT INTO jobs (id, fingerprint, title, company, stage) "
-        "VALUES ('id-int','fp-int','Principal Eng','Meta','interview')"
+        "INSERT INTO jobs (id, fingerprint, title, company, stage, url, source) "
+        "VALUES ('id-int','fp-int','Principal Eng','Meta','interview','http://b','test')"
     )
     conn.execute(
         "INSERT INTO audit_log (job_id, field_changed, old_value, new_value, changed_at, changed_by) "
@@ -173,3 +156,58 @@ def test_base_template_surfaces_htmx_response_errors(client: TestClient) -> None
     assert r.status_code == 200
     assert "htmx-error-toast" in r.text
     assert "/static/htmx_errors.js" in r.text
+
+
+def test_applied_renders_cost_cell_for_jobs_with_cost_log(client: TestClient) -> None:
+    """Cost subquery × multiplier renders as $X.XX in the Applied row."""
+    db_path = client.app.state.db_path  # type: ignore[attr-defined]
+    conn = sqlite3.connect(str(db_path))
+    # Insert a fresh applied job
+    conn.execute(
+        "INSERT INTO jobs (id, fingerprint, title, company, stage, url, source, created_at) "
+        "VALUES ('id-cost', 'fp-cost', 'Cost Job', 'Acme', 'applied', 'http://x', 'test', datetime('now'))"
+    )
+    conn.execute(
+        "INSERT INTO audit_log (job_id, field_changed, old_value, new_value, changed_at, changed_by) "
+        "VALUES ('id-cost', 'stage', 'materials_drafted', 'applied', datetime('now'), 'system')"
+    )
+    # Two cost_log rows: $0.25 + $0.25 = $0.50 sum
+    conn.execute(
+        "INSERT INTO cost_log (job_id, operation, model, cost_usd) "
+        "VALUES ('id-cost', 'cover_letter', 'test-model', 0.25)"
+    )
+    conn.execute(
+        "INSERT INTO cost_log (job_id, operation, model, cost_usd) "
+        "VALUES ('id-cost', 'resume_tailor', 'test-model', 0.25)"
+    )
+    # Calibration multiplier = 2.0 → $0.50 × 2.0 = $1.00
+    conn.execute(
+        "INSERT INTO cost_calibration (polled_at, multiplier, multiplier_clamped, poll_status) "
+        "VALUES (datetime('now'), 2.0, 0, 'ok')"
+    )
+    conn.commit()
+    conn.close()
+
+    r = client.get("/board/applied")
+    assert r.status_code == 200
+    assert "$1.00" in r.text
+
+
+def test_applied_renders_dash_for_jobs_without_cost_log(client: TestClient) -> None:
+    """Jobs with no cost_log rows render '—' (slate-400) in the Cost cell."""
+    db_path = client.app.state.db_path  # type: ignore[attr-defined]
+    conn = sqlite3.connect(str(db_path))
+    conn.execute(
+        "INSERT INTO jobs (id, fingerprint, title, company, stage, url, source, created_at) "
+        "VALUES ('id-nocost', 'fp-nocost', 'No Cost Job', 'Boring Co', 'applied', 'http://y', 'test', datetime('now'))"
+    )
+    conn.execute(
+        "INSERT INTO audit_log (job_id, field_changed, old_value, new_value, changed_at, changed_by) "
+        "VALUES ('id-nocost', 'stage', 'materials_drafted', 'applied', datetime('now'), 'system')"
+    )
+    conn.commit()
+    conn.close()
+
+    r = client.get("/board/applied")
+    assert r.status_code == 200
+    assert 'text-slate-400">—' in r.text

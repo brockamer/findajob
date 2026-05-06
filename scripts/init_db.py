@@ -123,6 +123,8 @@ CREATE TABLE IF NOT EXISTS cost_calibration (
     error_message TEXT
 );
 
+CREATE INDEX IF NOT EXISTS idx_cost_log_job_id ON cost_log(job_id);
+
 CREATE INDEX IF NOT EXISTS idx_cost_calibration_polled_at
     ON cost_calibration(polled_at);
 
