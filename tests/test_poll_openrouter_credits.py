@@ -121,9 +121,7 @@ def test_poll_no_ops_on_missing_key(db: sqlite3.Connection, monkeypatch: pytest.
     assert rows[0]["poll_status"] == "missing_key"
 
 
-def test_main_resolves_db_path_against_BASE_str(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_main_resolves_db_path_against_BASE_str(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Regression for #87: findajob.paths.BASE is a str (not a Path), so
     main() must wrap in Path() before path-joining. The original main()
     used `BASE / "data" / ...` which raised TypeError every cron tick in
