@@ -59,3 +59,55 @@ def current_calibration(conn: sqlite3.Connection) -> Calibration | None:
         multiplier_clamped=bool(_get(row, 3, "multiplier_clamped")),
         poll_status=poll_status,
     )
+
+
+@dataclass(frozen=True)
+class OpRow:
+    operation: str
+    cost_usd: float
+    n_calls: int
+
+
+def _multiplier(conn: sqlite3.Connection) -> float:
+    cal = current_calibration(conn)
+    return cal.multiplier if cal else 1.0
+
+
+def per_job_cost(conn: sqlite3.Connection, job_id: str) -> float | None:
+    """Calibrated sum of cost_log.cost_usd for one job.
+
+    Returns None if every cost_log row for the job has NULL cost_usd
+    (or no rows exist). The "—" rendering in templates is the caller's
+    responsibility.
+    """
+    row = conn.execute(
+        """SELECT SUM(cost_usd) AS total
+           FROM cost_log
+           WHERE job_id = ? AND cost_usd IS NOT NULL""",
+        (job_id,),
+    ).fetchone()
+    total = _get(row, 0, "total")
+    if total is None:
+        return None
+    return float(total) * _multiplier(conn)
+
+
+def per_job_breakdown(conn: sqlite3.Connection, job_id: str) -> list[OpRow]:
+    """Per-operation calibrated cost breakdown for one job."""
+    multiplier = _multiplier(conn)
+    rows = conn.execute(
+        """SELECT operation, SUM(cost_usd) AS total, COUNT(*) AS n
+           FROM cost_log
+           WHERE job_id = ? AND cost_usd IS NOT NULL
+           GROUP BY operation
+           ORDER BY total DESC""",
+        (job_id,),
+    ).fetchall()
+    return [
+        OpRow(
+            operation=_get(r, 0, "operation"),
+            cost_usd=float(_get(r, 1, "total")) * multiplier,
+            n_calls=int(_get(r, 2, "n")),
+        )
+        for r in rows
+    ]

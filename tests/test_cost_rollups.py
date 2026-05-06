@@ -95,3 +95,81 @@ def test_current_calibration_reports_clamping(db: sqlite3.Connection) -> None:
     cal = current_calibration(db)
     assert cal is not None
     assert cal.multiplier_clamped is True
+
+
+def _insert_job_with_costs(
+    conn: sqlite3.Connection,
+    job_id: str,
+    rows: list[tuple[str, float | None]],
+) -> None:
+    """Seed jobs.id and one cost_log row per (operation, cost_usd) tuple."""
+    conn.execute(
+        """INSERT INTO jobs
+           (id, fingerprint, title, company, location, source, url, stage)
+           VALUES (?, ?, 'Title', 'Company', 'Loc', 'src', '', 'applied')""",
+        (job_id, f"fp-{job_id}"),
+    )
+    for op, cost in rows:
+        conn.execute(
+            """INSERT INTO cost_log (job_id, operation, model, cost_usd, success)
+               VALUES (?, ?, 'google/gemini-3-flash-preview', ?, 1)""",
+            (job_id, op, cost),
+        )
+    conn.commit()
+
+
+def test_per_job_cost_excludes_nulls(db: sqlite3.Connection) -> None:
+    from findajob.cost_rollups import per_job_cost
+
+    _insert_calibration(db, multiplier=1.3)
+    _insert_job_with_costs(
+        db,
+        "job-a",
+        [("briefing", 0.10), ("resume_tailor", 0.50), ("cover_letter", None)],
+    )
+
+    cost = per_job_cost(db, "job-a")
+    assert cost is not None
+    # (0.10 + 0.50) × 1.3 = 0.78
+    assert cost == pytest.approx(0.78, rel=1e-3)
+
+
+def test_per_job_cost_returns_none_for_all_nulls(db: sqlite3.Connection) -> None:
+    from findajob.cost_rollups import per_job_cost
+
+    _insert_calibration(db, multiplier=1.3)
+    _insert_job_with_costs(db, "job-b", [("briefing", None), ("score", None)])
+
+    assert per_job_cost(db, "job-b") is None
+
+
+def test_per_job_cost_returns_none_when_no_calibration(db: sqlite3.Connection) -> None:
+    from findajob.cost_rollups import per_job_cost
+
+    _insert_job_with_costs(db, "job-c", [("briefing", 0.10)])
+
+    # No calibration → multiplier defaults to 1.0; raw heuristic shown.
+    cost = per_job_cost(db, "job-c")
+    assert cost == pytest.approx(0.10, rel=1e-3)
+
+
+def test_per_job_breakdown_groups_by_operation(db: sqlite3.Connection) -> None:
+    from findajob.cost_rollups import per_job_breakdown
+
+    _insert_calibration(db, multiplier=1.0)
+    _insert_job_with_costs(
+        db,
+        "job-d",
+        [
+            ("briefing", 0.20),
+            ("resume_tailor", 0.30),
+            ("cover_letter", 0.25),
+            ("briefing", 0.05),  # second briefing call, e.g. regenerate
+        ],
+    )
+
+    rows = per_job_breakdown(db, "job-d")
+    by_op = {r.operation: r.cost_usd for r in rows}
+    assert by_op["briefing"] == pytest.approx(0.25, rel=1e-3)  # 0.20 + 0.05
+    assert by_op["resume_tailor"] == pytest.approx(0.30, rel=1e-3)
+    assert by_op["cover_letter"] == pytest.approx(0.25, rel=1e-3)
