@@ -32,6 +32,12 @@ jobs:
     description: "Reset jobs stuck in prep_in_progress > 60 min; fail stuck speculative > 10 min."
     enabled: true
 
+  poll-openrouter-credits:
+    schedule: "*/5 * * * *"
+    command: "timeout 60 python3 /app/scripts/poll_openrouter_credits.py"
+    description: "#87 — poll OpenRouter for credits balance, write cost_calibration row."
+    enabled: true
+
   notify-apply:
     schedule: "0 6 * * *"
     command: "python3 /app/scripts/notify.py apply-reminder"
