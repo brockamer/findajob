@@ -153,3 +153,114 @@ def test_missing_model_in_frontmatter_raises_config(monkeypatch, tmp_path):
     with pytest.raises(OpenRouterError) as exc:
         complete(role="broken", prompt="hi", roles_dir=roles)
     assert exc.value.kind == "config"
+
+
+# ── Cache-control plumbing (#470 AC #1, #5) ─────────────────────────────
+
+
+def test_cached_prefix_emits_two_block_user_message(monkeypatch, tmp_path):
+    """cached_prefix=<text> -> user message is [cached_block, prompt_block]."""
+    roles = tmp_path / "roles"
+    roles.mkdir()
+    (roles / "r.md").write_text("---\nmodel: openrouter:anthropic/claude-opus-4-7\n---\nSYS\n")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-test")
+    captured: dict = {}
+
+    def _capture(req, timeout=None):
+        captured["body"] = json.loads(req.data.decode("utf-8"))
+        return _ok_resp(_success_body())
+
+    with patch("findajob.llm.openrouter.urllib.request.urlopen", side_effect=_capture):
+        complete(
+            role="r",
+            prompt="job-specific tail",
+            cached_prefix="CANDIDATE PROFILE: ...",
+            roles_dir=roles,
+        )
+
+    msgs = captured["body"]["messages"]
+    assert msgs[0] == {"role": "system", "content": "SYS"}
+    user_msg = msgs[1]
+    assert user_msg["role"] == "user"
+    assert isinstance(user_msg["content"], list)
+    assert user_msg["content"][0] == {
+        "type": "text",
+        "text": "CANDIDATE PROFILE: ...",
+        "cache_control": {"type": "ephemeral"},
+    }
+    assert user_msg["content"][1] == {"type": "text", "text": "job-specific tail"}
+
+
+def test_cache_system_attaches_breakpoint_to_system(monkeypatch, tmp_path):
+    """cache_system=True -> system message wrapped with cache_control."""
+    roles = tmp_path / "roles"
+    roles.mkdir()
+    (roles / "r.md").write_text(
+        "---\nmodel: openrouter:anthropic/claude-sonnet-4-6\n---\nSYS\n"
+    )
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-test")
+    captured: dict = {}
+
+    def _capture(req, timeout=None):
+        captured["body"] = json.loads(req.data.decode("utf-8"))
+        return _ok_resp(_success_body())
+
+    with patch("findajob.llm.openrouter.urllib.request.urlopen", side_effect=_capture):
+        complete(role="r", prompt="hi", cache_system=True, roles_dir=roles)
+
+    sys_msg = captured["body"]["messages"][0]
+    assert sys_msg["role"] == "system"
+    assert isinstance(sys_msg["content"], list)
+    assert sys_msg["content"][0] == {
+        "type": "text",
+        "text": "SYS",
+        "cache_control": {"type": "ephemeral"},
+    }
+
+
+def test_both_axes_emit_two_breakpoints(monkeypatch, tmp_path):
+    """cache_system=True + cached_prefix=<text> -> two breakpoints in payload."""
+    roles = tmp_path / "roles"
+    roles.mkdir()
+    (roles / "r.md").write_text(
+        "---\nmodel: openrouter:anthropic/claude-opus-4-7\n---\nSYSTEM PROMPT\n"
+    )
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-test")
+    captured: dict = {}
+
+    def _capture(req, timeout=None):
+        captured["body"] = json.loads(req.data.decode("utf-8"))
+        return _ok_resp(_success_body())
+
+    with patch("findajob.llm.openrouter.urllib.request.urlopen", side_effect=_capture):
+        complete(
+            role="r",
+            prompt="tail",
+            cached_prefix="SHARED PREFIX",
+            cache_system=True,
+            roles_dir=roles,
+        )
+
+    msgs = captured["body"]["messages"]
+    assert msgs[0]["content"][0]["cache_control"] == {"type": "ephemeral"}
+    assert msgs[1]["content"][0]["cache_control"] == {"type": "ephemeral"}
+    assert msgs[1]["content"][1] == {"type": "text", "text": "tail"}
+
+
+def test_default_no_cache_emits_plain_strings(monkeypatch, tmp_path):
+    """No cache flags -> system + user messages are plain strings."""
+    roles = tmp_path / "roles"
+    roles.mkdir()
+    (roles / "r.md").write_text("---\nmodel: openrouter:foo/bar\n---\nSYS\n")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-test")
+    captured: dict = {}
+
+    def _capture(req, timeout=None):
+        captured["body"] = json.loads(req.data.decode("utf-8"))
+        return _ok_resp(_success_body())
+
+    with patch("findajob.llm.openrouter.urllib.request.urlopen", side_effect=_capture):
+        complete(role="r", prompt="hi", roles_dir=roles)
+
+    assert captured["body"]["messages"][0] == {"role": "system", "content": "SYS"}
+    assert captured["body"]["messages"][1] == {"role": "user", "content": "hi"}
