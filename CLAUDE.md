@@ -256,6 +256,8 @@ Never rely on LLM prompt instructions alone for boolean classification tasks.
 ### Cost Displays Are Calibrated
 Every cost number rendered in the UI (nav credits chip, dashboard burn-rate widget, Applied cost cell, Materials breakdown, notify-stats projection) reads through `findajob.cost_rollups` helpers, which apply the latest `cost_calibration.multiplier`. Don't add new cost surfaces that bypass these helpers — the heuristic in `cost_log.cost_usd` is empirically biased ~25% low, and direct sums will mislead operators. If a new surface needs cost data, add a helper to `cost_rollups.py`. The 5-min `poll_openrouter_credits` cron is the only writer to `cost_calibration`; nothing else writes to that table.
 
+**Exception (#470 forward):** `cost_log` rows written by `findajob.llm.openrouter` callers carry `response.usage.cost` directly via `cost_usd_override` — no heuristic, no calibration multiplier needed. As of Phase 1, `job_scorer` is the only call site on this path. The calibration multiplier still governs the other 7 sites until Phase 3 retires it (#472).
+
 ### Synthetic Jobs Convention (Speculative Cold-Outreach)
 
 Some `jobs` rows are *synthetic* — produced by the speculative ingest path (`/ingest/` "Speculative" tab) for cold-outreach to companies not currently posting a matching opening. Pre-approval state in `speculative_requests`; on approve, `findajob.speculative.approver` writes the `jobs` row.
