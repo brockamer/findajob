@@ -17,9 +17,11 @@ output into the Session note on #470.
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 import tempfile
+import urllib.request
 from pathlib import Path
 
 from findajob.llm.openrouter import complete
@@ -59,12 +61,18 @@ def main() -> int:
     print("# Cache-control plumbing spike for #470 (AC #5 revised scope)")
     print()
 
+    # Provider pinning IS required for cache warmth across calls — sticky
+    # routing isn't auto-triggered by cache writes alone (verified empirically
+    # 2026-05-06 against Opus 4.7). Without pin_provider the second call
+    # routes to a different Anthropic edge with a cold cache and hit rate
+    # falls to 0%. Lowercase "anthropic" matches OpenRouter's provider slug.
     print("Call 1 (cache write expected):")
     try:
         r1 = complete(
             role="spike_role",
             prompt="What is 2 + 2?",
             cached_prefix=SHARED_CONTEXT,
+            pin_provider="anthropic",
             roles_dir=roles_dir,
             timeout_s=120,
         )
@@ -79,6 +87,7 @@ def main() -> int:
             role="spike_role",
             prompt="What is 3 + 3?",
             cached_prefix=SHARED_CONTEXT,
+            pin_provider="anthropic",
             roles_dir=roles_dir,
             timeout_s=120,
         )

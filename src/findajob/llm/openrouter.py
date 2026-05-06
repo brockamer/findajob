@@ -106,10 +106,16 @@ def complete(
         cached_prefix: Stable shared content placed as a cache_control-marked
             block at the start of the user message. None means "no cached
             prefix" — user message is just ``prompt`` as a plain string.
+            **For cross-call cache hits on Anthropic models, also pass
+            pin_provider="anthropic"** — sticky routing isn't auto-triggered
+            by cache writes alone (verified empirically 2026-05-06 against
+            Opus 4.7: without pinning, second call routes to a different
+            edge with cold cache, hit rate falls to 0%).
         cache_system: When True, wrap the system message in a cache_control-
             marked block.
-        pin_provider: When set (e.g. ``"Anthropic"``), payload includes
-            ``provider: {"only": [pin_provider]}``.
+        pin_provider: When set (e.g. ``"anthropic"`` — lowercase slug),
+            payload includes ``provider: {"only": [pin_provider]}``. Required
+            companion to ``cached_prefix`` for Anthropic cache hits.
         history: Prior ``[{"role":..., "content":...}, ...]`` turns.
         roles_dir: Override for tests; production callers omit.
         api_key: Override; default reads ``OPENROUTER_API_KEY`` env.
