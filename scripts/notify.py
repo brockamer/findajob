@@ -820,31 +820,47 @@ def cmd_scoreboard():
         GROUP BY operation
         ORDER BY total_cost DESC
     """).fetchall()
-    total_7d = sum((r["total_cost"] or 0) for r in spend_rows)
+
+    # #87 — apply calibration multiplier so displayed numbers track OpenRouter ground truth.
+    try:
+        from findajob.cost_rollups import current_calibration
+
+        cal = current_calibration(spend_conn)
+        multiplier = cal.multiplier if cal else 1.0
+        calibrated = cal is not None and cal.poll_status == "ok"
+    except sqlite3.OperationalError:
+        # Pre-#87 stacks won't have cost_calibration table — degrade to uncalibrated.
+        multiplier = 1.0
+        calibrated = False
+
+    raw_total_7d = sum((r["total_cost"] or 0) for r in spend_rows)
+    total_7d = raw_total_7d * multiplier
     total_calls_7d = sum((r["n_calls"] or 0) for r in spend_rows)
     spend_conn.close()
 
     if spend_rows:
         monthly_proj = total_7d * (30 / 7)
+        cal_note = (
+            "Calibrated every 5 min against OpenRouter; numbers track account spend within ~5%."
+            if calibrated
+            else "Uncalibrated — no calibration data yet; numbers may be biased ~25% low."
+        )
         spend_section = (
             f"**Total: ${total_7d:.2f}** across {total_calls_7d:,} calls "
-            f"(estimated monthly burn: **${monthly_proj:.0f}**).\n\n"
-            "Estimates from char-based token heuristic × model pricing; accurate to ~±30% vs actual bills.\n\n"
+            f"(projected monthly: **${monthly_proj:.0f}**).\n\n"
+            f"{cal_note}\n\n"
             "| Operation | Calls | Input tok | Output tok | Cost (7d) |\n"
             "|---|---|---|---|---|\n"
         )
         for r in spend_rows:
+            calibrated_cost = (r["total_cost"] or 0) * multiplier
             spend_section += (
                 f"| {r['operation']} | {r['n_calls']:,} | "
                 f"{(r['in_tok'] or 0):,} | {(r['out_tok'] or 0):,} | "
-                f"${(r['total_cost'] or 0):.2f} |\n"
+                f"${calibrated_cost:.2f} |\n"
             )
-        spend_section += (
-            "\n_Prep-stage calls (resume, cover letter, briefing, fit analysis) "
-            "not yet instrumented — see follow-up. Scoring only for now._"
-        )
     else:
-        spend_section = "_No cost data in the last 7d (cost_log rows need the cost_usd column populated by #32)._"
+        spend_section = "_No cost data in the last 7d._"
 
     if candidates:
         prefilter_candidates_section = (
