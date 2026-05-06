@@ -65,9 +65,7 @@ def test_complete_happy_path_returns_completion_result(monkeypatch, tmp_path):
     """complete() returns CompletionResult with text + cost from usage.cost."""
     roles = tmp_path / "roles"
     roles.mkdir()
-    (roles / "test_role.md").write_text(
-        "---\nmodel: openrouter:anthropic/claude-sonnet-4-6\n---\nSYSTEM\n"
-    )
+    (roles / "test_role.md").write_text("---\nmodel: openrouter:anthropic/claude-sonnet-4-6\n---\nSYSTEM\n")
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-test")
 
     with patch(
@@ -94,12 +92,7 @@ def test_role_frontmatter_strips_openrouter_prefix(monkeypatch, tmp_path):
     roles = tmp_path / "roles"
     roles.mkdir()
     (roles / "scorer.md").write_text(
-        "---\n"
-        "model: openrouter:deepseek/deepseek-v3.2\n"
-        "temperature: 0.1\n"
-        "max_tokens: 2048\n"
-        "---\n"
-        "SYSTEM PROMPT BODY\n"
+        "---\nmodel: openrouter:deepseek/deepseek-v3.2\ntemperature: 0.1\nmax_tokens: 2048\n---\nSYSTEM PROMPT BODY\n"
     )
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-test")
     captured: dict = {}
@@ -122,9 +115,7 @@ def test_role_frontmatter_overrides_via_kwargs(monkeypatch, tmp_path):
     """**overrides win over frontmatter."""
     roles = tmp_path / "roles"
     roles.mkdir()
-    (roles / "scorer.md").write_text(
-        "---\nmodel: openrouter:foo/bar\nmax_tokens: 1024\n---\nbody\n"
-    )
+    (roles / "scorer.md").write_text("---\nmodel: openrouter:foo/bar\nmax_tokens: 1024\n---\nbody\n")
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-test")
     captured: dict = {}
 
@@ -195,9 +186,7 @@ def test_cache_system_attaches_breakpoint_to_system(monkeypatch, tmp_path):
     """cache_system=True -> system message wrapped with cache_control."""
     roles = tmp_path / "roles"
     roles.mkdir()
-    (roles / "r.md").write_text(
-        "---\nmodel: openrouter:anthropic/claude-sonnet-4-6\n---\nSYS\n"
-    )
+    (roles / "r.md").write_text("---\nmodel: openrouter:anthropic/claude-sonnet-4-6\n---\nSYS\n")
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-test")
     captured: dict = {}
 
@@ -222,9 +211,7 @@ def test_both_axes_emit_two_breakpoints(monkeypatch, tmp_path):
     """cache_system=True + cached_prefix=<text> -> two breakpoints in payload."""
     roles = tmp_path / "roles"
     roles.mkdir()
-    (roles / "r.md").write_text(
-        "---\nmodel: openrouter:anthropic/claude-opus-4-7\n---\nSYSTEM PROMPT\n"
-    )
+    (roles / "r.md").write_text("---\nmodel: openrouter:anthropic/claude-opus-4-7\n---\nSYSTEM PROMPT\n")
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-test")
     captured: dict = {}
 
@@ -272,9 +259,7 @@ def test_default_no_cache_emits_plain_strings(monkeypatch, tmp_path):
 def test_pin_provider_adds_provider_only_block(monkeypatch, tmp_path):
     roles = tmp_path / "roles"
     roles.mkdir()
-    (roles / "r.md").write_text(
-        "---\nmodel: openrouter:anthropic/claude-sonnet-4-6\n---\n"
-    )
+    (roles / "r.md").write_text("---\nmodel: openrouter:anthropic/claude-sonnet-4-6\n---\n")
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-test")
     captured: dict = {}
 

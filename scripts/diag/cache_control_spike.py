@@ -24,7 +24,6 @@ from pathlib import Path
 
 from findajob.llm.openrouter import complete
 
-
 # ~5000 tokens of stable shared content — well above Anthropic's 1024-token
 # minimum cache size. Mimics the shape of profile + JD content the prep
 # chain will eventually share.
@@ -33,8 +32,7 @@ SHARED_CONTEXT = (
     "================================================\n"
     "20+ years data center infrastructure NPI experience.\n"
     "Hardware validation, server/GPU/accelerator launches.\n"
-    "Cross-functional program management.\n"
-    + ("Filler line to reach cache threshold.\n" * 200)
+    "Cross-functional program management.\n" + ("Filler line to reach cache threshold.\n" * 200)
 )
 
 
@@ -73,10 +71,7 @@ def main() -> int:
     except Exception as e:  # noqa: BLE001
         print(f"FAIL on call 1: {type(e).__name__}: {e}")
         return 1
-    print(
-        f"  prompt_tokens={r1.prompt_tokens}  "
-        f"cached_tokens={r1.cached_tokens}  cost=${r1.cost_usd:.4f}"
-    )
+    print(f"  prompt_tokens={r1.prompt_tokens}  cached_tokens={r1.cached_tokens}  cost=${r1.cost_usd:.4f}")
 
     print("Call 2 (cache read expected):")
     try:
@@ -90,17 +85,11 @@ def main() -> int:
     except Exception as e:  # noqa: BLE001
         print(f"FAIL on call 2: {type(e).__name__}: {e}")
         return 1
-    print(
-        f"  prompt_tokens={r2.prompt_tokens}  "
-        f"cached_tokens={r2.cached_tokens}  cost=${r2.cost_usd:.4f}"
-    )
+    print(f"  prompt_tokens={r2.prompt_tokens}  cached_tokens={r2.cached_tokens}  cost=${r2.cost_usd:.4f}")
     print()
 
     hit_pct = (r2.cached_tokens / r2.prompt_tokens * 100) if r2.prompt_tokens else 0
-    print(
-        f"Call 2 cache hit: {hit_pct:.1f}% "
-        f"({r2.cached_tokens} / {r2.prompt_tokens} tokens)"
-    )
+    print(f"Call 2 cache hit: {hit_pct:.1f}% ({r2.cached_tokens} / {r2.prompt_tokens} tokens)")
     print()
     if r2.cached_tokens >= r1.prompt_tokens * 0.8:
         print("VERDICT: cache_control plumbing works end-to-end.")

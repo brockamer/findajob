@@ -127,8 +127,7 @@ def complete(
     key = api_key if api_key is not None else os.environ.get("OPENROUTER_API_KEY", "")
     if not key or not key.strip():
         raise OpenRouterError(
-            "OPENROUTER_API_KEY not set. Add a key in /onboarding/ Step 1 "
-            "or in data/.env.",
+            "OPENROUTER_API_KEY not set. Add a key in /onboarding/ Step 1 or in data/.env.",
             kind="config",
         )
 
@@ -290,8 +289,7 @@ def _raise_for_http_error(e: urllib.error.HTTPError) -> None:
         ) from e
     if e.code == 402:
         raise OpenRouterError(
-            "OpenRouter account out of credit (402). Add credit at "
-            "https://openrouter.ai/credits.",
+            "OpenRouter account out of credit (402). Add credit at https://openrouter.ai/credits.",
             kind="payment",
             status_code=402,
         ) from e
