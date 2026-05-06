@@ -72,3 +72,85 @@ def test_pricing_table_has_entry_for_production_models(model: str, expected_in: 
     rates = _rates(model)
     assert rates["input_per_mtok"] == expected_in, f"{model} input rate"
     assert rates["output_per_mtok"] == expected_out, f"{model} output rate"
+
+
+# ── cost_usd_override path (#470) ────────────────────────────────────────
+
+
+def test_log_call_with_cost_usd_override_bypasses_heuristic(tmp_path: Path) -> None:
+    """cost_usd_override -> row's cost_usd is the override, not the heuristic estimate."""
+    import sqlite3
+
+    from findajob.cost_tracking import log_call
+
+    db = tmp_path / "test.db"
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """
+        CREATE TABLE cost_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id TEXT,
+            operation TEXT,
+            model TEXT,
+            latency_ms INTEGER,
+            success INTEGER,
+            error_message TEXT,
+            input_tokens INTEGER,
+            output_tokens INTEGER,
+            cost_usd REAL,
+            created_at TEXT DEFAULT (datetime('now'))
+        )
+        """
+    )
+
+    log_call(
+        conn,
+        job_id="j-1",
+        operation="score",
+        model="openrouter:deepseek/deepseek-v3.2",
+        input_text="x" * 4000,
+        output_text="y" * 200,
+        cost_usd_override=0.001234,
+    )
+    row = conn.execute(
+        "SELECT cost_usd, input_tokens, output_tokens FROM cost_log"
+    ).fetchone()
+    assert row[0] == pytest.approx(0.001234)
+    # Token columns still populated by heuristic for forward compat.
+    assert row[1] > 0
+    assert row[2] > 0
+
+
+def test_log_call_without_override_uses_heuristic(tmp_path: Path) -> None:
+    """Default behavior (no override) still computes cost_usd via the heuristic."""
+    import sqlite3
+
+    from findajob.cost_tracking import estimate_cost_usd, log_call
+
+    db = tmp_path / "test.db"
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """
+        CREATE TABLE cost_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id TEXT, operation TEXT, model TEXT, latency_ms INTEGER,
+            success INTEGER, error_message TEXT, input_tokens INTEGER,
+            output_tokens INTEGER, cost_usd REAL,
+            created_at TEXT DEFAULT (datetime('now'))
+        )
+        """
+    )
+    model = "openrouter:deepseek/deepseek-v3.2"
+    log_call(
+        conn,
+        job_id="j-2",
+        operation="score",
+        model=model,
+        input_text="x" * 4000,
+        output_text="y" * 200,
+    )
+    row = conn.execute(
+        "SELECT cost_usd FROM cost_log WHERE job_id = 'j-2'"
+    ).fetchone()
+    _, _, expected = estimate_cost_usd(model, "x" * 4000, "y" * 200)
+    assert row[0] == pytest.approx(expected)
