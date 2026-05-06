@@ -85,3 +85,10 @@ def test_nav_omits_credits_chip_on_fresh_stack(client: TestClient, tmp_path: Pat
     assert "nav-credits" not in r.text
     # The legacy "$X.XX onboarding" badge is fully retired.
     assert "$0.00 onboarding" not in r.text
+    # #475 regression: the bell <li> must carry ml-auto so the right-cluster
+    # (bell + Admin) is pushed to the nav's right edge even when the chip's
+    # own ml-auto-bearing <li> isn't rendered. The previous fallback tested
+    # `current_calibration_for_template is not defined` against an
+    # unconditionally-registered Jinja global — a tautology that left the bell
+    # with class="" and visibly collapsed the nav into the group links.
+    assert "ml-auto" in r.text

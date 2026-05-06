@@ -36,8 +36,13 @@
     {# #87 — credits-remaining chip; replaces legacy onboarding-cost chip. #}
     {% include "_nav_credits.html" %}
     {# Notifications bell — links to /notifications/, polls /notifications/badge
-       every 60s for the unread count. #440 #}
-    <li class="{% if current_calibration_for_template is not defined %}ml-auto{% endif %}">
+       every 60s for the unread count. #440. ml-auto here pushes the right-cluster
+       (chip when present, bell, Admin) to the nav's right edge whenever the credits
+       chip is absent — _nav_credits.html only emits an <li> for poll_status='ok' or
+       'stale', so we can't rely on it to anchor the layout. Putting ml-auto on both
+       is safe: a second auto-margin in a flex row collapses to 0 once the first one
+       has consumed remaining space (#475). #}
+    <li class="ml-auto">
       <a href="/notifications/"
          class="px-2 py-1 rounded inline-flex items-center {% if operator_mode %}hover:bg-rose-800{% else %}hover:bg-slate-700{% endif %}"
          aria-label="Notifications"
