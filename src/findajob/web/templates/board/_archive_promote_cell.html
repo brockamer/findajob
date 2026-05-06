@@ -1,8 +1,16 @@
 {#
-  Archive-tab-only: Promote action cell. Renders a button for rows at
-  stage='scored' — clicking bumps relevance_score to 7 so the row
-  surfaces on the Dashboard for a Flag for Prep decision. Empty cell
-  for rows already past that stage.
+  Archive-tab-only: Promote action cell. Renders a button for two stages:
+
+  - stage='scored': POSTs to /promote — bumps relevance_score to 7 so the row
+    surfaces on the Dashboard for a Flag for Prep decision.
+  - stage='rejected' (user-rejected): POSTs to /un-reject — restores stage to
+    scored, sets score=8, deletes the feedback_log row, moves the prep folder
+    out of _rejected/. Different route because un_reject_job has side effects
+    (feedback_log delete) that promote_to_scored does not.
+
+  stage='not_selected' (company-rejected) intentionally has no button — it's
+  a closed application, not a state to revive.
+
   Inputs: row — sqlite3.Row with fingerprint + stage.
 #}
 <td class="px-3 py-1 align-top text-sm whitespace-nowrap">
@@ -12,5 +20,12 @@
             hx-post="/board/jobs/{{ row.fingerprint }}/promote"
             hx-target="closest tr"
             hx-swap="outerHTML">Promote</button>
+  {% elif row.stage == 'rejected' %}
+    <button type="button"
+            class="rounded bg-indigo-600 px-2 py-1 text-xs font-medium text-white hover:bg-indigo-500"
+            hx-post="/board/jobs/{{ row.fingerprint }}/un-reject"
+            hx-target="closest tr"
+            hx-swap="outerHTML"
+            title="Restore: clears feedback_log entry, score=8, stage=scored">Promote</button>
   {% endif %}
 </td>

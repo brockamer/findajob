@@ -280,6 +280,7 @@ def test_router_registered_on_app(client: TestClient):
         "waitlist",
         "reactivate",
         "promote",
+        "un-reject",
         "reject",
         "not-selected",
         "regenerate",
@@ -837,6 +838,105 @@ class TestPromote:
 
     def test_404_on_unknown_fingerprint(self, client: TestClient):
         response = client.post("/board/jobs/fp_nonexistent/promote")
+        assert response.status_code == 404
+
+
+# ── /un-reject handler ────────────────────────────────────────────────────
+
+
+def _seed_user_rejected_job(
+    client: TestClient,
+    fingerprint: str,
+    *,
+    with_folder: bool = False,
+    with_feedback: bool = True,
+) -> Path | None:
+    """Seed a stage='rejected' row with the side effects a real user rejection
+    would leave behind: a feedback_log row and (optionally) a folder under
+    companies/_rejected/."""
+    conn = sqlite3.connect(client._db_path)
+    _insert_job(conn, fingerprint=fingerprint, stage="rejected", score=4)
+    job_id = conn.execute("SELECT id FROM jobs WHERE fingerprint=?", (fingerprint,)).fetchone()[0]
+    folder_path: Path | None = None
+    if with_folder:
+        folder_path = client._tmp_path / "companies" / "_rejected" / f"Acme_Ops_{fingerprint}"
+        folder_path.mkdir(parents=True)
+        (folder_path / "resume.pdf").touch()
+        conn.execute(
+            "UPDATE jobs SET prep_folder_path=?, reject_reason='Wrong domain' WHERE id=?",
+            (str(folder_path), job_id),
+        )
+    else:
+        conn.execute("UPDATE jobs SET reject_reason='Wrong domain' WHERE id=?", (job_id,))
+    if with_feedback:
+        conn.execute(
+            "INSERT INTO feedback_log (job_id, title, company, relevance_score, reject_reason, jd_excerpt) "
+            "VALUES (?, 'Senior Ops', 'Acme Corp', 4, 'Wrong domain', '')",
+            (job_id,),
+        )
+    conn.commit()
+    conn.close()
+    return folder_path
+
+
+class TestUnReject:
+    def test_happy_path_without_folder(self, client: TestClient):
+        _seed_user_rejected_job(client, "fp_user_rej")
+
+        response = client.post("/board/jobs/fp_user_rej/un-reject")
+
+        assert response.status_code == 200
+        assert response.text == ""
+
+        conn = sqlite3.connect(client._db_path)
+        row = conn.execute(
+            "SELECT stage, relevance_score, reject_reason FROM jobs WHERE fingerprint='fp_user_rej'"
+        ).fetchone()
+        conn.close()
+        assert row[0] == "scored"
+        assert row[1] == 8
+        assert row[2] == ""
+
+        # feedback_log row removed so the scorer's feedback loop stays clean
+        assert _fetch_feedback(client, "fp_user_rej") == []
+
+        audit = _fetch_audit(client, "fp_user_rej")
+        assert any(a == ("stage", "rejected", "scored") for a in audit)
+
+    def test_happy_path_restores_folder(self, client: TestClient):
+        """Folder under companies/_rejected/ is moved back to companies/."""
+        rejected_folder = _seed_user_rejected_job(client, "fp_user_rej_f", with_folder=True)
+        assert rejected_folder is not None
+
+        client.post("/board/jobs/fp_user_rej_f/un-reject")
+
+        conn = sqlite3.connect(client._db_path)
+        new_path = conn.execute("SELECT prep_folder_path FROM jobs WHERE fingerprint='fp_user_rej_f'").fetchone()[0]
+        conn.close()
+        assert "_rejected" not in new_path
+        assert Path(new_path).is_dir()
+        assert not rejected_folder.exists()
+
+    def test_409_on_company_not_selected(self, client: TestClient):
+        """stage='not_selected' (company rejection) cannot be un-rejected — only user rejection."""
+        conn = sqlite3.connect(client._db_path)
+        _insert_job(conn, fingerprint="fp_not_sel", stage="not_selected")
+        conn.close()
+
+        response = client.post("/board/jobs/fp_not_sel/un-reject")
+
+        assert response.status_code == 409
+        assert _fetch_stage(client, "fp_not_sel") == "not_selected"
+
+    def test_409_on_scored_stage(self, client: TestClient):
+        """A scored row uses /promote, not /un-reject — gate on stage='rejected' only."""
+        response = client.post("/board/jobs/fp_scored/un-reject")
+
+        assert response.status_code == 409
+        assert _fetch_stage(client, "fp_scored") == "scored"
+
+    def test_404_on_unknown_fingerprint(self, client: TestClient):
+        response = client.post("/board/jobs/fp_nonexistent/un-reject")
         assert response.status_code == 404
 
 

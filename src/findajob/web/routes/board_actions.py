@@ -27,6 +27,7 @@ from findajob.actions import (
     handle_waitlist,
     notify_waitlist_resurface,
     promote_to_scored,
+    un_reject_job,
 )
 from findajob.paths import BASE
 from findajob.utils import is_synthetic_job, log_event, write_audit
@@ -436,6 +437,36 @@ def promote(
     if job["stage"] not in _PROMOTABLE_STAGES:
         raise HTTPException(status_code=409, detail="Job is not promotable from its current stage")
     promote_to_scored(db, job, reason="Promoted from web UI")
+    return HTMLResponse("")
+
+
+def _fetch_un_reject_job(db: sqlite3.Connection, fingerprint: str) -> sqlite3.Row | None:
+    """un_reject_job reads prep_folder_path and reject_reason off the row."""
+    return db.execute(
+        "SELECT id, fingerprint, title, company, url, stage, prep_folder_path, reject_reason "
+        "FROM jobs WHERE fingerprint=?",
+        (fingerprint,),
+    ).fetchone()
+
+
+@router.post("/board/jobs/{fingerprint}/un-reject", response_class=HTMLResponse)
+def un_reject(
+    fingerprint: str,
+    request: Request,  # noqa: ARG001
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> HTMLResponse:
+    """Reverse a user rejection of a job — clears the feedback_log row,
+    restores stage='scored', moves the prep folder out of _rejected/, sets
+    relevance_score=8. Only valid for stage='rejected' (user rejection);
+    rows at stage='not_selected' (company rejection) cannot be revived
+    this way and return 409.
+    """
+    job = _fetch_un_reject_job(db, fingerprint)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job["stage"] != "rejected":
+        raise HTTPException(status_code=409, detail="Only user-rejected jobs can be un-rejected")
+    un_reject_job(db, job, overwrite_fields={})
     return HTMLResponse("")
 
 
