@@ -31,6 +31,7 @@ OPENROUTER_CREDITS_URL = "https://openrouter.ai/api/v1/credits"
 HTTP_TIMEOUT_S = 30
 MULTIPLIER_MIN = 0.5
 MULTIPLIER_MAX = 3.0
+WINDOW_DAYS = 7
 
 
 class OpenRouterHTTPError(Exception):
@@ -68,6 +69,56 @@ def _fetch_credits(api_key: str) -> dict[str, float]:
 
 def _heuristic_sum(conn: sqlite3.Connection) -> float:
     row = conn.execute("SELECT COALESCE(SUM(cost_usd), 0) FROM cost_log WHERE cost_usd IS NOT NULL").fetchone()
+    return float(row[0])
+
+
+def _window_baseline(conn: sqlite3.Connection, days: int) -> dict[str, float] | None:
+    """Most recent 'ok' cost_calibration row at least `days` days old.
+
+    Returns {'credits_used_usd': X, 'onboarding_total_usd': Y} or None
+    when no eligible row exists (warming-up state).
+    """
+    row = conn.execute(
+        """SELECT credits_used_usd, onboarding_total_usd
+           FROM cost_calibration
+           WHERE poll_status = 'ok'
+             AND polled_at <= datetime('now', '-' || ? || ' days')
+           ORDER BY id DESC LIMIT 1""",
+        (days,),
+    ).fetchone()
+    if row is None:
+        return None
+    return {
+        "credits_used_usd": float(row[0] or 0.0),
+        "onboarding_total_usd": float(row[1] or 0.0),
+    }
+
+
+def _heuristic_sum_windowed(conn: sqlite3.Connection, days: int) -> float:
+    """SUM(cost_log.cost_usd) for cost_usd IS NOT NULL rows logged within the window."""
+    row = conn.execute(
+        """SELECT COALESCE(SUM(cost_usd), 0)
+           FROM cost_log
+           WHERE cost_usd IS NOT NULL
+             AND logged_at >= datetime('now', '-' || ? || ' days')""",
+        (days,),
+    ).fetchone()
+    return float(row[0])
+
+
+def _last_good_multiplier(conn: sqlite3.Connection) -> float | None:
+    """Most recent cost_calibration.multiplier where poll_status='ok'.
+
+    Used to inherit the multiplier on sparse-week polls
+    (no new heuristic activity in the window).
+    """
+    row = conn.execute(
+        """SELECT multiplier FROM cost_calibration
+           WHERE poll_status = 'ok' AND multiplier IS NOT NULL
+           ORDER BY id DESC LIMIT 1"""
+    ).fetchone()
+    if row is None or row[0] is None:
+        return None
     return float(row[0])
 
 
@@ -128,16 +179,43 @@ def poll_once(conn: sqlite3.Connection) -> None:
         return
 
     onboarding_total = _onboarding_total(conn)
-    heuristic_sum = _heuristic_sum(conn)
-    pipeline_actual = max(0.0, credits["total_usage"] - onboarding_total)
+    heuristic_sum = _heuristic_sum(conn)  # lifetime, stored for observability
+    pipeline_actual_lifetime = max(0.0, credits["total_usage"] - onboarding_total)
 
-    if heuristic_sum <= 0:
-        multiplier_raw = 1.0
+    # Windowed delta math (#467) — replaces lifetime-cumulative comparison.
+    baseline = _window_baseline(conn, WINDOW_DAYS)
+
+    if baseline is None:
+        # No `WINDOW_DAYS`-old 'ok' row exists yet — warming up.
+        # Store this row as future baseline; surfaces render uncalibrated.
+        _insert_row(
+            conn,
+            poll_status="warming_up",
+            credits_total=credits["total_credits"],
+            credits_used=credits["total_usage"],
+            onboarding_total=onboarding_total,
+            pipeline_actual=pipeline_actual_lifetime,
+            heuristic_sum=heuristic_sum,
+            multiplier=1.0,
+            multiplier_clamped=0,
+        )
+        return
+
+    delta_credits = max(0.0, credits["total_usage"] - baseline["credits_used_usd"])
+    delta_onboarding = max(0.0, onboarding_total - baseline["onboarding_total_usd"])
+    pipeline_actual_window = max(0.0, delta_credits - delta_onboarding)
+    heuristic_window = _heuristic_sum_windowed(conn, WINDOW_DAYS)
+
+    if heuristic_window <= 0:
+        # Sparse week — no prep activity in the window. Inherit last good
+        # multiplier rather than emitting a clamped/garbage value.
+        last_mult = _last_good_multiplier(conn)
+        multiplier = last_mult if last_mult is not None else 1.0
+        multiplier_clamped = 0
     else:
-        multiplier_raw = pipeline_actual / heuristic_sum
-
-    multiplier = max(MULTIPLIER_MIN, min(MULTIPLIER_MAX, multiplier_raw))
-    multiplier_clamped = 1 if multiplier != multiplier_raw else 0
+        multiplier_raw = pipeline_actual_window / heuristic_window
+        multiplier = max(MULTIPLIER_MIN, min(MULTIPLIER_MAX, multiplier_raw))
+        multiplier_clamped = 1 if multiplier != multiplier_raw else 0
 
     _insert_row(
         conn,
@@ -145,8 +223,8 @@ def poll_once(conn: sqlite3.Connection) -> None:
         credits_total=credits["total_credits"],
         credits_used=credits["total_usage"],
         onboarding_total=onboarding_total,
-        pipeline_actual=pipeline_actual,
-        heuristic_sum=heuristic_sum,
+        pipeline_actual=pipeline_actual_lifetime,  # lifetime, for next poll's baseline
+        heuristic_sum=heuristic_sum,  # lifetime, observability
         multiplier=multiplier,
         multiplier_clamped=multiplier_clamped,
     )

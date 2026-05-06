@@ -27,7 +27,7 @@ class Calibration:
     credits_remaining_usd: float | None
     multiplier: float
     multiplier_clamped: bool
-    poll_status: str  # 'ok' | 'stale' | 'http_error' | 'timeout' | 'missing_key'
+    poll_status: str  # 'ok' | 'stale' | 'warming_up' | 'http_error' | 'timeout' | 'missing_key'
 
 
 def current_calibration(conn: sqlite3.Connection) -> Calibration | None:
