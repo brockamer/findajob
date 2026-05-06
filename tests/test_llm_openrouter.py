@@ -484,3 +484,64 @@ def test_retry_exhausted_after_max_attempts(monkeypatch, tmp_path):
             complete(role="r", prompt="hi", roles_dir=roles)
     assert exc.value.kind == "rate_limit"
     assert len(calls) == 3
+
+
+# ── Cost extraction edge cases + history passthrough ────────────────────
+
+
+def test_response_without_usage_returns_zero_cost(monkeypatch, tmp_path):
+    """No usage dict in response -> cost_usd=0.0, tokens=0."""
+    roles = tmp_path / "roles"
+    roles.mkdir()
+    (roles / "r.md").write_text("---\nmodel: openrouter:foo/bar\n---\n")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-test")
+    body = {"id": "g", "choices": [{"message": {"role": "assistant", "content": "x"}}]}
+    with patch(
+        "findajob.llm.openrouter.urllib.request.urlopen",
+        return_value=_ok_resp(body),
+    ):
+        result = complete(role="r", prompt="hi", roles_dir=roles)
+    assert result.cost_usd == 0.0
+    assert result.prompt_tokens == 0
+    assert result.completion_tokens == 0
+    assert result.cached_tokens == 0
+
+
+def test_response_with_cached_tokens_populates_field(monkeypatch, tmp_path):
+    roles = tmp_path / "roles"
+    roles.mkdir()
+    (roles / "r.md").write_text("---\nmodel: openrouter:foo/bar\n---\n")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-test")
+    body = _success_body(cached_tokens=8500, prompt_tokens=10000, cost=0.0042)
+    with patch(
+        "findajob.llm.openrouter.urllib.request.urlopen",
+        return_value=_ok_resp(body),
+    ):
+        result = complete(role="r", prompt="hi", roles_dir=roles)
+    assert result.cached_tokens == 8500
+    assert result.prompt_tokens == 10000
+    assert result.cost_usd == pytest.approx(0.0042)
+
+
+def test_history_passed_through_to_payload(monkeypatch, tmp_path):
+    roles = tmp_path / "roles"
+    roles.mkdir()
+    (roles / "r.md").write_text("---\nmodel: openrouter:foo/bar\n---\n")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-test")
+    captured: dict = {}
+
+    def _capture(req, timeout=None):
+        captured["body"] = json.loads(req.data.decode("utf-8"))
+        return _ok_resp(_success_body())
+
+    history = [
+        {"role": "user", "content": "first"},
+        {"role": "assistant", "content": "ok"},
+    ]
+    with patch("findajob.llm.openrouter.urllib.request.urlopen", side_effect=_capture):
+        complete(role="r", prompt="next", history=history, roles_dir=roles)
+
+    msgs = captured["body"]["messages"]
+    assert msgs[1] == {"role": "user", "content": "first"}
+    assert msgs[2] == {"role": "assistant", "content": "ok"}
+    assert msgs[3] == {"role": "user", "content": "next"}
