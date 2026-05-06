@@ -44,6 +44,12 @@
         <a class="underline" href="/materials/{{ row.fingerprint }}">{{ row[field] }}</a>
       {% elif field in ('fit_score', 'probability_score', 'interview_likelihood') %}
         {{ row[field] | round | int if row[field] is not none else '—' }}
+      {% elif field == 'cost' %}
+        {% if row[field] is not none %}
+          ${{ '%.2f' | format(row[field]) }}
+        {% else %}
+          <span class="text-slate-400">—</span>
+        {% endif %}
       {% else %}
         {{ row[field] if row[field] is not none else '' }}
       {% endif %}

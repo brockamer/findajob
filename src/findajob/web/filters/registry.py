@@ -124,6 +124,20 @@ APPLIED_COLUMNS: tuple[ColumnSpec, ...] = (
         db_expr="j.remote_status",
     ),
     ColumnSpec(
+        name="cost",
+        label="Cost",
+        kind=Kind.COMPUTED,
+        sortable=True,
+        filterable=False,
+        db_expr=(
+            "(SELECT SUM(cl.cost_usd) FROM cost_log cl "
+            "WHERE cl.job_id = j.id AND cl.cost_usd IS NOT NULL) "
+            "* COALESCE("
+            "  (SELECT multiplier FROM cost_calibration ORDER BY id DESC LIMIT 1), "
+            "  1.0)"
+        ),
+    ),
+    ColumnSpec(
         name="comp_estimate",
         label="Comp",
         kind=Kind.TEXT,
