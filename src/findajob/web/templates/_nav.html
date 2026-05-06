@@ -33,22 +33,11 @@
         </a>
       </li>
     {% endfor %}
-    {# Lifetime onboarding-LLM cost badge. Sum of OpenRouter's per-turn
-       reported `usage.cost` across every onboarding session on this stack.
-       The defined-check protects test paths that mount a stripped-down
-       app without going through `create_app`'s globals registration; in
-       production the global is always set. #}
-    {% if onboarding_lifetime_cost_usd is defined %}
-      <li id="nav-lifetime-cost" class="ml-auto">
-        <span class="text-xs px-2 py-1 rounded bg-slate-700/50 border border-slate-500/40 font-mono"
-              title="Total OpenRouter cost for onboarding interviews on this stack. Authoritative number from your OpenRouter account.">
-          ${{ '%.2f' | format(onboarding_lifetime_cost_usd()) }} onboarding
-        </span>
-      </li>
-    {% endif %}
+    {# #87 — credits-remaining chip; replaces legacy onboarding-cost chip. #}
+    {% include "_nav_credits.html" %}
     {# Notifications bell — links to /notifications/, polls /notifications/badge
        every 60s for the unread count. #440 #}
-    <li class="{% if onboarding_lifetime_cost_usd is not defined %}ml-auto{% endif %}">
+    <li class="{% if current_calibration_for_template is not defined %}ml-auto{% endif %}">
       <a href="/notifications/"
          class="px-2 py-1 rounded inline-flex items-center {% if operator_mode %}hover:bg-rose-800{% else %}hover:bg-slate-700{% endif %}"
          aria-label="Notifications"

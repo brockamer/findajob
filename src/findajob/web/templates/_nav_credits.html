@@ -1,0 +1,29 @@
+{# Nav-bar credits-remaining chip — #87. Reads latest cost_calibration via
+   the `current_calibration_for_template` global. Color thresholds match
+   the spec: green > $20, amber $5–$20, red < $5. #}
+{% if current_calibration_for_template is defined %}
+  {% set cal = current_calibration_for_template() %}
+  {% if cal and cal.poll_status == 'ok' and cal.credits_remaining_usd is not none %}
+    {% set rem = cal.credits_remaining_usd %}
+    {% if rem > 20 %}
+      {% set color_class = "bg-emerald-700/40 border-emerald-500/50 text-emerald-100" %}
+    {% elif rem > 5 %}
+      {% set color_class = "bg-amber-700/40 border-amber-500/50 text-amber-100" %}
+    {% else %}
+      {% set color_class = "bg-rose-700/50 border-rose-500/60 text-rose-100" %}
+    {% endif %}
+    <li id="nav-credits" class="ml-auto">
+      <span class="text-xs px-2 py-1 rounded border font-mono {{ color_class }}"
+            title="OpenRouter credits remaining. Polled every 5 min. Last poll: {{ cal.polled_at }} UTC.">
+        ${{ '%.2f' | format(rem) }} credits
+      </span>
+    </li>
+  {% elif cal and cal.poll_status == 'stale' %}
+    <li id="nav-credits" class="ml-auto">
+      <span class="text-xs px-2 py-1 rounded bg-slate-700/50 border border-slate-500/40 font-mono"
+            title="Last poll {{ cal.polled_at }} UTC — older than 1 hour. Check pipeline.jsonl for the cron job.">
+        $? stale
+      </span>
+    </li>
+  {% endif %}
+{% endif %}

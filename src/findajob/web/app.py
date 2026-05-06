@@ -51,25 +51,26 @@ def create_app(
 
     templates.env.globals["reject_reason_options"] = _reject_reason_options
 
-    # Helper exposed to base.html so the nav bar can render a lifetime
-    # onboarding-cost badge on every page. Wrapped in a function (not a
-    # static value) so each request reads fresh DB state without us having
-    # to wire it through every individual route handler's context.
-    def _lifetime_cost_for_template() -> float:
+    # #87 — calibrated-cost surfaces (nav chip, dashboard widget) read
+    # the latest cost_calibration row through this global. Wrapped in
+    # a function so each request re-queries; the 5-min poll updates the
+    # row out-of-band. Returns the Calibration dataclass (or None).
+    def _current_calibration_for_template():
         try:
             conn = sqlite3.connect(str(db_path), timeout=5)
+            conn.row_factory = sqlite3.Row
         except sqlite3.Error:
-            return 0.0
+            return None
         try:
-            from findajob.onboarding.session_store import lifetime_cost_usd
+            from findajob.cost_rollups import current_calibration
 
-            return lifetime_cost_usd(conn)
+            return current_calibration(conn)
         except sqlite3.Error:
-            return 0.0
+            return None
         finally:
             conn.close()
 
-    templates.env.globals["onboarding_lifetime_cost_usd"] = _lifetime_cost_for_template
+    templates.env.globals["current_calibration_for_template"] = _current_calibration_for_template
 
     static_dir = Path(__file__).parent / "static"
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
