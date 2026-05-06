@@ -92,6 +92,7 @@ file. If you're refactoring an old hardcoded section, add a note to `docs/GENERA
 | `candidate_led_briefing` | `openrouter:perplexity/sonar-deep-research` — async (1–5 min); drives the speculative briefing pass via `scripts/run_speculative_research.py`. |
 | `speculative_roles_synth` | `openrouter:anthropic/claude-sonnet-4.6`, `max_tokens: 4096` — synthesizes 1–5 candidate-tailored role cards from the briefing. |
 | Job ingestion | Pluggable via `JobSourceAdapter` (`src/findajob/fetchers/adapters/`); jobs-api14 + JSearch ship in v0.14; per-stack active list in `config/active_sources.txt`. Greenhouse / Ashby / Lever / Gmail still function-style — migration tracked in #410. v0.15 adds `JobsApi14IndeedAdapter` (Indeed via jobs-api14 with sortType=date + post-filter, restoring pre-#408 coverage) and consolidates RapidAPI credentials to a shared `RAPIDAPI_KEY` env var (legacy `JOBS_API14_KEY` / `JSEARCH_API_KEY` work as fallbacks) (#414). |
+| Cost calibration | `scripts/poll_openrouter_credits.py` runs every 5 min via supercronic; reads `OPENROUTER_API_KEY`, GETs `/api/v1/credits`, writes a `cost_calibration` row with derived multiplier = `(credits_used - onboarding_total) / heuristic_sum`, clamped to `[0.5, 3.0]`. Read by `findajob.cost_rollups` helpers (`current_calibration`, `per_job_cost`, `per_job_breakdown`, `weekly_spend`, `runway_weeks`, `projected_monthly`) which back the nav credits chip, dashboard burn-rate widget, Applied cost cell, Materials breakdown, and notify-stats projection. Onboarding subtraction is a #463 workaround pending cost_log unification (#87). |
 | Package manager | `uv sync` for dev deps; `uv run` prefix for pytest/ruff/mypy/uvicorn |
 | Path resolution | `src/findajob/paths.py` — reads `config/paths.env`; BASE derived from `__file__` |
 | Roles dir | `config/roles/` |
@@ -251,6 +252,9 @@ the same contract.
 `scorer_prefilter.py` handles hard rejects deterministically before any LLM call.
 Stage 1: title regex → score 1, no LLM. Stage 2: in-domain + no JD → score 5/6, no LLM.
 Never rely on LLM prompt instructions alone for boolean classification tasks.
+
+### Cost Displays Are Calibrated
+Every cost number rendered in the UI (nav credits chip, dashboard burn-rate widget, Applied cost cell, Materials breakdown, notify-stats projection) reads through `findajob.cost_rollups` helpers, which apply the latest `cost_calibration.multiplier`. Don't add new cost surfaces that bypass these helpers — the heuristic in `cost_log.cost_usd` is empirically biased ~25% low, and direct sums will mislead operators. If a new surface needs cost data, add a helper to `cost_rollups.py`. The 5-min `poll_openrouter_credits` cron is the only writer to `cost_calibration`; nothing else writes to that table.
 
 ### Synthetic Jobs Convention (Speculative Cold-Outreach)
 

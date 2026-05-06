@@ -16,6 +16,7 @@ When this map drifts from the actual code (renamed file, new route module, retir
 <repo>/src/findajob/fetchers/adapters/      # JobSourceAdapter Protocol + REGISTERED_ADAPTERS + JobsApi14Adapter + JobsApi14IndeedAdapter + JSearchAdapter; curation.py = per-adapter signup metadata loaded by /onboarding/feed-config/
 <repo>/src/findajob/scoring.py              # score_job(), _build_feedback_block()
 <repo>/src/findajob/scorer_prefilter.py     # deterministic pre-filter (Stage 1 + 2)
+<repo>/src/findajob/cost_rollups.py         # SQL helpers backing all calibrated cost surfaces — current_calibration, per_job_cost, per_job_breakdown, weekly_spend, runway_weeks, projected_monthly (#87)
 <repo>/src/findajob/web/app.py               # FastAPI app factory (create_app)
 <repo>/src/findajob/web/routes/ingest.py     # GET /ingest/ form + POST /ingest/manual handler
 <repo>/src/findajob/web/routes/config.py     # GET /config/, GET/POST /config/files/{path} — in-browser config editor
@@ -51,6 +52,7 @@ When this map drifts from the actual code (renamed file, new route module, retir
 <repo>/scripts/notify.py                    # ntfy push notifications — subcommands: send-raw, scoreboard, health-check, etc.
 <repo>/scripts/rename_folders.py            # rename company folders to new format (idempotent)
 <repo>/scripts/discover_companies.py            # weekly company discovery cron entry
+<repo>/scripts/poll_openrouter_credits.py   # 5-min credits poll — writes cost_calibration row (#87)
 
 # ── Candidate content (all gitignored — fill these in after cloning) ────────
 <repo>/candidate_context/profile.md         # candidate profile — injected into scoring, resume, CL, outreach
