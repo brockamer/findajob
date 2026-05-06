@@ -128,7 +128,12 @@ _APPLIED_ROW_SQL = """
            j.known_contacts, j.comp_estimate, j.ai_notes, j.user_notes, j.created_at,
            j.url,
            al.applied_date,
-           CAST((julianday('now') - julianday(al.applied_date)) AS INTEGER) AS days_since_applied
+           CAST((julianday('now') - julianday(al.applied_date)) AS INTEGER) AS days_since_applied,
+           (SELECT SUM(cl.cost_usd) FROM cost_log cl
+            WHERE cl.job_id = j.id AND cl.cost_usd IS NOT NULL)
+           * COALESCE(
+             (SELECT multiplier FROM cost_calibration ORDER BY id DESC LIMIT 1),
+             1.0) AS cost
     FROM jobs j
     LEFT JOIN (
       SELECT job_id, MIN(changed_at) AS applied_date

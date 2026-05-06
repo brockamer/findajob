@@ -1,6 +1,7 @@
 """_nav.html partial highlights the current route."""
 
-import sqlite3
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -13,20 +14,13 @@ from findajob.web.app import create_app
 @pytest.fixture
 def client(tmp_path: Path) -> TestClient:
     db = tmp_path / "pipeline.db"
-    conn = sqlite3.connect(db)
-    conn.execute(
-        "CREATE TABLE jobs (id TEXT, fingerprint TEXT, title TEXT, company TEXT, stage TEXT, "
-        "fit_score REAL, probability_score REAL, relevance_score INTEGER, interview_likelihood INTEGER, "
-        "location TEXT, remote_status TEXT, known_contacts TEXT, comp_estimate TEXT, "
-        "ai_notes TEXT, user_notes TEXT, score_flag_reason TEXT, source TEXT, reject_reason TEXT, url TEXT, "
-        "created_at TEXT, stage_updated TEXT, prep_folder_path TEXT)"
+    # Bootstrap the canonical schema via init_db.py rather than hand-rolling —
+    # avoids drift when tables get added (e.g. cost_log + cost_calibration in #87).
+    subprocess.run(
+        [sys.executable, "scripts/init_db.py", str(db)],
+        check=True,
+        cwd=Path(__file__).resolve().parent.parent,
     )
-    conn.execute(
-        "CREATE TABLE audit_log (id INTEGER PRIMARY KEY, job_id TEXT, field_changed TEXT, "
-        "old_value TEXT, new_value TEXT, changed_at TEXT, changed_by TEXT)"
-    )
-    conn.commit()
-    conn.close()
     companies = tmp_path / "companies"
     companies.mkdir()
     mark_complete(tmp_path)
@@ -75,10 +69,11 @@ def test_board_link_highlights_on_every_board_page(client: TestClient) -> None:
         assert 'aria-current="page"' in snippet, f"Board link not active on {path}"
 
 
-def test_nav_shows_lifetime_cost_badge(client: TestClient, tmp_path: Path) -> None:
-    """Every stack sees a "$X.XX onboarding" badge in the nav. After #401
-    the subsidy gate was removed — the chat is always tester-funded, so
-    the badge always shows."""
+def test_nav_omits_credits_chip_on_fresh_stack(client: TestClient, tmp_path: Path) -> None:
+    """#87 retired the always-on onboarding badge in favor of an OpenRouter
+    credits-remaining chip that renders only when the 5-min poll has populated
+    a calibration row. On a fresh stack with no calibration data, the chip
+    must be absent entirely (rather than rendering an unhelpful $0.00)."""
     db = tmp_path / "pipeline.db"
     companies = tmp_path / "companies"
     app = create_app(companies_root=companies, db_path=db, base_root=tmp_path)
@@ -86,6 +81,7 @@ def test_nav_shows_lifetime_cost_badge(client: TestClient, tmp_path: Path) -> No
 
     r = c.get("/")
     assert r.status_code == 200
-    assert "onboarding" in r.text
-    # Initial state: no sessions yet, badge reads $0.00
-    assert "$0.00 onboarding" in r.text
+    # The chip uses id="nav-credits" — absent until cost_calibration has a row.
+    assert "nav-credits" not in r.text
+    # The legacy "$X.XX onboarding" badge is fully retired.
+    assert "$0.00 onboarding" not in r.text

@@ -420,27 +420,8 @@ def test_resume_page_file_block_shows_badge_not_raw_delimiter(client_with_key: T
     assert "name: Stored User" not in body
 
 
-# ── Nav lifetime-cost OOB swap (#401 PR B Task 5) ────────────────────────
-
-
-def test_turn_response_includes_nav_lifetime_cost_oob_swap(
-    client_with_key: TestClient, base_root: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """_turn.html must include an OOB swap block targeting #nav-lifetime-cost
-    so the nav badge updates per turn without a full page reload (#401 Task 5)."""
-    sid = _create_session_with_history(base_root, [])
-    _bind_credentials(base_root, sid)
-
-    def _fake(api_key, system_prompt, history, user_message):
-        return "ASSISTANT_REPLY", {}
-
-    monkeypatch.setattr("findajob.web.routes.onboarding_interview.run_turn", _fake)
-
-    resp = client_with_key.post(
-        "/onboarding/interview/turn",
-        data={"session_id": sid, "message": "hello"},
-    )
-    assert resp.status_code == 200
-    body = resp.text
-    assert 'id="nav-lifetime-cost"' in body
-    assert 'hx-swap-oob="true"' in body
+# ── Legacy nav-lifetime-cost OOB swap retired by #87 ─────────────────────
+# The onboarding-cost nav chip was retired in favor of the OpenRouter
+# credits-remaining chip backed by cost_calibration. The OOB swap that
+# updated the old badge per turn was deleted from _turn.html. The credits
+# chip refreshes via the 5-min poll, not per-turn — no OOB swap needed.

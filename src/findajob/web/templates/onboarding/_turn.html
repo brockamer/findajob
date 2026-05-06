@@ -37,17 +37,6 @@
   {% endif %}
 </div>
 
-{# OOB swap: refresh the nav lifetime-cost badge after each turn so
-   the running total ticks up without a full page reload. #}
-{% if onboarding_lifetime_cost_usd is defined %}
-<li id="nav-lifetime-cost" hx-swap-oob="true" class="ml-auto">
-  <span class="text-xs px-2 py-1 rounded bg-slate-700/50 border border-slate-500/40 font-mono"
-        title="Total OpenRouter cost for onboarding interviews on this stack. Authoritative number from your OpenRouter account.">
-    ${{ '%.2f' | format(onboarding_lifetime_cost_usd()) }} onboarding
-  </span>
-</li>
-{% endif %}
-
 {% if finalize_ready %}
 <section id="finalize-block" hx-swap-oob="true"
          class="border border-green-300 bg-green-50 rounded p-4 space-y-3 mt-4">
