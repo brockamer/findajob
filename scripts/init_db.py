@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 # scripts/init_db.py
 import sqlite3
+import sys
 
 from findajob.paths import BASE
 
-DB_PATH = f"{BASE}/data/pipeline.db"
+DB_PATH = sys.argv[1] if len(sys.argv) > 1 else f"{BASE}/data/pipeline.db"
 
 conn = sqlite3.connect(DB_PATH, timeout=30)
 
@@ -106,6 +107,24 @@ CREATE TABLE IF NOT EXISTS cost_log (
     cost_usd REAL,
     logged_at TEXT DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS cost_calibration (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    polled_at TEXT NOT NULL DEFAULT (datetime('now')),
+    credits_total_usd REAL,
+    credits_used_usd REAL,
+    credits_remaining_usd REAL,
+    onboarding_total_usd REAL,
+    pipeline_actual_usd REAL,
+    heuristic_sum_usd REAL,
+    multiplier REAL,
+    multiplier_clamped INTEGER NOT NULL DEFAULT 0,
+    poll_status TEXT NOT NULL,
+    error_message TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_cost_calibration_polled_at
+    ON cost_calibration(polled_at);
 
 CREATE TABLE IF NOT EXISTS feedback_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
