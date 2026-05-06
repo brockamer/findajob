@@ -25,9 +25,12 @@ Voice signal lives in unaided writing.
 from __future__ import annotations
 
 import re
-import subprocess
+import sqlite3
+import time
 
-from findajob.paths import AICHAT
+from findajob.cost_tracking import log_call, role_model
+from findajob.llm.openrouter import OpenRouterError, complete
+from findajob.utils import log_event
 
 _FRONTMATTER_RE = re.compile(r"\A---\n.*?\n---\n", re.DOTALL)
 _FENCED_CODE_BLOCK_RE = re.compile(r"^```[^\n]*\n.*?\n```\s*$", re.MULTILINE | re.DOTALL)
@@ -93,74 +96,57 @@ def clean_voice_samples(raw: str) -> str:
     return text.strip()
 
 
-_REDACTION_PROMPT_HEADER = (
-    "You are processing voice samples (the candidate's own personal long-form prose) "
-    "to be used as STYLE calibration for cover letters and outreach. The text below "
-    "has already been stripped of markdown structure. Your job is to generalize "
-    "personal identifiers that the candidate may not have thought to scrub, while "
-    "preserving their natural voice and prose flow.\n"
-    "\n"
-    "REDACT (replace with generic equivalents):\n"
-    "- Specific dates that anchor the candidate in time → "
-    '"around that time", "a few years ago", "in those days"\n'
-    "- Named third parties (friends, partners, doctors, teachers, colleagues by "
-    'name) → "a friend", "a teacher", "a colleague"\n'
-    "- Exact geographic specifiers (cities, states, regions, named neighborhoods, "
-    'named freeways, named landmarks) → "the city", "a small town", '
-    '"another state", "the freeway"\n'
-    "- Named institutions (treatment facilities, hospitals, universities, specific "
-    'employers, named programs) → "the program", "the hospital", "a university", '
-    '"an employer"\n'
-    '- Exact dollar amounts → "a lot", "a meaningful amount"\n'
-    "- Exact durations that combined with other context would identify the candidate "
-    '(e.g., "the six year relationship I had until 2019") → "a long relationship"\n'
-    "- Phone numbers, email addresses, URLs → strip entirely\n"
-    "\n"
-    "PRESERVE EXACTLY:\n"
-    "- Every word of the actual prose that is not a specific identifier\n"
-    "- Sentence structure, rhythm, parenthetical asides, em-dashes, contractions\n"
-    "- Typos, idioms, idiosyncratic word choices, deliberate emphasis (CAPS, italics)\n"
-    "- Paragraph breaks (double newlines)\n"
-    "- The candidate's own name if it appears (it is their voice)\n"
-    "- Generic vocabulary: industry terms, common nouns, public figures, well-known "
-    "concepts, named recovery programs (AA, NA, SMART Recovery), books, methodologies\n"
-    "\n"
-    "RULES:\n"
-    "- Conservative bias: when in doubt, keep the prose as-is. False positives on "
-    "stripping are worse than false positives on keeping.\n"
-    '- Do NOT rephrase, summarize, condense, or "improve" any sentence. Voice signal '
-    "lives in unaided writing.\n"
-    "- Do NOT correct typos, grammar, or punctuation.\n"
-    "- Output only the redacted text. No preamble, no commentary, no markdown code "
-    "fences, no closing notes about what you changed.\n"
-    "\n"
-    "TEXT TO REDACT:\n"
-)
-
-
-def redact_voice_samples(cleaned: str, timeout: int = 120) -> tuple[str, bool]:
+def redact_voice_samples(
+    cleaned: str,
+    timeout: int = 120,
+    conn: sqlite3.Connection | None = None,
+) -> tuple[str, bool]:
     """Generalize PII via Opus 4.7, preserving voice.
 
-    Returns ``(redacted_text, success)``. On LLM failure (binary missing,
-    timeout, non-zero exit, empty stdout) returns ``(cleaned, False)`` so the
-    caller can degrade gracefully and warn the user.
+    Returns ``(redacted_text, success)``. On LLM failure returns
+    ``(cleaned, False)`` so the caller can degrade gracefully and warn the user.
+
+    ``conn`` is optional; when supplied, a cost_log row is written with
+    API-authoritative cost from ``response.usage.cost``.
     """
     if not cleaned:
         return "", True
 
-    prompt = _REDACTION_PROMPT_HEADER + cleaned
-    cmd = [AICHAT, "-m", "openrouter:anthropic/claude-opus-4.7", "-S", prompt]
+    start = time.time()
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        result = complete(role="voice_processor", prompt=cleaned, timeout_s=timeout)
+    except OpenRouterError as e:
+        log_event(
+            "voice_processor_failure",
+            kind=e.kind,
+            status_code=e.status_code,
+            message=str(e)[:300],
+        )
         return cleaned, False
 
-    if result.returncode != 0:
-        return cleaned, False
-
-    redacted = result.stdout.strip()
+    latency_ms = int((time.time() - start) * 1000)
+    redacted = result.text.strip()
     if not redacted:
         return cleaned, False
+
+    if conn is not None:
+        try:
+            log_call(
+                conn,
+                job_id=None,
+                operation="voice_processor",
+                model=role_model("voice_processor"),
+                input_text=cleaned,
+                output_text=result.text,
+                latency_ms=latency_ms,
+                success=True,
+                cost_usd_override=result.cost_usd,
+                input_tokens_override=result.prompt_tokens,
+                output_tokens_override=result.completion_tokens,
+            )
+            conn.commit()
+        except Exception as e:  # noqa: BLE001 — cost tracking is best-effort
+            log_event("cost_log_failed", operation="voice_processor", error=f"{type(e).__name__}: {e}")
 
     return redacted, True
 
