@@ -178,17 +178,26 @@ def test_per_job_breakdown_groups_by_operation(db: sqlite3.Connection) -> None:
 def _insert_cost_log(
     conn: sqlite3.Connection,
     *,
-    days_ago: int,
+    weeks_ago: int,
     cost: float,
     operation: str = "briefing",
 ) -> None:
-    """Insert one cost_log row stamped N days ago in PT-local idiom."""
+    """Insert one cost_log row at a deterministic position in the week N back.
+
+    Anchors at the Sunday of the current UTC week minus weeks_ago×7 days.
+    The week-bucket SQL uses Sunday as the week-start, so a Sunday-of-week-N
+    row always maps to the same Sunday anchor regardless of which day the
+    test runs on. strftime('%w', 'now') returns 0 for Sunday, so
+    '-0 days' is safe and correct.
+    """
     conn.execute(
         """INSERT INTO cost_log
            (job_id, operation, model, cost_usd, success, logged_at)
            VALUES (NULL, ?, 'google/gemini-3-flash-preview', ?, 1,
-                   datetime('now', ?))""",
-        (operation, cost, f"-{days_ago} days"),
+                   datetime('now',
+                            '-' || strftime('%w', 'now') || ' days',
+                            '-' || ? || ' days'))""",
+        (operation, cost, weeks_ago * 7),
     )
     conn.commit()
 
@@ -197,14 +206,20 @@ def test_weekly_spend_returns_n_weeks_oldest_first(db: sqlite3.Connection) -> No
     from findajob.cost_rollups import weekly_spend
 
     _insert_calibration(db, multiplier=1.0)
-    _insert_cost_log(db, days_ago=2, cost=1.00)  # current week
-    _insert_cost_log(db, days_ago=10, cost=2.00)  # 1 week ago
-    _insert_cost_log(db, days_ago=20, cost=3.00)  # 2-3 weeks ago
+    _insert_cost_log(db, weeks_ago=0, cost=1.00)  # current week
+    _insert_cost_log(db, weeks_ago=1, cost=2.00)  # 1 week ago
+    _insert_cost_log(db, weeks_ago=2, cost=3.00)  # 2 weeks ago
 
     weeks = weekly_spend(db, weeks=4)
     assert len(weeks) == 4
     # Last entry = current week.
     assert weeks[-1].total_usd == pytest.approx(1.00, rel=1e-3)
+    # Second-to-last = 1 week ago.
+    assert weeks[-2].total_usd == pytest.approx(2.00, rel=1e-3)
+    # Third-to-last = 2 weeks ago.
+    assert weeks[-3].total_usd == pytest.approx(3.00, rel=1e-3)
+    # Fourth-to-last = 3 weeks ago, no inserts → zero.
+    assert weeks[-4].total_usd == pytest.approx(0.00, abs=1e-9)
 
 
 def test_runway_weeks_uses_4wk_average(db: sqlite3.Connection) -> None:
@@ -212,11 +227,11 @@ def test_runway_weeks_uses_4wk_average(db: sqlite3.Connection) -> None:
 
     _insert_calibration(db, credits_remaining_usd=40.0, multiplier=1.0)
     # $10/wk for 4 weeks → 4-week avg = $10/wk → runway = 40 / 10 = 4
-    for i in range(4):
-        _insert_cost_log(db, days_ago=i * 7 + 3, cost=10.0)
+    for w in range(4):
+        _insert_cost_log(db, weeks_ago=w, cost=10.0)
 
     weeks = runway_weeks(db)
-    assert weeks == pytest.approx(4.0, rel=0.1)
+    assert weeks == pytest.approx(4.0, rel=0.05)
 
 
 def test_runway_weeks_none_when_no_history(db: sqlite3.Connection) -> None:
@@ -230,8 +245,11 @@ def test_projected_monthly_scales_7d(db: sqlite3.Connection) -> None:
     from findajob.cost_rollups import projected_monthly
 
     _insert_calibration(db, multiplier=1.0)
-    _insert_cost_log(db, days_ago=1, cost=2.10)
-    _insert_cost_log(db, days_ago=3, cost=3.50)
-    _insert_cost_log(db, days_ago=5, cost=1.40)
-    # 7d sum = 7.0 → projected = 7.0 × 30/7 = 30.0
+    # 3 inserts in the current week (Sunday anchor ≤ 6 days ago) summing to $7.00.
+    # The projected_monthly filter is logged_at >= datetime('now', '-7 days'),
+    # and Sunday-of-current-week is always within that window.
+    # projection = 7.0 × 30/7 = 30.0
+    _insert_cost_log(db, weeks_ago=0, cost=2.10)
+    _insert_cost_log(db, weeks_ago=0, cost=3.50)
+    _insert_cost_log(db, weeks_ago=0, cost=1.40)
     assert projected_monthly(db) == pytest.approx(30.0, rel=1e-3)

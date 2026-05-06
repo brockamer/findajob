@@ -115,7 +115,7 @@ def per_job_breakdown(conn: sqlite3.Connection, job_id: str) -> list[OpRow]:
 
 @dataclass(frozen=True)
 class WeekRow:
-    week_start: str  # YYYY-MM-DD, container-local (PT)
+    week_start: str  # YYYY-MM-DD, UTC Sunday-anchored
     total_usd: float
 
 
@@ -123,10 +123,12 @@ def weekly_spend(conn: sqlite3.Connection, weeks: int = 4) -> list[WeekRow]:
     """Calibrated prep spend per week, oldest-first.
 
     Always returns exactly ``weeks`` rows, oldest first, with zero-filled
-    entries for weeks that have no spend. Container TZ is
-    America/Los_Angeles, so SQLite's date() runs in PT. Excludes 'score'
-    operation (out of scope per AC 2; surface is prep-spend specific).
-    Excludes NULL cost_usd rows.
+    entries for weeks that have no spend. Anchored at UTC Sundays — both
+    producer (cost_tracking.log_call writes datetime('now')) and consumer
+    use UTC. The dashboard widget should label the X-axis as UTC weeks
+    rather than PT weeks if precision matters. Excludes 'score' operation
+    (out of scope per AC 2; surface is prep-spend specific). Excludes NULL
+    cost_usd rows.
 
     Week anchors use ``date(d, '-' || strftime('%w', d) || ' days')`` to
     compute the Sunday that starts each week. This is correct for all
@@ -134,6 +136,8 @@ def weekly_spend(conn: sqlite3.Connection, weeks: int = 4) -> list[WeekRow]:
     is broken on Sundays — it returns the previous Sunday instead of the
     day itself).
     """
+    if weeks < 1:
+        raise ValueError("weeks must be >= 1")
     multiplier = _multiplier(conn)
     oldest_weeks = weeks - 1
     rows = conn.execute(
@@ -154,6 +158,7 @@ def weekly_spend(conn: sqlite3.Connection, weeks: int = 4) -> list[WeekRow]:
                       SUM(cost_usd) AS total
                FROM cost_log
                WHERE cost_usd IS NOT NULL
+                 AND logged_at IS NOT NULL
                  AND operation != 'score'
                  AND logged_at >= date('now', ?)
                GROUP BY 1
@@ -184,8 +189,6 @@ def runway_weeks(conn: sqlite3.Connection) -> float | None:
     if cal is None or cal.credits_remaining_usd is None:
         return None
     weeks = weekly_spend(conn, weeks=4)
-    if not weeks:
-        return None
     avg = sum(w.total_usd for w in weeks) / len(weeks)
     if avg <= 0:
         return None
@@ -202,6 +205,7 @@ def projected_monthly(conn: sqlite3.Connection) -> float | None:
         """SELECT SUM(cost_usd) AS total
            FROM cost_log
            WHERE cost_usd IS NOT NULL
+             AND logged_at IS NOT NULL
              AND operation != 'score'
              AND logged_at >= datetime('now', '-7 days')"""
     ).fetchone()
