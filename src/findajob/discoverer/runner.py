@@ -1,11 +1,15 @@
 """Orchestration for the company_discoverer pipeline (#284).
 
-Reads the candidate profile, builds the prompt, calls aichat-ng,
+Reads the candidate profile, builds the prompt, calls the OpenRouter wrapper,
 strips think-block residue, parses, validates, and atomically writes
 the output pair. On any failure: logs to pipeline.jsonl, optionally
 ntfys, and returns a failure RunResult without raising.
 
-Mirrors the `aichat()` helper pattern at scripts/prep_application.py:40-52.
+Port note (#471 Phase 2): previously spawned aichat-ng as a subprocess;
+now calls findajob.llm.openrouter.complete() directly. The stderr
+cost-extraction helper (_extract_cost_usd) has been removed — cost comes
+from result.cost_usd (API-authoritative). No cached_prefix / pin_provider
+are passed because Perplexity does not honor cache_control.
 """
 
 from __future__ import annotations
@@ -24,7 +28,8 @@ from findajob.cost_tracking import log_call, role_model
 from findajob.discoverer.parser import DiscoveryParseError, parse_markdown
 from findajob.discoverer.prompt import build_prompt
 from findajob.discoverer.writer import commit_atomically
-from findajob.paths import AICHAT, BASE
+from findajob.llm.openrouter import OpenRouterError, complete
+from findajob.paths import BASE
 from findajob.utils import log_event
 
 _DEFAULT_TIMEOUT_S = 540  # under cron's 600s timeout, room for IO
@@ -37,19 +42,6 @@ class RunResult(NamedTuple):
     count: int  # type: ignore[assignment]  # NamedTuple field shadows tuple.count method
     error: str | None
     cost_usd: float | None
-
-
-def _extract_cost_usd(stderr: str) -> float | None:
-    """Parse aichat-ng stderr for the per-call cost line, if present.
-
-    aichat-ng emits a `usage` line on stderr when verbose. The exact format
-    depends on the OpenRouter provider's reporting; for sonar-reasoning-pro
-    the line includes a `total_cost` field. Returns None if no line matches.
-    """
-    m = re.search(r"total_cost[^0-9]*([0-9]+\.[0-9]+)", stderr or "")
-    if m:
-        return float(m.group(1))
-    return None
 
 
 def _send_ntfy(title: str, body: str, kind: str = "discovery_run") -> None:
@@ -110,6 +102,9 @@ def _log_cost_safely(
     output_text: str,
     latency_ms: int,
     success: bool,
+    cost_usd_override: float | None = None,
+    input_tokens_override: int | None = None,
+    output_tokens_override: int | None = None,
 ) -> None:
     """Best-effort cost_log write. Swallows all errors so cost tracking
     can never break the discovery run's never-raise contract.
@@ -126,6 +121,9 @@ def _log_cost_safely(
                 output_text=output_text,
                 latency_ms=latency_ms,
                 success=success,
+                cost_usd_override=cost_usd_override,
+                input_tokens_override=input_tokens_override,
+                output_tokens_override=output_tokens_override,
             )
             conn.commit()
         finally:
@@ -157,26 +155,16 @@ def run(
         profile_text = profile.read_text(encoding="utf-8")
         prompt = build_prompt(profile_text)
         start = time.time()
-        completed = subprocess.run(
-            [AICHAT, "--role", "company_discoverer", "-S", prompt],
-            capture_output=True,
-            text=True,
-            timeout=_DEFAULT_TIMEOUT_S,
+        result = complete(
+            role="company_discoverer",
+            prompt=prompt,
+            # Perplexity (sonar-reasoning-pro) does not honor cache_control —
+            # do NOT pass cached_prefix or pin_provider here.
+            timeout_s=_DEFAULT_TIMEOUT_S,
         )
         latency_ms = int((time.time() - start) * 1000)
-        if completed.returncode != 0 or not completed.stdout.strip():
-            stderr = (completed.stderr or "")[:500]
-            log_event(
-                "discovery_failed",
-                reason="aichat_returncode",
-                returncode=completed.returncode,
-                stderr=stderr.strip(),
-            )
-            if ntfy_enabled:
-                _send_ntfy("discovery: aichat failed", f"returncode={completed.returncode}\n{stderr[:200]}")
-            return RunResult(success=False, count=0, error=f"aichat failed (rc={completed.returncode})", cost_usd=None)
 
-        raw_md = _THINK_RE.sub("", completed.stdout).strip()
+        raw_md = _THINK_RE.sub("", result.text).strip()
         if raw_md == "INSUFFICIENT_PROFILE":
             log_event("discovery_failed", reason="insufficient_profile")
             if ntfy_enabled:
@@ -205,12 +193,15 @@ def run(
             operation="company_discoverer",
             model=role_model("company_discoverer"),
             input_text=prompt,
-            output_text=completed.stdout,
+            output_text=result.text,
             latency_ms=latency_ms,
             success=True,
+            cost_usd_override=result.cost_usd,
+            input_tokens_override=result.prompt_tokens,
+            output_tokens_override=result.completion_tokens,
         )
 
-        cost = _extract_cost_usd(completed.stderr)
+        cost = result.cost_usd
         log_event(
             "discovery_complete",
             count=len(parsed.companies),
@@ -226,11 +217,11 @@ def run(
             )
         return RunResult(success=True, count=len(parsed.companies), error=None, cost_usd=cost)
 
-    except subprocess.TimeoutExpired:
-        msg = f"aichat timeout after {_DEFAULT_TIMEOUT_S}s"
-        log_event("discovery_failed", reason="timeout", timeout_s=_DEFAULT_TIMEOUT_S)
+    except OpenRouterError as e:
+        msg = f"OpenRouter error ({e.kind}): {str(e)[:300]}"
+        log_event("discovery_failed", reason="openrouter_error", kind=e.kind, message=str(e)[:300])
         if ntfy_enabled:
-            _send_ntfy("discovery: timeout", msg)
+            _send_ntfy("discovery: openrouter error", msg[:200])
         return RunResult(success=False, count=0, error=msg, cost_usd=None)
     except DiscoveryParseError as e:
         msg = str(e)

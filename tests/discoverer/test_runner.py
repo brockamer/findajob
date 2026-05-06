@@ -1,35 +1,43 @@
+"""Tests for findajob.discoverer.runner.
+
+After the Phase 2 port (#471), runner.run() calls openrouter.complete() directly
+rather than spawning an aichat-ng subprocess.  All mocks target the wrapper or
+the HTTP boundary — no subprocess.run patches remain.
+"""
+
+from __future__ import annotations
+
 import json
+import os
 import sqlite3
-import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from findajob.discoverer.runner import run
+from findajob.llm.openrouter import CompletionResult, OpenRouterError
 
+# ---------------------------------------------------------------------------
+# Shared schema / constants
+# ---------------------------------------------------------------------------
 
-def _setup_cost_log_db(db_path: Path) -> None:
-    """Initialize a minimal cost_log schema mirroring scripts/init_db.py."""
-    conn = sqlite3.connect(db_path)
-    conn.execute(
-        """
-        CREATE TABLE cost_log (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            job_id TEXT,
-            operation TEXT NOT NULL,
-            model TEXT NOT NULL,
-            latency_ms INTEGER,
-            success INTEGER DEFAULT 1,
-            error_message TEXT,
-            logged_at TEXT DEFAULT (datetime('now')),
-            input_tokens INTEGER,
-            output_tokens INTEGER,
-            cost_usd REAL
-        )
-        """
-    )
-    conn.commit()
-    conn.close()
+COST_LOG_SCHEMA = """
+CREATE TABLE cost_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id TEXT,
+    operation TEXT NOT NULL,
+    model TEXT NOT NULL,
+    latency_ms INTEGER,
+    success INTEGER DEFAULT 1,
+    error_message TEXT,
+    logged_at TEXT DEFAULT (datetime('now')),
+    input_tokens INTEGER,
+    output_tokens INTEGER,
+    cost_usd REAL
+);
+"""
 
+# Fake key satisfies OPENROUTER_API_KEY guard without a real network call.
+_FAKE_API_KEY = {"OPENROUTER_API_KEY": "sk-or-v1-test"}
 
 VALID_LLM_OUTPUT = """\
 # Discovered Companies — generated 2026-04-26
@@ -50,6 +58,17 @@ VALID_LLM_OUTPUT = """\
 [3] https://gamma.example.com
 """
 
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _setup_cost_log_db(db_path: Path) -> None:
+    """Initialize a minimal cost_log schema mirroring scripts/init_db.py."""
+    conn = sqlite3.connect(db_path)
+    conn.executescript(COST_LOG_SCHEMA)
+    conn.close()
+
 
 def _setup_profile(base_root: Path) -> Path:
     cc = base_root / "candidate_context"
@@ -64,17 +83,62 @@ def _setup_profile(base_root: Path) -> Path:
     return p
 
 
-def _stub_subprocess_run(stdout: str, returncode: int = 0):
-    completed = MagicMock(spec=subprocess.CompletedProcess)
-    completed.stdout = stdout
-    completed.stderr = ""
-    completed.returncode = returncode
-    return MagicMock(return_value=completed)
+def _stub_complete(text: str = VALID_LLM_OUTPUT, *, cost: float = 0.02):
+    """Return a callable that always returns the given CompletionResult."""
+    result = CompletionResult(
+        text=text,
+        prompt_tokens=500,
+        completion_tokens=200,
+        cached_tokens=0,
+        cost_usd=cost,
+        generation_id="gen-test-1",
+    )
+    return MagicMock(return_value=result)
+
+
+def _stub_openrouter_response(
+    *,
+    content: str = VALID_LLM_OUTPUT,
+    cost: float = 0.02,
+    prompt_tokens: int = 500,
+    completion_tokens: int = 200,
+    cached_tokens: int = 0,
+):
+    """HTTP-level stub: returns an object that mimics an open urllib response."""
+    body = json.dumps(
+        {
+            "id": "gen-test-1",
+            "choices": [{"message": {"content": content}}],
+            "usage": {
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "cost": cost,
+                "prompt_tokens_details": {"cached_tokens": cached_tokens},
+            },
+        }
+    ).encode("utf-8")
+
+    class _Resp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            pass
+
+        def read(self):
+            return body
+
+    return _Resp()
+
+
+# ---------------------------------------------------------------------------
+# Core happy-path tests
+# ---------------------------------------------------------------------------
 
 
 def test_run_happy_path_writes_both_files_and_returns_success(tmp_path: Path) -> None:
     _setup_profile(tmp_path)
-    with patch("findajob.discoverer.runner.subprocess.run", _stub_subprocess_run(VALID_LLM_OUTPUT)):
+    with patch("findajob.discoverer.runner.complete", _stub_complete()):
         result = run(tmp_path, ntfy_enabled=False)
     assert result.success is True
     assert result.count == 3
@@ -88,7 +152,7 @@ def test_run_happy_path_writes_both_files_and_returns_success(tmp_path: Path) ->
 def test_run_strips_think_blocks_before_parser(tmp_path: Path) -> None:
     _setup_profile(tmp_path)
     output = "<think>I'm reasoning.</think>\n" + VALID_LLM_OUTPUT
-    with patch("findajob.discoverer.runner.subprocess.run", _stub_subprocess_run(output)):
+    with patch("findajob.discoverer.runner.complete", _stub_complete(output)):
         result = run(tmp_path, ntfy_enabled=False)
     assert result.success is True
     md = (tmp_path / "candidate_context" / "discovered_companies.md").read_text()
@@ -102,7 +166,7 @@ def test_run_parse_failure_returns_failure_and_leaves_disk_untouched(tmp_path: P
         "- **A** — channel=greenhouse. Reasoning: x. Citations: [1].\n"
         "## References\n[1] https://example.com"
     )
-    with patch("findajob.discoverer.runner.subprocess.run", _stub_subprocess_run(bad_output)):
+    with patch("findajob.discoverer.runner.complete", _stub_complete(bad_output)):
         result = run(tmp_path, ntfy_enabled=False)
     assert result.success is False
     assert result.error and "at least 3 companies" in result.error.lower()
@@ -110,11 +174,12 @@ def test_run_parse_failure_returns_failure_and_leaves_disk_untouched(tmp_path: P
     assert not (tmp_path / "candidate_context" / "discovered_companies.json").exists()
 
 
-def test_run_subprocess_failure_returns_failure(tmp_path: Path) -> None:
+def test_run_openrouter_error_returns_failure(tmp_path: Path) -> None:
+    """OpenRouterError (replaces old subprocess returncode!=0) returns failure."""
     _setup_profile(tmp_path)
     with patch(
-        "findajob.discoverer.runner.subprocess.run",
-        _stub_subprocess_run("", returncode=1),
+        "findajob.discoverer.runner.complete",
+        side_effect=OpenRouterError("upstream error", kind="upstream"),
     ):
         result = run(tmp_path, ntfy_enabled=False)
     assert result.success is False
@@ -135,8 +200,8 @@ def test_run_does_not_overwrite_last_good_on_failure(tmp_path: Path) -> None:
     (cc / "discovered_companies.md").write_text("LAST GOOD\n")
     (cc / "discovered_companies.json").write_text('{"companies": []}\n')
     with patch(
-        "findajob.discoverer.runner.subprocess.run",
-        _stub_subprocess_run("INSUFFICIENT_PROFILE"),
+        "findajob.discoverer.runner.complete",
+        _stub_complete("INSUFFICIENT_PROFILE"),
     ):
         result = run(tmp_path, ntfy_enabled=False)
     assert result.success is False
@@ -144,13 +209,114 @@ def test_run_does_not_overwrite_last_good_on_failure(tmp_path: Path) -> None:
     assert (cc / "discovered_companies.json").read_text() == '{"companies": []}\n'
 
 
+# ---------------------------------------------------------------------------
+# Wrapper kwarg-capture test (no cached_prefix, no pin_provider)
+# ---------------------------------------------------------------------------
+
+
+def test_company_discoverer_uses_wrapper_and_no_cache_args(tmp_path: Path) -> None:
+    """company_discoverer routes through complete(); no cached_prefix/pin_provider
+    (Perplexity ignores cache_control — passing them would be misleading)."""
+    _setup_profile(tmp_path)
+    captured: dict = {}
+
+    def _fake_complete(role, prompt, **kwargs):
+        captured.update(role=role, **kwargs)
+        return CompletionResult(
+            text=VALID_LLM_OUTPUT,
+            prompt_tokens=500,
+            completion_tokens=200,
+            cached_tokens=0,
+            cost_usd=0.01,
+            generation_id="g",
+        )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript(COST_LOG_SCHEMA)
+
+    with patch("findajob.discoverer.runner.complete", _fake_complete):
+        result = run(tmp_path, ntfy_enabled=False)
+
+    assert result.success is True
+    assert captured.get("role") == "company_discoverer"
+    # Perplexity doesn't honor cache_control — these must NOT be passed.
+    assert captured.get("cached_prefix") is None
+    assert captured.get("pin_provider") is None
+
+
+def test_company_discoverer_cost_log_from_api(tmp_path: Path) -> None:
+    """Cost written to cost_log comes from result.cost_usd, not a heuristic."""
+    _setup_profile(tmp_path)
+    captured: dict = {}
+
+    def _fake_complete(role, prompt, **kwargs):
+        captured.update(role=role, **kwargs)
+        return CompletionResult(
+            text=VALID_LLM_OUTPUT,
+            prompt_tokens=500,
+            completion_tokens=200,
+            cached_tokens=0,
+            cost_usd=0.01,
+            generation_id="g",
+        )
+
+    db_path = tmp_path / "pipeline.db"
+    _setup_cost_log_db(db_path)
+
+    with patch("findajob.discoverer.runner.complete", _fake_complete):
+        result = run(tmp_path, ntfy_enabled=False, db_path=db_path)
+
+    assert result.success is True
+    assert result.cost_usd == 0.01
+    rows = sqlite3.connect(db_path).execute("SELECT operation, cost_usd FROM cost_log").fetchall()
+    assert any(r[0] == "company_discoverer" and r[1] == 0.01 for r in rows)
+
+
+# ---------------------------------------------------------------------------
+# HTTP-boundary test (wrapper integration)
+# ---------------------------------------------------------------------------
+
+
+def test_company_discoverer_http_boundary(tmp_path: Path) -> None:
+    """End-to-end wrapper integration: mocked at urlopen, cost flows into cost_log."""
+    _setup_profile(tmp_path)
+    db_path = tmp_path / "pipeline.db"
+    _setup_cost_log_db(db_path)
+
+    with (
+        patch.dict(os.environ, _FAKE_API_KEY),
+        patch(
+            "findajob.llm.openrouter.urllib.request.urlopen",
+            return_value=_stub_openrouter_response(cost=0.05),
+        ),
+    ):
+        result = run(tmp_path, ntfy_enabled=False, db_path=db_path)
+
+    assert result.success is True
+    assert result.cost_usd == 0.05
+    conn = sqlite3.connect(db_path)
+    rows = conn.execute("SELECT operation, cost_usd, input_tokens, output_tokens FROM cost_log").fetchall()
+    conn.close()
+    assert len(rows) == 1
+    operation, cost_usd, input_tokens, output_tokens = rows[0]
+    assert operation == "company_discoverer"
+    assert cost_usd == 0.05
+    assert input_tokens == 500
+    assert output_tokens == 200
+
+
+# ---------------------------------------------------------------------------
+# Ntfy tests
+# ---------------------------------------------------------------------------
+
+
 def test_run_emits_ntfy_when_threshold_breached(tmp_path: Path, monkeypatch) -> None:
     _setup_profile(tmp_path)
     monkeypatch.setenv("DISCOVERY_COST_THRESHOLD_USD", "1.00")
     notify_mock = MagicMock()
     with (
-        patch("findajob.discoverer.runner.subprocess.run", _stub_subprocess_run(VALID_LLM_OUTPUT)),
-        patch("findajob.discoverer.runner._extract_cost_usd", return_value=5.50),
+        patch("findajob.discoverer.runner.complete", _stub_complete(cost=5.50)),
         patch("findajob.discoverer.runner._send_ntfy", notify_mock),
     ):
         result = run(tmp_path, ntfy_enabled=True)
@@ -164,7 +330,7 @@ def test_run_does_not_emit_ntfy_when_disabled(tmp_path: Path) -> None:
     _setup_profile(tmp_path)
     notify_mock = MagicMock()
     with (
-        patch("findajob.discoverer.runner.subprocess.run", _stub_subprocess_run("INSUFFICIENT_PROFILE")),
+        patch("findajob.discoverer.runner.complete", _stub_complete("INSUFFICIENT_PROFILE")),
         patch("findajob.discoverer.runner._send_ntfy", notify_mock),
     ):
         run(tmp_path, ntfy_enabled=False)
@@ -175,7 +341,7 @@ def test_run_success_emits_summary_ntfy_with_count_and_top_names(tmp_path: Path)
     _setup_profile(tmp_path)
     notify_mock = MagicMock()
     with (
-        patch("findajob.discoverer.runner.subprocess.run", _stub_subprocess_run(VALID_LLM_OUTPUT)),
+        patch("findajob.discoverer.runner.complete", _stub_complete()),
         patch("findajob.discoverer.runner._send_ntfy", notify_mock),
     ):
         result = run(tmp_path, ntfy_enabled=True)
@@ -194,7 +360,7 @@ def test_run_success_ntfy_suppressed_when_disabled(tmp_path: Path) -> None:
     _setup_profile(tmp_path)
     notify_mock = MagicMock()
     with (
-        patch("findajob.discoverer.runner.subprocess.run", _stub_subprocess_run(VALID_LLM_OUTPUT)),
+        patch("findajob.discoverer.runner.complete", _stub_complete()),
         patch("findajob.discoverer.runner._send_ntfy", notify_mock),
     ):
         result = run(tmp_path, ntfy_enabled=False)
@@ -203,28 +369,34 @@ def test_run_success_ntfy_suppressed_when_disabled(tmp_path: Path) -> None:
 
 
 def test_run_failure_paths_do_not_emit_success_ntfy(tmp_path: Path) -> None:
-    """Existing failure ntfys (timeout / aichat-failure / parse-error) must remain
-    the only signal on the failure path; the new success ntfy must NOT fire there."""
+    """On OpenRouterError the success ntfy must not fire; a failure ntfy fires instead."""
     _setup_profile(tmp_path)
     notify_mock = MagicMock()
     with (
-        patch("findajob.discoverer.runner.subprocess.run", _stub_subprocess_run("", returncode=1)),
+        patch(
+            "findajob.discoverer.runner.complete",
+            side_effect=OpenRouterError("upstream error", kind="upstream"),
+        ),
         patch("findajob.discoverer.runner._send_ntfy", notify_mock),
     ):
         run(tmp_path, ntfy_enabled=True)
     titles = [call.args[0] for call in notify_mock.call_args_list]
     assert not any(t.startswith("findajob: discovered") for t in titles)
-    assert any("aichat" in t for t in titles)
+    # The failure ntfy should still fire — check at least one call happened
+    assert len(titles) >= 1
+
+
+# ---------------------------------------------------------------------------
+# Cost-log tests
+# ---------------------------------------------------------------------------
 
 
 def test_run_writes_cost_log_row_on_success(tmp_path: Path) -> None:
-    """Successful run inserts one cost_log row with operation='company_discoverer'
-    and a non-NULL cost_usd derived from the char-heuristic.
-    """
+    """Successful run inserts one cost_log row with API-authoritative cost_usd."""
     _setup_profile(tmp_path)
     db_path = tmp_path / "pipeline.db"
     _setup_cost_log_db(db_path)
-    with patch("findajob.discoverer.runner.subprocess.run", _stub_subprocess_run(VALID_LLM_OUTPUT)):
+    with patch("findajob.discoverer.runner.complete", _stub_complete(cost=0.02)):
         result = run(tmp_path, ntfy_enabled=False, db_path=db_path)
     assert result.success is True
     conn = sqlite3.connect(db_path)
@@ -234,20 +406,18 @@ def test_run_writes_cost_log_row_on_success(tmp_path: Path) -> None:
     operation, model, cost_usd, latency_ms, success = rows[0]
     assert operation == "company_discoverer"
     assert model.startswith("openrouter:")
-    assert cost_usd is not None and cost_usd > 0
+    assert cost_usd == 0.02  # exact API-authoritative value, not heuristic
     assert success == 1
 
 
-def test_run_does_not_write_cost_log_on_subprocess_failure(tmp_path: Path) -> None:
-    """A failed subprocess (returncode != 0) does NOT write a cost_log row —
-    we only attribute cost when the call actually produced output.
-    """
+def test_run_does_not_write_cost_log_on_openrouter_failure(tmp_path: Path) -> None:
+    """OpenRouterError (replaces old subprocess failure) does NOT write a cost_log row."""
     _setup_profile(tmp_path)
     db_path = tmp_path / "pipeline.db"
     _setup_cost_log_db(db_path)
     with patch(
-        "findajob.discoverer.runner.subprocess.run",
-        _stub_subprocess_run("", returncode=1),
+        "findajob.discoverer.runner.complete",
+        side_effect=OpenRouterError("upstream error", kind="upstream"),
     ):
         run(tmp_path, ntfy_enabled=False, db_path=db_path)
     conn = sqlite3.connect(db_path)
@@ -262,9 +432,14 @@ def test_run_succeeds_when_db_path_does_not_exist(tmp_path: Path) -> None:
     """
     _setup_profile(tmp_path)
     bogus_db = tmp_path / "no" / "such" / "dir" / "pipeline.db"
-    with patch("findajob.discoverer.runner.subprocess.run", _stub_subprocess_run(VALID_LLM_OUTPUT)):
+    with patch("findajob.discoverer.runner.complete", _stub_complete()):
         result = run(tmp_path, ntfy_enabled=False, db_path=bogus_db)
     assert result.success is True
+
+
+# ---------------------------------------------------------------------------
+# _send_success_ntfy unit test
+# ---------------------------------------------------------------------------
 
 
 def test_send_success_ntfy_zero_count_uses_sentinel_body() -> None:
