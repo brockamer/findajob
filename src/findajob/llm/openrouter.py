@@ -24,6 +24,8 @@ from __future__ import annotations
 
 import json
 import os
+import random
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -34,6 +36,10 @@ from findajob.paths import BASE
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 DEFAULT_TIMEOUT_S = 120
 DEFAULT_MAX_TOKENS = 4096
+DEFAULT_MAX_ATTEMPTS = 3
+RETRY_KINDS = frozenset({"rate_limit", "upstream", "network"})
+RETRY_BASE_DELAY_S = 0.5
+RETRY_MAX_DELAY_S = 8.0
 _DEFAULT_ROLES_DIR = Path(BASE) / "config" / "roles"
 
 
@@ -195,23 +201,42 @@ def complete(
         method="POST",
     )
 
-    try:
-        with urllib.request.urlopen(req, timeout=timeout_s) as resp:  # noqa: S310
-            raw = resp.read().decode("utf-8")
-    except urllib.error.HTTPError as e:
-        _raise_for_http_error(e)
-    except urllib.error.URLError as e:
-        raise OpenRouterError(
-            f"Could not reach OpenRouter ({e.reason}).",
-            kind="network",
-        ) from e
-    except Exception as e:  # noqa: BLE001
-        raise OpenRouterError(
-            f"Unexpected error: {type(e).__name__}: {str(e)[:200]}",
-            kind="unknown",
-        ) from e
+    last_err: OpenRouterError | None = None
+    for attempt in range(DEFAULT_MAX_ATTEMPTS):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout_s) as resp:  # noqa: S310
+                raw = resp.read().decode("utf-8")
+            return _parse_response(raw)
+        except urllib.error.HTTPError as e:
+            try:
+                _raise_for_http_error(e)
+            except OpenRouterError as oe:
+                last_err = oe
+        except urllib.error.URLError as e:
+            last_err = OpenRouterError(
+                f"Could not reach OpenRouter ({e.reason}).",
+                kind="network",
+            )
+        except OpenRouterError:
+            # _parse_response can raise OpenRouterError directly (malformed/etc).
+            # Don't retry those; re-raise.
+            raise
+        except Exception as e:  # noqa: BLE001
+            raise OpenRouterError(
+                f"Unexpected error: {type(e).__name__}: {str(e)[:200]}",
+                kind="unknown",
+            ) from e
 
-    return _parse_response(raw)
+        if last_err.kind not in RETRY_KINDS:
+            raise last_err
+        if attempt < DEFAULT_MAX_ATTEMPTS - 1:
+            delay = min(
+                RETRY_MAX_DELAY_S,
+                RETRY_BASE_DELAY_S * (2**attempt) + random.random() * 0.5,
+            )
+            time.sleep(delay)
+    assert last_err is not None
+    raise last_err
 
 
 def _read_role_file(path: Path) -> tuple[dict, str]:

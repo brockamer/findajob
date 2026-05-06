@@ -335,6 +335,7 @@ def test_http_error_maps_to_kind(monkeypatch, tmp_path, code, kind):
     roles.mkdir()
     (roles / "r.md").write_text("---\nmodel: openrouter:foo/bar\n---\n")
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-test")
+    monkeypatch.setattr("findajob.llm.openrouter.time.sleep", lambda _: None)
     with patch(
         "findajob.llm.openrouter.urllib.request.urlopen",
         side_effect=_http_error(code, "{}"),
@@ -350,6 +351,7 @@ def test_url_error_maps_to_network(monkeypatch, tmp_path):
     roles.mkdir()
     (roles / "r.md").write_text("---\nmodel: openrouter:foo/bar\n---\n")
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-test")
+    monkeypatch.setattr("findajob.llm.openrouter.time.sleep", lambda _: None)
     with patch(
         "findajob.llm.openrouter.urllib.request.urlopen",
         side_effect=URLError("DNS failure"),
@@ -395,3 +397,90 @@ def test_empty_api_key_maps_to_config(monkeypatch, tmp_path):
     with pytest.raises(OpenRouterError) as exc:
         complete(role="r", prompt="hi", roles_dir=roles)
     assert exc.value.kind == "config"
+
+
+# ── Retry layer ─────────────────────────────────────────────────────────
+
+
+def test_retry_succeeds_on_second_attempt_after_429(monkeypatch, tmp_path):
+    """429 -> wait -> retry -> success."""
+    roles = tmp_path / "roles"
+    roles.mkdir()
+    (roles / "r.md").write_text("---\nmodel: openrouter:foo/bar\n---\n")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-test")
+    monkeypatch.setattr("findajob.llm.openrouter.time.sleep", lambda _: None)
+
+    calls: list[int] = []
+
+    def _attempt(req, timeout=None):
+        calls.append(1)
+        if len(calls) == 1:
+            raise _http_error(429, "{}")
+        return _ok_resp(_success_body(text="recovered"))
+
+    with patch("findajob.llm.openrouter.urllib.request.urlopen", side_effect=_attempt):
+        result = complete(role="r", prompt="hi", roles_dir=roles)
+
+    assert result.text == "recovered"
+    assert len(calls) == 2
+
+
+def test_retry_succeeds_on_second_attempt_after_5xx(monkeypatch, tmp_path):
+    roles = tmp_path / "roles"
+    roles.mkdir()
+    (roles / "r.md").write_text("---\nmodel: openrouter:foo/bar\n---\n")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-test")
+    monkeypatch.setattr("findajob.llm.openrouter.time.sleep", lambda _: None)
+
+    calls: list[int] = []
+
+    def _attempt(req, timeout=None):
+        calls.append(1)
+        if len(calls) == 1:
+            raise _http_error(503, "{}")
+        return _ok_resp(_success_body())
+
+    with patch("findajob.llm.openrouter.urllib.request.urlopen", side_effect=_attempt):
+        complete(role="r", prompt="hi", roles_dir=roles)
+    assert len(calls) == 2
+
+
+def test_retry_does_not_retry_auth(monkeypatch, tmp_path):
+    """401 fails fast — retrying would exhaust quota for no reason."""
+    roles = tmp_path / "roles"
+    roles.mkdir()
+    (roles / "r.md").write_text("---\nmodel: openrouter:foo/bar\n---\n")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-test")
+    monkeypatch.setattr("findajob.llm.openrouter.time.sleep", lambda _: None)
+
+    calls: list[int] = []
+
+    def _attempt(req, timeout=None):
+        calls.append(1)
+        raise _http_error(401, "{}")
+
+    with patch("findajob.llm.openrouter.urllib.request.urlopen", side_effect=_attempt):
+        with pytest.raises(OpenRouterError):
+            complete(role="r", prompt="hi", roles_dir=roles)
+    assert len(calls) == 1
+
+
+def test_retry_exhausted_after_max_attempts(monkeypatch, tmp_path):
+    """Persistent 429 -> 3 attempts then raise."""
+    roles = tmp_path / "roles"
+    roles.mkdir()
+    (roles / "r.md").write_text("---\nmodel: openrouter:foo/bar\n---\n")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-test")
+    monkeypatch.setattr("findajob.llm.openrouter.time.sleep", lambda _: None)
+
+    calls: list[int] = []
+
+    def _attempt(req, timeout=None):
+        calls.append(1)
+        raise _http_error(429, "{}")
+
+    with patch("findajob.llm.openrouter.urllib.request.urlopen", side_effect=_attempt):
+        with pytest.raises(OpenRouterError) as exc:
+            complete(role="r", prompt="hi", roles_dir=roles)
+    assert exc.value.kind == "rate_limit"
+    assert len(calls) == 3
