@@ -16,6 +16,11 @@ from datetime import UTC, datetime, timedelta
 STALE_AFTER = timedelta(hours=1)
 
 
+def _get(row: sqlite3.Row | tuple, idx: int, name: str):
+    """Defensive accessor for both sqlite3.Row and plain tuple connections."""
+    return row[name] if isinstance(row, sqlite3.Row) else row[idx]
+
+
 @dataclass(frozen=True)
 class Calibration:
     polled_at: str
@@ -42,19 +47,15 @@ def current_calibration(conn: sqlite3.Connection) -> Calibration | None:
     if row is None:
         return None
 
-    polled_at_str = row[0] if isinstance(row, tuple) else row["polled_at"]
+    polled_at_str = _get(row, 0, "polled_at")
     polled_at_dt = datetime.strptime(polled_at_str, "%Y-%m-%d %H:%M:%S")
     now_utc = datetime.now(UTC).replace(tzinfo=None)
-    poll_status = (
-        "stale"
-        if (now_utc - polled_at_dt) > STALE_AFTER
-        else (row[4] if isinstance(row, tuple) else row["poll_status"])
-    )
+    poll_status = "stale" if (now_utc - polled_at_dt) > STALE_AFTER else _get(row, 4, "poll_status")
 
     return Calibration(
         polled_at=polled_at_str,
-        credits_remaining_usd=row[1] if isinstance(row, tuple) else row["credits_remaining_usd"],
-        multiplier=(row[2] if isinstance(row, tuple) else row["multiplier"]) or 1.0,
-        multiplier_clamped=bool(row[3] if isinstance(row, tuple) else row["multiplier_clamped"]),
+        credits_remaining_usd=_get(row, 1, "credits_remaining_usd"),
+        multiplier=_get(row, 2, "multiplier") or 1.0,
+        multiplier_clamped=bool(_get(row, 3, "multiplier_clamped")),
         poll_status=poll_status,
     )
