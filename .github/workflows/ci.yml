@@ -51,16 +51,19 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Smoke — aichat-ng executes
-        run: docker run --rm -e HOME=/app findajob:ci-smoke aichat-ng --version
+      - name: Smoke — aichat-ng absent (#472)
+        run: |
+          if docker run --rm findajob:ci-smoke test -f /usr/local/bin/aichat-ng; then
+            echo "FAIL: /usr/local/bin/aichat-ng still present in image"; exit 1
+          fi
+          echo "OK: aichat-ng binary absent"
 
       - name: Smoke — supercronic validates the crontab
-        run: docker run --rm -e HOME=/app findajob:ci-smoke supercronic -test /app/crontab
+        run: docker run --rm findajob:ci-smoke supercronic -test /app/crontab
 
       - name: Smoke — Python package imports
         run: |
           docker run --rm \
-            -e HOME=/app \
             -e JSP_BASE=/app \
             findajob:ci-smoke \
             python3 -c "import findajob; import findajob.paths; print(findajob.paths.BASE)"
@@ -68,7 +71,6 @@ jobs:
       - name: Smoke — entrypoint creates runtime user without error
         run: |
           docker run --rm \
-            -e HOME=/app \
             -e PUID=1001 -e PGID=1001 \
             findajob:ci-smoke \
             id findajob
@@ -78,7 +80,6 @@ jobs:
           mkdir -p /tmp/test-entrypoint-logs
           sudo touch /tmp/test-entrypoint-logs/pipeline.jsonl
           owner=$(docker run --rm \
-            -e HOME=/app \
             -e PUID=1001 -e PGID=1001 \
             -v /tmp/test-entrypoint-logs:/app/logs \
             findajob:ci-smoke \
