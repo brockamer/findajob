@@ -107,7 +107,13 @@ def create_app(
         pass
 
     def get_db() -> Generator[sqlite3.Connection, None, None]:
-        conn = sqlite3.connect(str(db_path))
+        # check_same_thread=False is required because BaseHTTPMiddleware (used by
+        # findajob.web.auth) wraps the inner app in a separate anyio task — so
+        # FastAPI's Depends resolution and the route handler can land on
+        # different threadpool workers under concurrent load. Per-request
+        # connection + serialized SQLite mode = safe to disable the thread guard.
+        # See #486.
+        conn = sqlite3.connect(str(db_path), check_same_thread=False)
         conn.row_factory = sqlite3.Row
         try:
             yield conn
