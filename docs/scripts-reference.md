@@ -165,14 +165,6 @@ Creates `data/pipeline.db` with all tables: `jobs`, `audit_log`, `feedback_log`.
 
 Run manually for debugging. Not part of normal pipeline operation.
 
-### `probe_scorer.py`
-Shows raw aichat-ng scorer output for `manual_review` rows. Prints title, company, raw stdout, parsed score.
-**Manual run:** `docker compose exec scheduler python3 scripts/diag/probe_scorer.py`
-
-### `regen_resumes.py`
-Re-runs `resume_tailor` for every folder in `companies/`. Outputs `tailored_resume_DRAFT_v2.md` and `.docx` alongside existing files. Does not overwrite originals.
-**Manual run:** `docker compose exec scheduler python3 scripts/diag/regen_resumes.py`
-
 ### `debug_contacts.py`
 Shows contact matching diagnostics for a batch of jobs. Useful for debugging false positive/negative company name matches.
 **Manual run:** `docker compose exec scheduler python3 scripts/diag/debug_contacts.py`
