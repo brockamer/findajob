@@ -10,8 +10,14 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+_(no entries yet)_
+
+## [0.20.2] — 2026-05-07
+
+Patch release shipping the `/settings/reject-reasons/` editor (#490) — beta tester alice's request: tune the reject-reason taxonomy without re-running onboarding. First occupant of the new `/settings/` URL namespace (domain-aware config editors, distinguished from `/config/`'s raw text editor). Bundled along the way: a latent caching bug in `config_loader.load_reject_reasons` + import-time capture in `web/filters/registry.py` that would have made the editor's "no recompose required" promise false. No migration required — `config/reject_reasons.yaml` is already per-stack/gitignored and existing stacks pick up the new editor on `docker compose pull && up -d`.
+
 ### Added
-- **#490 `/settings/reject-reasons/` editor for `config/reject_reasons.yaml`.** First occupant of the new `/settings/` URL namespace — domain-aware config editor with rich UX (editable rows, per-row `title-signal` checkbox, add/remove via Alpine, HTMX partial-swap save). Lets users tune their rejection taxonomy at any time without re-running the onboarding interview. Server-side validation rejects empty saves, comma-in-reason (URL-filter contract), duplicates, and `title_signal_reasons` not in `reasons`; on validation failure the file is unchanged and an inline error renders. Distinguished from `/config/` (raw text editor for allowlisted files) — `/settings/` is the home for per-page rich editors. Future similar editors (e.g., for `prefilter_rules.yaml`) live here.
+- **#490 `/settings/reject-reasons/` editor for `config/reject_reasons.yaml`.** Domain-aware config editor with rich UX: editable rows, per-row `title-signal` checkbox, add/remove via Alpine, HTMX partial-swap save. Lets users tune their rejection taxonomy at any time without re-running the onboarding interview. Server-side validation rejects empty saves, comma-in-reason (URL-filter contract), duplicates, and `title_signal_reasons` not in `reasons`; on validation failure the file is unchanged and an inline error renders. First occupant of `/settings/` — distinguished from `/config/` (raw text editor for allowlisted files); `/settings/` is the home for per-page rich editors. Future similar editors (e.g., for `prefilter_rules.yaml`) live here.
 
 ### Changed
 - **#490 `findajob.config_loader.load_reject_reasons` no longer caches its result.** File edits are picked up on the next call (small YAML, parse-per-call cost is microseconds). Required so `/settings/reject-reasons/` saves take effect on the next request without a container restart. The module-level `_reject_reasons_cache` is gone; `_reset_cache()` no longer touches it; `test_caches_result` is replaced by `test_no_cache_picks_up_file_changes`. No external behavior change — the dropdown and filter chips already re-resolve per render.
@@ -860,7 +866,8 @@ from GHCR and deployed via Docker Compose on a shared Docker host.
 - Documentation cleanup — removing `sigoden/aichat` references in favor of
   `blob42/aichat-ng` — is tracked in #70
 
-[Unreleased]: https://github.com/brockamer/findajob/compare/v0.20.1...HEAD
+[Unreleased]: https://github.com/brockamer/findajob/compare/v0.20.2...HEAD
+[0.20.2]: https://github.com/brockamer/findajob/releases/tag/v0.20.2
 [0.20.1]: https://github.com/brockamer/findajob/releases/tag/v0.20.1
 [0.20.0]: https://github.com/brockamer/findajob/releases/tag/v0.20.0
 [0.19.0]: https://github.com/brockamer/findajob/releases/tag/v0.19.0
