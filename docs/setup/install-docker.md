@@ -24,7 +24,7 @@ See [configure.md](configure.md). API keys and personal config end up in `state/
 
 ```bash
 # On the Docker host
-sudo mkdir -p /opt/stacks/findajob-<you>/state/{data,config,candidate_context,companies,logs,aichat_ng,.backups}
+sudo mkdir -p /opt/stacks/findajob-<you>/state/{data,config,candidate_context,companies,logs,.backups}
 sudo chown -R $(id -u):$(id -g) /opt/stacks/findajob-<you>/
 ```
 
@@ -72,13 +72,6 @@ start — you do not run any of these commands manually:
 
 - Creates `state/data/pipeline.db` with the full schema if it's missing.
   Idempotent: no-op on populated DBs (#116, #117).
-- Seeds `state/aichat_ng/config.yaml` from a sanitized template **only if
-  absent**. Your customizations (added clients, custom models, REPL prefs)
-  persist across image pulls (#118).
-- Seeds `state/aichat_ng/models-override.yaml` only if absent (#106).
-- Creates the `state/aichat_ng/roles` symlink pointing at the image's
-  bundled `/app/config/roles/` **only if absent** — so you can override
-  with your own roles dir (#118).
 - Seeds tracked config files (`roles/`, `scoring_schema.json`,
   `model_pricing.yaml`, `reference.docx`, `strip-bookmarks.lua`) into
   `state/config/` on every start — these are always overwritten so image
@@ -87,7 +80,7 @@ start — you do not run any of these commands manually:
   they don't exist in the bundled set.
 
 Fill in your personal config files above and run `docker compose up -d` —
-no manual schema init, no handcrafted aichat-ng config, no symlink setup.
+no manual schema init.
 
 ### Materials viewer port
 
@@ -407,41 +400,6 @@ Operators on PRO tier can raise per-query page counts via env vars in `data/.env
 - `JSEARCH_NUM_PAGES=3` — `JSearchAdapter` server-side pagination width (#414 PR3)
 
 Each additional page is one billed RapidAPI request; both default to 1 (pre-#414 behavior). See [`api-keys.md` → Pagination tuning](api-keys.md#pagination-tuning-pro-tier) for the cost math.
-
-## Migrating from an older image: aichat-ng mount path fix
-
-If your stack was deployed before the aichat-ng mount-path fix, your `compose.yaml` still mounts `./state/aichat_ng` to `/root/.config/aichat_ng`. The container now runs as a non-root user (PUID), so `/root` is unreadable and all scoring calls fail silently.
-
-Apply these changes once, per instance:
-
-1. **Stop the stack.**
-   ```bash
-   cd /opt/stacks/findajob-<you>/
-   docker compose down
-   ```
-
-2. **Edit `compose.yaml`** (or re-pull `ops/compose.yaml.example` if you haven't customized it). Two changes to the `scheduler` service:
-
-   - Under `environment:`, add `HOME: /app`.
-   - Change the aichat-ng volume from `./state/aichat_ng:/root/.config/aichat_ng` to `./state/aichat_ng:/app/.config/aichat_ng`.
-
-3. **Fix ownership of `state/aichat_ng/`** in case it was populated under the old path:
-   ```bash
-   sudo chown -R $(id -u):$(id -g) state/aichat_ng
-   ```
-
-4. **Pull and bring the stack back up.**
-   ```bash
-   docker compose pull
-   docker compose up -d
-   docker compose logs -f scheduler  # Ctrl-C once you see supercronic's schedule dump
-   ```
-
-Verify with a scoring smoke test:
-```bash
-docker compose exec scheduler aichat-ng -m claude:claude-sonnet-4-6 -- 'reply "ok"'
-```
-Expected output: `ok`. If aichat-ng errors with "no such file or directory" or returns nothing, the config is still in the old location — re-check the mount path.
 
 For instructions on migrating from rclone/Drive to the materials viewer, see [`docs/setup/state-migration.md`](state-migration.md).
 

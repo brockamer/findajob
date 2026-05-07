@@ -129,13 +129,7 @@ APPLIED_COLUMNS: tuple[ColumnSpec, ...] = (
         kind=Kind.COMPUTED,
         sortable=True,
         filterable=False,
-        db_expr=(
-            "(SELECT SUM(cl.cost_usd) FROM cost_log cl "
-            "WHERE cl.job_id = j.id AND cl.cost_usd IS NOT NULL) "
-            "* COALESCE("
-            "  (SELECT multiplier FROM cost_calibration ORDER BY id DESC LIMIT 1), "
-            "  1.0)"
-        ),
+        db_expr=("(SELECT SUM(cl.cost_usd) FROM cost_log cl WHERE cl.job_id = j.id AND cl.cost_usd IS NOT NULL)"),
     ),
     ColumnSpec(
         name="comp_estimate",

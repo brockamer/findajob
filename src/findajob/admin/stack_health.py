@@ -21,7 +21,6 @@ class StackHealth:
     handle: str
     last_triage_complete: datetime | None = None
     last_triage_failed: datetime | None = None
-    last_aichat_failure: datetime | None = None
     last_discovery_failed: datetime | None = None
     last_prep_failed: datetime | None = None
     triage_success_24h: int = 0
@@ -107,7 +106,6 @@ def gather(stack: StackPath, *, now: datetime | None = None) -> StackHealth:
 
     last_triage_complete: datetime | None = None
     last_triage_failed: datetime | None = None
-    last_aichat: datetime | None = None
     last_discovery: datetime | None = None
     last_prep: datetime | None = None
     success_24h = 0
@@ -135,9 +133,6 @@ def gather(stack: StackPath, *, now: datetime | None = None) -> StackHealth:
                     last_triage_failed = ts
                 if ts > cutoff_24h:
                     failure_24h += 1
-            elif ev == "aichat_failure":
-                if last_aichat is None:
-                    last_aichat = ts
             elif ev == "discovery_failed":
                 if last_discovery is None:
                     last_discovery = ts
@@ -149,7 +144,6 @@ def gather(stack: StackPath, *, now: datetime | None = None) -> StackHealth:
         handle=stack.handle,
         last_triage_complete=last_triage_complete,
         last_triage_failed=last_triage_failed,
-        last_aichat_failure=last_aichat,
         last_discovery_failed=last_discovery,
         last_prep_failed=last_prep,
         triage_success_24h=success_24h,

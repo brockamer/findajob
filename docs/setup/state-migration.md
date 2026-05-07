@@ -34,9 +34,7 @@ Do NOT decommission the source until you have confirmed a full triage cycle comp
 | LinkedIn connections | `data/connections.csv` | Copy file |
 | Binary path config | `config/paths.env` | Create new on target if paths differ |
 | Voice samples | `candidate_context/voice_samples/*.txt` | Copy directory |
-| RAG index | `rags/` or aichat-ng data dir | Rebuild on target (run `--rag rebuild`) |
 | Company prep folders | `companies/` | Optional — large, rsync or copy manually |
-| aichat-ng config | `~/.config/aichat_ng/config.yaml` | Create new on target |
 | Personal CLAUDE context | `CLAUDE.local.md` | Copy |
 
 **Do NOT copy:**
@@ -93,14 +91,7 @@ chmod 600 ~/findajob/config/gmail_state.json
 On the **target machine**, create `config/paths.env`:
 ```bash
 # Linux defaults — adjust if your install is non-standard
-AICHAT_NG=/usr/local/bin/aichat-ng
 PANDOC=/usr/bin/pandoc
-```
-
-Create the aichat-ng config:
-```bash
-mkdir -p ~/.config/aichat_ng
-# Create ~/.config/aichat_ng/config.yaml — see configure.md for the template
 ```
 
 ### Step 4: Verify Database Integrity
@@ -113,11 +104,10 @@ sqlite3 ~/findajob/data/pipeline.db "SELECT count(*) FROM jobs;"
 # Should match your source machine count
 ```
 
-### Step 5: Validate aichat-ng
+### Step 5: Validate the OpenRouter wrapper
 
 ```bash
-echo "Test" | /usr/local/bin/aichat-ng -m gemini:gemini-3-flash-preview -S "Reply with: OK"
-# Should return: OK
+uv run python -c "from findajob.llm.openrouter import complete; print(complete(role='job_scorer', prompt='hi', max_tokens=8).text)"
 ```
 
 ### Step 6: Run a Validation Triage

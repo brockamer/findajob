@@ -48,14 +48,6 @@ def app_with_db(tmp_path: Path) -> Iterator[tuple[TestClient, Path]]:
       input_tokens INTEGER, output_tokens INTEGER, cost_usd REAL,
       logged_at TEXT DEFAULT (datetime('now'))
     );
-    CREATE TABLE IF NOT EXISTS cost_calibration (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      polled_at TEXT NOT NULL DEFAULT (datetime('now')),
-      credits_total_usd REAL, credits_used_usd REAL, credits_remaining_usd REAL,
-      onboarding_total_usd REAL, pipeline_actual_usd REAL, heuristic_sum_usd REAL,
-      multiplier REAL, multiplier_clamped INTEGER NOT NULL DEFAULT 0,
-      poll_status TEXT NOT NULL, error_message TEXT
-    );
     """)
     conn.commit()
     conn.close()

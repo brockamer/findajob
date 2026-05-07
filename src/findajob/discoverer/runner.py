@@ -3,13 +3,9 @@
 Reads the candidate profile, builds the prompt, calls the OpenRouter wrapper,
 strips think-block residue, parses, validates, and atomically writes
 the output pair. On any failure: logs to pipeline.jsonl, optionally
-ntfys, and returns a failure RunResult without raising.
-
-Port note (#471 Phase 2): previously spawned aichat-ng as a subprocess;
-now calls findajob.llm.openrouter.complete() directly. The stderr
-cost-extraction helper (_extract_cost_usd) has been removed — cost comes
-from result.cost_usd (API-authoritative). No cached_prefix / pin_provider
-are passed because Perplexity does not honor cache_control.
+ntfys, and returns a failure RunResult without raising. No
+``cached_prefix`` / ``pin_provider`` are passed because Perplexity does
+not honor ``cache_control``.
 """
 
 from __future__ import annotations

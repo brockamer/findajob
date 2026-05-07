@@ -136,12 +136,11 @@ docker compose exec scheduler sqlite3 data/pipeline.db \
 
 ### Update a role prompt
 1. Edit `config/roles/{role_name}.md` — under Docker, this file is **baked into the image** at `/app/config/roles/`, NOT bind-mounted. Edit the file in your repo clone, rebuild the image, and `docker compose pull` to deploy. (Native installs edit in place.)
-2. In scheduled mode, aichat-ng reads the role file fresh on every invocation — no restart.
+2. The OpenRouter wrapper reads the role file (frontmatter `model:`, `temperature:`, `max_tokens:`) fresh on every invocation — no restart.
 
-### Change the default model
-1. Edit `state/aichat_ng/config.yaml` (Docker — bind-mounted from host) or `~/.config/aichat_ng/config.yaml` (native).
-2. Change the `model:` line at the top.
-3. Role-specific model overrides in `state/aichat_ng/models-override.yaml` take precedence.
+### Change a role's model
+1. Edit the `model:` line in the role's frontmatter (e.g. `config/roles/job_scorer.md`).
+2. Rebuild the image and `docker compose pull` to deploy. Each role pins its own model — there's no global default to override.
 
 ### Export feedback log for analysis
 Free-text columns can shred under naive separator dumps; use `python3 -c` with `csv.QUOTE_ALL` rather than `sqlite3 -separator`.

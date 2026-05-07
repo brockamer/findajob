@@ -1,8 +1,7 @@
 """Tests for findajob.onboarding.voice_processor (#262).
 
-After the Phase 2 port (#471), redact_voice_samples() calls openrouter.complete()
-directly rather than spawning an aichat-ng subprocess. Mocks target the wrapper or
-the HTTP boundary — no subprocess.run patches remain for LLM tests.
+redact_voice_samples() calls openrouter.complete() directly. Mocks target the
+wrapper or the HTTP boundary.
 """
 
 from __future__ import annotations

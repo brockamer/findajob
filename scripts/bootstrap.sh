@@ -51,10 +51,6 @@ check_deps() {
     fi
   done
 
-  if ! command -v aichat-ng &>/dev/null && [ ! -f /usr/local/bin/aichat-ng ]; then
-    missing+=("aichat-ng")
-  fi
-
   if [ ${#missing[@]} -gt 0 ]; then
     warn "Missing tools: ${missing[*]}"
     if $CHECK_ONLY; then
@@ -145,44 +141,6 @@ setup_personal_config() {
     warn "  ${created} config file(s) created from templates."
     warn "  Edit them before running the pipeline. See docs/setup/configure.md"
     echo ""
-  fi
-}
-
-# ─────────────────────────────────────────────────────────────────────────────
-# SECTION 4: aichat-ng config directory (Linux)
-# ─────────────────────────────────────────────────────────────────────────────
-
-setup_aichat_config_dir() {
-  local aichat_dir="${HOME}/.config/aichat_ng"
-  mkdir -p "${aichat_dir}"
-
-  if [ ! -f "${aichat_dir}/config.yaml" ]; then
-    info "Creating aichat-ng config template at ${aichat_dir}/config.yaml"
-    cat > "${aichat_dir}/config.yaml" << 'EOF'
-# aichat-ng config — findajob pipeline
-# API keys come from environment variables. Source data/.env before running aichat-ng.
-# Add to ~/.bashrc: set -a; source ~/findajob/data/.env; set +a
-
-model: openrouter:google/gemini-3-flash-preview
-
-clients:
-  - type: openrouter
-    api_key: ${OPENROUTER_API_KEY}
-EOF
-    warn "  aichat-ng config created at ${aichat_dir}/config.yaml"
-  else
-    ok "  aichat-ng config already exists"
-  fi
-
-  # aichat-ng 0.31 does not support roles_dir in config.yaml — symlink required.
-  local roles_link="${aichat_dir}/roles"
-  if [ -L "${roles_link}" ] && [ -d "${roles_link}" ]; then
-    ok "  aichat-ng roles symlink already exists"
-  elif [ -d "${roles_link}" ]; then
-    warn "  ${roles_link} is a real directory — roles may not match repo. Consider replacing with a symlink to ${REPO}/config/roles"
-  else
-    ln -s "${REPO}/config/roles" "${roles_link}"
-    ok "  aichat-ng roles symlink created → ${REPO}/config/roles"
   fi
 }
 
@@ -281,38 +239,9 @@ StandardError=append:${LOG_DIR}/notify.log
 EOF
 }
 
-write_aichat_service() {
-  local name="$1" description="$2" aichat_cmd="$3"
-  local aichat_bin="${AICHAT_BIN:-/usr/local/bin/aichat-ng}"
-  cat > "${SYSTEMD_DIR}/findajob-${name}.service" << EOF
-[Unit]
-Description=findajob ${description}
-After=network-online.target
-
-[Service]
-Type=oneshot
-ExecStart=${aichat_bin} ${aichat_cmd}
-WorkingDirectory=${REPO}
-EnvironmentFile=${DATA_DIR}/.env
-StandardOutput=append:${LOG_DIR}/${name}.log
-StandardError=append:${LOG_DIR}/${name}.log
-EOF
-}
-
 install_systemd_units() {
   info "Installing systemd user service units..."
   mkdir -p "${SYSTEMD_DIR}"
-
-  # Detect aichat-ng binary
-  local aichat_bin
-  if [ -f /usr/local/bin/aichat-ng ]; then
-    aichat_bin=/usr/local/bin/aichat-ng
-  elif command -v aichat-ng &>/dev/null; then
-    aichat_bin="$(command -v aichat-ng)"
-  else
-    aichat_bin=/usr/local/bin/aichat-ng
-    warn "aichat-ng not found; using default path ${aichat_bin}"
-  fi
 
   # Triage — 7:00 AM daily.  triage.py has its own SIGTERM handler and
   # uses ThreadPoolExecutor internally.  TimeoutStartSec=3600 (1 hour).
@@ -418,13 +347,11 @@ verify_install() {
 
   check_item "python3"                    "$(command -v python3 &>/dev/null && echo true || echo false)"
   check_item "pandoc"                     "$(command -v pandoc &>/dev/null && echo true || echo false)"
-  check_item "aichat-ng"                  "$([ -f /usr/local/bin/aichat-ng ] && echo true || echo false)"
   check_item "data/.env"                  "$([ -f ${DATA_DIR}/.env ] && echo true || echo false)"
   check_item "data/pipeline.db"           "$([ -f ${DATA_DIR}/pipeline.db ] && echo true || echo false)"
   check_item "config/profile.md"          "$([ -f ${CONFIG_DIR}/profile.md ] && echo true || echo false)"
   check_item "rag_sources/master_resume"  "$([ -f ${REPO}/rag_sources/master_resume.md ] && echo true || echo false)"
   check_item "config/ntfy_topic.txt"     "$([ -f ${CONFIG_DIR}/ntfy_topic.txt ] && echo true || echo false)"
-  check_item "aichat-ng roles symlink"   "$([ -L ${HOME}/.config/aichat_ng/roles ] && echo true || echo false)"
   check_item "config/gmail_oauth_client"  "$([ -f ${CONFIG_DIR}/gmail_oauth_client.json ] && echo true || echo false)"
   check_item "CLAUDE.local.md"            "$([ -f ${REPO}/CLAUDE.local.md ] && echo true || echo false)"
 
@@ -460,7 +387,6 @@ fi
 install_pip_deps
 setup_dirs
 setup_personal_config
-setup_aichat_config_dir
 setup_db
 install_systemd_units
 verify_install

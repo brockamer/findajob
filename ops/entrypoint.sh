@@ -13,8 +13,6 @@
 #      bundled-config.
 #   3. Chown bind-mounted writable dirs to findajob:findajob if they're
 #      not already owned correctly.
-#   3b. Assert aichat-ng config.yaml is readable by the runtime user — exits
-#      with a clear diagnostic if missing (e.g., HOME not set in compose.yaml).
 #   4. Drop privileges and exec the CMD (default: supercronic /app/crontab).
 #
 # Env:
@@ -45,79 +43,17 @@ if [ -d /opt/findajob/bundled-config ]; then
     cp -R /opt/findajob/bundled-config/. /app/config/
 fi
 
-# --- 2b. Seed bundled aichat-ng config if missing -------------------------
-# models-override.yaml — always seeded if missing (owned by the project, not
-# the operator; catalog drift from the bundled version breaks claude:*
-# thinking modes silently).
-# config.yaml — seeded from config.yaml.example only if the destination is
-# absent. Operator customizations (custom model, added clients, REPL prefs)
-# survive container restarts; re-seeding would clobber them.
-# roles symlink — points at /app/config/roles (seeded by the image via
-# bundled-config, see section 2 above). Created only if not already present
-# as a symlink or real dir, so operators can override with their own dir.
-AICHAT_CFG_DIR="${HOME:-/root}/.config/aichat_ng"
-mkdir -p "$AICHAT_CFG_DIR"
-
-if [ -d /opt/findajob/bundled-aichat ]; then
-    if [ ! -f "$AICHAT_CFG_DIR/models-override.yaml" ] && [ -f /opt/findajob/bundled-aichat/models-override.yaml ]; then
-        cp /opt/findajob/bundled-aichat/models-override.yaml "$AICHAT_CFG_DIR/models-override.yaml"
-    fi
-    if [ ! -f "$AICHAT_CFG_DIR/config.yaml" ] && [ -f /opt/findajob/bundled-aichat/config.yaml.example ]; then
-        cp /opt/findajob/bundled-aichat/config.yaml.example "$AICHAT_CFG_DIR/config.yaml"
-        # aichat-ng does not perform ${VAR} substitution at load time — inject
-        # keys now. Per #67 + #455 (embedding/RAG retirement) the only direct
-        # client in the template is openrouter; gemini-embed + openai / groq /
-        # xai placeholders were retired with their client blocks.
-        for _var in OPENROUTER_API_KEY; do
-            eval "_val=\"\${${_var}:-}\""
-            sed -i "s|\${${_var}}|${_val}|g" "$AICHAT_CFG_DIR/config.yaml"
-        done
-        unset _var _val
-    fi
-fi
-
-if [ ! -e "$AICHAT_CFG_DIR/roles" ]; then
-    ln -s /app/config/roles "$AICHAT_CFG_DIR/roles"
-fi
-
-# --- 2c. Scrub retired embedding/RAG state on existing stacks (#455) ------
-# Active scrub of legacy embedding-API state on stacks upgraded from <v0.19.0:
-#   - drops `GOOGLE_API_KEY=` line from data/.env (if present)
-#   - removes `gemini-embed` client + `rag_embedding_model:` from config.yaml
-#   - deletes the `job_search_rag.yaml` index file
-# The Python helper is fail-open: malformed YAML / permission errors log
-# SKIPPED to stderr and exit 0, so this never bricks the boot path. Idempotent
-# — second-boot is a clean no-op once a stack has been scrubbed.
-if [ -f /app/data/.env ] && grep -q '^GOOGLE_API_KEY=' /app/data/.env; then
-    sed -i '/^GOOGLE_API_KEY=/d' /app/data/.env
-    echo "scrub_embedding_client: removed GOOGLE_API_KEY from /app/data/.env" >&2
-fi
-gosu "$PUID:$PGID" python3 /app/scripts/scrub_embedding_client.py --config-dir "$AICHAT_CFG_DIR" || true
-
 # --- 3. Chown writable dirs if any content doesn't match PUID:PGID --------
 # Uses find to detect mismatched files/subdirs inside each dir, not just the
 # top-level inode — prevents a root-owned file created by `docker exec` (as
 # root) from surviving container restarts uncorrected.
-for dir in /app/data /app/logs /app/companies /app/config /app/candidate_context "$AICHAT_CFG_DIR"; do
+for dir in /app/data /app/logs /app/companies /app/config /app/candidate_context; do
     if [ -d "$dir" ]; then
         if find "$dir" ! -user "$PUID" -print -quit 2>/dev/null | grep -q .; then
             chown -R "$PUID:$PGID" "$dir" || true
         fi
     fi
 done
-
-# --- 3b. Assert aichat-ng config is readable before scheduler starts ------
-# Fails fast if config.yaml is missing or unreadable by the runtime user.
-# Most common cause: HOME not set to /app in compose.yaml, so the seeding
-# in step 2b wrote to /root/.config/aichat_ng/ instead of the bind-mount.
-if ! gosu "$PUID:$PGID" test -r "$AICHAT_CFG_DIR/config.yaml" 2>/dev/null; then
-    echo "FATAL: aichat-ng config not found or not readable at $AICHAT_CFG_DIR/config.yaml (UID $PUID)" >&2
-    echo "  HOME=$HOME  AICHAT_CFG_DIR=$AICHAT_CFG_DIR" >&2
-    echo "  Ensure HOME: /app is set in compose.yaml environment:" >&2
-    echo "    environment:" >&2
-    echo "      HOME: /app" >&2
-    exit 1
-fi
 
 # --- 3c. Initialize DB schema (idempotent) --------------------------------
 # CREATE TABLE IF NOT EXISTS so re-runs on populated DBs are no-ops.

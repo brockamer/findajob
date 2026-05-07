@@ -15,7 +15,7 @@ from findajob.web.app import create_app
 def client(tmp_path: Path) -> TestClient:
     db = tmp_path / "pipeline.db"
     # Bootstrap the canonical schema via init_db.py rather than hand-rolling —
-    # avoids drift when tables get added (e.g. cost_log + cost_calibration in #87).
+    # avoids drift when tables get added.
     subprocess.run(
         [sys.executable, "scripts/init_db.py", str(db)],
         check=True,
@@ -69,26 +69,13 @@ def test_board_link_highlights_on_every_board_page(client: TestClient) -> None:
         assert 'aria-current="page"' in snippet, f"Board link not active on {path}"
 
 
-def test_nav_omits_credits_chip_on_fresh_stack(client: TestClient, tmp_path: Path) -> None:
-    """#87 retired the always-on onboarding badge in favor of an OpenRouter
-    credits-remaining chip that renders only when the 5-min poll has populated
-    a calibration row. On a fresh stack with no calibration data, the chip
-    must be absent entirely (rather than rendering an unhelpful $0.00)."""
-    db = tmp_path / "pipeline.db"
-    companies = tmp_path / "companies"
-    app = create_app(companies_root=companies, db_path=db, base_root=tmp_path)
-    c = TestClient(app, follow_redirects=False)
-
-    r = c.get("/")
+def test_nav_renders_spend_chip_on_fresh_stack(client: TestClient) -> None:
+    """The nav spend chip always renders — on a fresh stack with no cost_log
+    rows it shows $0.00 this month rather than disappearing. The chip <li>
+    carries ml-auto so the right-cluster (bell + Admin) is pushed to the
+    nav's right edge."""
+    r = client.get("/")
     assert r.status_code == 200
-    # The chip uses id="nav-credits" — absent until cost_calibration has a row.
-    assert "nav-credits" not in r.text
-    # The legacy "$X.XX onboarding" badge is fully retired.
-    assert "$0.00 onboarding" not in r.text
-    # #475 regression: the bell <li> must carry ml-auto so the right-cluster
-    # (bell + Admin) is pushed to the nav's right edge even when the chip's
-    # own ml-auto-bearing <li> isn't rendered. The previous fallback tested
-    # `current_calibration_for_template is not defined` against an
-    # unconditionally-registered Jinja global — a tautology that left the bell
-    # with class="" and visibly collapsed the nav into the group links.
+    assert "nav-credits" in r.text
+    assert "$0.00 this month" in r.text
     assert "ml-auto" in r.text

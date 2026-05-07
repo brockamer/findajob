@@ -53,7 +53,6 @@ When this map drifts from the actual code (renamed file, new route module, retir
 <repo>/scripts/notify.py                    # ntfy push notifications — subcommands: send-raw, scoreboard, health-check, etc.
 <repo>/scripts/rename_folders.py            # rename company folders to new format (idempotent)
 <repo>/scripts/discover_companies.py            # weekly company discovery cron entry
-<repo>/scripts/poll_openrouter_credits.py   # 5-min credits poll — writes cost_calibration row (#87)
 
 # ── Candidate content (all gitignored — fill these in after cloning) ────────
 <repo>/candidate_context/profile.md         # candidate profile — injected into scoring, resume, CL, outreach

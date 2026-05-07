@@ -68,7 +68,8 @@ Everything between them is mediated by SQLite. The Google Sheet is a synced view
           └────────────┬────────────────────────────┘
                        │  (jobs that pass both stages)
           ┌────────────▼────────────────┐
-          │  aichat-ng job_scorer       │
+          │  OpenRouter wrapper         │
+          │  Role: job_scorer           │
           │  Model: DeepSeek v3.2       │
           │  Profile injected directly  │
           │  Output: JSON + validation  │
@@ -105,7 +106,7 @@ prep_application.py (detached subprocess, start_new_session=True)
   Loads profile.md + master_resume.md (direct injection, no RAG)
           │
     ┌─────┴──────────────────────────────────────┐
-    │  Sequential LLM calls (aichat-ng):          │
+    │  Sequential LLM calls (OpenRouter wrapper):  │
     │  1. resume_tailor → tailored_resume_DRAFT.md │
     │  2. resume_change_reviewer → CHANGES.md     │
     │  3. cover_letter_writer → cover_letter_DRAFT.md │

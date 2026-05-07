@@ -383,7 +383,10 @@ def cmd_health_check():
         "SELECT COUNT(*) FROM jobs WHERE stage = 'manual_review' AND relevance_score IS NOT NULL"
     ).fetchone()[0]
     if null_score_count > 0:
-        issues.append(f"WARN: {null_score_count} null-score jobs in manual_review (scorer failure — check aichat-ng)")
+        issues.append(
+            f"WARN: {null_score_count} null-score jobs in manual_review "
+            "(scorer failure — check OpenRouter / pipeline.jsonl)"
+        )
     if real_review_count > REVIEW_BACKLOG_WARN:
         issues.append(
             f"WARN: {real_review_count} real-flag jobs in manual_review backlog (threshold: {REVIEW_BACKLOG_WARN})"
@@ -821,43 +824,26 @@ def cmd_scoreboard():
         ORDER BY total_cost DESC
     """).fetchall()
 
-    # #87 — apply calibration multiplier so displayed numbers track OpenRouter ground truth.
-    try:
-        from findajob.cost_rollups import current_calibration
-
-        cal = current_calibration(spend_conn)
-        multiplier = cal.multiplier if cal else 1.0
-        calibrated = cal is not None and cal.poll_status == "ok"
-    except sqlite3.OperationalError:
-        # Pre-#87 stacks won't have cost_calibration table — degrade to uncalibrated.
-        multiplier = 1.0
-        calibrated = False
-
-    raw_total_7d = sum((r["total_cost"] or 0) for r in spend_rows)
-    total_7d = raw_total_7d * multiplier
+    # cost_log.cost_usd comes from OpenRouter's response.usage.cost — authoritative.
+    total_7d = sum((r["total_cost"] or 0) for r in spend_rows)
     total_calls_7d = sum((r["n_calls"] or 0) for r in spend_rows)
     spend_conn.close()
 
     if spend_rows:
         monthly_proj = total_7d * (30 / 7)
-        cal_note = (
-            "Calibrated every 5 min against OpenRouter; numbers track account spend within ~5%."
-            if calibrated
-            else "Uncalibrated — no calibration data yet; numbers may be biased ~25% low."
-        )
         spend_section = (
             f"**Total: ${total_7d:.2f}** across {total_calls_7d:,} calls "
             f"(projected monthly: **${monthly_proj:.0f}**).\n\n"
-            f"{cal_note}\n\n"
+            "Sourced from `cost_log.cost_usd` (OpenRouter native).\n\n"
             "| Operation | Calls | Input tok | Output tok | Cost (7d) |\n"
             "|---|---|---|---|---|\n"
         )
         for r in spend_rows:
-            calibrated_cost = (r["total_cost"] or 0) * multiplier
+            op_cost = r["total_cost"] or 0
             spend_section += (
                 f"| {r['operation']} | {r['n_calls']:,} | "
                 f"{(r['in_tok'] or 0):,} | {(r['out_tok'] or 0):,} | "
-                f"${calibrated_cost:.2f} |\n"
+                f"${op_cost:.2f} |\n"
             )
     else:
         spend_section = "_No cost data in the last 7d._"

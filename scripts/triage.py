@@ -61,7 +61,7 @@ PROFILE_PATH = f"{BASE}/candidate_context/profile.md"
 
 
 SCORER_MODEL = role_model("job_scorer")
-SCORE_WORKERS = 6  # concurrent LLM scoring threads (each spawns aichat subprocess)
+SCORE_WORKERS = 6  # concurrent LLM scoring threads
 
 load_env()
 
@@ -481,8 +481,8 @@ def main(gmail_since_days: int | None = None):
 
     # ── Phase 2: Parallel scoring ──────────────────────────────────────────
     # Collect all enriched jobs (newly ingested + orphans from prior crashed runs)
-    # and score them concurrently. Each worker spawns an aichat subprocess;
-    # ThreadPoolExecutor is sufficient because the GIL is released during subprocess.run().
+    # and score them concurrently. ThreadPoolExecutor is sufficient because each
+    # worker spends its time blocked on an OpenRouter HTTP call.
     to_score = conn.execute("""
         SELECT id, title, company, location, raw_jd_text FROM jobs
         WHERE stage = 'enriched'

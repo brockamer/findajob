@@ -100,7 +100,6 @@ A human-readable target company list. If you want it available in REPL context, 
 Binary path overrides for your platform. Only needed if your binaries are in non-standard locations.
 
 ```bash
-AICHAT_NG=/usr/local/bin/aichat-ng
 PANDOC=/usr/bin/pandoc           # Linux default
 ```
 
@@ -143,33 +142,10 @@ Protect this file: `chmod 600 data/.env`
 
 Design details for the in-app onboarding interview live in operator-private notes.
 
-The pipeline writes a `cost_log` row per LLM call across every aichat-ng
-invocation site (scoring, prep, find-contacts, interview-prep, speculative
-research, company discovery, rescore). Cost is estimated from prompt and
-response character lengths via the rate table at `config/model_pricing.yaml`
-(±20-30% absolute precision; reliable for relative comparisons). Reuses
-`OPENROUTER_API_KEY` — no separate credential needed (#48).
-
----
-
-## aichat-ng config.yaml
-
-Located at `~/.config/aichat_ng/config.yaml`.
-
-Full template:
-```yaml
-model: openrouter:google/gemini-3-flash-preview
-
-clients:
-  - type: openrouter
-    api_key: ${OPENROUTER_API_KEY}
-
-roles_dir: ~/findajob/config/roles
-```
-
-**Critical:** API keys MUST use `${VAR_NAME}` syntax, not literal values. The variables must be in your environment when you run aichat-ng. The pipeline's scripts load `data/.env` at startup, but REPL usage needs the env vars set in your shell profile.
-
-Anthropic and Perplexity model access routes through OpenRouter — there are no direct `claude` or `perplexity` clients in the config since v0.4.0. If your pre-v0.4.0 stack still has those blocks in `state/aichat_ng/config.yaml`, they are inert and safe to remove.
+Every LLM call goes through `findajob.llm.openrouter.complete()`. The
+wrapper writes a `cost_log` row per call with `cost_usd` populated directly
+from OpenRouter's `response.usage.cost` — no heuristic, no calibration. All
+LLM access uses the single `OPENROUTER_API_KEY` credential.
 
 ---
 
@@ -182,7 +158,6 @@ The pipeline itself sees them at `/app/…` inside the container via bind mounts
 | What | Native host path | Docker host path | In-container path |
 |---|---|---|---|
 | API keys | `data/.env` | `state/data/.env` | `/app/data/.env` |
-| aichat-ng config | `~/.config/aichat_ng/config.yaml` | `state/aichat_ng/config.yaml` | `/root/.config/aichat_ng/config.yaml` |
 | Personal config | `config/*.yaml\|.txt\|.json` | `state/config/*` | `/app/config/*` |
 | Candidate profile | `candidate_context/profile.md` | `state/candidate_context/profile.md` | `/app/candidate_context/profile.md` |
 
@@ -310,9 +285,10 @@ With Phase 2 of the OpenRouter cutover, 10 of 11 roles depend on
 2. Edit your stack's env file (`/opt/stacks/findajob-<you>/state/data/.env`
    or wherever you keep credentials — check your compose file's
    `env_file:` directive) and replace the `OPENROUTER_API_KEY=…` line.
-3. Recreate the container so aichat-ng picks up the new value:
+3. Recreate the container so the OpenRouter wrapper picks up the new value:
    `docker compose up -d --force-recreate` from the stack directory.
-4. Verify with a smoke call: `docker compose exec scheduler aichat-ng --model openrouter:google/gemini-3-flash-preview "say hello"`.
+4. Verify with a smoke call:
+   `docker compose exec scheduler python3 -c "from findajob.llm.openrouter import complete; print(complete(role='job_scorer', prompt='say hello', max_tokens=8).text)"`.
    If the call succeeds, revoke the old key in the OpenRouter dashboard.
 
 `GOOGLE_API_KEY` was removed in v0.19.0 (#455); RAG infrastructure

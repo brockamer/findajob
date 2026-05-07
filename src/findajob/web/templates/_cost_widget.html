@@ -1,5 +1,5 @@
-{# #87 — Dashboard burn-rate widget. Three numbers + sparkline.
-   Renders blank if no calibration data (fresh stack). #}
+{# Dashboard burn-rate widget. Two numbers — this week and projected month.
+   Cost numbers come from `cost_log.cost_usd` (OpenRouter `response.usage.cost`). #}
 {% if cost_widget %}
 <div class="bg-white rounded-md shadow-sm p-4 max-w-md">
   <h4 class="text-xs uppercase tracking-wide text-slate-500 mb-3">LLM Burn Rate</h4>
@@ -12,32 +12,14 @@
   {% endif %}
 
   {% if cost_widget.projected_monthly is not none %}
-    <div class="flex justify-between py-2 border-b border-slate-100">
+    <div class="flex justify-between py-2">
       <span class="text-sm text-slate-600">Projected this month</span>
       <span class="text-base font-semibold">${{ '%.2f' | format(cost_widget.projected_monthly) }}</span>
     </div>
   {% endif %}
 
-  {% if cost_widget.runway_weeks is not none %}
-    <div class="flex justify-between py-2">
-      <span class="text-sm text-slate-600">Runway at current pace</span>
-      <span class="text-base font-semibold {% if cost_widget.runway_weeks < 4 %}text-amber-600{% endif %}">
-        ~{{ '%.1f' | format(cost_widget.runway_weeks) }} weeks
-      </span>
-    </div>
-    {# Runway progress bar — green→amber gradient, fill % capped at 100 #}
-    {% set pct = (cost_widget.runway_weeks / 12.0 * 100) | round(0, 'floor') %}
-    {% if pct > 100 %}{% set pct = 100 %}{% endif %}
-    <div class="h-1.5 bg-slate-100 rounded mt-1 overflow-hidden">
-      <div class="h-full rounded" style="width: {{ pct }}%; background: linear-gradient(90deg, #10b981, #f59e0b);"></div>
-    </div>
-  {% endif %}
-
   <p class="text-xs text-slate-400 mt-3">
-    Estimated; calibrated every 5 min against OpenRouter.
-    {% if cost_widget.calibration and cost_widget.calibration.multiplier_clamped %}
-      <span class="text-amber-600 font-medium">(calibration suspect)</span>
-    {% endif %}
+    Sourced from <code>cost_log.cost_usd</code> (OpenRouter native).
   </p>
 </div>
 {% endif %}

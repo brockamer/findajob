@@ -1,8 +1,7 @@
 """Tests for findajob.speculative.runner — orchestrates briefing + role-synth.
 
-After the Phase 2 port (#471), runner.run_research() calls openrouter.complete()
-directly rather than spawning an aichat-ng subprocess. All mocks target the
-wrapper or the HTTP boundary — no subprocess.run patches remain.
+runner.run_research() calls openrouter.complete() directly. All mocks target
+the wrapper or the HTTP boundary.
 
 We assert the runner:
 1. Reads the speculative_requests row and candidate context files
@@ -139,7 +138,7 @@ def _stub_openrouter_response(
 
 
 # ---------------------------------------------------------------------------
-# Existing orchestration tests — updated to patch complete() not _call_aichat
+# Orchestration tests — patch openrouter.complete()
 # ---------------------------------------------------------------------------
 
 

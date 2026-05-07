@@ -54,44 +54,12 @@ Used by: `notify.py`
 | Tool | Minimum version | Install |
 |---|---|---|
 | Python | 3.11+ | System package manager (apt) |
-| aichat-ng | latest | See below |
 | pandoc | 3.x | `apt install pandoc` |
 
-### Installing aichat-ng
-
-> **Docker users can skip this subsection** — `aichat-ng` is baked into the
-> `ghcr.io/brockamer/findajob` image.
-
-**Important:** This pipeline uses `aichat-ng` (the `blob42/aichat-ng` fork),
-not the original `aichat`. They are different binaries.
-
-```bash
-# Check if already installed
-/usr/local/bin/aichat-ng --version
-
-# Install from the blob42 prebuilt release tarball (no Rust toolchain needed)
-AICHAT_NG_VERSION=v0.31.0
-AICHAT_NG_ARCH=x86_64-unknown-linux-musl
-AICHAT_NG_SHA256=8e1f5a9cf09ae651168f2a425de20b2f6e8702072d47a7052c6229fa366aa57b
-
-curl -fsSL -o /tmp/aichat-ng.tar.gz \
-    "https://github.com/blob42/aichat-ng/releases/download/${AICHAT_NG_VERSION}/aichat-ng-${AICHAT_NG_VERSION}-${AICHAT_NG_ARCH}.tar.gz"
-echo "${AICHAT_NG_SHA256}  /tmp/aichat-ng.tar.gz" | sha256sum -c -
-tar -xzf /tmp/aichat-ng.tar.gz -C /tmp
-sudo install -m 0755 /tmp/aichat-ng /usr/local/bin/aichat-ng
-rm -f /tmp/aichat-ng.tar.gz /tmp/aichat-ng
-```
-
-For a different architecture or newer upstream version, check the
-[blob42/aichat-ng releases](https://github.com/blob42/aichat-ng/releases)
-page and update the three variables.
-
-### Configuring aichat-ng
-
-aichat-ng config lives at `~/.config/aichat_ng/config.yaml` (native install)
-or `state/aichat_ng/config.yaml` (Docker install, mounted into the container).
-
-See [configure.md](configure.md) for the full config template.
+LLM access goes through `findajob.llm.openrouter.complete()` (a stdlib HTTP
+wrapper around OpenRouter's chat-completions API) — no separate LLM CLI
+binary to install. The single `OPENROUTER_API_KEY` credential covers every
+production model the pipeline uses.
 
 ---
 

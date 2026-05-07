@@ -46,14 +46,6 @@ def client(tmp_path: Path) -> TestClient:
         "success INTEGER DEFAULT 1, error_message TEXT, input_tokens INTEGER, "
         "output_tokens INTEGER, cost_usd REAL, logged_at TEXT DEFAULT (datetime('now')))"
     )
-    conn.execute(
-        "CREATE TABLE cost_calibration (id INTEGER PRIMARY KEY AUTOINCREMENT, "
-        "polled_at TEXT NOT NULL DEFAULT (datetime('now')), credits_total_usd REAL, "
-        "credits_used_usd REAL, credits_remaining_usd REAL, onboarding_total_usd REAL, "
-        "pipeline_actual_usd REAL, heuristic_sum_usd REAL, multiplier REAL, "
-        "multiplier_clamped INTEGER NOT NULL DEFAULT 0, poll_status TEXT NOT NULL, "
-        "error_message TEXT)"
-    )
     conn.commit()
     conn.close()
     companies = tmp_path / "companies"

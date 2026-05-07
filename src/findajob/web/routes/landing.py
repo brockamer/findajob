@@ -31,12 +31,7 @@ def landing(
     request: Request,
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
 ) -> HTMLResponse:
-    from findajob.cost_rollups import (
-        current_calibration,
-        projected_monthly,
-        runway_weeks,
-        weekly_spend,
-    )
+    from findajob.cost_rollups import projected_monthly, weekly_spend
 
     rows = db.execute("SELECT stage, COUNT(*) AS n FROM jobs GROUP BY stage").fetchall()
     counts = {r["stage"]: r["n"] for r in rows}
@@ -45,10 +40,8 @@ def landing(
     try:
         weeks = weekly_spend(db, weeks=4)
         cost_widget = {
-            "calibration": current_calibration(db),
             "weekly_total": weeks[-1].total_usd if weeks else None,
             "projected_monthly": projected_monthly(db),
-            "runway_weeks": runway_weeks(db),
         }
     except sqlite3.OperationalError:
         cost_widget = None

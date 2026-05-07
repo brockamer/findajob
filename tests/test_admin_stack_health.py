@@ -146,14 +146,11 @@ def test_last_failure_timestamps(tmp_path: Path) -> None:
     build_pipeline_jsonl(
         sp.jsonl_path,
         [
-            {"ts": "2026-04-29T08:00:00+00:00", "event": "aichat_failure"},
-            {"ts": "2026-04-30T05:00:00+00:00", "event": "aichat_failure"},  # most recent
             {"ts": "2026-04-30T01:00:00+00:00", "event": "discovery_failed"},
             {"ts": "2026-04-29T22:00:00+00:00", "event": "prep_failed_reset"},
         ],
     )
     h = gather(sp, now=NOW)
-    assert h.last_aichat_failure == datetime(2026, 4, 30, 5, 0, tzinfo=UTC)
     assert h.last_discovery_failed == datetime(2026, 4, 30, 1, 0, tzinfo=UTC)
     assert h.last_prep_failed == datetime(2026, 4, 29, 22, 0, tzinfo=UTC)
 

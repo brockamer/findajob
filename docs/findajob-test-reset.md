@@ -15,7 +15,6 @@
 |---|---|---|
 | `compose.yaml` | preserved | Stack identity — operator-curated bind mounts, port, network. |
 | `.env` (compose-level) | preserved | Stack identity vars: `FINDAJOB_IMAGE_TAG`, `FINDAJOB_MATERIALS_PORT`, optionally `FINDAJOB_OPERATOR_HANDLE` / `FINDAJOB_AUTH_USER`. |
-| `state/aichat_ng/` | contents wiped | Aichat config files (regenerated on first boot from image-baked seed). |
 | `state/candidate_context/` | contents wiped | `profile.md`, `master_resume.md`, `voice_samples/` — onboarding emits these. |
 | `state/companies/` | contents wiped | Prep folders — none should exist on a fresh install. |
 | `state/config/` | contents wiped | All gitignored per-stack config: `prefilter_rules.yaml`, `in_domain_patterns.yaml`, `target_companies.md`, `active_sources.txt`, `gmail.json`, etc. |
@@ -36,7 +35,7 @@ echo '== compose down =='
 sudo docker compose down
 
 echo '== wipe state/* contents =='
-for d in aichat_ng candidate_context companies config data logs .backups; do
+for d in candidate_context companies config data logs .backups; do
   if [ -d state/\$d ]; then
     sudo find state/\$d -mindepth 1 -delete
   fi

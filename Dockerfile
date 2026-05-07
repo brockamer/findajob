@@ -1,14 +1,11 @@
 # syntax=docker/dockerfile:1.7
 
 # findajob image
-# Base: Python 3.12 on Debian slim. Single stage — aichat-ng and supercronic
-# are prebuilt binaries. No compilation needed.
+# Base: Python 3.12 on Debian slim. Single stage — supercronic is a prebuilt
+# binary. No compilation needed.
 
 FROM python:3.12-slim-bookworm
 
-ARG AICHAT_NG_VERSION=v0.31.0
-ARG AICHAT_NG_ARCH=x86_64-unknown-linux-musl
-ARG AICHAT_NG_SHA256=8e1f5a9cf09ae651168f2a425de20b2f6e8702072d47a7052c6229fa366aa57b
 ARG SUPERCRONIC_VERSION=v0.2.29
 ARG SUPERCRONIC_SHA1SUM=cd48d45c4b10f3f0bfdd3a57d054cd05ac96812b
 ARG SUPERCRONIC_FILE=supercronic-linux-amd64
@@ -29,17 +26,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         curl \
         ca-certificates \
     && rm -rf /var/lib/apt/lists/*
-
-# aichat-ng — blob42 fork, prebuilt musl binary (static, no libc dep).
-# SHA256-verified against the tarball before extraction.
-RUN set -eux; \
-    curl -fsSL -o /tmp/aichat-ng.tar.gz \
-        "https://github.com/blob42/aichat-ng/releases/download/${AICHAT_NG_VERSION}/aichat-ng-${AICHAT_NG_VERSION}-${AICHAT_NG_ARCH}.tar.gz"; \
-    echo "${AICHAT_NG_SHA256}  /tmp/aichat-ng.tar.gz" | sha256sum -c -; \
-    tar -xzf /tmp/aichat-ng.tar.gz -C /tmp; \
-    install -m 0755 /tmp/aichat-ng /usr/local/bin/aichat-ng; \
-    rm -f /tmp/aichat-ng.tar.gz /tmp/aichat-ng; \
-    /usr/local/bin/aichat-ng --version
 
 # supercronic — SHA1-verified.
 RUN set -eux; \
@@ -69,7 +55,6 @@ RUN pip install --no-cache-dir --break-system-packages -e .
 COPY scripts/ /app/scripts/
 COPY config/ /opt/findajob/bundled-config/
 COPY docs/ /app/docs/
-COPY ops/aichat-ng/ /opt/findajob/bundled-aichat/
 COPY ops/scheduled-jobs.yaml /app/scheduled-jobs.yaml
 COPY ops/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

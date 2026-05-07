@@ -64,13 +64,13 @@ jq -c 'select(.event == "pipeline_complete")' state/logs/pipeline.jsonl | tail -
 
 ### "Jobs are scoring 0 or not scoring at all"
 
-First, smoke-test aichat-ng from inside the container:
+First, smoke-test the OpenRouter wrapper from inside the container:
 
 ```bash
-docker compose exec scheduler aichat-ng -- hi
+docker compose exec scheduler python3 -c "from findajob.llm.openrouter import complete; print(complete(role='job_scorer', prompt='hi', max_tokens=8).text)"
 ```
 
-**No response or error?** Either the OpenRouter API key is missing/expired, the account has no balance, or the aichat-ng config is wrong. Check `state/aichat_ng/config.yaml` inside the bind-mount.
+**HTTP 401 / 402 / no balance?** Either the OpenRouter API key is missing/expired or the account has no balance. Check `data/.env` for `OPENROUTER_API_KEY=`.
 
 **Response works but jobs score null?** Health check will report `INFO: N jobs scored None`. Common cause: LLM timeout — the scoring loop falls back to `None` when the LLM errors. Retry by rerunning triage.
 
@@ -147,7 +147,7 @@ Typical failures on first boot:
 | **WARN: N source(s) returned 0 jobs despite producing jobs in last 7d** | A feed silently broke | Check the named source — API key, quota, config file |
 | **WARN: low memory — N MB available** | Container is memory-starved | Increase host RAM, or reduce parallelism in config |
 | **WARN: high swap usage — N/M MB used** | Swap over 50% utilized | Same — investigate memory pressure |
-| **WARN: N null-score jobs in manual_review (scorer failure — check aichat-ng)** | Jobs were shunted to review because scoring returned null | Smoke-test aichat-ng; check OpenRouter |
+| **WARN: N null-score jobs in manual_review (scorer failure — check OpenRouter / pipeline.jsonl)** | Jobs were shunted to review because scoring returned null | Smoke-test the OpenRouter wrapper (above); inspect `pipeline.jsonl` for `score_failed` events |
 | **WARN: N real-flag jobs in manual_review backlog** | Queue growing past threshold | Triage the Review tab; tune profile if scorer is flagging too much |
 | **WARN: N target-company jobs scored 3–6 in last N days (potential mis-scores)** | Scorer rated Tier 1 company jobs low | Review each; if you disagree, add to profile's Tier 1 list and rescore |
 

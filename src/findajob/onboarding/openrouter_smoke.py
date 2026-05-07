@@ -17,9 +17,9 @@ import urllib.request
 
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
-# The pipeline's existing default-model choice. Cheap (Gemini 3 Flash) +
-# already in operators' aichat-ng config so we know it works through
-# OpenRouter's routing.
+# The pipeline's default-model choice for cheap calls (Gemini 3 Flash) —
+# the same model role frontmatter selects, so a successful smoke call
+# tells us the key works for the routes the pipeline actually uses.
 SMOKE_MODEL = "google/gemini-3-flash-preview"
 SMOKE_TIMEOUT_S = 30
 

@@ -85,7 +85,7 @@ ntfy topic is read from `NTFY_TOPIC` in `data/.env`.
 **Args:** `company jd_text_excerpt outdir`
 **Manual run:** `docker compose exec scheduler python3 scripts/find_contacts.py "Acme" "<jd-excerpt>" companies/<folder>`
 
-Reads `data/connections.csv`, finds LinkedIn connections at the target company, generates personalized outreach drafts for each match via aichat-ng.
+Reads `data/connections.csv`, finds LinkedIn connections at the target company, and generates personalized outreach drafts for each match via the OpenRouter wrapper.
 
 **Output:** `{outdir}/outreach_{FirstName}_{LastName}.txt` for each match.
 

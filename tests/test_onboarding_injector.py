@@ -159,7 +159,7 @@ def test_inject_writes_required_files_and_sentinel_and_derivation(tmp_path: Path
     assert result.backup_dir is not None  # returns the (possibly empty) backup dir
     # Discovery is exercised in the discoverer's own tests; here we only
     # confirm the result is shaped correctly. Discovery will fail in this
-    # test environment because aichat-ng isn't on PATH, which is expected.
+    # test environment because no OpenRouter call can complete, which is expected.
     assert result.discovery.success in (True, False)
     # Original seven canonical files
     assert (tmp_path / "candidate_context" / "profile.md").read_text() == _MIN_FILES["profile.md"]
@@ -416,17 +416,18 @@ def test_inject_without_conn_skips_cost_log(tmp_path: Path) -> None:
         mock_process.assert_called_once_with(voice_body, redact=True, conn=None)
 
 
-def test_inject_discovery_hook_soft_fails_when_aichat_missing(tmp_path: Path, monkeypatch) -> None:
-    """When aichat-ng isn't available, inject() returns success=True for the
-    file commit but discovery.success=False. Sentinel is still written.
+def test_inject_discovery_hook_soft_fails_when_openrouter_call_fails(tmp_path: Path, monkeypatch) -> None:
+    """When the OpenRouter call powering discovery fails, inject() returns
+    success=True for the file commit but discovery.success=False. Sentinel is
+    still deferred to the Gmail-config gate's /finish (#407).
     """
-    # Force the discoverer's subprocess call to fail
     import findajob.discoverer.runner as run_mod
+    from findajob.llm.openrouter import OpenRouterError
 
     def boom(*a, **kw):
-        raise FileNotFoundError("simulated: aichat-ng not on PATH")
+        raise OpenRouterError("simulated discovery failure", kind="http_error")
 
-    monkeypatch.setattr(run_mod.subprocess, "run", boom)
+    monkeypatch.setattr(run_mod, "complete", boom)
 
     result = inject(tmp_path, _MIN_FILES, skip_smoke_check=True)
     # Sentinel deferred to the Gmail-config gate's /finish (#407) — onboarding

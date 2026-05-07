@@ -420,8 +420,6 @@ def test_resume_page_file_block_shows_badge_not_raw_delimiter(client_with_key: T
     assert "name: Stored User" not in body
 
 
-# ── Legacy nav-lifetime-cost OOB swap retired by #87 ─────────────────────
-# The onboarding-cost nav chip was retired in favor of the OpenRouter
-# credits-remaining chip backed by cost_calibration. The OOB swap that
-# updated the old badge per turn was deleted from _turn.html. The credits
-# chip refreshes via the 5-min poll, not per-turn — no OOB swap needed.
+# The onboarding-cost nav chip OOB swap was retired in #87 and the credits
+# chip itself was retired in #472 (v0.20.0). The nav now shows current-month
+# spend from cost_log directly — no per-turn OOB swap needed.

@@ -4,11 +4,11 @@ Central path and base-directory resolver for all pipeline scripts.
 BASE is derived from this file's location — works wherever the repo is cloned,
 regardless of directory name or home folder. No hardcoded paths.
 
-Binary paths (AICHAT, PANDOC) are read from config/paths.env.
-Override defaults via config/paths.env if your binaries live elsewhere.
+The PANDOC binary path is read from config/paths.env. Override the default via
+config/paths.env if your binary lives elsewhere.
 
 Usage:
-    from findajob.paths import BASE, AICHAT, PANDOC
+    from findajob.paths import BASE, PANDOC
 
 Use sys.executable (not a PYTHON constant) for subprocess calls to other pipeline scripts.
 
@@ -16,8 +16,7 @@ Containerized deploys:
     When running in the findajob Docker image, the app is installed at /app
     (not the repo's filesystem location). The compose file sets
     JSP_BASE=/app to pin BASE correctly. See docs/setup/install-docker.md
-    and docs/superpowers/specs/2026-04-17-docker-compose-design.md for
-    the container architecture.
+    for the container architecture.
 """
 
 import os
@@ -42,5 +41,4 @@ if _penv.exists():
 
 # Binary paths — defaults are Linux-appropriate.
 # Override via config/paths.env if your install is non-standard.
-AICHAT: str = _cfg.get("AICHAT_NG", "/usr/local/bin/aichat-ng")
 PANDOC: str = _cfg.get("PANDOC", "/usr/bin/pandoc")

@@ -49,7 +49,6 @@ services:
       - ./state/candidate_context:/app/candidate_context
       - ./state/companies:/app/companies
       - ./state/logs:/app/logs
-      - ./state/aichat_ng:/app/.config/aichat_ng
       - ./state/.backups:/app/.backups
     networks:
       - findajob-network

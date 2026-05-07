@@ -5,7 +5,6 @@ from __future__ import annotations
 import sqlite3
 import subprocess
 import sys
-from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -24,77 +23,6 @@ def db(tmp_path: Path) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     yield conn
     conn.close()
-
-
-def _utc_now() -> datetime:
-    return datetime.now(UTC).replace(tzinfo=None)
-
-
-def _insert_calibration(
-    conn: sqlite3.Connection,
-    *,
-    polled_at: str | None = None,
-    credits_remaining_usd: float = 67.86,
-    multiplier: float = 1.3,
-    multiplier_clamped: int = 0,
-    poll_status: str = "ok",
-) -> None:
-    conn.execute(
-        """INSERT INTO cost_calibration
-           (polled_at, credits_total_usd, credits_used_usd, credits_remaining_usd,
-            onboarding_total_usd, pipeline_actual_usd, heuristic_sum_usd,
-            multiplier, multiplier_clamped, poll_status)
-           VALUES (?, 100.0, 32.14, ?, 4.50, 27.64, 21.26, ?, ?, ?)""",
-        (
-            polled_at or _utc_now().strftime("%Y-%m-%d %H:%M:%S"),
-            credits_remaining_usd,
-            multiplier,
-            multiplier_clamped,
-            poll_status,
-        ),
-    )
-    conn.commit()
-
-
-def test_current_calibration_returns_latest_row(db: sqlite3.Connection) -> None:
-    from findajob.cost_rollups import current_calibration
-
-    _insert_calibration(db, credits_remaining_usd=50.0, multiplier=1.2)
-    _insert_calibration(db, credits_remaining_usd=42.0, multiplier=1.4)
-
-    cal = current_calibration(db)
-    assert cal is not None
-    assert cal.credits_remaining_usd == 42.0
-    assert cal.multiplier == 1.4
-    assert cal.poll_status == "ok"
-    assert cal.multiplier_clamped is False
-
-
-def test_current_calibration_returns_none_when_empty(db: sqlite3.Connection) -> None:
-    from findajob.cost_rollups import current_calibration
-
-    assert current_calibration(db) is None
-
-
-def test_current_calibration_marks_stale_after_one_hour(db: sqlite3.Connection) -> None:
-    from findajob.cost_rollups import current_calibration
-
-    old = (_utc_now() - timedelta(hours=2)).strftime("%Y-%m-%d %H:%M:%S")
-    _insert_calibration(db, polled_at=old)
-
-    cal = current_calibration(db)
-    assert cal is not None
-    assert cal.poll_status == "stale"
-
-
-def test_current_calibration_reports_clamping(db: sqlite3.Connection) -> None:
-    from findajob.cost_rollups import current_calibration
-
-    _insert_calibration(db, multiplier_clamped=1)
-
-    cal = current_calibration(db)
-    assert cal is not None
-    assert cal.multiplier_clamped is True
 
 
 def _insert_job_with_costs(
@@ -118,10 +46,9 @@ def _insert_job_with_costs(
     conn.commit()
 
 
-def test_per_job_cost_excludes_nulls(db: sqlite3.Connection) -> None:
+def test_per_job_cost_sums_non_null_rows(db: sqlite3.Connection) -> None:
     from findajob.cost_rollups import per_job_cost
 
-    _insert_calibration(db, multiplier=1.3)
     _insert_job_with_costs(
         db,
         "job-a",
@@ -129,34 +56,20 @@ def test_per_job_cost_excludes_nulls(db: sqlite3.Connection) -> None:
     )
 
     cost = per_job_cost(db, "job-a")
-    assert cost is not None
-    # (0.10 + 0.50) × 1.3 = 0.78
-    assert cost == pytest.approx(0.78, rel=1e-3)
+    assert cost == pytest.approx(0.60, rel=1e-3)
 
 
 def test_per_job_cost_returns_none_for_all_nulls(db: sqlite3.Connection) -> None:
     from findajob.cost_rollups import per_job_cost
 
-    _insert_calibration(db, multiplier=1.3)
     _insert_job_with_costs(db, "job-b", [("briefing", None), ("score", None)])
 
     assert per_job_cost(db, "job-b") is None
 
 
-def test_per_job_cost_returns_none_when_no_calibration(db: sqlite3.Connection) -> None:
-    from findajob.cost_rollups import per_job_cost
-
-    _insert_job_with_costs(db, "job-c", [("briefing", 0.10)])
-
-    # No calibration → multiplier defaults to 1.0; raw heuristic shown.
-    cost = per_job_cost(db, "job-c")
-    assert cost == pytest.approx(0.10, rel=1e-3)
-
-
 def test_per_job_breakdown_groups_by_operation(db: sqlite3.Connection) -> None:
     from findajob.cost_rollups import per_job_breakdown
 
-    _insert_calibration(db, multiplier=1.0)
     _insert_job_with_costs(
         db,
         "job-d",
@@ -205,7 +118,6 @@ def _insert_cost_log(
 def test_weekly_spend_returns_n_weeks_oldest_first(db: sqlite3.Connection) -> None:
     from findajob.cost_rollups import weekly_spend
 
-    _insert_calibration(db, multiplier=1.0)
     _insert_cost_log(db, weeks_ago=0, cost=1.00)  # current week
     _insert_cost_log(db, weeks_ago=1, cost=2.00)  # 1 week ago
     _insert_cost_log(db, weeks_ago=2, cost=3.00)  # 2 weeks ago
@@ -222,29 +134,9 @@ def test_weekly_spend_returns_n_weeks_oldest_first(db: sqlite3.Connection) -> No
     assert weeks[-4].total_usd == pytest.approx(0.00, abs=1e-9)
 
 
-def test_runway_weeks_uses_4wk_average(db: sqlite3.Connection) -> None:
-    from findajob.cost_rollups import runway_weeks
-
-    _insert_calibration(db, credits_remaining_usd=40.0, multiplier=1.0)
-    # $10/wk for 4 weeks → 4-week avg = $10/wk → runway = 40 / 10 = 4
-    for w in range(4):
-        _insert_cost_log(db, weeks_ago=w, cost=10.0)
-
-    weeks = runway_weeks(db)
-    assert weeks == pytest.approx(4.0, rel=0.05)
-
-
-def test_runway_weeks_none_when_no_history(db: sqlite3.Connection) -> None:
-    from findajob.cost_rollups import runway_weeks
-
-    _insert_calibration(db, credits_remaining_usd=40.0, multiplier=1.0)
-    assert runway_weeks(db) is None
-
-
 def test_projected_monthly_scales_7d(db: sqlite3.Connection) -> None:
     from findajob.cost_rollups import projected_monthly
 
-    _insert_calibration(db, multiplier=1.0)
     # 3 inserts in the current week (Sunday anchor ≤ 6 days ago) summing to $7.00.
     # The projected_monthly filter is logged_at >= datetime('now', '-7 days'),
     # and Sunday-of-current-week is always within that window.
@@ -253,3 +145,27 @@ def test_projected_monthly_scales_7d(db: sqlite3.Connection) -> None:
     _insert_cost_log(db, weeks_ago=0, cost=3.50)
     _insert_cost_log(db, weeks_ago=0, cost=1.40)
     assert projected_monthly(db) == pytest.approx(30.0, rel=1e-3)
+
+
+def test_projected_monthly_none_when_no_recent_spend(db: sqlite3.Connection) -> None:
+    from findajob.cost_rollups import projected_monthly
+
+    assert projected_monthly(db) is None
+
+
+def test_spend_this_month_sums_current_month_rows(db: sqlite3.Connection) -> None:
+    from findajob.cost_rollups import spend_this_month
+
+    # Three rows in the current calendar month (datetime('now') default) summing to $4.20.
+    _insert_job_with_costs(
+        db,
+        "job-spend",
+        [("briefing", 1.50), ("resume_tailor", 2.00), ("cover_letter", 0.70)],
+    )
+    assert spend_this_month(db) == pytest.approx(4.20, rel=1e-3)
+
+
+def test_spend_this_month_zero_when_empty(db: sqlite3.Connection) -> None:
+    from findajob.cost_rollups import spend_this_month
+
+    assert spend_this_month(db) == 0.0

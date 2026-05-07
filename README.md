@@ -101,10 +101,10 @@ Live status of every issue and milestone is on the **[project board](https://git
 
 | Component | Choice |
 |---|---|
-| Scoring | DeepSeek v3.2 via OpenRouter (through [aichat-ng](https://github.com/blob42/aichat-ng)) |
-| Resume + cover letter + outreach | Claude Opus / Sonnet 4.6 |
-| Company research | Perplexity Sonar Pro |
-| Embeddings (REPL RAG over your own writing) | Gemini Embedding |
+| Scoring | DeepSeek v3.2 via OpenRouter |
+| Resume + cover letter + outreach | Claude Opus / Sonnet 4.6 via OpenRouter |
+| Company research | Perplexity Sonar Pro via OpenRouter |
+| LLM transport | `findajob.llm.openrouter` — stdlib HTTP wrapper with prompt caching (Anthropic) and provider pinning |
 | Storage | SQLite |
 | Job sources | RapidAPI jobs-api14, Greenhouse JSON, Gmail IMAP/app-password (configurable; see [`docs/setup/gmail.md`](docs/setup/gmail.md)) |
 | Web UI | FastAPI + HTMX + Tailwind + Chart.js |
@@ -119,21 +119,20 @@ The pipeline ships as `ghcr.io/brockamer/findajob` pulled via Docker Compose.
 
 ### What you'll need
 
-Three API keys before you start. Sign-up walkthroughs + cost expectations are in [`docs/setup/api-keys.md`](docs/setup/api-keys.md):
+Two API keys before you start. Sign-up walkthroughs + cost expectations are in [`docs/setup/api-keys.md`](docs/setup/api-keys.md):
 
 | Provider | Required? | What you'll spend | What findajob uses it for |
 |---|---|---|---|
 | **OpenRouter** | yes | pay-as-you-go from $0; ~$0.50/day triage-only, $1.50–3.00 per fully-prepped job, ~$3-6 per in-app onboarding interview | All LLM calls (scoring, prep writing, in-app onboarding) |
 | **RapidAPI (jobs-api14)** | optional | BASIC plan: 150 req/month free, no credit card | LinkedIn + Indeed search ingestion |
-| **Google AI Studio (Gemini)** | optional | free tier; no billing setup needed | Embeddings for the optional REPL RAG index |
 
-Skipping the optional two means LinkedIn/Indeed search is inactive (Greenhouse/Ashby/Lever feeds and Gmail alerts still work) and the REPL RAG rebuild is inactive — the daily pipeline runs identically without them. The "What it costs to run" section near the bottom of this README breaks the OpenRouter spend down by component if you want a more granular budget. You collect all three keys on the onboarding page once your container is up.
+Skipping RapidAPI means LinkedIn/Indeed search is inactive — Greenhouse/Ashby/Lever feeds and Gmail alerts still work, so the daily pipeline runs identically without it. The "What it costs to run" section near the bottom of this README breaks the OpenRouter spend down by component if you want a more granular budget. You collect both keys on the onboarding page once your container is up.
 
 ### Deploy
 
 ```bash
 # On your Docker host
-sudo mkdir -p /opt/stacks/findajob-<you>/state/{data,config,candidate_context,companies,logs,aichat_ng}
+sudo mkdir -p /opt/stacks/findajob-<you>/state/{data,config,candidate_context,companies,logs}
 sudo chown -R $(id -u):$(id -g) /opt/stacks/findajob-<you>/
 cd /opt/stacks/findajob-<you>
 

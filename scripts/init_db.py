@@ -27,6 +27,14 @@ if "jobs" in _existing_tables:
         conn.execute("ALTER TABLE jobs ADD COLUMN speculative_briefing_folder TEXT")
         conn.commit()
 
+# v0.20.0 migration: cost numbers now come from response.usage.cost
+# (written natively by findajob.llm.openrouter). The legacy calibration
+# table is dropped on existing stacks; no-op on fresh init.
+if "cost_calibration" in _existing_tables:
+    conn.execute("DROP INDEX IF EXISTS idx_cost_calibration_polled_at")
+    conn.execute("DROP TABLE cost_calibration")
+    conn.commit()
+
 conn.executescript("""
 CREATE TABLE IF NOT EXISTS jobs (
     id TEXT PRIMARY KEY,
@@ -108,25 +116,7 @@ CREATE TABLE IF NOT EXISTS cost_log (
     logged_at TEXT DEFAULT (datetime('now'))
 );
 
-CREATE TABLE IF NOT EXISTS cost_calibration (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    polled_at TEXT NOT NULL DEFAULT (datetime('now')),
-    credits_total_usd REAL,
-    credits_used_usd REAL,
-    credits_remaining_usd REAL,
-    onboarding_total_usd REAL,
-    pipeline_actual_usd REAL,
-    heuristic_sum_usd REAL,
-    multiplier REAL,
-    multiplier_clamped INTEGER NOT NULL DEFAULT 0,
-    poll_status TEXT NOT NULL,
-    error_message TEXT
-);
-
 CREATE INDEX IF NOT EXISTS idx_cost_log_job_id ON cost_log(job_id);
-
-CREATE INDEX IF NOT EXISTS idx_cost_calibration_polled_at
-    ON cost_calibration(polled_at);
 
 CREATE TABLE IF NOT EXISTS feedback_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

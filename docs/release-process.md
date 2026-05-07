@@ -105,8 +105,6 @@ install procedure end-to-end, triggers `triage.py`, and asserts:
 1. `pipeline.jsonl` contains a `pipeline_complete` event with `scored > 0`
 2. `jobs` table has rows in stage `scored` or `manual_review`
 3. `cost_log` has rows (proves the #117 schema fold is working on fresh DBs)
-4. `/app/.config/aichat_ng/config.yaml` is present in the container (proves
-   the #118 entrypoint seed is working)
 
 Run locally on a docker-equipped host before proposing the tag. From the
 maintainer's dev laptop, the workflow is: build the image on `<deployment-host>` (or

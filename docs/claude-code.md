@@ -76,7 +76,7 @@ See `CLAUDE.local.md.example` for the template. Key sections:
 [Any abbreviations that LLMs commonly misinterpret]
 
 ## Platform
-[Binary paths and aichat-ng config location]
+[Binary paths and runtime layout]
 
 ## Systemd Schedule
 [Your actual timer names and timing]

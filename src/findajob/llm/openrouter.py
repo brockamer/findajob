@@ -99,8 +99,8 @@ def complete(
     Args:
         role: Name of the role file in ``config/roles/<role>.md``. Frontmatter
             ``model:`` (required), ``temperature:``, ``max_tokens:`` are read.
-            ``openrouter:`` prefix on ``model:`` is stripped (aichat-ng
-            historical convention).
+            An ``openrouter:`` prefix on ``model:`` is stripped before the
+            OpenRouter API call.
         prompt: Role-specific user-message tail. Comes AFTER ``cached_prefix``
             in the assembled user message when caching is on.
         cached_prefix: Stable shared content placed as a cache_control-marked
@@ -258,10 +258,11 @@ def complete(
 def _read_role_file(path: Path) -> tuple[dict, str]:
     """Return ``(frontmatter_dict, system_prompt_body)``.
 
-    Tiny ``key: value`` parser — no full YAML; matches the shape aichat-ng
-    accepts. Returns empty dict + empty body if the file is missing.
-    Limitation: only flat ``key: value`` lines; nested mappings or lists
-    aren't parsed (no role file currently uses them).
+    Tiny ``key: value`` parser — no full YAML; matches the role-file
+    frontmatter shape used across ``config/roles/``. Returns empty dict +
+    empty body if the file is missing. Limitation: only flat ``key: value``
+    lines; nested mappings or lists aren't parsed (no role file currently
+    uses them).
     """
     try:
         text = path.read_text(encoding="utf-8")

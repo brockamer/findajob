@@ -254,7 +254,7 @@ def folder_view(
     company = row["company"] if row else ""
     groups = _group_files(folder, title=title, company=company)
 
-    # #87 — per-operation cost breakdown (only if cost tables exist; fail open)
+    # Per-operation cost breakdown (only if cost_log exists; fail open)
     breakdown = []
     breakdown_total = None
     if row is not None:
@@ -263,7 +263,7 @@ def folder_view(
             if breakdown:
                 breakdown_total = sum(r.cost_usd for r in breakdown)
         except sqlite3.OperationalError:
-            # Test fixtures or pre-Task-1 stacks may lack cost_log/cost_calibration.
+            # Test fixtures may lack cost_log.
             breakdown = []
 
     templates = request.app.state.templates

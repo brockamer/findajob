@@ -107,7 +107,7 @@ trap cleanup EXIT
 
 echo "[setup] scratch dir: $SCRATCH  image: $IMAGE"
 
-mkdir -p "$SCRATCH/state"/{data,config,candidate_context,companies,logs,aichat_ng}
+mkdir -p "$SCRATCH/state"/{data,config,candidate_context,companies,logs}
 
 # ────────────────────────────────────────────────────────────────────────────
 # 4. Seed inputs into the bind mounts
@@ -157,7 +157,6 @@ services:
       - ./state/candidate_context:/app/candidate_context
       - ./state/companies:/app/companies
       - ./state/logs:/app/logs
-      - ./state/aichat_ng:/app/.config/aichat_ng
     ports:
       - "${TEST_MATERIALS_PORT:-18090}:8090"
 EOF
@@ -264,17 +263,6 @@ if [ -z "$COST_COUNT" ] || [ "$COST_COUNT" -lt 1 ]; then
     exit 1
 fi
 echo "  cost_log rows = $COST_COUNT"
-
-# ────────────────────────────────────────────────────────────────────────────
-# 13. Assert aichat-ng config.yaml present (confirms #118 seed)
-# ────────────────────────────────────────────────────────────────────────────
-
-echo "[assert] /app/.config/aichat_ng/config.yaml present (aichat seed)"
-if ! $EXEC test -f /app/.config/aichat_ng/config.yaml; then
-    echo "ERROR: /app/.config/aichat_ng/config.yaml missing — entrypoint seed did not run (#118)" >&2
-    exit 1
-fi
-echo "  aichat-ng config.yaml: OK"
 
 # ────────────────────────────────────────────────────────────────────────────
 # 14. Materials viewer smoke

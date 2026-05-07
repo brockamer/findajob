@@ -13,8 +13,7 @@ This guide covers a fresh install on a Debian-based Linux system. Tested on Pop!
 sudo apt update && sudo apt install -y \
   pandoc \
   curl \
-  git \
-  build-essential  # needed for Rust/aichat-ng build
+  git
 
 # Install uv — manages Python + the venv for findajob (#126).
 curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -33,32 +32,7 @@ Python 3.12 base — different concern, internal to the image.)
 
 ---
 
-## 2. Install aichat-ng (prebuilt from blob42/aichat-ng)
-
-The Docker image and this native install both use the same prebuilt musl binary
-from the `blob42/aichat-ng` fork. No Rust toolchain required.
-
-```bash
-AICHAT_NG_VERSION=v0.31.0
-AICHAT_NG_ARCH=x86_64-unknown-linux-musl
-AICHAT_NG_SHA256=8e1f5a9cf09ae651168f2a425de20b2f6e8702072d47a7052c6229fa366aa57b
-
-curl -fsSL -o /tmp/aichat-ng.tar.gz \
-    "https://github.com/blob42/aichat-ng/releases/download/${AICHAT_NG_VERSION}/aichat-ng-${AICHAT_NG_VERSION}-${AICHAT_NG_ARCH}.tar.gz"
-echo "${AICHAT_NG_SHA256}  /tmp/aichat-ng.tar.gz" | sha256sum -c -
-tar -xzf /tmp/aichat-ng.tar.gz -C /tmp
-sudo install -m 0755 /tmp/aichat-ng /usr/local/bin/aichat-ng
-rm -f /tmp/aichat-ng.tar.gz /tmp/aichat-ng
-/usr/local/bin/aichat-ng --version
-```
-
-For a different architecture (arm64, etc.) or newer upstream version, check
-[blob42/aichat-ng releases](https://github.com/blob42/aichat-ng/releases)
-and update `AICHAT_NG_VERSION`, `AICHAT_NG_ARCH`, and `AICHAT_NG_SHA256`.
-
----
-
-## 3. Clone the Repository
+## 2. Clone the Repository
 
 ```bash
 git clone https://github.com/yourname/findajob ~/findajob
@@ -67,7 +41,7 @@ cd ~/findajob
 
 ---
 
-## 4. Install Python Dependencies
+## 3. Install Python Dependencies
 
 `uv` reads `pyproject.toml` and installs the project + every transitive
 dependency into a project-local venv at `.venv/`:
@@ -90,7 +64,7 @@ the conventional way.
 
 ---
 
-## 5. Create Personal Config Files
+## 4. Create Personal Config Files
 
 ```bash
 cd ~/findajob
@@ -106,14 +80,13 @@ Edit each file. See [configure.md](configure.md) for what to put in each.
 
 ---
 
-## 6. Create Binary Path Config
+## 5. Create Binary Path Config
 
 Linux typically installs binaries in standard locations. Verify yours:
 
 ```bash
 which python3    # likely /usr/bin/python3
 which pandoc     # likely /usr/bin/pandoc
-which aichat-ng  # likely /usr/local/bin/aichat-ng (installed in step 2)
 ```
 
 If all paths match the defaults in `src/findajob/paths.py`, you don't need `config/paths.env`.
@@ -126,35 +99,7 @@ cp config/paths.env.example config/paths.env
 
 ---
 
-## 7. Configure aichat-ng
-
-Create the config directory:
-```bash
-mkdir -p ~/.config/aichat_ng/roles
-```
-
-Create `~/.config/aichat_ng/config.yaml`:
-```yaml
-# See docs/setup/configure.md for full config template
-model: openrouter:google/gemini-3-flash-preview
-
-clients:
-  - type: openrouter
-    api_key: ${OPENROUTER_API_KEY}
-
-roles_dir: ~/findajob/config/roles
-```
-
-**Important:** API keys should come from environment variables (the `${VAR}` syntax), NOT be pasted directly into config.yaml. Source your `.env` before running aichat-ng or add to your shell profile:
-
-```bash
-# Add to ~/.bashrc or ~/.zshrc
-set -a; source ~/findajob/data/.env; set +a
-```
-
----
-
-## 8. Set Up the Database
+## 6. Set Up the Database
 
 ```bash
 cd ~/findajob
@@ -241,11 +186,11 @@ Prep folders are served locally via a FastAPI web viewer running on `localhost:8
 
 ---
 
-## 11. Verify the Install
+## Verify the Install
 
 ```bash
-# Test aichat-ng can reach the API
-echo "Hello" | /usr/local/bin/aichat-ng -m gemini:gemini-3-flash-preview -S "Say hi back"
+# Test the OpenRouter wrapper can reach the API
+uv run python -c "from findajob.llm.openrouter import complete; print(complete(role='job_scorer', prompt='hi', max_tokens=8).text)"
 
 # Test DB
 sqlite3 ~/findajob/data/pipeline.db "SELECT count(*) FROM jobs;"
@@ -257,9 +202,6 @@ uv run python scripts/triage.py
 ---
 
 ## Common Issues
-
-**`aichat-ng: command not found`**
-Verify it's at `/usr/local/bin/aichat-ng`. If installed elsewhere, update `config/paths.env`.
 
 **systemd timer not running**
 Check: `systemctl --user status findajob-triage.timer`

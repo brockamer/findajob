@@ -180,17 +180,13 @@ def test_applied_renders_cost_cell_for_jobs_with_cost_log(client: TestClient) ->
         "INSERT INTO cost_log (job_id, operation, model, cost_usd) "
         "VALUES ('id-cost', 'resume_tailor', 'test-model', 0.25)"
     )
-    # Calibration multiplier = 2.0 → $0.50 × 2.0 = $1.00
-    conn.execute(
-        "INSERT INTO cost_calibration (polled_at, multiplier, multiplier_clamped, poll_status) "
-        "VALUES (datetime('now'), 2.0, 0, 'ok')"
-    )
+    # Native cost: SUM(cost_usd) = $0.50 — no calibration multiplier applied.
     conn.commit()
     conn.close()
 
     r = client.get("/board/applied")
     assert r.status_code == 200
-    assert "$1.00" in r.text
+    assert "$0.50" in r.text
 
 
 def test_applied_renders_dash_for_jobs_without_cost_log(client: TestClient) -> None:

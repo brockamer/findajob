@@ -1,8 +1,7 @@
 """Tests for findajob.discoverer.runner.
 
-After the Phase 2 port (#471), runner.run() calls openrouter.complete() directly
-rather than spawning an aichat-ng subprocess.  All mocks target the wrapper or
-the HTTP boundary — no subprocess.run patches remain.
+runner.run() calls openrouter.complete() directly. All mocks target the wrapper
+or the HTTP boundary.
 """
 
 from __future__ import annotations

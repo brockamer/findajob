@@ -10,10 +10,6 @@ Lifecycle:
 
 On any failure: status='failed' + error_message, partial state
 (briefing_md if briefing call succeeded) preserved for retry.
-
-Port note (#471 Phase 2): previously spawned aichat-ng as a subprocess
-via _call_aichat(); now calls findajob.llm.openrouter.complete() directly
-via _invoke_role(). Cost comes from result.cost_usd (API-authoritative).
 """
 
 from __future__ import annotations

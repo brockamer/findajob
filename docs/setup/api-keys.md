@@ -13,11 +13,10 @@ credit card to get started.
 |---|---|---|---|
 | **OpenRouter** | All LLM calls (scoring, briefings, resume tailoring, cover letters, outreach drafts, in-app interview) | Pay-as-you-go from $0; no monthly minimum. ~$0.50/day triage-only; $1.50–3.00 per fully-prepped job (Claude Opus dominates that bill). | **Yes** — pipeline cannot score or generate materials without it |
 | **RapidAPI feed** (jobs-api14, JSearch, or jobs-api14 Indeed) | LinkedIn + Indeed job search ingestion | BASIC plan: 150–250 requests/month free | Optional — Gmail LinkedIn-alert ingestion still works without it |
-| **Google AI Studio (Gemini)** | Embeddings for the optional RAG index over your candidate context (REPL-only feature) | Free tier on Gemini embeddings; no billing setup needed | Optional — only used by the REPL workflow; pipeline is fully functional without it |
 
-You can leave RapidAPI and Google blank during onboarding and add them
-later by re-running onboarding with `?mode=rerun`. OpenRouter is the only
-hard requirement.
+You can leave RapidAPI blank during onboarding and add it later by
+re-running onboarding with `?mode=rerun`. OpenRouter is the only hard
+requirement.
 
 ---
 
@@ -176,43 +175,6 @@ respective RapidAPI listing pages.
 
 ---
 
-## Google AI Studio (Gemini) — optional
-
-Google AI Studio gives free Gemini API access. findajob uses Gemini's
-text-embedding model to build a local search index over your candidate
-context (master resume + voice samples + optional company research).
-This index is consumed only by the REPL workflow when you want to
-chat with your own materials interactively — the daily pipeline does not
-use it.
-
-If you skip this key, findajob's daily pipeline runs identically. You
-just won't be able to use the REPL `aichat-ng -r` workflow against your
-indexed materials.
-
-### Steps
-
-1. Go to <https://aistudio.google.com>.
-2. Sign in with any standard Gmail account. **No Google Cloud account is
-   required, and no billing setup is required for the free tier.**
-3. Accept the Terms of Service if prompted. Google AI Studio
-   automatically provisions a default project for new users.
-4. Click **Get API key** in the left sidebar (or visit
-   <https://aistudio.google.com/app/apikey>).
-5. Click **Create API key**. Choose the default project. Copy the key
-   that's generated.
-6. Paste it into findajob's onboarding page in the **Google API key**
-   field.
-
-### Free-tier rate limits
-
-As of April 2026, Google's Gemini free tier provides:
-
-- 5–15 requests per minute (per model)
-- 100–1,000 requests per day (per model)
-- A universal cap of 250,000 tokens per minute across all models
-
----
-
 ## Replacing a key later
 
 To rotate any key:
@@ -239,5 +201,3 @@ existing stack."
 - RapidAPI keys overview — <https://docs.rapidapi.com/docs/keys-and-key-rotation>
 - jobs-api14 listing — <https://rapidapi.com/Pat92/api/jobs-api14>
 - JSearch listing — <https://rapidapi.com/letscrape-6bRBa3QguO5/api/jsearch>
-- Google AI Studio API keys — <https://ai.google.dev/gemini-api/docs/api-key>
-- Gemini API billing — <https://ai.google.dev/gemini-api/docs/billing>

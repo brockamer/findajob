@@ -51,14 +51,11 @@ following layout reflecting the bind-mount structure of a running stack:
         # plus per-prep folders Company_AbbrevTitle_YYYY-MM-DD_HHMMSS/
       logs/
         pipeline.jsonl               # rolling event log
-      aichat_ng/
-        config.yaml                  # LLM client config
 
 A correct backup tarball **excludes** the following (transient or
 reproducible — backing them up wastes space without adding restore value):
 
 - `companies/.stale/` — moved-aside duplicates
-- `aichat_ng/rags/` — re-generated weekly from `candidate_context/`
 - `data/pipeline.db-shm` and `data/pipeline.db-wal` — write-ahead log sidecars;
   irrelevant after a clean SQLite `.backup` dump
 - `*.bak` files

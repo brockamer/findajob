@@ -9,9 +9,9 @@ Personal identifiers (name, targets, API topic, form URLs) live in `CLAUDE.local
 
 Before writing any command, path, binary call, or file location:
 
-- [ ] All binary paths come from `findajob.paths` — `AICHAT`, `PANDOC`, `BASE`. Never hardcode, never call bare `aichat`.
+- [ ] All binary paths come from `findajob.paths` — `PANDOC`, `BASE`. Never hardcode.
 - [ ] For subprocess calls to other pipeline scripts, use `sys.executable` (never a hardcoded Python path).
-- [ ] Anthropic client in aichat-ng config: `type: claude` — never `type: anthropic`; prefix `claude:` not `anthropic:`.
+- [ ] LLM calls go through `findajob.llm.openrouter.complete()`. Never re-introduce a subprocess transport.
 - [ ] RAG never passed to scorer, cover letter writer, or outreach drafter.
 
 **If uncertain about any value: say so. Do not guess.**
@@ -92,7 +92,7 @@ file. If you're refactoring an old hardcoded section, add a note to `docs/GENERA
 | `candidate_led_briefing` | `openrouter:perplexity/sonar-deep-research` — async (1–5 min); drives the speculative briefing pass via `scripts/run_speculative_research.py`. |
 | `speculative_roles_synth` | `openrouter:anthropic/claude-sonnet-4.6`, `max_tokens: 4096` — synthesizes 1–5 candidate-tailored role cards from the briefing. |
 | Job ingestion | Pluggable via `JobSourceAdapter` (`src/findajob/fetchers/adapters/`); jobs-api14 + JSearch ship in v0.14; per-stack active list in `config/active_sources.txt`. Greenhouse / Ashby / Lever / Gmail still function-style — migration tracked in #410. v0.15 adds `JobsApi14IndeedAdapter` (Indeed via jobs-api14 with sortType=date + post-filter, restoring pre-#408 coverage) and consolidates RapidAPI credentials to a shared `RAPIDAPI_KEY` env var (legacy `JOBS_API14_KEY` / `JSEARCH_API_KEY` work as fallbacks) (#414). |
-| Cost calibration | `scripts/poll_openrouter_credits.py` runs every 5 min via supercronic; reads `OPENROUTER_API_KEY`, GETs `/api/v1/credits`, writes a `cost_calibration` row with derived multiplier = `(credits_used - onboarding_total) / heuristic_sum`, clamped to `[0.5, 3.0]`. Read by `findajob.cost_rollups` helpers (`current_calibration`, `per_job_cost`, `per_job_breakdown`, `weekly_spend`, `runway_weeks`, `projected_monthly`) which back the nav credits chip, dashboard burn-rate widget, Applied cost cell, Materials breakdown, and notify-stats projection. Onboarding subtraction is a #463 workaround pending cost_log unification (#87). |
+| Cost tracking | Every LLM call writes `cost_log.cost_usd` from `response.usage.cost` (OpenRouter authoritative; no heuristic, no calibration). `findajob.cost_rollups` helpers (`per_job_cost`, `per_job_breakdown`, `weekly_spend`, `projected_monthly`, `spend_this_month`) sum directly from `cost_log` to back the nav spend chip, dashboard burn-rate widget, Applied cost cell, Materials breakdown, and notify-stats projection. |
 | Package manager | `uv sync` for dev deps; `uv run` prefix for pytest/ruff/mypy/uvicorn |
 | Path resolution | `src/findajob/paths.py` — reads `config/paths.env`; BASE derived from `__file__` |
 | Roles dir | `config/roles/` |
@@ -126,14 +126,13 @@ When the pipeline runs inside the `ghcr.io/brockamer/findajob` image, paths shif
 | `FINDAJOB_OPERATOR_HANDLE` env (optional) | n/a | Operator's stack handle (e.g. matches the trailing dir component of `/opt/stacks/findajob-{handle}`); when set, that row floats to the top of the `/admin/stacks/` table. Unset = pure alphabetical (#333). |
 | Onboarding sentinel | `<repo>/data/.onboarding-complete` | `/app/data/.onboarding-complete` (bind-mount from `./state/data/`) |
 | Onboarding backups | `<repo>/.backups/{UTC-stamp}/` | `/app/.backups/` (bind-mount from `./state/.backups/`) |
-| `aichat-ng` | `/usr/local/bin/aichat-ng` | `/usr/local/bin/aichat-ng` (blob42/aichat-ng prebuilt) |
-| aichat-ng config dir | `~/.config/aichat_ng/` | `/app/.config/aichat_ng/` (bind-mount from `./state/aichat_ng/`) |
 | Scheduler | systemd user services | supercronic inside the container |
 | Web viewer | `src/findajob/web/` (package) | uvicorn co-process on container port 8090 (mapped to `FINDAJOB_MATERIALS_PORT`) |
 
 **When authoring new scripts or tests:**
 - Always use `findajob.paths.BASE` — never hardcode `/home/...` or `/app/`.
-- Binary subprocess calls go through `AICHAT`/`PANDOC` from `findajob.paths`.
+- Binary subprocess calls go through `PANDOC` from `findajob.paths`.
+- LLM calls go through `findajob.llm.openrouter.complete()`.
 - Tests must not depend on absolute paths — use tmpdirs or `BASE`-relative paths.
 
 ---
@@ -156,8 +155,6 @@ Audit anchor — classifies persisted state by ownership and recoverability. Whe
 | `companies/` (active + `_applied/` + `_waitlisted/` + `_rejected/` + `.stale/`) | Pipeline-generated | Selective (skip `.stale/`) | **Partially** — re-runnable per-job, but stale JD URLs no longer reachable |
 | `logs/pipeline.jsonl` | Pipeline-generated | No (observability, not state) | **No** — historical observability lost if dropped |
 | `logs/{form-ingest,jobsync,poller,triage,notify,ci-check,rescore_backfill}.log` | Legacy / pipeline-generated | No | **Yes** — mostly stale; safe to drop |
-| `aichat_ng/config.yaml` | Operator-curated mirror of `data/.env` | No (duplicates `data/.env`) | **Yes** — `data/.env` is source of truth |
-| `aichat_ng/models-override.yaml` | Repo-shipped + operator overrides | No | **Yes** — repo-shipped baseline |
 
 The data layer is the only thing `docker compose pull` + a fresh interview can't regenerate.
 
@@ -234,7 +231,7 @@ Library code lives in `src/findajob/` (installed editable into the project venv 
 
 ### RAG Policy
 
-RAG was retired in v0.19.0 (#267, #455). The pipeline never consumed embeddings in production code; operator REPL queries are now an off-pipeline opt-in via a personal aichat-ng install outside the stack.
+RAG was retired in v0.19.0 (#267, #455). The pipeline never consumed embeddings in production code; operator REPL queries are off-pipeline.
 
 ### Source Adapters are Pluggable
 Every RapidAPI-flavored job source implements `JobSourceAdapter`
@@ -253,10 +250,10 @@ the same contract.
 Stage 1: title regex → score 1, no LLM. Stage 2: in-domain + no JD → score 5/6, no LLM.
 Never rely on LLM prompt instructions alone for boolean classification tasks.
 
-### Cost Displays Are Calibrated
-Every cost number rendered in the UI (nav credits chip, dashboard burn-rate widget, Applied cost cell, Materials breakdown, notify-stats projection) reads through `findajob.cost_rollups` helpers, which apply the latest `cost_calibration.multiplier`. Don't add new cost surfaces that bypass these helpers — the heuristic in `cost_log.cost_usd` is empirically biased ~25% low, and direct sums will mislead operators. If a new surface needs cost data, add a helper to `cost_rollups.py`. The 5-min `poll_openrouter_credits` cron is the only writer to `cost_calibration`; nothing else writes to that table.
+### Cost Tracking Is Native
+Every LLM call goes through `findajob.llm.openrouter.complete()`, which writes `cost_log.cost_usd` from OpenRouter's `response.usage.cost` (authoritative). Every cost number rendered in the UI (nav spend chip, dashboard burn-rate widget, Applied cost cell, Materials breakdown, notify-stats projection) sums directly from `cost_log` via `findajob.cost_rollups` helpers — no heuristic, no calibration, no multiplier. If a new surface needs cost data, add a helper to `cost_rollups.py` so the math stays in one place.
 
-**Exception (#470 forward):** `cost_log` rows written by `findajob.llm.openrouter` callers carry `response.usage.cost` directly via `cost_usd_override` — no heuristic, no calibration multiplier needed. As of Phase 2 (#471), all production LLM call sites bypass the heuristic via `cost_usd_override`. The calibration multiplier still governs legacy code paths (e.g. any pre-Phase-1 cost_log row writes that didn't set the override trio) until Phase 3 retires it (#472).
+The earlier calibration stack (`cost_calibration` table, `poll_openrouter_credits` cron, multiplier-application across the rollup helpers) was retired in v0.20.0 (#472) once Phase 1+2 of the OpenRouter native migration (#469 epic) had ported every production call site to the wrapper.
 
 ### Synthetic Jobs Convention (Speculative Cold-Outreach)
 
@@ -425,8 +422,8 @@ When in doubt — does this change affect what users see when they pull `:latest
 - Read file contents before proposing changes. Never assume files match prior discussion.
 - Diagnose root cause before fixing. No shotgun solutions.
 - Use paths from `findajob.paths`. Platform-aware. No placeholders in commands.
-- Never confuse `aichat` with `aichat-ng` — different binaries.
 - Preserve the scheduler-driven daily run in all changes.
 - Working features first, polish later.
 
 @CLAUDE.local.md
+
