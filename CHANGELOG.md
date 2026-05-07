@@ -12,6 +12,20 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 _(no entries yet)_
 
+## [0.20.3] — 2026-05-07
+
+Hotfix on top of v0.20.2 for the #490 settings/reject-reasons editor. Reported by alice within 30 min of the v0.20.2 cohort deploy: clicking "Add reason" did nothing, and the page intro paragraph was developer jargon. Both fixed.
+
+### Fixed
+- **#490 Add Reason button broken on `/settings/reject-reasons/`.** Root cause: `{{ rows | tojson }}` was inlined inside `x-data="{ rows: [...], addRow: ... }"`. The JSON contains unescaped `"` characters which close the double-quoted x-data HTML attribute at the first `"text"`. The browser never received Alpine's `addRow` / `removeRow` function definitions, so the `@click` handler was undefined and clicks no-op'd. Standard Jinja+Alpine pitfall. Fix: move the JSON seed into a `<script id="initial-rows" type="application/json">` block and have `x-data` read it via `JSON.parse(document.getElementById('initial-rows').textContent)`. Pinned by new `test_initial_rows_in_script_block_not_inline_x_data`. The TestClient suite cannot exercise Alpine runtime behavior — this regression test asserts on the rendered HTML structure (script block present, `x-data` contains no inline `[{`) so the broken-form recurrence is caught at PR time.
+
+### Changed
+- **#490 `/settings/reject-reasons/` page copy rewritten in plain language.** Pre-v0.20.3 intro paragraph used developer jargon ("taxonomy", "scorer", "prefilter candidates", "no recompose required") that meant nothing to non-technical users. Replaced with concrete, action-oriented language: "When you reject a job on your board, you pick a reason from a list. This is that list — add, rename, or remove reasons so the choices match how *you* think about why a job isn't a fit." Title-signal explanation similarly rewritten.
+
+### Migration required
+
+None. Template-only fix on a per-stack-gitignored config editor; no schema, env, compose, or data-shape changes.
+
 ## [0.20.2] — 2026-05-07
 
 Patch release shipping the `/settings/reject-reasons/` editor (#490) — beta tester alice's request: tune the reject-reason taxonomy without re-running onboarding. First occupant of the new `/settings/` URL namespace (domain-aware config editors, distinguished from `/config/`'s raw text editor). Bundled along the way: a latent caching bug in `config_loader.load_reject_reasons` + import-time capture in `web/filters/registry.py` that would have made the editor's "no recompose required" promise false. No migration required — `config/reject_reasons.yaml` is already per-stack/gitignored and existing stacks pick up the new editor on `docker compose pull && up -d`.
@@ -866,7 +880,8 @@ from GHCR and deployed via Docker Compose on a shared Docker host.
 - Documentation cleanup — removing `sigoden/aichat` references in favor of
   `blob42/aichat-ng` — is tracked in #70
 
-[Unreleased]: https://github.com/brockamer/findajob/compare/v0.20.2...HEAD
+[Unreleased]: https://github.com/brockamer/findajob/compare/v0.20.3...HEAD
+[0.20.3]: https://github.com/brockamer/findajob/releases/tag/v0.20.3
 [0.20.2]: https://github.com/brockamer/findajob/releases/tag/v0.20.2
 [0.20.1]: https://github.com/brockamer/findajob/releases/tag/v0.20.1
 [0.20.0]: https://github.com/brockamer/findajob/releases/tag/v0.20.0
