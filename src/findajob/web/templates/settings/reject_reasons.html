@@ -1,10 +1,89 @@
 {% extends "base.html" %}
 {% block title %}Reject reasons — Settings{% endblock %}
 {% block content %}
-<h1>Reject reasons</h1>
-{% for row in rows %}
-<div data-reason="{{ row.text }}" data-title-signal="{{ row.title_signal }}">
-  {{ row.text }}{% if row.title_signal %} (title-signal){% endif %}
+<div class="max-w-2xl">
+  <h1 class="text-2xl font-semibold mb-1">Reject reasons</h1>
+  <p class="text-sm text-slate-600 mb-6">
+    Edit the reject-reason taxonomy used on the board's reject button.
+    Changes apply on the next page load — no restart required.
+    Check <strong>title-signal</strong> for reasons that mean the scorer misread
+    the title (used by feedback analysis to find prefilter candidates).
+  </p>
+
+  <div
+    x-data="{
+      rows: {{ rows | tojson }}.map(function(r) {
+        return { text: r.text, title_signal: r.title_signal };
+      }),
+      addRow: function() {
+        this.rows.push({ text: '', title_signal: false });
+      },
+      removeRow: function(i) {
+        this.rows.splice(i, 1);
+      }
+    }"
+  >
+    <form
+      hx-post="/settings/reject-reasons/"
+      hx-target="#save-result"
+      hx-swap="innerHTML"
+      class="space-y-2"
+    >
+      {# Hidden field so server knows how many rows to read #}
+      <input type="hidden" name="row_count" :value="rows.length" />
+
+      {# Editable rows #}
+      <template x-for="(row, i) in rows" :key="i">
+        <div class="flex items-center gap-3">
+          <input
+            type="text"
+            :name="'reason_' + i"
+            x-model="row.text"
+            placeholder="Reason label"
+            class="flex-1 rounded border-slate-300 shadow-sm focus:border-slate-500 focus:ring-slate-500 text-sm"
+          />
+          <label class="flex items-center gap-1.5 text-sm text-slate-700 whitespace-nowrap">
+            <input
+              type="checkbox"
+              :name="'title_signal_' + i"
+              x-model="row.title_signal"
+              value="on"
+              class="rounded border-slate-400 text-slate-700 focus:ring-slate-500"
+            />
+            title-signal
+          </label>
+          <button
+            type="button"
+            @click="removeRow(i)"
+            class="text-slate-400 hover:text-rose-600 text-sm font-medium px-2 py-1 rounded hover:bg-rose-50"
+            title="Remove this reason"
+          >
+            &times;
+          </button>
+        </div>
+      </template>
+
+      <div class="flex items-center gap-3 pt-2">
+        <button
+          type="button"
+          @click="addRow()"
+          class="text-sm text-slate-600 hover:text-slate-900 border border-slate-300 rounded px-3 py-1.5 hover:bg-slate-100"
+        >
+          + Add reason
+        </button>
+
+        <button
+          type="submit"
+          class="bg-slate-800 text-white text-sm font-medium rounded px-4 py-1.5 hover:bg-slate-700"
+        >
+          Save
+        </button>
+
+        <span class="text-xs text-slate-500 htmx-indicator">Saving…</span>
+      </div>
+    </form>
+
+    <div id="save-result" class="mt-4"></div>
+  </div>
 </div>
-{% endfor %}
 {% endblock %}

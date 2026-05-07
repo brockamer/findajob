@@ -71,9 +71,7 @@ def test_get_renders_current_reasons(client: TestClient) -> None:
     assert "Geography" in resp.text
 
 
-def test_post_happy_path_writes_yaml_and_returns_partial(
-    client: TestClient, yaml_path: Path
-) -> None:
+def test_post_happy_path_writes_yaml_and_returns_partial(client: TestClient, yaml_path: Path) -> None:
     resp = client.post(
         "/settings/reject-reasons/",
         data={
@@ -120,9 +118,7 @@ def test_post_validation_error_does_not_write(client: TestClient, yaml_path: Pat
     assert yaml_path.read_text() == original  # File unchanged
 
 
-def test_post_empty_after_strip_returns_validation_error(
-    client: TestClient, yaml_path: Path
-) -> None:
+def test_post_empty_after_strip_returns_validation_error(client: TestClient, yaml_path: Path) -> None:
     original = yaml_path.read_text()
     resp = client.post(
         "/settings/reject-reasons/",
