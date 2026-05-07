@@ -1,0 +1,9 @@
+{% if outcome == "success" %}
+  <div class="px-3 py-2 rounded bg-emerald-50 border border-emerald-200 text-emerald-900">
+    Saved. Reload the board to see the updated dropdown.
+  </div>
+{% else %}
+  <div class="px-3 py-2 rounded bg-rose-50 border border-rose-200 text-rose-900">
+    <strong>Could not save:</strong> {{ message }}
+  </div>
+{% endif %}

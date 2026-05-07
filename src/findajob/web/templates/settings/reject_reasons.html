@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Reject reasons — Settings{% endblock %}
+{% block content %}
+<h1>Reject reasons</h1>
+{% for row in rows %}
+<div data-reason="{{ row.text }}" data-title-signal="{{ row.title_signal }}">
+  {{ row.text }}{% if row.title_signal %} (title-signal){% endif %}
+</div>
+{% endfor %}
+{% endblock %}
