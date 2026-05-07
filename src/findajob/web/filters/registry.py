@@ -39,9 +39,15 @@ _STAGE_VALUES = (
     "withdrew",
 )
 _REMOTE_VALUES = ("Remote", "Hybrid", "On-site", "Unknown")
-# Filter chip values come from the same source as the dropdown — fixes the
-# silent-filtering drift bug surfaced by the #301 audit (§2.1).
-_REJECT_REASON_VALUES, _ = load_reject_reasons()
+
+
+# Reject-reason chip values resolve per-request (lazy callable) so
+# /settings/reject-reasons/ saves are reflected on the next page load
+# without a container restart (#490). Same source as the board's
+# reject-reason dropdown — fixes the silent-filtering drift bug from
+# #301 §2.1.
+def _reject_reason_values() -> tuple[str, ...]:
+    return load_reject_reasons()[0]
 
 # ─── Dashboard ────────────────────────────────────────────────────────────────
 DASHBOARD_COLUMNS: tuple[ColumnSpec, ...] = (
@@ -227,7 +233,7 @@ REJECTED_COLUMNS: tuple[ColumnSpec, ...] = (
         name="reject_reason",
         label="Reason",
         kind=Kind.ENUM,
-        enum_values=_REJECT_REASON_VALUES,
+        enum_values=_reject_reason_values,
         db_expr="j.reject_reason",
     ),
     ColumnSpec(
