@@ -10,6 +10,12 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+_(no entries yet)_
+
+## [0.20.1] — 2026-05-07
+
+Patch release on top of v0.20.0 with two web-layer hotfixes: dashboard 5xx under concurrent load (#486) — a SQLite cross-thread bug surfaced post-OpenRouter-migration deploy by HTMX polling on the operator's stack — and a new post-deploy auth-gate verifier + hard rule (#487), triggered by an internet-exposed-without-auth incident on a sibling stack the same day. Also the previously-staged #485 (speculative ingest UX bundle) and #462 (`company_discoverer` cost-threshold ntfy verification) ride along. No migration required; rolls automatically to all stacks pinned to moving aliases.
+
 ### Fixed
 - **#486 SQLite cross-thread error on dashboard under concurrent load.** Pre-fix, `/board/dashboard` returned HTTP 500 ~85% of the time on the operator's stack running v0.20.0 under any concurrent request load (HTMX polling, multiple browser tabs). Reproduced from inside the container with valid auth: sequential 10/10 → 200; concurrent 17/20 → 500, 3/20 → 200. Root cause: `sqlite3.ProgrammingError: SQLite objects created in a thread can only be used in that same thread.` at `src/findajob/web/app.py:110`. Mechanism: `findajob.web.auth.BasicAuthMiddleware` is a `BaseHTTPMiddleware` subclass; Starlette wraps the inner app in a separate anyio task, which can dispatch `Depends(get_db)` resolution and the route handler to different threadpool workers. The connection was created in thread A and used in thread B, tripping SQLite's default thread-check. Sequential bursts hid the bug because anyio reused a single worker. Fix: pass `check_same_thread=False` to the per-request `sqlite3.connect()` (per-request connection in serialized SQLite mode is safe to disable the thread guard). Regression test reconstructs the cross-thread scenario directly without TestClient (which bridges every call through a single anyio portal pinned to one threadpool worker — masking the bug). Pre-fix the test fails with the production error string; post-fix it passes.
 - **#485 Speculative ingest UX bundle.** Three small but compounding bugs made the speculative-ingest path feel broken on `:v0.20`:
@@ -845,7 +851,9 @@ from GHCR and deployed via Docker Compose on a shared Docker host.
 - Documentation cleanup — removing `sigoden/aichat` references in favor of
   `blob42/aichat-ng` — is tracked in #70
 
-[Unreleased]: https://github.com/brockamer/findajob/compare/v0.19.0...HEAD
+[Unreleased]: https://github.com/brockamer/findajob/compare/v0.20.1...HEAD
+[0.20.1]: https://github.com/brockamer/findajob/releases/tag/v0.20.1
+[0.20.0]: https://github.com/brockamer/findajob/releases/tag/v0.20.0
 [0.19.0]: https://github.com/brockamer/findajob/releases/tag/v0.19.0
 [0.18.0]: https://github.com/brockamer/findajob/releases/tag/v0.18.0
 [0.17.0]: https://github.com/brockamer/findajob/releases/tag/v0.17.0
