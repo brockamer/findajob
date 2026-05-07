@@ -25,6 +25,7 @@ from pathlib import Path
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from findajob.cost_tracking import log_call, role_model
 from findajob.onboarding import OnboardingSmokeCheckFailed, inject
 from findajob.onboarding.interview_runner import InterviewRunnerError, run_turn
 from findajob.onboarding.parser import ALLOWED_FILENAMES, parse_emission
@@ -41,6 +42,8 @@ from findajob.onboarding.session_store import (
 )
 from findajob.utils import log_event
 from findajob.web.markdown import render_chat_assistant_html
+
+_INTERVIEWER_MODEL = role_model("onboarding_interviewer")
 
 router = APIRouter()
 
@@ -273,6 +276,29 @@ def start_interview(request: Request) -> HTMLResponse | RedirectResponse:
             )
 
         add_turn_cost(conn, session_id, usage)
+        # Write cost_log row — subsumes #463 for onboarding turns.
+        try:
+            log_call(
+                conn,
+                job_id=None,
+                operation="onboarding_interviewer",
+                model=_INTERVIEWER_MODEL,
+                input_text=_KICKOFF_USER_MESSAGE,
+                output_text=assistant_text,
+                latency_ms=None,
+                success=True,
+                cost_usd_override=float(usage.get("cost") or 0.0),
+                input_tokens_override=int(usage.get("prompt_tokens") or 0),
+                output_tokens_override=int(usage.get("completion_tokens") or 0),
+            )
+            conn.commit()
+        except Exception as e:  # noqa: BLE001
+            log_event(
+                "cost_log_failed",
+                operation="onboarding_interviewer",
+                route="start",
+                error=f"{type(e).__name__}: {e}",
+            )
         append_turn(conn, session_id, "user", _KICKOFF_USER_MESSAGE)
         append_turn(conn, session_id, "assistant", assistant_text)
         captured = _captured_from_history(
@@ -323,6 +349,29 @@ def post_turn(
             )
 
         add_turn_cost(conn, session_id, usage)
+        # Write cost_log row — subsumes #463 for onboarding turns.
+        try:
+            log_call(
+                conn,
+                job_id=None,
+                operation="onboarding_interviewer",
+                model=_INTERVIEWER_MODEL,
+                input_text=message,
+                output_text=assistant_text,
+                latency_ms=None,
+                success=True,
+                cost_usd_override=float(usage.get("cost") or 0.0),
+                input_tokens_override=int(usage.get("prompt_tokens") or 0),
+                output_tokens_override=int(usage.get("completion_tokens") or 0),
+            )
+            conn.commit()
+        except Exception as e:  # noqa: BLE001
+            log_event(
+                "cost_log_failed",
+                operation="onboarding_interviewer",
+                route="turn",
+                error=f"{type(e).__name__}: {e}",
+            )
         append_turn(conn, session_id, "user", message)
         append_turn(conn, session_id, "assistant", assistant_text)
 

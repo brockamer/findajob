@@ -62,6 +62,19 @@ CREATE TABLE onboarding_sessions (
     completed_at TEXT,
     error_state TEXT
 );
+CREATE TABLE cost_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id TEXT,
+    operation TEXT NOT NULL,
+    model TEXT NOT NULL,
+    latency_ms INTEGER,
+    success INTEGER DEFAULT 1,
+    error_message TEXT,
+    input_tokens INTEGER,
+    output_tokens INTEGER,
+    cost_usd REAL,
+    logged_at TEXT DEFAULT (datetime('now'))
+);
 """
 
 _USER_KEY = "sk-or-v1-user-test"
@@ -281,9 +294,14 @@ def test_full_interview_flow_writes_all_files_and_sentinel(
     conn = sqlite3.connect(base_root / "data" / "pipeline.db")
     try:
         row = conn.execute("SELECT completed_at FROM onboarding_sessions WHERE id = ?", (sid,)).fetchone()
+        # Three turns (/start + /turn + /turn) → three cost_log rows (#463).
+        cost_rows = conn.execute("SELECT COUNT(*) FROM cost_log WHERE operation = 'onboarding_interviewer'").fetchone()[
+            0
+        ]
     finally:
         conn.close()
     assert row[0] is not None, "session was not marked complete after finalize"
+    assert cost_rows == 3, f"expected 3 onboarding_interviewer cost_log rows, got {cost_rows}"
 
 
 def test_full_interview_flow_skips_finalize_when_blocks_missing(
