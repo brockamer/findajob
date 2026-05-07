@@ -450,11 +450,83 @@ class TestLoadRejectReasons:
         with pytest.raises(ConfigError, match="reasons entry is not a string"):
             config_loader.load_reject_reasons()
 
-    def test_caches_result(self, monkeypatch, tmp_path):
+    def test_no_cache_picks_up_file_changes(self, monkeypatch, tmp_path):
+        """#490: cache removed so /settings/reject-reasons/ saves take
+        effect on the next request without a process restart."""
         f = tmp_path / "reject_reasons.yaml"
-        f.write_text('reasons:\n  - "x"\n')
+        f.write_text("reasons:\n  - One\n  - Two\n")
         monkeypatch.setattr(config_loader, "_REJECT_REASONS_PATH", f)
-        config_loader._reset_cache()
-        r1 = config_loader.load_reject_reasons()
-        r2 = config_loader.load_reject_reasons()
-        assert r1 is r2  # cache hit
+
+        reasons1, _ = config_loader.load_reject_reasons()
+        assert reasons1 == ("One", "Two")
+
+        f.write_text("reasons:\n  - Three\n  - Four\n")
+        reasons2, _ = config_loader.load_reject_reasons()
+        assert reasons2 == ("Three", "Four")  # No _reset_cache() call needed
+
+
+class TestSaveRejectReasons:
+    """#490: writer for `config/reject_reasons.yaml`."""
+
+    def test_atomic_roundtrip(self, monkeypatch, tmp_path):
+        f = tmp_path / "reject_reasons.yaml"
+        monkeypatch.setattr(config_loader, "_REJECT_REASONS_PATH", f)
+
+        config_loader.save_reject_reasons(("Alpha", "Beta", "Gamma"), frozenset({"Alpha"}))
+        reasons, title_signal = config_loader.load_reject_reasons()
+        assert reasons == ("Alpha", "Beta", "Gamma")
+        assert title_signal == frozenset({"Alpha"})
+
+    def test_rejects_empty_reasons(self, monkeypatch, tmp_path):
+        f = tmp_path / "reject_reasons.yaml"
+        monkeypatch.setattr(config_loader, "_REJECT_REASONS_PATH", f)
+        with pytest.raises(ConfigError, match="non-empty"):
+            config_loader.save_reject_reasons((), frozenset())
+
+    def test_rejects_empty_after_strip(self, monkeypatch, tmp_path):
+        f = tmp_path / "reject_reasons.yaml"
+        monkeypatch.setattr(config_loader, "_REJECT_REASONS_PATH", f)
+        with pytest.raises(ConfigError, match="non-empty|empty"):
+            config_loader.save_reject_reasons(("",), frozenset())
+
+    def test_rejects_comma_in_reason(self, monkeypatch, tmp_path):
+        f = tmp_path / "reject_reasons.yaml"
+        monkeypatch.setattr(config_loader, "_REJECT_REASONS_PATH", f)
+        with pytest.raises(ConfigError, match="comma"):
+            config_loader.save_reject_reasons(("Skills, mismatch",), frozenset())
+
+    def test_rejects_title_signal_not_in_reasons(self, monkeypatch, tmp_path):
+        f = tmp_path / "reject_reasons.yaml"
+        monkeypatch.setattr(config_loader, "_REJECT_REASONS_PATH", f)
+        with pytest.raises(ConfigError, match="title_signal"):
+            config_loader.save_reject_reasons(("Alpha",), frozenset({"NotInReasons"}))
+
+    def test_rejects_duplicate_reasons(self, monkeypatch, tmp_path):
+        f = tmp_path / "reject_reasons.yaml"
+        monkeypatch.setattr(config_loader, "_REJECT_REASONS_PATH", f)
+        with pytest.raises(ConfigError, match="duplicate"):
+            config_loader.save_reject_reasons(("Alpha", "Alpha"), frozenset())
+
+    def test_atomic_no_partial_write_on_failure(self, monkeypatch, tmp_path):
+        """If os.replace fails mid-write, the original file is left intact."""
+        f = tmp_path / "reject_reasons.yaml"
+        f.write_text("reasons:\n  - Original\n")
+        monkeypatch.setattr(config_loader, "_REJECT_REASONS_PATH", f)
+
+        def boom(*a, **kw):
+            raise OSError("simulated failure")
+
+        monkeypatch.setattr("os.replace", boom)
+
+        with pytest.raises(OSError):
+            config_loader.save_reject_reasons(("New",), frozenset())
+
+        assert "Original" in f.read_text()
+
+    def test_strips_whitespace(self, monkeypatch, tmp_path):
+        f = tmp_path / "reject_reasons.yaml"
+        monkeypatch.setattr(config_loader, "_REJECT_REASONS_PATH", f)
+        config_loader.save_reject_reasons(("  Padded  ",), frozenset({"  Padded  "}))
+        reasons, title_signal = config_loader.load_reject_reasons()
+        assert reasons == ("Padded",)
+        assert title_signal == frozenset({"Padded"})

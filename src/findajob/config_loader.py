@@ -59,7 +59,9 @@ _companies_cache: frozenset[str] | None = None
 _indeed_title_allow_cache: re.Pattern[str] | None = None
 _indeed_title_allow_loaded: bool = False  # distinguishes "cached None" from "not yet loaded"
 _excluded_employers_cache: tuple[frozenset[str], re.Pattern[str] | None] | None = None
-_reject_reasons_cache: tuple[tuple[str, ...], frozenset[str]] | None = None
+# Note: reject_reasons is intentionally NOT cached so /settings/reject-reasons/
+# saves take effect on the next request without a process restart (#490).
+# Cost is negligible — small YAML, parse-per-call is microseconds.
 
 # Warnings emitted (dedup per process)
 _warned: set[str] = set()
@@ -330,15 +332,14 @@ def load_reject_reasons() -> tuple[tuple[str, ...], frozenset[str]]:
     Missing file or empty `reasons:` → returns the field-agnostic defaults
     (`_DEFAULT_REJECT_REASONS` / `_DEFAULT_TITLE_SIGNAL_REASONS`). Malformed
     entries raise `ConfigError`.
-    """
-    global _reject_reasons_cache
-    if _reject_reasons_cache is not None:
-        return _reject_reasons_cache
 
+    Returns fresh values on every call — small file, parse-per-call cost is
+    negligible (~µs), and lets `/settings/reject-reasons/` saves take effect
+    on the next request without a process restart (#490).
+    """
     data = _safe_load_yaml(_REJECT_REASONS_PATH, "reject_reasons.yaml")
     if data is None:
-        _reject_reasons_cache = (_DEFAULT_REJECT_REASONS, _DEFAULT_TITLE_SIGNAL_REASONS)
-        return _reject_reasons_cache
+        return (_DEFAULT_REJECT_REASONS, _DEFAULT_TITLE_SIGNAL_REASONS)
 
     raw_reasons = data.get("reasons", [])
     if not isinstance(raw_reasons, list):
@@ -347,8 +348,7 @@ def load_reject_reasons() -> tuple[tuple[str, ...], frozenset[str]]:
         if not isinstance(r, str):
             raise ConfigError(f"reject_reasons.yaml: reasons entry is not a string: {r!r}")
     if not raw_reasons:
-        _reject_reasons_cache = (_DEFAULT_REJECT_REASONS, _DEFAULT_TITLE_SIGNAL_REASONS)
-        return _reject_reasons_cache
+        return (_DEFAULT_REJECT_REASONS, _DEFAULT_TITLE_SIGNAL_REASONS)
 
     raw_title = data.get("title_signal_reasons", []) or []
     if not isinstance(raw_title, list):
@@ -357,22 +357,84 @@ def load_reject_reasons() -> tuple[tuple[str, ...], frozenset[str]]:
         if not isinstance(t, str):
             raise ConfigError(f"reject_reasons.yaml: title_signal_reasons entry is not a string: {t!r}")
 
-    _reject_reasons_cache = (tuple(raw_reasons), frozenset(raw_title))
-    return _reject_reasons_cache
+    return (tuple(raw_reasons), frozenset(raw_title))
+
+
+def save_reject_reasons(
+    reasons: tuple[str, ...],
+    title_signal_reasons: frozenset[str],
+) -> None:
+    """Atomically write `config/reject_reasons.yaml` (#490).
+
+    Validates input before writing. On validation failure, raises ConfigError
+    and does not touch the file. On write failure, the original file is left
+    intact (atomic os.replace).
+
+    Validation:
+      - `reasons` must be non-empty (after stripping whitespace)
+      - Each reason: non-empty after strip, no comma (URL filter contract)
+      - No duplicate reasons (post-strip)
+      - `title_signal_reasons` ⊆ set(reasons) (post-strip)
+    """
+    import os
+    import tempfile
+
+    cleaned_reasons = tuple(r.strip() for r in reasons if r.strip())
+    if not cleaned_reasons:
+        raise ConfigError("reject_reasons: 'reasons' must be non-empty")
+    for r in cleaned_reasons:
+        if "," in r:
+            raise ConfigError(
+                f"reject_reasons: reason {r!r} contains comma; "
+                f"the URL filter contract uses comma as separator"
+            )
+    if len(set(cleaned_reasons)) != len(cleaned_reasons):
+        raise ConfigError("reject_reasons: duplicate entries in 'reasons'")
+
+    cleaned_title = frozenset(t.strip() for t in title_signal_reasons if t.strip())
+    extra = cleaned_title - set(cleaned_reasons)
+    if extra:
+        raise ConfigError(
+            f"reject_reasons: title_signal entries not in reasons: {sorted(extra)}"
+        )
+
+    lines = ["reasons:"]
+    for r in cleaned_reasons:
+        lines.append(f"  - {r}")
+    if cleaned_title:
+        lines.append("title_signal_reasons:")
+        for r in cleaned_reasons:
+            if r in cleaned_title:
+                lines.append(f"  - {r}")
+    body = "\n".join(lines) + "\n"
+
+    _REJECT_REASONS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=_REJECT_REASONS_PATH.name + ".",
+        suffix=".tmp",
+        dir=str(_REJECT_REASONS_PATH.parent),
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
+            fh.write(body)
+        os.replace(tmp_name, _REJECT_REASONS_PATH)
+    except Exception:
+        if os.path.exists(tmp_name):
+            os.unlink(tmp_name)
+        raise
 
 
 def _reset_cache() -> None:
     """Test-only. Clears module-level caches and warning dedup."""
     global _hard_reject_cache, _in_domain_cache, _companies_cache
     global _indeed_title_allow_cache, _indeed_title_allow_loaded
-    global _excluded_employers_cache, _reject_reasons_cache
+    global _excluded_employers_cache
     _hard_reject_cache = None
     _in_domain_cache = None
     _companies_cache = None
     _indeed_title_allow_cache = None
     _indeed_title_allow_loaded = False
     _excluded_employers_cache = None
-    _reject_reasons_cache = None
     _warned.clear()
 
 
