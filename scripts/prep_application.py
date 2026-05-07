@@ -40,15 +40,15 @@ load_env()
 
 
 def run_role(
-    role,
-    prompt,
+    role: str,
+    prompt: str,
     *,
-    cached_prefix=None,
-    pin_provider=None,
-    conn=None,
-    job_id=None,
-    timeout=300,
-):
+    cached_prefix: str | None = None,
+    pin_provider: str | None = None,
+    conn: sqlite3.Connection | None = None,
+    job_id: str | None = None,
+    timeout: int = 300,
+) -> str:
     """Call openrouter.complete() and return assistant text.
 
     When ``conn`` is provided, a cost_log row is written after a successful
@@ -285,7 +285,7 @@ def main():
     # serve a prompt-cache hit on the second+ call within a batch prep session.
     # Cross-role caching within a single prep run is deferred to #478.
     voice_samples = load_voice_samples()
-    log_event("voice_samples_loaded", caller="cover_letter_writer", chars=len(voice_samples))
+    log_event("voice_samples_loaded", caller="prep_shared_prefix", chars=len(voice_samples))
     voice_section = f"VOICE SAMPLES:\n{voice_samples}\n\n" if voice_samples else ""
     shared_candidate_jd = (
         f"CANDIDATE PROFILE:\n{profile_text}\n\n"

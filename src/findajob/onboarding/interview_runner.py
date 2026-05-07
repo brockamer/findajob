@@ -161,6 +161,7 @@ def run_turn(
             kind="config",
         )
 
+    # complete() retries transient failures — this call may take ~10-20s (see complete() docstring).
     try:
         result = complete(
             role="onboarding_interviewer",

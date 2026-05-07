@@ -127,6 +127,15 @@ def complete(
         :class:`CompletionResult` with text, token counts, cost_usd from
         ``response.usage.cost``, and the generation id.
 
+    Retries:
+        Transient failures (``kind`` in ``{rate_limit, upstream, network}``)
+        retry up to 3 attempts with exponential backoff (~0.5s → 8s cap),
+        so a flapping upstream can stretch a single call to ~10–20s wall
+        time before the final ``OpenRouterError`` bubbles. Other ``kind``s
+        raise on the first failure with no retry. Synchronous callers
+        whose UX depends on quick failure (loading spinners, chat turns)
+        should account for this added perceived latency.
+
     Raises:
         OpenRouterError: every non-success path. ``.kind`` classifies.
     """

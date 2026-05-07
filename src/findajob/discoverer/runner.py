@@ -219,7 +219,13 @@ def run(
 
     except OpenRouterError as e:
         msg = f"OpenRouter error ({e.kind}): {str(e)[:300]}"
-        log_event("discovery_failed", reason="openrouter_error", kind=e.kind, message=str(e)[:300])
+        log_event(
+            "discovery_failed",
+            reason="openrouter_error",
+            kind=e.kind,
+            status_code=e.status_code,
+            message=str(e)[:300],
+        )
         if ntfy_enabled:
             _send_ntfy("discovery: openrouter error", msg[:200])
         return RunResult(success=False, count=0, error=msg, cost_usd=None)
