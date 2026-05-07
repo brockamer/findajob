@@ -385,8 +385,7 @@ def save_reject_reasons(
     for r in cleaned_reasons:
         if "," in r:
             raise ConfigError(
-                f"reject_reasons: reason {r!r} contains comma; "
-                f"the URL filter contract uses comma as separator"
+                f"reject_reasons: reason {r!r} contains comma; the URL filter contract uses comma as separator"
             )
     if len(set(cleaned_reasons)) != len(cleaned_reasons):
         raise ConfigError("reject_reasons: duplicate entries in 'reasons'")
@@ -394,9 +393,7 @@ def save_reject_reasons(
     cleaned_title = frozenset(t.strip() for t in title_signal_reasons if t.strip())
     extra = cleaned_title - set(cleaned_reasons)
     if extra:
-        raise ConfigError(
-            f"reject_reasons: title_signal entries not in reasons: {sorted(extra)}"
-        )
+        raise ConfigError(f"reject_reasons: title_signal entries not in reasons: {sorted(extra)}")
 
     lines = ["reasons:"]
     for r in cleaned_reasons:

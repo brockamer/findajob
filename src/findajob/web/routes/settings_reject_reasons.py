@@ -38,9 +38,12 @@ async def post_reject_reasons_editor(request: Request) -> HTMLResponse:
     """Validate and save submitted reasons + title_signal flags."""
     form = await request.form()
 
+    raw_count = form.get("row_count", "0")
+    if not isinstance(raw_count, str):
+        return _render_save_result(request, "error", "Malformed form payload")
     try:
-        row_count = int(form.get("row_count", "0"))
-    except (TypeError, ValueError):
+        row_count = int(raw_count)
+    except ValueError:
         return _render_save_result(request, "error", "Malformed form payload")
 
     reasons: list[str] = []

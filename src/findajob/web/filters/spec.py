@@ -47,9 +47,7 @@ class ColumnSpec:
             # resolved_enum_values).
             if not callable(self.enum_values):
                 if not self.enum_values:
-                    raise ValueError(
-                        f"ColumnSpec {self.name!r}: kind=ENUM requires non-empty enum_values"
-                    )
+                    raise ValueError(f"ColumnSpec {self.name!r}: kind=ENUM requires non-empty enum_values")
                 for v in self.enum_values:
                     if "," in v:
                         raise ValueError(

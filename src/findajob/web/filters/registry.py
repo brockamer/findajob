@@ -49,6 +49,7 @@ _REMOTE_VALUES = ("Remote", "Hybrid", "On-site", "Unknown")
 def _reject_reason_values() -> tuple[str, ...]:
     return load_reject_reasons()[0]
 
+
 # ─── Dashboard ────────────────────────────────────────────────────────────────
 DASHBOARD_COLUMNS: tuple[ColumnSpec, ...] = (
     ColumnSpec(name="relevance_score", label="Rel", kind=Kind.SCORE),

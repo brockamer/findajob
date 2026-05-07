@@ -128,7 +128,9 @@ def test_resolved_enum_values_returns_tuple_form_unchanged() -> None:
 def test_resolved_enum_values_invokes_callable() -> None:
     state = {"vals": ("alpha", "beta")}
     s = ColumnSpec(
-        name="x", label="X", kind=Kind.ENUM,
+        name="x",
+        label="X",
+        kind=Kind.ENUM,
         enum_values=lambda: state["vals"],
     )
     assert s.resolved_enum_values == ("alpha", "beta")
@@ -141,7 +143,9 @@ def test_callable_enum_values_skips_eager_comma_validation() -> None:
     # Constructing the spec must not raise even though the callable
     # would eventually be inspected for commas.
     s = ColumnSpec(
-        name="x", label="X", kind=Kind.ENUM,
+        name="x",
+        label="X",
+        kind=Kind.ENUM,
         enum_values=lambda: ("legal_value",),
     )
     assert s.resolved_enum_values == ("legal_value",)
@@ -150,7 +154,9 @@ def test_callable_enum_values_skips_eager_comma_validation() -> None:
 def test_tuple_enum_values_still_eagerly_validated_for_commas() -> None:
     with pytest.raises(ValueError, match="comma"):
         ColumnSpec(
-            name="x", label="X", kind=Kind.ENUM,
+            name="x",
+            label="X",
+            kind=Kind.ENUM,
             enum_values=("with,comma",),
         )
 
