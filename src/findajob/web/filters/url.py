@@ -62,7 +62,7 @@ def parse_filter_params(specs: Sequence[ColumnSpec], params: Mapping[str, str]) 
             raw = params.get(name)
             if raw is None or raw == "":
                 continue
-            allowed = set(spec.enum_values or ())
+            allowed = set(spec.resolved_enum_values)
             picks = tuple(p for p in (s.strip() for s in raw.split(",")) if p and p in allowed)
             if picks:
                 enum[name] = picks

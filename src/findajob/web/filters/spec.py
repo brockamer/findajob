@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -21,6 +21,12 @@ class Kind(StrEnum):
     COMPUTED = "computed"
 
 
+# Callable form lets a column's enum values resolve per-request — used for
+# dynamic config like #490's reject_reasons.yaml editor where the values
+# can change between requests without a process restart.
+EnumValuesProvider = tuple[str, ...] | Callable[[], tuple[str, ...]]
+
+
 @dataclass(frozen=True)
 class ColumnSpec:
     name: str
@@ -29,19 +35,42 @@ class ColumnSpec:
     sortable: bool = True
     filterable: bool = True
     default_visible: bool = True
-    enum_values: tuple[str, ...] | None = None
+    enum_values: EnumValuesProvider | None = None
     db_expr: str | None = None
 
     def __post_init__(self) -> None:
         if self.kind is Kind.ENUM:
-            if not self.enum_values:
+            if self.enum_values is None:
                 raise ValueError(f"ColumnSpec {self.name!r}: kind=ENUM requires enum_values")
-            for v in self.enum_values:
-                if "," in v:
+            # Eager validation only for the tuple form. Callable form defers
+            # validation to resolution time (called per request via
+            # resolved_enum_values).
+            if not callable(self.enum_values):
+                if not self.enum_values:
                     raise ValueError(
-                        f"ColumnSpec {self.name!r}: enum_values must not contain comma "
-                        f"(got {v!r}); the URL contract uses comma as the separator."
+                        f"ColumnSpec {self.name!r}: kind=ENUM requires non-empty enum_values"
                     )
+                for v in self.enum_values:
+                    if "," in v:
+                        raise ValueError(
+                            f"ColumnSpec {self.name!r}: enum_values must not contain comma "
+                            f"(got {v!r}); the URL contract uses comma as the separator."
+                        )
+
+    @property
+    def resolved_enum_values(self) -> tuple[str, ...]:
+        """Return enum_values, calling the provider if it is a callable.
+
+        Use this in url.py and template chip rendering instead of accessing
+        `.enum_values` directly. Re-evaluates per access for the callable
+        form so dynamic config (e.g., #490's reject_reasons.yaml edits) is
+        reflected without a process restart.
+        """
+        if self.enum_values is None:
+            return ()
+        if callable(self.enum_values):
+            return self.enum_values()
+        return self.enum_values
 
     @property
     def sql_ref(self) -> str:

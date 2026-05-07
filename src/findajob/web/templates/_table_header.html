@@ -116,7 +116,7 @@
                  @click.outside="open = false"
                  class="absolute z-10 mt-1 bg-white border border-slate-300 rounded shadow-lg p-2 min-w-[10rem] text-xs">
               <div class="font-semibold uppercase text-slate-500 mb-1">{{ s.label }}</div>
-              {% for v in s.enum_values %}
+              {% for v in s.resolved_enum_values %}
                 <label class="block">
                   <input type="checkbox"
                          value="{{ v }}"

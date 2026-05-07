@@ -115,3 +115,46 @@ def test_waitlist_includes_likelihood_visible() -> None:
 
     visible = {s.name for s in registry.WAITLIST_COLUMNS if s.default_visible}
     assert "interview_likelihood" in visible
+
+
+# ─── #490: lazy enum_values via callable ─────────────────────────────────────
+
+
+def test_resolved_enum_values_returns_tuple_form_unchanged() -> None:
+    s = ColumnSpec(name="x", label="X", kind=Kind.ENUM, enum_values=("a", "b"))
+    assert s.resolved_enum_values == ("a", "b")
+
+
+def test_resolved_enum_values_invokes_callable() -> None:
+    state = {"vals": ("alpha", "beta")}
+    s = ColumnSpec(
+        name="x", label="X", kind=Kind.ENUM,
+        enum_values=lambda: state["vals"],
+    )
+    assert s.resolved_enum_values == ("alpha", "beta")
+    state["vals"] = ("gamma",)
+    assert s.resolved_enum_values == ("gamma",)  # Re-resolves each access
+
+
+def test_callable_enum_values_skips_eager_comma_validation() -> None:
+    # Callable form defers validation until resolution.
+    # Constructing the spec must not raise even though the callable
+    # would eventually be inspected for commas.
+    s = ColumnSpec(
+        name="x", label="X", kind=Kind.ENUM,
+        enum_values=lambda: ("legal_value",),
+    )
+    assert s.resolved_enum_values == ("legal_value",)
+
+
+def test_tuple_enum_values_still_eagerly_validated_for_commas() -> None:
+    with pytest.raises(ValueError, match="comma"):
+        ColumnSpec(
+            name="x", label="X", kind=Kind.ENUM,
+            enum_values=("with,comma",),
+        )
+
+
+def test_resolved_enum_values_returns_empty_tuple_when_none() -> None:
+    s = ColumnSpec(name="x", label="X", kind=Kind.TEXT)  # No enum_values
+    assert s.resolved_enum_values == ()
