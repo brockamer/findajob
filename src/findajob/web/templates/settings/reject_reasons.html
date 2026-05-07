@@ -3,24 +3,30 @@
 {% block content %}
 <div class="max-w-2xl">
   <h1 class="text-2xl font-semibold mb-1">Reject reasons</h1>
+  <p class="text-sm text-slate-600 mb-2">
+    When you reject a job on your board, you pick a reason from a list.
+    This is that list — add, rename, or remove reasons so the choices
+    match how <em>you</em> think about why a job isn't a fit. Saved
+    changes show up the next time you load the board.
+  </p>
   <p class="text-sm text-slate-600 mb-6">
-    Edit the reject-reason taxonomy used on the board's reject button.
-    Changes apply on the next page load — no restart required.
-    Check <strong>title-signal</strong> for reasons that mean the scorer misread
-    the title (used by feedback analysis to find prefilter candidates).
+    Tick <strong>title-signal</strong> on a reason if it means "the job
+    title looked like a match but the actual job wasn't" — that tells
+    findajob to learn which kinds of job titles to filter out automatically
+    next time.
   </p>
 
+  {# JSON.parse from a <script> tag avoids the double-quote / x-data
+     attribute collision: tojson emits unescaped " inside the JSON, which
+     closes a double-quoted x-data attribute at the first " of "text".
+     A <script type="application/json"> block keeps the JSON intact, then
+     Alpine reads it via document.getElementById(...).textContent. #}
+  <script id="initial-rows" type="application/json">{{ rows | tojson }}</script>
   <div
     x-data="{
-      rows: {{ rows | tojson }}.map(function(r) {
-        return { text: r.text, title_signal: r.title_signal };
-      }),
-      addRow: function() {
-        this.rows.push({ text: '', title_signal: false });
-      },
-      removeRow: function(i) {
-        this.rows.splice(i, 1);
-      }
+      rows: JSON.parse(document.getElementById('initial-rows').textContent),
+      addRow() { this.rows.push({ text: '', title_signal: false }); },
+      removeRow(i) { this.rows.splice(i, 1); }
     }"
   >
     <form

@@ -127,3 +127,41 @@ def test_post_empty_after_strip_returns_validation_error(client: TestClient, yam
     assert resp.status_code == 200
     assert "Could not save" in resp.text
     assert yaml_path.read_text() == original
+
+
+def test_initial_rows_in_script_block_not_inline_x_data(client: TestClient) -> None:
+    """Regression test for the Add Reason broken-on-first-deploy bug.
+
+    The seed JSON for Alpine's `rows` array MUST live in a
+    <script id="initial-rows" type="application/json"> block, NOT inline
+    inside the x-data="..." attribute. tojson emits unescaped " inside
+    the JSON; if that lands inline in a double-quoted x-data attribute,
+    the browser closes the attribute at the first " of "text" and Alpine
+    never sees addRow/removeRow — the Add Reason button does nothing.
+
+    The script-block pattern is:
+        <script id="initial-rows" type="application/json">{{ rows|tojson }}</script>
+        <div x-data="{ rows: JSON.parse(document.getElementById('initial-rows').textContent), ... }">
+
+    This test catches a regression to the broken inline form by asserting:
+      1. The script block is present
+      2. The x-data attribute does not contain a literal `[{` (which is
+         the start of the inlined JSON array — the broken-form smoking gun)
+    """
+    resp = client.get("/settings/reject-reasons/")
+    assert resp.status_code == 200
+    body = resp.text
+
+    # Pin: JSON seed lives in a script block.
+    assert '<script id="initial-rows" type="application/json">' in body, (
+        "Initial rows must be in a <script type=application/json> block, "
+        "not inline in x-data — see test docstring for the bug class."
+    )
+    # Pin: x-data does not contain inlined JSON array.
+    # Find the x-data attribute and verify no [{ in its value.
+    import re
+
+    match = re.search(r'x-data\s*=\s*"([^"]*)"', body)
+    assert match, "x-data attribute not found"
+    x_data_value = match.group(1)
+    assert "[{" not in x_data_value, f"x-data must not contain inline JSON array. Got: {x_data_value!r}"
