@@ -15,7 +15,6 @@ services:
       TZ: ${FINDAJOB_TZ:-America/New_York}
       PUID: ${PUID:-1000}
       PGID: ${PGID:-1000}
-      HOME: /app
       JSP_BASE: /app
       FINDAJOB_TRIAGE_TIMEOUT: ${FINDAJOB_TRIAGE_TIMEOUT:-7200}
       FINDAJOB_WEB_URL: ${FINDAJOB_WEB_URL:-}
