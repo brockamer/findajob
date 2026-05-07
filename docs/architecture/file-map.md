@@ -17,7 +17,7 @@ When this map drifts from the actual code (renamed file, new route module, retir
 <repo>/src/findajob/scoring.py              # score_job(), _build_feedback_block() — calls findajob.llm.openrouter (#470)
 <repo>/src/findajob/scorer_prefilter.py     # deterministic pre-filter (Stage 1 + 2)
 <repo>/src/findajob/llm/openrouter.py       # canonical OpenRouter HTTP wrapper (#470) — complete(), CompletionResult, OpenRouterError; cache_control on cached_prefix + cache_system axes
-<repo>/src/findajob/cost_rollups.py         # SQL helpers backing all calibrated cost surfaces — current_calibration, per_job_cost, per_job_breakdown, weekly_spend, runway_weeks, projected_monthly (#87)
+<repo>/src/findajob/cost_rollups.py         # SQL helpers backing all cost surfaces — per_job_cost, per_job_breakdown, weekly_spend, projected_monthly, spend_this_month
 <repo>/src/findajob/web/app.py               # FastAPI app factory (create_app)
 <repo>/src/findajob/web/routes/ingest.py     # GET /ingest/ form + POST /ingest/manual handler
 <repo>/src/findajob/web/routes/config.py     # GET /config/, GET/POST /config/files/{path} — in-browser config editor

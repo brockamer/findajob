@@ -224,7 +224,7 @@ Some transitions also spawn detached generator subprocesses:
 - `POST /board/jobs/{fp}/apply` is synthetic-aware: reads `jobs.synthetic` and writes `audit_log.changed_by='outreach_button'` for synthetic rows (label flips to "Sent Outreach" on the dashboard); otherwise the existing `'user'` value. No separate route — single endpoint, server-derived signal.
 
 ### Path Resolution
-All binary paths (AICHAT, PANDOC) come from `findajob.paths` (`src/findajob/paths.py`), which reads `config/paths.env`.
+The `PANDOC` binary path comes from `findajob.paths` (`src/findajob/paths.py`), which reads `config/paths.env`.
 Never hardcode platform paths in scripts. `BASE` is derived from `__file__` — the repo can live anywhere.
 For subprocess calls to other pipeline scripts, always use `sys.executable`, not a hardcoded Python path.
 Library code lives in `src/findajob/` (installed editable into the project venv via `uv sync` for local dev, `pip install -e .` inside the Docker image — #126). Entry point scripts in `scripts/` import via `from findajob.* import ...`. No `sys.path.insert` hacks.

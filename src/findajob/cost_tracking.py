@@ -1,15 +1,15 @@
 """cost_log row writer for `findajob.llm.openrouter` callers.
 
-Wrap-pattern for new call sites: after `complete()` returns successfully,
+Wrap-pattern for every call site: after `complete()` returns successfully,
 call `log_call(conn, job_id=..., operation=role, model=role_model(role),
 input_text=prompt, output_text=result.text, latency_ms=..., success=True,
 cost_usd_override=result.cost_usd, input_tokens_override=result.prompt_tokens,
 output_tokens_override=result.completion_tokens)`.
 
-The override-trio carries API-authoritative cost; without overrides, the
-heuristic at `cost_usd()` is used (legacy paths only — every production
-site as of Phase 2 (#471) uses overrides). Calibration multiplier (#467)
-still governs the heuristic path until Phase 3 (#472) retires it.
+The override trio carries API-authoritative cost from
+``response.usage.cost``. Every production caller uses it; the legacy
+char-heuristic path at ``cost_usd()`` exists only as a no-override
+fallback for tests and is not exercised in production.
 
 Usage:
     from findajob.cost_tracking import log_call, role_model
@@ -20,39 +20,6 @@ Usage:
              cost_usd_override=result.cost_usd,
              input_tokens_override=result.prompt_tokens,
              output_tokens_override=result.completion_tokens)
-
-The cost_usd is computed at insert time from prompt/response character
-length and the model's rate in config/model_pricing.yaml.
-
-Empirical precision floor (verified 2026-05-05, 3-run series on the
-operator's stack against OpenRouter dashboard):
-
-- Heuristic systematically underestimates by ~25–30% on real prep runs.
-- Source: ``estimate_tokens`` uses ``chars / 4`` but Anthropic's
-  tokenizer is ~chars/3.3 for English. The ~20% input-token undercount
-  compounds slightly through the pricing math.
-- Per-stage attribution IS correct: every Opus call lands at the same
-  ~30-35% under ratio, every Sonar call within ±15%, Gemini within ±20%.
-- Consumers should treat absolute amounts as biased ~25% low; relative
-  comparisons (which prep stage cost most, week-over-week trend, per-job
-  total comparisons) are reliable.
-
-A future tokenizer refinement (chars/3.5 instead of chars/4) would close
-the gap to ~10% but was deferred — the bias is documented, predictable,
-and consistently in one direction. Migrate to direct-HTTP
-``usage:{include:true}`` (#32 Option B) only if absolute precision
-becomes load-bearing for tuning decisions.
-
-Cost-write override (#470 forward):
-
-Callers using the native ``findajob.llm.openrouter`` wrapper pass
-``cost_usd_override=completion_result.cost_usd`` to skip the heuristic
-entirely — the override is the API-authoritative billed amount from
-``response.usage.cost``. As of Phase 2 (#471), all production call sites
-use the override trio (wrapper-driven calls). The heuristic remains
-active for the legacy path but no production site uses it. The
-calibration multiplier in ``cost_rollups`` governs heuristic-path rows
-until Phase 3 (#472) retires that path.
 """
 
 from __future__ import annotations
