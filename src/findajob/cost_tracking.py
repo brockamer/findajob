@@ -1,24 +1,25 @@
-"""Per-LLM-call cost tracking.
+"""cost_log row writer for `findajob.llm.openrouter` callers.
 
-Char-based token estimation + pricing lookup (#32 "Option D"). Not precise
-— does not read actual API token counts — but gives a first-order estimate
-good enough for weekly trend visibility (±20-30% absolute, reliable for
-relative comparisons).
+Wrap-pattern for new call sites: after `complete()` returns successfully,
+call `log_call(conn, job_id=..., operation=role, model=role_model(role),
+input_text=prompt, output_text=result.text, latency_ms=..., success=True,
+cost_usd_override=result.cost_usd, input_tokens_override=result.prompt_tokens,
+output_tokens_override=result.completion_tokens)`.
 
-Wrap-pattern for new aichat-ng call sites: after the subprocess returns
-successfully, call ``log_call(conn, job_id=..., operation=role_name,
-model=role_model(role_name), input_text=prompt, output_text=raw_output,
-latency_ms=..., success=True)``. Used at every production aichat-ng
-invocation site after #48: scoring (triage.py), prep_application (8
-roles), find_contacts (outreach_drafter), interview_prep, speculative
-research (briefing + synth), company_discoverer, and rescore_all.
+The override-trio carries API-authoritative cost; without overrides, the
+heuristic at `cost_usd()` is used (legacy paths only — every production
+site as of Phase 2 (#471) uses overrides). Calibration multiplier (#467)
+still governs the heuristic path until Phase 3 (#472) retires it.
 
 Usage:
     from findajob.cost_tracking import log_call, role_model
     log_call(conn, job_id="...", operation="score",
              model=role_model("job_scorer"),
              input_text=prompt, output_text=response,
-             latency_ms=2300, success=True)
+             latency_ms=2300, success=True,
+             cost_usd_override=result.cost_usd,
+             input_tokens_override=result.prompt_tokens,
+             output_tokens_override=result.completion_tokens)
 
 The cost_usd is computed at insert time from prompt/response character
 length and the model's rate in config/model_pricing.yaml.
@@ -47,11 +48,11 @@ Cost-write override (#470 forward):
 Callers using the native ``findajob.llm.openrouter`` wrapper pass
 ``cost_usd_override=completion_result.cost_usd`` to skip the heuristic
 entirely — the override is the API-authoritative billed amount from
-``response.usage.cost``. Until every call site is on the wrapper
-(Phase 2 #471, Phase 3 #472), the heuristic remains the default for
-aichat-ng-driven calls. The calibration multiplier in
-``cost_rollups`` keeps overall display numbers truthy by averaging
-across both populations.
+``response.usage.cost``. As of Phase 2 (#471), all production call sites
+use the override trio (wrapper-driven calls). The heuristic remains
+active for the legacy path but no production site uses it. The
+calibration multiplier in ``cost_rollups`` governs heuristic-path rows
+until Phase 3 (#472) retires that path.
 """
 
 from __future__ import annotations

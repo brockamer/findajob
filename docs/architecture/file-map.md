@@ -36,7 +36,7 @@ When this map drifts from the actual code (renamed file, new route module, retir
 <repo>/src/findajob/onboarding/parser.py    # parse interview emission into files to inject
 <repo>/src/findajob/onboarding/injector.py  # atomic write + backup + Tier-1 derivation + sentinel
 <repo>/src/findajob/onboarding/session_store.py # onboarding_sessions CRUD (history/captured_blocks/find_active)
-<repo>/src/findajob/onboarding/interview_runner.py # Multi-turn OpenRouter chat-completions client (Sonnet 4.6 pinned)
+<repo>/src/findajob/onboarding/interview_runner.py # thin shim around `findajob.llm.openrouter`; preserves InterviewRunnerError.user_message contract for chat-UI verbatim render (Sonnet 4.6 pinned, #471)
 <repo>/src/findajob/discoverer/                # company discovery library — prompt, parser, runner, writer
 <repo>/src/findajob/web/routes/admin_stacks.py # GET /admin/stacks/ — operator-only multi-tenant stack health (#333; loaded iff FINDAJOB_OPERATOR_MODE=1)
 <repo>/src/findajob/web/routes/healthz.py    # GET /healthz
