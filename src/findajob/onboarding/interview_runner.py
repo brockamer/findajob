@@ -95,7 +95,8 @@ def _translate(e: OpenRouterError) -> InterviewRunnerError:
             "the interview."
         )
     else:
-        msg = f"Unexpected error talking to OpenRouter: {raw[:200]}"
+        raw_msg = raw.removeprefix("Unexpected error: ")
+        msg = f"Unexpected error talking to OpenRouter: {raw_msg[:200]}"
 
     return InterviewRunnerError(msg, kind=kind, status_code=code)
 

@@ -306,12 +306,25 @@ def test_translates_config_missing_key() -> None:
 
 
 def test_translates_unknown_kind_fallback() -> None:
-    """unknown kind → fallback message with the wrapper's raw message snippet."""
+    """unknown kind → fallback message with the wrapper's raw message snippet, no doubled prefix."""
+    from findajob.llm.openrouter import OpenRouterError
+    from findajob.onboarding.interview_runner import _translate
+
+    # Simulate the wrapper's actual emit shape for kind=unknown:
+    # openrouter.py emits "Unexpected error: {ClassName}: {detail}"
+    oe = OpenRouterError("Unexpected error: TypeError: ssl handshake fail", kind="unknown")
+    ie = _translate(oe)
+    assert ie.kind == "unknown"
+    # Must match Phase 1 byte-identical form — no doubled "Unexpected error:" prefix.
+    assert ie.user_message == "Unexpected error talking to OpenRouter: TypeError: ssl handshake fail"
+
+
+def test_translates_unknown_kind_fallback_no_wrapper_prefix() -> None:
+    """unknown kind without wrapper prefix passes through unchanged."""
     from findajob.llm.openrouter import OpenRouterError
     from findajob.onboarding.interview_runner import _translate
 
     oe = OpenRouterError("something exploded", kind="unknown")
     ie = _translate(oe)
     assert ie.kind == "unknown"
-    assert "Unexpected error talking to OpenRouter" in ie.user_message
-    assert "something exploded" in ie.user_message
+    assert ie.user_message == "Unexpected error talking to OpenRouter: something exploded"
