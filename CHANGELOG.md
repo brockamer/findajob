@@ -10,7 +10,16 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
-_(no entries yet)_
+### Added
+- **#490 `/settings/reject-reasons/` editor for `config/reject_reasons.yaml`.** First occupant of the new `/settings/` URL namespace — domain-aware config editor with rich UX (editable rows, per-row `title-signal` checkbox, add/remove via Alpine, HTMX partial-swap save). Lets users tune their rejection taxonomy at any time without re-running the onboarding interview. Server-side validation rejects empty saves, comma-in-reason (URL-filter contract), duplicates, and `title_signal_reasons` not in `reasons`; on validation failure the file is unchanged and an inline error renders. Distinguished from `/config/` (raw text editor for allowlisted files) — `/settings/` is the home for per-page rich editors. Future similar editors (e.g., for `prefilter_rules.yaml`) live here.
+
+### Changed
+- **#490 `findajob.config_loader.load_reject_reasons` no longer caches its result.** File edits are picked up on the next call (small YAML, parse-per-call cost is microseconds). Required so `/settings/reject-reasons/` saves take effect on the next request without a container restart. The module-level `_reject_reasons_cache` is gone; `_reset_cache()` no longer touches it; `test_caches_result` is replaced by `test_no_cache_picks_up_file_changes`. No external behavior change — the dropdown and filter chips already re-resolve per render.
+- **#490 `findajob.web.filters.spec.ColumnSpec.enum_values` now accepts `tuple[str, ...] | Callable[[], tuple[str, ...]] | None`.** New `resolved_enum_values` property invokes the callable per access. Eager comma-validation in `__post_init__` is skipped for the callable form (deferred to resolution time). `web/filters/registry.py` switches the reject-reason chip column from a module-level capture to a callable so chip values refresh per request alongside the board's reject-reason dropdown. Two consumer call sites switched to `resolved_enum_values`: `web/filters/url.py:65` and `web/templates/_table_header.html:119`.
+
+### Migration required
+
+None. No schema, config, crontab, mount, or compose changes. `config/reject_reasons.yaml` was already gitignored and per-stack; existing stacks pick up the editor on `docker compose pull` + `docker compose up -d` without any operator action.
 
 ## [0.20.1] — 2026-05-07
 

@@ -136,6 +136,10 @@ The reject dropdown has eleven preset reasons so they can be counted and charted
 
 If the reason you want isn't here, use *Other* and put the detail in the notes column.
 
+The list is editable. Open **Settings → Reject reasons** in the top nav (`/settings/reject-reasons/`) to add, remove, or rename entries. Changes apply on the next page load — no container restart needed. Tick **title-signal** for reasons that mean the scorer misread the job title (e.g., "Skills Mismatch", "Wrong Domain") — those reasons feed the prefilter-tuning analysis and tell the scorer's feedback loop that the underlying job title was a false positive.
+
+A reason you remove from the taxonomy doesn't break older rejections that used it — `/board/rejected/` and the stats views render historical entries even if the reason no longer appears in the current dropdown.
+
 ---
 
 ## What happens when you Flag for Prep

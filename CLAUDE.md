@@ -170,12 +170,14 @@ Lives at `src/findajob/web/`. One file per URL group in `routes/` (e.g. `routes/
 
 Foundational decisions (design rationale lives in operator-private specs):
 - Server-rendered HTML + HTMX (no SPA)
-- Grouped URL IA — top-nav = `/`, `/board/`, `/materials/`, `/ingest/`, `/stats/`, `/tools/`, `/config/`, `/docs/`
+- Grouped URL IA — top-nav = `/`, `/board/`, `/materials/`, `/ingest/`, `/stats/`, `/tools/`, `/config/`, `/settings/`, `/docs/`
 - Tailwind via CDN + `static/app.css` design tokens
 - URL query params for UI state (not cookies/localStorage)
 - Alpine.js added only when ephemeral client state is needed
 
 **`/config/`** — in-browser editor for editable pipeline config; allowlist in `findajob.web.config_files`. No per-user authorization inside findajob — perimeter is the boundary. Default perimeter is Wireguard; internet-exposed instances additionally require HTTP Basic Auth via `FINDAJOB_AUTH_USER` / `FINDAJOB_AUTH_PASS` (see `findajob.web.auth` and `docs/setup/internet-exposure.md`).
+
+**`/settings/`** — domain-aware config editors with rich UX. First occupant: `/settings/reject-reasons/` (#490) — editable rows + per-row `title-signal` checkbox for `config/reject_reasons.yaml`. Distinguished from `/config/` (raw text editor for any allowlisted file): `/settings/` has per-page UX tailored to the config it edits (validation, structured rows, HTMX partial-swap save flow). Saves take effect on the next request without container restart — `findajob.config_loader.load_reject_reasons` is no-cache and `ColumnSpec.enum_values` accepts a callable so dropdown + filter chip values both refresh per request. Future similar editors (e.g., `prefilter_rules.yaml`, `in_domain_patterns.yaml`) live here.
 
 **`/onboarding/`** — first-run NUX. Two-step structure:
 
