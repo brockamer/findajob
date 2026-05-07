@@ -534,6 +534,8 @@ def test_finalize_calls_inject_and_marks_complete(
         *,
         openrouter_api_key,
         rapidapi_key="",
+        conn=None,
+        **_kwargs,
     ):
         inject_calls.append(
             {
@@ -541,6 +543,7 @@ def test_finalize_calls_inject_and_marks_complete(
                 "parsed_files": dict(parsed_files),
                 "openrouter_api_key": openrouter_api_key,
                 "rapidapi_key": rapidapi_key,
+                "conn": conn,
             }
         )
         return InjectResult(
@@ -562,6 +565,9 @@ def test_finalize_calls_inject_and_marks_complete(
     assert len(inject_calls) == 1
     assert inject_calls[0]["openrouter_api_key"] == _USER_KEY
     assert set(inject_calls[0]["parsed_files"].keys()) >= set(all_captured.keys())
+    # #481: route handler threads the request-scoped sqlite connection through
+    # so voice_processor's cost_log write fires against the real DB.
+    assert inject_calls[0]["conn"] is not None
 
     # Session marked complete
     _hist, _cap, completed_at, _err = _read_session(base_root, sid)

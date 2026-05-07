@@ -496,6 +496,7 @@ def finalize_interview(
                 sess.captured_blocks,
                 openrouter_api_key=creds.openrouter_api_key.strip(),
                 rapidapi_key=(creds.rapidapi_key or "").strip(),
+                conn=conn,
             )
         except OnboardingSmokeCheckFailed as e:
             return _render_chat(

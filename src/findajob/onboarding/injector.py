@@ -19,6 +19,7 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import sqlite3
 import tempfile
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -272,6 +273,7 @@ def inject(
     rapidapi_key: str = "",
     redact_voice_samples: bool = True,
     skip_smoke_check: bool = False,
+    conn: sqlite3.Connection | None = None,
 ) -> InjectResult:
     """Backup, stage, commit, smoke-check, then run the discovery hook.
 
@@ -302,6 +304,10 @@ def inject(
 
     ``skip_smoke_check=True`` skips the OpenRouter verification step. Tests
     use this to avoid network calls; production callers must NOT set this.
+
+    ``conn`` is forwarded to ``process_voice_samples`` so a cost_log row is
+    written when voice samples are LLM-redacted (#481). None disables
+    cost-logging.
 
     On any staging or commit error, all tempfiles and the backup dir
     created this run are removed, and the exception propagates.
@@ -362,7 +368,7 @@ def inject(
                 continue
             body = found[opt_name]
             if opt_name == "voice-samples.md":
-                processed, _redaction_ok = process_voice_samples(body, redact=redact_voice_samples)
+                processed, _redaction_ok = process_voice_samples(body, redact=redact_voice_samples, conn=conn)
                 if not processed:
                     continue  # voice-samples processing returned empty → skip write
                 body = processed

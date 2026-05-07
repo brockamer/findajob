@@ -151,15 +151,24 @@ def redact_voice_samples(
     return redacted, True
 
 
-def process_voice_samples(raw: str, redact: bool = True, timeout: int = 120) -> tuple[str, bool]:
+def process_voice_samples(
+    raw: str,
+    redact: bool = True,
+    timeout: int = 120,
+    *,
+    conn: sqlite3.Connection | None = None,
+) -> tuple[str, bool]:
     """Clean structural markdown, then optionally LLM-redact PII.
 
     Returns ``(final_text, redaction_succeeded)``. When ``redact=False`` or the
     cleaned text is empty, ``redaction_succeeded`` is ``True`` (nothing to do).
     When the LLM call fails, returns the cleaned text with ``False`` so the
     caller can flag the degradation.
+
+    ``conn`` is forwarded to :func:`redact_voice_samples` so a cost_log row is
+    written for the LLM call when supplied. None disables cost-logging.
     """
     cleaned = clean_voice_samples(raw)
     if not cleaned or not redact:
         return cleaned, True
-    return redact_voice_samples(cleaned, timeout=timeout)
+    return redact_voice_samples(cleaned, timeout=timeout, conn=conn)

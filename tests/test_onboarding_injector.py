@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+import os
+import sqlite3
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
@@ -276,7 +279,7 @@ def test_inject_runs_process_voice_samples_with_redact_flag(tmp_path: Path) -> N
             redact_voice_samples=False,
             skip_smoke_check=True,
         )
-        mock_process.assert_called_once_with(voice_body, redact=False)
+        mock_process.assert_called_once_with(voice_body, redact=False, conn=None)
 
 
 def test_inject_skips_voice_write_when_processing_returns_empty(tmp_path: Path) -> None:
@@ -319,6 +322,98 @@ def test_inject_backs_up_existing_voice_samples_file(tmp_path: Path) -> None:
     backed_up = backups[0] / "candidate_context" / "voice_samples" / "voice-samples.md"
     assert backed_up.exists()
     assert backed_up.read_text(encoding="utf-8") == "OLD voice content."
+
+
+_COST_LOG_SCHEMA = """
+CREATE TABLE cost_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id TEXT,
+    operation TEXT NOT NULL,
+    model TEXT NOT NULL,
+    latency_ms INTEGER,
+    success INTEGER DEFAULT 1,
+    error_message TEXT,
+    logged_at TEXT DEFAULT (datetime('now')),
+    input_tokens INTEGER,
+    output_tokens INTEGER,
+    cost_usd REAL
+);
+"""
+
+
+def _stub_openrouter_response(cost: float = 0.005, prompt_tokens: int = 400, completion_tokens: int = 120):
+    body = json.dumps(
+        {
+            "id": "gen-vp-test",
+            "choices": [{"message": {"content": "Generalized prose output."}}],
+            "usage": {
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "cost": cost,
+                "prompt_tokens_details": {"cached_tokens": 0},
+            },
+        }
+    ).encode("utf-8")
+
+    class _Resp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            pass
+
+        def read(self):
+            return body
+
+    return _Resp()
+
+
+def test_inject_with_conn_writes_voice_processor_cost_log(tmp_path: Path) -> None:
+    """End-to-end: inject() with conn + voice-samples.md writes exactly one
+    cost_log row with operation='voice_processor' and API-authoritative cost.
+
+    Closes the #471 wiring gap (#481): the production call site now plumbs
+    a sqlite connection through inject → process_voice_samples → redact_voice_samples
+    so voice-processor LLM cost lands in cost_log alongside every other call site.
+    """
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript(_COST_LOG_SCHEMA)
+
+    voice_body = "I lived for quite a while in this house. Things got bad before they got better."
+
+    with (
+        patch.dict(os.environ, {"OPENROUTER_API_KEY": "sk-or-v1-test"}),
+        patch(
+            "findajob.llm.openrouter.urllib.request.urlopen",
+            return_value=_stub_openrouter_response(cost=0.005, prompt_tokens=400, completion_tokens=120),
+        ),
+    ):
+        inject(tmp_path, _full_files_with_voice(voice_body), conn=conn, skip_smoke_check=True)
+
+    # Exactly one row: the discoverer runs in a subprocess at the tail of inject(),
+    # so its complete() call doesn't share this process's urlopen patch and doesn't
+    # contribute to the parent conn's cost_log. If the discoverer is ever made
+    # in-process this count rises to two — the regression is real, not a test bug.
+    rows = conn.execute("SELECT operation, cost_usd, input_tokens, output_tokens, success FROM cost_log").fetchall()
+    assert len(rows) == 1, f"Expected exactly one cost_log row, got {len(rows)}"
+    row = rows[0]
+    assert row["operation"] == "voice_processor"
+    assert row["cost_usd"] == 0.005
+    assert row["input_tokens"] == 400
+    assert row["output_tokens"] == 120
+    assert row["success"] == 1
+
+
+def test_inject_without_conn_skips_cost_log(tmp_path: Path) -> None:
+    """Backwards-compat: inject() called without conn still processes voice
+    samples, just doesn't log cost — matches pre-#481 behavior.
+    """
+    voice_body = "Some prose."
+    with patch("findajob.onboarding.injector.process_voice_samples") as mock_process:
+        mock_process.return_value = (voice_body, True)
+        inject(tmp_path, _full_files_with_voice(voice_body), skip_smoke_check=True)
+        mock_process.assert_called_once_with(voice_body, redact=True, conn=None)
 
 
 def test_inject_discovery_hook_soft_fails_when_aichat_missing(tmp_path: Path, monkeypatch) -> None:
