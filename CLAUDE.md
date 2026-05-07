@@ -360,6 +360,32 @@ responds in the same request — no poll cycle, no mirror table.
 
 Gmail ingestion uses IMAP + app password, configured per-stack at `/config/gmail/`. Transparency contract codified as executable assertions in `tests/test_transparency_invariants.py` — failures there mean the disclosure banner is lying.
 
+### Auth Gate Must Be Verified Post-Deploy
+
+After every `docker compose up -d` on any findajob stack, the basic-auth gate must be auto-verified. If it isn't healthy, the stack is auto-shutdown until fixed. **No exceptions** — including hotfixes, rollbacks, and one-off restarts.
+
+The verifier is `findajob.web.verify_auth` (image-baked). Run from inside the running container:
+
+```bash
+docker exec <stack>-scheduler-1 python -m findajob.web.verify_auth
+```
+
+It checks three things and exits non-zero on any failure:
+1. `FINDAJOB_AUTH_USER` and `FINDAJOB_AUTH_PASS` are non-empty in the runtime env (exit 2)
+2. An anonymous request to a protected route returns `401` with a `WWW-Authenticate: Basic` header (exit 3)
+3. An authenticated request with the configured creds returns `200` (exit 4)
+   (Network-level failures are exit 5.)
+
+On any non-zero exit:
+
+```bash
+cd /opt/stacks/<stack> && docker compose down
+```
+
+The operator (or Claude on the operator's behalf) must fix before bringing back up. Why this is a hard rule: in 2026-05-07, `findajob-test` was found internet-exposed without auth because no one verified after a previous recompose. This rule makes that class of incident detectable in the same operational pass that caused it, instead of relying on accidental discovery.
+
+This applies to every stack, including operator-only ones. A stack that doesn't have basic auth configured (e.g., a future stack reachable only via an internal mesh perimeter that explicitly chooses no app-level auth) is expected to fail with exit 2 — that's the signal to either configure auth or document the explicit allowlist exception in CLAUDE.local.md.
+
 ---
 
 ## Project Board — Single Source of Truth

@@ -286,6 +286,41 @@ cleanly.
 If any of steps 1–4 fail, either re-run the failing workflow job from the GitHub
 Actions UI or move to the rollback procedure in the next section.
 
+## Cohort deploy
+
+Once the image is on GHCR and post-tag verification passes, every stack pinned
+to a moving alias (`:latest` for the operator's own stack and any in-house
+dogfood instances, `:vMAJOR.MINOR` for every tester) gets `pull && up -d` in a
+single operational pass. Per the `feedback_deploy_both_stacks` memory, no stack
+is left behind.
+
+For each stack on `<deployment-host>`:
+
+```bash
+cd /opt/stacks/<stack>
+docker compose pull
+docker compose up -d
+docker exec <stack>-scheduler-1 python -m findajob.web.verify_auth
+```
+
+The verifier line is **not optional**. It exists because every stack that has
+basic auth configured must continue to enforce it after a recompose, and a
+silent regression of the auth gate is a real incident class (see CLAUDE.md
+"Auth Gate Must Be Verified Post-Deploy").
+
+If the verifier exits non-zero on any stack:
+
+```bash
+cd /opt/stacks/<stack> && docker compose down
+```
+
+Treat the stack as broken until the verifier passes. Common failure modes:
+`FINDAJOB_AUTH_USER`/`FINDAJOB_AUTH_PASS` missing from `state/data/.env`
+(exit 2); auth middleware silently dropped from the route stack (exit 3);
+configured creds don't match the running container's env (exit 4 — usually
+a stale `.env` not picked up because the stack was `up -d` instead of full
+`down`/`up`).
+
 ## Rollback
 
 If post-tag verification fails or a regression is reported after the release is
