@@ -1,4 +1,8 @@
-"""Cost-logging tests for run_role() in scripts/interview_prep.py.
+"""Cost-logging tests for run_role() in findajob.interview.role_runner.
+
+Post-#537: `run_role()` lives in `findajob.interview.role_runner` (extracted
+from `scripts/interview_prep.py` in M3 PR #4). The test surface is unchanged —
+only the import path and the patch target moved.
 
 HTTP-mocked tests for the wrapper-driven run_role() helper after the Phase 2 port.
 Each call to run_role() writes a cost_log row with API-authoritative cost_usd
@@ -14,7 +18,7 @@ import urllib.error
 from io import BytesIO
 from unittest.mock import patch
 
-from scripts.interview_prep import run_role
+from findajob.interview.role_runner import run_role
 
 # Fake key satisfies the OPENROUTER_API_KEY guard in openrouter.complete() without
 # a real network call — used in conjunction with the urlopen mock.
@@ -125,7 +129,7 @@ def test_interview_prep_passes_cached_prefix():
     master_content = "MASTER RESUME: 20 years DC infra"
     cached_prefix = profile_content + "\n\n" + master_content
 
-    with patch("scripts.interview_prep.complete", _fake_complete):
+    with patch("findajob.interview.role_runner.complete", _fake_complete):
         run_role(
             "interview_prep",
             "Company: Acme\nTitle: Director\nJD: ...\nBRIEFING: ...",
