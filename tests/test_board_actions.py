@@ -691,6 +691,15 @@ def _fetch_user_notes(client: TestClient, fingerprint: str) -> str | None:
     return row[0] if row else None
 
 
+def _count_total_audit_rows(client: TestClient) -> int:
+    """Counts every audit_log row regardless of jobs.id JOIN — catches mis-keyed
+    orphan writes that _fetch_audit's JOIN would silently drop."""
+    conn = sqlite3.connect(client._db_path)
+    (n,) = conn.execute("SELECT COUNT(*) FROM audit_log").fetchone()
+    conn.close()
+    return n
+
+
 class TestNotes:
     def test_happy_path_saves_note(self, client: TestClient):
         response = client.post(
@@ -738,6 +747,55 @@ class TestNotes:
             data={"notes": "anything"},
         )
         assert response.status_code == 404
+
+    def test_repeated_posts_produce_zero_audit_rows(self, client: TestClient):
+        """Audit silence holds regardless of POST count — the keystroke-debounced
+        UX would explode audit_log otherwise. Counts total audit rows rather than
+        joining via jobs.id so a mis-keyed orphan write also fails the assertion."""
+        for i in range(5):
+            response = client.post(
+                "/board/jobs/fp_applied/notes",
+                data={"notes": f"note v{i}"},
+            )
+            assert response.status_code == 200
+
+        assert _fetch_user_notes(client, "fp_applied") == "note v4"
+        assert _count_total_audit_rows(client) == 0
+
+    def test_concurrent_writes_consistent_no_error(self, client: TestClient):
+        """Overlapping POSTs must both 200, leave a valid final state (one of the
+        two payloads), and never surface a SQLite-locking error to the client.
+        Locks the server-side contract the JS 800ms debounce relies on; M3+
+        refactors that introduce non-trivial work in the handler must preserve it."""
+        import threading
+
+        barrier = threading.Barrier(2)
+        results: list[tuple[int, str]] = []
+        lock = threading.Lock()
+
+        def post_note(value: str) -> None:
+            barrier.wait()
+            resp = client.post(
+                "/board/jobs/fp_applied/notes",
+                data={"notes": value},
+            )
+            with lock:
+                results.append((resp.status_code, value))
+
+        t1 = threading.Thread(target=post_note, args=("note from thread A",))
+        t2 = threading.Thread(target=post_note, args=("note from thread B",))
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
+
+        assert len(results) == 2
+        assert all(status == 200 for status, _ in results), f"non-200 responses: {results}"
+
+        final = _fetch_user_notes(client, "fp_applied")
+        assert final in {"note from thread A", "note from thread B"}, f"final state not from either POST: {final!r}"
+
+        assert _count_total_audit_rows(client) == 0
 
 
 # ── /waitlist handler ─────────────────────────────────────────────────────
