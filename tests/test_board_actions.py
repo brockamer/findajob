@@ -369,6 +369,29 @@ class TestReject:
         response = client.post("/board/jobs/fp_nonexistent/reject", data={"reason": "Other"})
         assert response.status_code == 404
 
+    def test_audit_log_writes_stage_and_reject_reason(self, client: TestClient):
+        """#510 — lock the audit_log contract for /reject: two rows, in order."""
+        client.post("/board/jobs/fp_scored/reject", data={"reason": "Low Fit Score"})
+
+        audit = _fetch_audit(client, "fp_scored")
+        assert audit == [
+            ("stage", "scored", "rejected"),
+            ("reject_reason", "", "Low Fit Score"),
+        ]
+
+    def test_idempotent_skip_writes_no_audit(self, client: TestClient):
+        """Already-rejected: handler returns 200 but writes no new audit row."""
+        conn = sqlite3.connect(client._db_path)
+        conn.execute("UPDATE jobs SET stage='rejected' WHERE fingerprint='fp_scored'")
+        conn.commit()
+        conn.close()
+
+        before = _fetch_audit(client, "fp_scored")
+        client.post("/board/jobs/fp_scored/reject", data={"reason": "Other"})
+        after = _fetch_audit(client, "fp_scored")
+
+        assert before == after
+
 
 # ── /not-selected handler ────────────────────────────────────────────────
 
@@ -488,6 +511,36 @@ class TestNotSelected:
             data={"reason": "Other"},
         )
         assert response.status_code == 404
+
+    def test_audit_log_writes_stage_and_reject_reason(self, client: TestClient):
+        """#510 — lock the audit_log contract for /not-selected: two rows, in order.
+
+        Distinct from /reject: stage transitions from applied (not scored), and
+        the handler writes audit_log but does not write feedback_log (company
+        rejections must not contaminate the scorer)."""
+        client.post(
+            "/board/jobs/fp_applied/not-selected",
+            data={"reason": "Too Senior"},
+        )
+
+        audit = _fetch_audit(client, "fp_applied")
+        assert audit == [
+            ("stage", "applied", "not_selected"),
+            ("reject_reason", "", "Too Senior"),
+        ]
+
+    def test_idempotent_skip_writes_no_audit(self, client: TestClient):
+        """Already-not-selected: handler returns 200 but writes no new audit row."""
+        conn = sqlite3.connect(client._db_path)
+        conn.execute("UPDATE jobs SET stage='not_selected' WHERE fingerprint='fp_applied'")
+        conn.commit()
+        conn.close()
+
+        before = _fetch_audit(client, "fp_applied")
+        client.post("/board/jobs/fp_applied/not-selected", data={"reason": "Other"})
+        after = _fetch_audit(client, "fp_applied")
+
+        assert before == after
 
 
 # ── /regenerate handler ───────────────────────────────────────────────────
@@ -1154,8 +1207,12 @@ class TestApplySyntheticBranch:
             f"synthetic /apply should write changed_by='outreach_button', got {row[0]!r}"
         )
 
-    def test_real_apply_does_not_use_outreach_button(self, client: TestClient):
-        """Move fp_drafted (real, materials_drafted in seed) to applied via /apply."""
+    def test_real_apply_writes_user_changed_by(self, client: TestClient):
+        """Real /apply must write changed_by='user' (CLAUDE.md Synthetic Jobs Convention).
+
+        Tightened from the earlier `!= 'outreach_button'` assertion (#510): the
+        contract is positively `'user'`, not "anything but outreach_button".
+        """
         response = client.post("/board/jobs/fp_drafted/apply")
         assert response.status_code == 200
         assert _fetch_stage(client, "fp_drafted") == "applied"
@@ -1168,4 +1225,4 @@ class TestApplySyntheticBranch:
         ).fetchone()
         conn.close()
         assert row is not None
-        assert row[0] != "outreach_button", f"real /apply must not use outreach_button changed_by, got {row[0]!r}"
+        assert row[0] == "user", f"real /apply must write changed_by='user', got {row[0]!r}"
