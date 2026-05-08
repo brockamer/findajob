@@ -30,6 +30,7 @@ from findajob.actions import (
     un_reject_job,
 )
 from findajob.audit import log_event, write_audit
+from findajob.background_tasks import TASK_ID_ENV_VAR, record_failed, record_start
 from findajob.classification import is_synthetic_job
 from findajob.paths import BASE
 from findajob.web.company_history import build_history_by_fp, fetch_company_history
@@ -59,34 +60,62 @@ def _prep_queue_full_response() -> HTMLResponse:
     )
 
 
-def _launch_prep_subprocess(job: sqlite3.Row) -> None:
-    subprocess.Popen(
-        [
-            sys.executable,
-            f"{BASE}/scripts/prep_application.py",
-            job["company"],
-            job["title"],
-            job["url"],
-            job["id"],
-        ],
-        start_new_session=True,
-    )
+def _launch_prep_subprocess(db: sqlite3.Connection, job: sqlite3.Row) -> int:
+    """Insert a ``background_tasks`` row, then spawn prep_application.
+
+    Returns the new task_id so a caller (e.g. status page) can poll.
+    The subprocess reads ``FINDAJOB_BG_TASK_ID`` from env and writes
+    back ``status='succeeded'``/``'failed'`` on exit. Watchdog reaps
+    stuck rows after 60 minutes per the kind timeout.
+    """
+    task_id = record_start(db, job_id=job["id"], kind="prep")
+    try:
+        proc = subprocess.Popen(
+            [
+                sys.executable,
+                f"{BASE}/scripts/prep_application.py",
+                job["company"],
+                job["title"],
+                job["url"],
+                job["id"],
+            ],
+            start_new_session=True,
+            env={**os.environ, TASK_ID_ENV_VAR: str(task_id)},
+        )
+        # Backfill the PID once we have it. Best-effort; pid is
+        # forensic-only and a missing one doesn't break the contract.
+        db.execute("UPDATE background_tasks SET pid=? WHERE id=?", (proc.pid, task_id))
+        db.commit()
+    except Exception as e:
+        record_failed(db, task_id, error_message=f"Popen failed: {e}")
+        raise
+    return task_id
 
 
-def _launch_interview_prep_subprocess(job: sqlite3.Row) -> None:
-    """Spawn the interview_prep generator. Script handles its own concurrency
-    guard via a sentinel file in the prep folder, so re-clicks during a run
-    are safely no-op'd. Jobs with no prep folder log + skip inside the script."""
-    subprocess.Popen(
-        [
-            sys.executable,
-            f"{BASE}/scripts/interview_prep.py",
-            job["company"],
-            job["title"],
-            job["id"],
-        ],
-        start_new_session=True,
-    )
+def _launch_interview_prep_subprocess(db: sqlite3.Connection, job: sqlite3.Row) -> int:
+    """Spawn the interview_prep generator. The orchestrator's own
+    in-folder concurrency guard handles re-clicks; the
+    ``background_tasks`` row provides the operator-visible status surface
+    that the prior sentinel-file approach lacked."""
+    task_id = record_start(db, job_id=job["id"], kind="interview_prep")
+    try:
+        proc = subprocess.Popen(
+            [
+                sys.executable,
+                f"{BASE}/scripts/interview_prep.py",
+                job["company"],
+                job["title"],
+                job["id"],
+            ],
+            start_new_session=True,
+            env={**os.environ, TASK_ID_ENV_VAR: str(task_id)},
+        )
+        db.execute("UPDATE background_tasks SET pid=? WHERE id=?", (proc.pid, task_id))
+        db.commit()
+    except Exception as e:
+        record_failed(db, task_id, error_message=f"Popen failed: {e}")
+        raise
+    return task_id
 
 
 _DASHBOARD_ROW_SQL = (
@@ -253,7 +282,7 @@ def prep(
         title=job["title"],
     )
 
-    _launch_prep_subprocess(job)
+    _launch_prep_subprocess(db, job)
 
     updated = _fetch_dashboard_row(db, fingerprint)
     assert updated is not None  # we just updated this row
@@ -304,7 +333,7 @@ def regenerate(
         title=job["title"],
     )
 
-    _launch_prep_subprocess(job)
+    _launch_prep_subprocess(db, job)
 
     updated = _fetch_dashboard_row(db, fingerprint)
     assert updated is not None
@@ -341,8 +370,9 @@ def interview(
     if job["stage"] != "interview":
         _transition_stage(db, job, "interview", event_name="web_interview")
     # Re-clicking "Interviewing" regenerates the interview-prep artifact.
-    # Subprocess guards against concurrent runs via a sentinel file in the prep folder.
-    _launch_interview_prep_subprocess(job)
+    # Concurrency control via background_tasks (M6); the sentinel-file
+    # approach was removed when M6's row-based status surface landed.
+    _launch_interview_prep_subprocess(db, job)
     updated = _fetch_applied_row(db, fingerprint)
     assert updated is not None
     return _render_applied_row(request, updated)

@@ -23,6 +23,7 @@ from datetime import UTC, datetime
 
 from findajob.actions import reset_prep_to_scored
 from findajob.audit import log_event, write_audit
+from findajob.background_tasks import writeback_subprocess
 from findajob.classification import JD_MAX_CHARS
 from findajob.db import connect
 from findajob.llm.role_runner import run_role
@@ -49,7 +50,11 @@ def abbrev_title(title: str, max_words: int = 3) -> str:
 def main() -> None:
     # Module-load side effect deferred to here so import is safe.
     load_env()
+    with writeback_subprocess(DB_PATH):
+        _run_prep()
 
+
+def _run_prep() -> None:
     company, title, url, job_id = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 
     # Guard: skip if prep already completed for this job

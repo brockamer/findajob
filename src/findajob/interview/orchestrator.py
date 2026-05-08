@@ -5,6 +5,13 @@ Extracted from `scripts/interview_prep.py` in M3 (#537). Module-load
 `findajob.llm.role_runner` and `notify()` to
 `findajob.notifications.ntfy.quick_notify` in M3's cleanup PR; this
 module imports both rather than redefining them.
+
+M6 swap (2026-05-08): the prior `.interview_prep_in_progress` sentinel
+file was replaced by the `background_tasks` row contract. Concurrency
+control still happens — but at the row level, with the launcher
+inserting a `running` row before spawn and the watchdog reaping stuck
+rows by per-kind timeout. The `findajob.interview.sentinel` module
+was deleted in the same PR.
 """
 
 import os
@@ -15,8 +22,8 @@ import sys
 from datetime import datetime
 
 from findajob.audit import log_event
+from findajob.background_tasks import writeback_subprocess
 from findajob.db import connect
-from findajob.interview.sentinel import SENTINEL_NAME, _sentinel_blocks_run
 from findajob.llm.role_runner import run_role
 from findajob.notifications.ntfy import quick_notify
 from findajob.paths import BASE, PANDOC, load_env
@@ -57,7 +64,11 @@ def _read_or_empty(path: str | None) -> str:
 def main() -> None:
     # Module-load side effect deferred to here so import is safe.
     load_env()
+    with writeback_subprocess(DB_PATH):
+        _run_interview_prep()
 
+
+def _run_interview_prep() -> None:
     if len(sys.argv) < 4:
         print("Usage: interview_prep.py <company> <title> <job_id>", file=sys.stderr)
         sys.exit(2)
@@ -91,32 +102,12 @@ def main() -> None:
             quick_notify(f"INTERVIEW PREP SKIPPED: {company} — {title}\nNo prep folder; apply was likely manual.")
             return
 
-        # ── Concurrency guard: refuse if a fresh run is already in flight for this folder ──
-        sentinel = os.path.join(prep_folder, SENTINEL_NAME)
-        log_kwargs: dict[str, object] = {
-            "job_id": job_id,
-            "company": company,
-            "title": title,
-            "folder": prep_folder,
-        }
-        if _sentinel_blocks_run(sentinel, log_kwargs=log_kwargs):
-            log_event("interview_prep_skipped_in_flight", **log_kwargs)
-            return
-
-        # Touch sentinel; remove on exit.
-        try:
-            with open(sentinel, "w") as f:
-                f.write(datetime.now().isoformat())
-        except OSError:
-            pass
-
-        try:
-            _generate(prep_folder, company, title, job_id, row["raw_jd_text"] or "", conn=conn)
-        finally:
-            try:
-                os.remove(sentinel)
-            except OSError:
-                pass
+        # M6: concurrency control via background_tasks rows, not the
+        # prior `.interview_prep_in_progress` sentinel file. Re-clicks
+        # are no-ops in the action layer if a `running` row already
+        # exists for this (job_id, kind='interview_prep'); see
+        # findajob.web.routes.board_actions._launch_interview_prep_subprocess.
+        _generate(prep_folder, company, title, job_id, row["raw_jd_text"] or "", conn=conn)
     finally:
         conn.close()
 

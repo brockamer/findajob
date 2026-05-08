@@ -28,9 +28,14 @@ import pytest
 
 from findajob.db.migrate import (
     MIGRATIONS_DIR,
+    _list_migrations,
     apply_pending,
 )
 from tests.fixtures._legacy_v0_10_setup import write_v0_10_0_db
+
+# Computed dynamically so future migrations don't require test edits —
+# every new ``000N_*.sql`` lands cleanly without churning these tests.
+HEAD_VERSION: int = max(version for version, _, _ in _list_migrations())
 
 
 def _table_info(conn: sqlite3.Connection, table: str) -> list[tuple]:
@@ -48,7 +53,8 @@ def _read_version(conn: sqlite3.Connection) -> int | None:
 
 
 def test_fresh_db_runs_initial_migration(tmp_path: Path) -> None:
-    """A fresh DB picks up version=1 and gets every table from 0001_initial.sql."""
+    """A fresh DB picks up the head version and gets every table from
+    every numbered migration."""
     db = tmp_path / "fresh.db"
     conn = sqlite3.connect(str(db))
     try:
@@ -56,14 +62,17 @@ def test_fresh_db_runs_initial_migration(tmp_path: Path) -> None:
     finally:
         conn.close()
 
-    assert len(applied) == 1
+    # Every numbered migration runs against a fresh DB.
+    assert len(applied) == HEAD_VERSION
     assert applied[0].version == 1
     assert applied[0].name == "initial"
     assert applied[0].skipped is False
+    # Last applied is the head migration.
+    assert applied[-1].version == HEAD_VERSION
 
     conn = sqlite3.connect(str(db))
     try:
-        assert _read_version(conn) == 1
+        assert _read_version(conn) == HEAD_VERSION
         for tbl in [
             "jobs",
             "audit_log",
@@ -101,7 +110,7 @@ def test_idempotent_second_run_is_noop(tmp_path: Path) -> None:
     try:
         applied = apply_pending(conn)
         assert applied == []
-        assert _read_version(conn) == 1
+        assert _read_version(conn) == HEAD_VERSION
     finally:
         conn.close()
 
@@ -122,14 +131,16 @@ def test_legacy_v0_10_bridges_to_equilibrium(tmp_path: Path) -> None:
     finally:
         conn.close()
 
-    # Bridge ran (column drift fixed), then 0001 ran (missing tables
-    # created). One applied migration from 0 → 1.
-    assert len(applied) == 1
+    # Bridge ran (column drift fixed), then every numbered migration
+    # ran in order from 0 → HEAD_VERSION. The 0001 IF-NOT-EXISTS
+    # creates filled in missing tables; subsequent migrations stack
+    # additively.
+    assert len(applied) == HEAD_VERSION
     assert applied[0].version == 1
 
     conn = sqlite3.connect(str(db))
     try:
-        assert _read_version(conn) == 1
+        assert _read_version(conn) == HEAD_VERSION
         # Cost calibration table dropped.
         assert not _has_table(conn, "cost_calibration")
         # Notifications table is part of equilibrium — the bridge does NOT
@@ -160,10 +171,10 @@ def test_dry_run_does_not_mutate(tmp_path: Path) -> None:
     finally:
         conn.close()
 
-    # Reports the would-be initial migration as skipped.
-    assert len(applied) == 1
+    # Reports every would-be migration as skipped.
+    assert len(applied) == HEAD_VERSION
     assert applied[0].version == 1
-    assert applied[0].skipped is True
+    assert all(m.skipped for m in applied)
 
     # No state written: _meta wasn't created (we don't ensure it under
     # dry_run), no tables created.
@@ -205,7 +216,7 @@ def test_init_db_script_uses_runner(tmp_path: Path) -> None:
 
     conn = sqlite3.connect(str(db))
     try:
-        assert _read_version(conn) == 1
+        assert _read_version(conn) == HEAD_VERSION
         assert _has_table(conn, "jobs")
     finally:
         conn.close()
@@ -227,9 +238,10 @@ def test_corrupt_meta_treated_as_missing(tmp_path: Path) -> None:
     conn = sqlite3.connect(str(db))
     try:
         applied = apply_pending(conn)
-        # Heuristic fires (no jobs table → version=0), then 0001 runs.
-        assert len(applied) == 1
-        assert _read_version(conn) == 1
+        # Heuristic fires (no jobs table → version=0), then every
+        # numbered migration runs in sequence.
+        assert len(applied) == HEAD_VERSION
+        assert _read_version(conn) == HEAD_VERSION
     finally:
         conn.close()
 

@@ -7,6 +7,18 @@
       "type": "index"
     },
     {
+      "name": "idx_background_tasks_job_id",
+      "sql": "CREATE INDEX idx_background_tasks_job_id ON background_tasks(job_id)",
+      "tbl_name": "background_tasks",
+      "type": "index"
+    },
+    {
+      "name": "idx_background_tasks_status_kind",
+      "sql": "CREATE INDEX idx_background_tasks_status_kind ON background_tasks(status,kind)",
+      "tbl_name": "background_tasks",
+      "type": "index"
+    },
+    {
       "name": "idx_cost_log_job_id",
       "sql": "CREATE INDEX idx_cost_log_job_id ON cost_log(job_id)",
       "tbl_name": "cost_log",
@@ -166,6 +178,79 @@
       "name": "audit_log",
       "sql": "CREATE TABLE audit_log(id INTEGER PRIMARY KEY AUTOINCREMENT,job_id TEXT NOT NULL,field_changed TEXT NOT NULL,old_value TEXT,new_value TEXT,changed_at TEXT DEFAULT(datetime('now')),changed_by TEXT DEFAULT 'system')",
       "tbl_name": "audit_log",
+      "type": "table"
+    },
+    {
+      "columns": [
+        {
+          "cid": 0,
+          "dflt_value": null,
+          "name": "id",
+          "notnull": 0,
+          "pk": 1,
+          "type": "INTEGER"
+        },
+        {
+          "cid": 1,
+          "dflt_value": null,
+          "name": "job_id",
+          "notnull": 1,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "cid": 2,
+          "dflt_value": null,
+          "name": "kind",
+          "notnull": 1,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "cid": 3,
+          "dflt_value": "datetime('now')",
+          "name": "started_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "cid": 4,
+          "dflt_value": null,
+          "name": "finished_at",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "cid": 5,
+          "dflt_value": "'running'",
+          "name": "status",
+          "notnull": 1,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "cid": 6,
+          "dflt_value": null,
+          "name": "error_message",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "cid": 7,
+          "dflt_value": null,
+          "name": "pid",
+          "notnull": 0,
+          "pk": 0,
+          "type": "INTEGER"
+        }
+      ],
+      "foreign_keys": [],
+      "name": "background_tasks",
+      "sql": "CREATE TABLE background_tasks(id INTEGER PRIMARY KEY AUTOINCREMENT,job_id TEXT NOT NULL,kind TEXT NOT NULL CHECK(kind IN('prep','interview_prep','speculative_research')),started_at TEXT NOT NULL DEFAULT(datetime('now')),finished_at TEXT,status TEXT NOT NULL DEFAULT 'running' CHECK(status IN('running','succeeded','failed')),error_message TEXT,pid INTEGER)",
+      "tbl_name": "background_tasks",
       "type": "table"
     },
     {
@@ -656,7 +741,7 @@
       ],
       "foreign_keys": [],
       "name": "jobs",
-      "sql": "CREATE TABLE jobs(id TEXT PRIMARY KEY,fingerprint TEXT UNIQUE NOT NULL,loose_fingerprint TEXT,url TEXT NOT NULL,title TEXT NOT NULL,company TEXT NOT NULL,location TEXT DEFAULT '',source TEXT NOT NULL,raw_jd_text TEXT,relevance_score INTEGER CHECK(relevance_score BETWEEN 1 AND 10),interview_likelihood INTEGER CHECK(interview_likelihood BETWEEN 1 AND 10),strengths_alignment TEXT,industry_sector TEXT,comp_estimate TEXT DEFAULT '',ai_notes TEXT,score_status TEXT CHECK(score_status IN('scored','manual_review','needs_info')),score_flag_reason TEXT,remote_status TEXT DEFAULT 'Unknown',network_depth INTEGER DEFAULT 0,known_contacts TEXT DEFAULT '',stage TEXT DEFAULT 'discovered' CHECK(stage IN('discovered','enriched','scored','manual_review','prep_in_progress','materials_drafted','waitlisted','applied','response_received','interview','offer','rejected','withdrawn')),stage_updated TEXT,status TEXT DEFAULT 'active' CHECK(status IN('active','manual_review','skipped','applied','rejected','interviewing','offer')),apply_flag INTEGER DEFAULT 0,reject_reason TEXT DEFAULT '',prep_folder_path TEXT,gdrive_folder_url TEXT,fit_score REAL,probability_score REAL,user_notes TEXT DEFAULT '',created_at TEXT DEFAULT(datetime('now')),updated_at TEXT DEFAULT(datetime('now')),dupe_of TEXT DEFAULT '',synthetic INTEGER NOT NULL DEFAULT 0,speculative_briefing_folder TEXT)",
+      "sql": "CREATE TABLE jobs(id TEXT PRIMARY KEY,fingerprint TEXT UNIQUE NOT NULL,loose_fingerprint TEXT,url TEXT NOT NULL,title TEXT NOT NULL,company TEXT NOT NULL,location TEXT DEFAULT '',source TEXT NOT NULL,raw_jd_text TEXT,relevance_score INTEGER CHECK(relevance_score BETWEEN 1 AND 10),interview_likelihood INTEGER CHECK(interview_likelihood BETWEEN 1 AND 10),strengths_alignment TEXT,industry_sector TEXT,comp_estimate TEXT DEFAULT '',ai_notes TEXT,score_status TEXT CHECK(score_status IN('scored','manual_review','needs_info')),score_flag_reason TEXT,remote_status TEXT DEFAULT 'Unknown',network_depth INTEGER DEFAULT 0,known_contacts TEXT DEFAULT '',stage TEXT DEFAULT 'discovered' CHECK(stage IN('discovered','enriched','scored','manual_review','prep_in_progress','materials_drafted','waitlisted','applied','response_received','interview','offer','rejected','not_selected','withdrawn')),stage_updated TEXT,status TEXT DEFAULT 'active' CHECK(status IN('active','manual_review','skipped','applied','rejected','interviewing','offer')),apply_flag INTEGER DEFAULT 0,reject_reason TEXT DEFAULT '',prep_folder_path TEXT,gdrive_folder_url TEXT,fit_score REAL,probability_score REAL,user_notes TEXT DEFAULT '',created_at TEXT DEFAULT(datetime('now')),updated_at TEXT DEFAULT(datetime('now')),dupe_of TEXT DEFAULT '',synthetic INTEGER NOT NULL DEFAULT 0,speculative_briefing_folder TEXT)",
       "tbl_name": "jobs",
       "type": "table"
     },

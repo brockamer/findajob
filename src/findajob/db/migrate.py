@@ -175,6 +175,11 @@ def _bridge_legacy_to_v1(conn: sqlite3.Connection) -> None:
             conn.execute("ALTER TABLE jobs ADD COLUMN synthetic INTEGER NOT NULL DEFAULT 0")
         if "speculative_briefing_folder" not in jobs_cols:
             conn.execute("ALTER TABLE jobs ADD COLUMN speculative_briefing_folder TEXT")
+        # SQLite forbids ALTER CHECK; the only path to fix a legacy
+        # stage-CHECK constraint that lacks ``'not_selected'`` is the
+        # rename-create-copy-drop dance. Idempotent: skip when the
+        # constraint already includes it.
+        _relax_jobs_stage_check_if_needed(conn)
 
     if _table_exists(conn, "cost_calibration"):
         conn.execute("DROP INDEX IF EXISTS idx_cost_calibration_polled_at")
@@ -190,6 +195,47 @@ def _bridge_legacy_to_v1(conn: sqlite3.Connection) -> None:
             conn.execute("ALTER TABLE onboarding_sessions ADD COLUMN cumulative_cost_usd REAL NOT NULL DEFAULT 0")
         if "tester_google_key" in sess_cols:
             conn.execute("ALTER TABLE onboarding_sessions DROP COLUMN tester_google_key")
+
+
+def _relax_jobs_stage_check_if_needed(conn: sqlite3.Connection) -> None:
+    """If the legacy ``jobs.stage`` CHECK lacks ``'not_selected'``,
+    rebuild the table with the v1 CHECK. Idempotent: a no-op when the
+    CHECK already includes the value.
+
+    SQLite has no ``ALTER TABLE ... ALTER CHECK`` — the only way to
+    change a CHECK constraint is to recreate the table. The recipe:
+    rename the original out of the way, run 0001's CREATE TABLE jobs
+    DDL, copy rows by intersecting column sets, drop the old table.
+    """
+    schema_row = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='jobs'").fetchone()
+    if schema_row is None:
+        return
+    current_sql = schema_row[0] or ""
+    if "'not_selected'" in current_sql:
+        return  # already at v1 shape
+
+    # Read the canonical CREATE TABLE jobs block from 0001.
+    initial_sql = (MIGRATIONS_DIR / "0001_initial.sql").read_text(encoding="utf-8")
+    create_match = re.search(r"(CREATE TABLE IF NOT EXISTS jobs \(.*?\n\);)", initial_sql, re.DOTALL)
+    if create_match is None:  # pragma: no cover — 0001 always has this block
+        raise RuntimeError("Could not locate CREATE TABLE jobs in 0001_initial.sql")
+    new_create = create_match.group(1).replace("IF NOT EXISTS jobs", "jobs")
+
+    # Capture the legacy column list so the INSERT INTO ... SELECT
+    # only references columns the legacy table actually has — never
+    # the v1 columns added by ALTER TABLE earlier in this bridge.
+    legacy_cols = [row[1] for row in conn.execute("PRAGMA table_info(jobs)").fetchall()]
+    cols_csv = ",".join(legacy_cols)
+
+    conn.execute("PRAGMA foreign_keys=OFF")
+    try:
+        conn.execute("ALTER TABLE jobs RENAME TO _jobs_legacy_pre_v1")
+        conn.executescript(new_create)
+        conn.execute(f"INSERT INTO jobs ({cols_csv}) SELECT {cols_csv} FROM _jobs_legacy_pre_v1")
+        conn.execute("DROP TABLE _jobs_legacy_pre_v1")
+        conn.commit()
+    finally:
+        conn.execute("PRAGMA foreign_keys=ON")
 
 
 def _infer_baseline_version(conn: sqlite3.Connection) -> int:

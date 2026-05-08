@@ -5,14 +5,11 @@ top-level. After M3 PR #4 the call lives inside `main()`.
 
 Per the test-ordering lesson from PR #542: only reimport
 `orchestrator.py` (the module that had the original `load_env()`).
-Reimporting `sentinel.py` would invalidate
-`from findajob.interview.sentinel import _sentinel_blocks_run`
-references taken at collection by other tests.
 
-The earlier `test_run_role_duplication_acknowledged` bytecode guard
-(against the prep copy) is removed — its job ended when the cleanup PR
-deleted both `findajob.{prep,interview}.role_runner` and consolidated
-into `findajob.llm.role_runner`.
+M6 (2026-05-08): the `findajob.interview.sentinel` module was deleted
+along with its sentinel-file concurrency control — replaced by the
+`background_tasks` row contract (see `findajob.background_tasks`). The
+`test_sentinel_module_loads_without_env_or_db` test went with it.
 """
 
 from __future__ import annotations
@@ -50,16 +47,3 @@ def test_orchestrator_exposes_main_and_helpers():
     assert callable(main)
     assert callable(_latest)
     assert callable(_read_or_empty)
-
-
-def test_sentinel_module_loads_without_env_or_db():
-    """`findajob.interview.sentinel` must import cleanly without env or DB setup."""
-    from findajob.interview.sentinel import (
-        SENTINEL_NAME,
-        SENTINEL_STALE_AFTER_SECONDS,
-        _sentinel_blocks_run,
-    )
-
-    assert SENTINEL_NAME == ".interview_prep_in_progress"
-    assert SENTINEL_STALE_AFTER_SECONDS == 600
-    assert callable(_sentinel_blocks_run)

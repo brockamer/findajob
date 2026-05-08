@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 
 from findajob.audit import log_event
+from findajob.background_tasks import writeback_subprocess
 from findajob.db import connect
 from findajob.paths import BASE
 from findajob.speculative.runner import run_research
@@ -32,32 +33,38 @@ def main(argv: list[str]) -> int:
     master_resume = Path(BASE) / "candidate_context" / "master_resume.md"
     companies_dir = Path(BASE) / "companies"
 
-    conn = connect(db_path, timeout=30)
-    conn.row_factory = sqlite3.Row
-    try:
-        run_research(
-            conn=conn,
-            request_id=request_id,
-            profile_path=profile,
-            master_resume_path=master_resume,
-            companies_dir=companies_dir,
-        )
-    except Exception as e:
-        log_event("speculative_research_uncaught_exception", request_id=request_id, error=str(e))
-        # run_research best-efforts a status='failed' write on known errors;
-        # this catches truly unexpected (e.g. DB connection errors) so the
-        # process never exits without recording state.
+    # M6 writeback contract: the launcher inserted a background_tasks
+    # row with status='running' before spawn; this writes back
+    # succeeded/failed on exit. The local try/except still catches
+    # unexpected errors and stamps speculative_requests.status='failed'
+    # for the operator-facing status page — both surfaces are populated.
+    with writeback_subprocess(str(db_path)):
+        conn = connect(db_path, timeout=30)
+        conn.row_factory = sqlite3.Row
         try:
-            conn.execute(
-                "UPDATE speculative_requests SET status='failed', error_message=? WHERE id=?",
-                (f"unexpected: {e}", request_id),
+            run_research(
+                conn=conn,
+                request_id=request_id,
+                profile_path=profile,
+                master_resume_path=master_resume,
+                companies_dir=companies_dir,
             )
-            conn.commit()
-        except Exception:
-            pass
-        return 1
-    finally:
-        conn.close()
+        except Exception as e:
+            log_event("speculative_research_uncaught_exception", request_id=request_id, error=str(e))
+            # run_research best-efforts a status='failed' write on known errors;
+            # this catches truly unexpected (e.g. DB connection errors) so the
+            # speculative_requests row also reflects state.
+            try:
+                conn.execute(
+                    "UPDATE speculative_requests SET status='failed', error_message=? WHERE id=?",
+                    (f"unexpected: {e}", request_id),
+                )
+                conn.commit()
+            except Exception:
+                pass
+            raise
+        finally:
+            conn.close()
     return 0
 
 

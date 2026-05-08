@@ -12,6 +12,7 @@ Endpoints:
 
 from __future__ import annotations
 
+import os
 import sqlite3
 import subprocess
 import sys
@@ -22,6 +23,7 @@ from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from findajob.background_tasks import TASK_ID_ENV_VAR, record_failed, record_start
 from findajob.db import connect
 from findajob.paths import BASE
 from findajob.speculative.approver import approve_request
@@ -38,6 +40,33 @@ def _conn() -> sqlite3.Connection:
     conn = connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def _launch_speculative_research_subprocess(conn: sqlite3.Connection, request_id: int) -> int:
+    """Insert a ``background_tasks`` row, then spawn the research subprocess.
+
+    Used by both POST /ingest/speculative and POST /speculative/regenerate.
+    The subprocess reads ``FINDAJOB_BG_TASK_ID`` from env and writes back
+    on exit; watchdog reaps stuck rows after 10 minutes per the kind
+    timeout. ``job_id`` carries the stringified ``speculative_requests.id``
+    since this kind's subject isn't a ``jobs`` row.
+    """
+    task_id = record_start(conn, job_id=str(request_id), kind="speculative_research")
+    script_path = Path(BASE) / "scripts" / "run_speculative_research.py"
+    try:
+        proc = subprocess.Popen(
+            [sys.executable, str(script_path), str(request_id)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+            env={**os.environ, TASK_ID_ENV_VAR: str(task_id)},
+        )
+        conn.execute("UPDATE background_tasks SET pid=? WHERE id=?", (proc.pid, task_id))
+        conn.commit()
+    except Exception as e:
+        record_failed(conn, task_id, error_message=f"Popen failed: {e}")
+        raise
+    return task_id
 
 
 # ── T21: POST /ingest/speculative ────────────────────────────────────────
@@ -61,16 +90,12 @@ def post_speculative(
         )
         conn.commit()
         request_id = cur.lastrowid
+        if request_id is None:  # pragma: no cover — AUTOINCREMENT INSERT always returns lastrowid
+            raise RuntimeError("speculative_requests INSERT did not return lastrowid")
+        _launch_speculative_research_subprocess(conn, request_id)
     finally:
         conn.close()
 
-    script_path = Path(BASE) / "scripts" / "run_speculative_research.py"
-    subprocess.Popen(
-        [sys.executable, str(script_path), str(request_id)],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
     return RedirectResponse(url=f"/speculative/status/{request_id}", status_code=303)
 
 
@@ -159,16 +184,10 @@ def post_regenerate(request_id: int) -> RedirectResponse:
             (request_id,),
         )
         conn.commit()
+        _launch_speculative_research_subprocess(conn, request_id)
     finally:
         conn.close()
 
-    script_path = Path(BASE) / "scripts" / "run_speculative_research.py"
-    subprocess.Popen(
-        [sys.executable, str(script_path), str(request_id)],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
     return RedirectResponse(url=f"/speculative/status/{request_id}", status_code=303)
 
 

@@ -21,71 +21,27 @@ def _make_app(db_path: Path) -> FastAPI:
 
 
 def _make_db(tmp_path: Path) -> Path:
+    """Build a tmp pipeline.db via the production migration runner.
+
+    Pre-M5/M6 this fixture maintained a hand-written subset of the schema
+    that drifted whenever a column landed (#339 cumulative_cost_usd,
+    M6 background_tasks). Using apply_pending eliminates the drift surface.
+    """
+    from findajob.db.migrate import apply_pending
+
     db = tmp_path / "p.db"
     conn = sqlite3.connect(str(db))
-    conn.executescript("""
-        CREATE TABLE speculative_requests (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            company TEXT NOT NULL,
-            hint TEXT,
-            personal_notes TEXT,
-            status TEXT NOT NULL DEFAULT 'researching',
-            error_message TEXT,
-            briefing_md TEXT,
-            role_cards_json TEXT,
-            briefing_folder TEXT,
-            submitted_at TEXT NOT NULL DEFAULT (datetime('now')),
-            research_completed_at TEXT,
-            approved_at TEXT,
-            approved_role_count INTEGER,
-            briefing_prompt_version TEXT,
-            synth_prompt_version TEXT
-        );
-    """)
-    conn.commit()
-    conn.close()
+    try:
+        apply_pending(conn)
+    finally:
+        conn.close()
     return db
 
 
-def _make_db_with_jobs(tmp_path: Path) -> Path:
-    """Schema for tests that exercise the approve path (writes jobs rows)."""
-    db = tmp_path / "p.db"
-    conn = sqlite3.connect(str(db))
-    conn.executescript("""
-        CREATE TABLE jobs (
-            id TEXT PRIMARY KEY, fingerprint TEXT UNIQUE NOT NULL, url TEXT NOT NULL,
-            title TEXT NOT NULL, company TEXT NOT NULL, location TEXT DEFAULT '',
-            source TEXT NOT NULL, raw_jd_text TEXT, relevance_score INTEGER,
-            score_status TEXT, ai_notes TEXT, stage TEXT, stage_updated TEXT,
-            created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now')),
-            synthetic INTEGER NOT NULL DEFAULT 0,
-            speculative_briefing_folder TEXT
-        );
-        CREATE TABLE audit_log (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, job_id TEXT NOT NULL, field_changed TEXT NOT NULL,
-            old_value TEXT, new_value TEXT, changed_at TEXT DEFAULT (datetime('now')), changed_by TEXT DEFAULT 'system'
-        );
-        CREATE TABLE speculative_requests (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            company TEXT NOT NULL,
-            hint TEXT,
-            personal_notes TEXT,
-            status TEXT NOT NULL DEFAULT 'researching',
-            error_message TEXT,
-            briefing_md TEXT,
-            role_cards_json TEXT,
-            briefing_folder TEXT,
-            submitted_at TEXT NOT NULL DEFAULT (datetime('now')),
-            research_completed_at TEXT,
-            approved_at TEXT,
-            approved_role_count INTEGER,
-            briefing_prompt_version TEXT,
-            synth_prompt_version TEXT
-        );
-    """)
-    conn.commit()
-    conn.close()
-    return db
+# Approve path now uses the same fixture — apply_pending creates jobs +
+# audit_log alongside speculative_requests, so the previous _make_db_with_jobs
+# split is unnecessary.
+_make_db_with_jobs = _make_db
 
 
 # ── T21: POST /ingest/speculative ────────────────────────────────────────
@@ -97,6 +53,10 @@ def test_post_speculative_inserts_row_and_spawns_subprocess(tmp_path):
     client = TestClient(app)
 
     with patch("findajob.web.routes.speculative.subprocess.Popen") as mock_popen:
+        # The launcher reads ``proc.pid`` to backfill background_tasks.pid;
+        # the SQLite UPDATE binds it as INTEGER, so a MagicMock pid trips
+        # ProgrammingError. A real int keeps the launcher happy.
+        mock_popen.return_value.pid = 99999
         resp = client.post(
             "/ingest/speculative",
             data={"company": "PSIQuantum", "hint": "advanced computing", "personal_notes": ""},

@@ -27,24 +27,17 @@ def _iso_days_ago(days: int) -> str:
     return (datetime.now(UTC) - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
 
 
-def _make_client(tmp_path: Path) -> TestClient:
+def _make_client(tmp_path: Path) -> tuple[sqlite3.Connection, Path]:
+    """Build a tmp pipeline.db via the production migration runner.
+
+    Pre-M5/M6 this fixture maintained a hand-written subset of the
+    schema. Using ``apply_pending`` matches production exactly.
+    """
+    from findajob.db.migrate import apply_pending
+
     db = tmp_path / "pipeline.db"
     conn = sqlite3.connect(db)
-    conn.execute(
-        "CREATE TABLE jobs (id TEXT PRIMARY KEY, fingerprint TEXT, title TEXT, "
-        "company TEXT, stage TEXT, relevance_score INTEGER, fit_score REAL, "
-        "probability_score REAL, interview_likelihood REAL, location TEXT, "
-        "remote_status TEXT, known_contacts TEXT, comp_estimate TEXT, "
-        "ai_notes TEXT, reject_reason TEXT, url TEXT, created_at TEXT, "
-        "stage_updated TEXT, updated_at TEXT, prep_folder_path TEXT, "
-        "apply_flag INTEGER DEFAULT 0)"
-    )
-    conn.execute(
-        "CREATE TABLE audit_log (id INTEGER PRIMARY KEY, job_id TEXT, "
-        "field_changed TEXT, old_value TEXT, new_value TEXT, changed_at TEXT, "
-        "changed_by TEXT)"
-    )
-    conn.commit()
+    apply_pending(conn)
     return conn, db
 
 
@@ -82,8 +75,9 @@ def empty_history_client(tmp_path: Path) -> TestClient:
     """Company with a single dashboard-eligible row and no prior applications."""
     conn, db = _make_client(tmp_path)
     conn.execute(
-        "INSERT INTO jobs (id, fingerprint, title, company, stage, relevance_score, created_at) VALUES (?,?,?,?,?,?,?)",
-        ("id-only", "fp-only", "Lead NPI", "OpenAI", "scored", 8, _iso_days_ago(1)),
+        "INSERT INTO jobs (id, fingerprint, title, company, url, source, stage, relevance_score, created_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?)",
+        ("id-only", "fp-only", "Lead NPI", "OpenAI", "https://example.com/x", "test", "scored", 8, _iso_days_ago(1)),
     )
     return _finalize(tmp_path, conn, db)
 
@@ -107,12 +101,24 @@ def pending_only_client(tmp_path: Path) -> TestClient:
     """Meta has one scored-dashboard row + one applied sibling (pending)."""
     conn, db = _make_client(tmp_path)
     conn.execute(
-        "INSERT INTO jobs (id, fingerprint, title, company, stage, relevance_score, created_at) VALUES (?,?,?,?,?,?,?)",
-        ("id-dash", "fp-dash", "Data Center PM", "Meta", "scored", 8, _iso_days_ago(0)),
+        "INSERT INTO jobs (id, fingerprint, title, company, url, source, stage, relevance_score, created_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?)",
+        (
+            "id-dash",
+            "fp-dash",
+            "Data Center PM",
+            "Meta",
+            "https://example.com/x",
+            "test",
+            "scored",
+            8,
+            _iso_days_ago(0),
+        ),
     )
     conn.execute(
-        "INSERT INTO jobs (id, fingerprint, title, company, stage, stage_updated) VALUES (?,?,?,?,?,?)",
-        ("id-app", "fp-app", "NPI Lead", "Meta", "applied", _iso_days_ago(5)),
+        "INSERT INTO jobs (id, fingerprint, title, company, url, source, stage, stage_updated) "
+        "VALUES (?,?,?,?,?,?,?,?)",
+        ("id-app", "fp-app", "NPI Lead", "Meta", "https://example.com/x", "test", "applied", _iso_days_ago(5)),
     )
     return _finalize(tmp_path, conn, db)
 
@@ -132,12 +138,14 @@ def not_selected_only_client(tmp_path: Path) -> TestClient:
     """Google has one scored-dashboard row + one not_selected 30d ago (within 90d)."""
     conn, db = _make_client(tmp_path)
     conn.execute(
-        "INSERT INTO jobs (id, fingerprint, title, company, stage, relevance_score, created_at) VALUES (?,?,?,?,?,?,?)",
-        ("id-dash", "fp-dash", "Infra PM", "Google", "scored", 8, _iso_days_ago(0)),
+        "INSERT INTO jobs (id, fingerprint, title, company, url, source, stage, relevance_score, created_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?)",
+        ("id-dash", "fp-dash", "Infra PM", "Google", "https://example.com/x", "test", "scored", 8, _iso_days_ago(0)),
     )
     conn.execute(
-        "INSERT INTO jobs (id, fingerprint, title, company, stage, reject_reason) VALUES (?,?,?,?,?,?)",
-        ("id-ns", "fp-ns", "NPI Lead", "Google", "not_selected", "No Response"),
+        "INSERT INTO jobs (id, fingerprint, title, company, url, source, stage, reject_reason) "
+        "VALUES (?,?,?,?,?,?,?,?)",
+        ("id-ns", "fp-ns", "NPI Lead", "Google", "https://example.com/x", "test", "not_selected", "No Response"),
     )
     conn.execute(
         "INSERT INTO audit_log (job_id, field_changed, old_value, new_value, changed_at, changed_by) "
@@ -170,12 +178,13 @@ def old_not_selected_client(tmp_path: Path) -> TestClient:
     """Not_selected OUTSIDE the 90-day window — counts but not yellow."""
     conn, db = _make_client(tmp_path)
     conn.execute(
-        "INSERT INTO jobs (id, fingerprint, title, company, stage, relevance_score, created_at) VALUES (?,?,?,?,?,?,?)",
-        ("id-dash", "fp-dash", "Infra PM", "Amazon", "scored", 8, _iso_days_ago(0)),
+        "INSERT INTO jobs (id, fingerprint, title, company, url, source, stage, relevance_score, created_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?)",
+        ("id-dash", "fp-dash", "Infra PM", "Amazon", "https://example.com/x", "test", "scored", 8, _iso_days_ago(0)),
     )
     conn.execute(
-        "INSERT INTO jobs (id, fingerprint, title, company, stage) VALUES (?,?,?,?,?)",
-        ("id-ns", "fp-ns", "Old Role", "Amazon", "not_selected"),
+        "INSERT INTO jobs (id, fingerprint, title, company, url, source, stage) VALUES (?,?,?,?,?,?,?)",
+        ("id-ns", "fp-ns", "Old Role", "Amazon", "https://example.com/x", "test", "not_selected"),
     )
     conn.execute(
         "INSERT INTO audit_log (job_id, field_changed, old_value, new_value, changed_at, changed_by) "
@@ -199,12 +208,23 @@ def offer_green_client(tmp_path: Path) -> TestClient:
     """Anthropic has an offer-stage sibling — dashboard row should render green."""
     conn, db = _make_client(tmp_path)
     conn.execute(
-        "INSERT INTO jobs (id, fingerprint, title, company, stage, relevance_score, created_at) VALUES (?,?,?,?,?,?,?)",
-        ("id-dash", "fp-dash", "Research Eng", "Anthropic", "scored", 9, _iso_days_ago(0)),
+        "INSERT INTO jobs (id, fingerprint, title, company, url, source, stage, relevance_score, created_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?)",
+        (
+            "id-dash",
+            "fp-dash",
+            "Research Eng",
+            "Anthropic",
+            "https://example.com/x",
+            "test",
+            "scored",
+            9,
+            _iso_days_ago(0),
+        ),
     )
     conn.execute(
-        "INSERT INTO jobs (id, fingerprint, title, company, stage) VALUES (?,?,?,?,?)",
-        ("id-offer", "fp-offer", "Infra Lead", "Anthropic", "offer"),
+        "INSERT INTO jobs (id, fingerprint, title, company, url, source, stage) VALUES (?,?,?,?,?,?,?)",
+        ("id-offer", "fp-offer", "Infra Lead", "Anthropic", "https://example.com/x", "test", "offer"),
     )
     return _finalize(tmp_path, conn, db)
 
@@ -222,20 +242,21 @@ def mixed_client(tmp_path: Path) -> TestClient:
     """xAI — 2 pending + 1 recent not_selected. Tests that both counts surface."""
     conn, db = _make_client(tmp_path)
     conn.execute(
-        "INSERT INTO jobs (id, fingerprint, title, company, stage, relevance_score, created_at) VALUES (?,?,?,?,?,?,?)",
-        ("id-dash", "fp-dash", "Systems Eng", "xAI", "scored", 8, _iso_days_ago(0)),
+        "INSERT INTO jobs (id, fingerprint, title, company, url, source, stage, relevance_score, created_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?)",
+        ("id-dash", "fp-dash", "Systems Eng", "xAI", "https://example.com/x", "test", "scored", 8, _iso_days_ago(0)),
     )
     conn.execute(
-        "INSERT INTO jobs (id, fingerprint, title, company, stage) VALUES (?,?,?,?,?)",
-        ("id-app1", "fp-app1", "Infra Lead", "xAI", "applied"),
+        "INSERT INTO jobs (id, fingerprint, title, company, url, source, stage) VALUES (?,?,?,?,?,?,?)",
+        ("id-app1", "fp-app1", "Infra Lead", "xAI", "https://example.com/x", "test", "applied"),
     )
     conn.execute(
-        "INSERT INTO jobs (id, fingerprint, title, company, stage) VALUES (?,?,?,?,?)",
-        ("id-app2", "fp-app2", "Hardware Eng", "xAI", "interview"),
+        "INSERT INTO jobs (id, fingerprint, title, company, url, source, stage) VALUES (?,?,?,?,?,?,?)",
+        ("id-app2", "fp-app2", "Hardware Eng", "xAI", "https://example.com/x", "test", "interview"),
     )
     conn.execute(
-        "INSERT INTO jobs (id, fingerprint, title, company, stage) VALUES (?,?,?,?,?)",
-        ("id-ns", "fp-ns", "PM", "xAI", "not_selected"),
+        "INSERT INTO jobs (id, fingerprint, title, company, url, source, stage) VALUES (?,?,?,?,?,?,?)",
+        ("id-ns", "fp-ns", "PM", "xAI", "https://example.com/x", "test", "not_selected"),
     )
     conn.execute(
         "INSERT INTO audit_log (job_id, field_changed, old_value, new_value, changed_at, changed_by) "
@@ -258,12 +279,23 @@ def loose_match_client(tmp_path: Path) -> TestClient:
     """Dashboard row company='Meta' matches applied row company='Meta Platforms'."""
     conn, db = _make_client(tmp_path)
     conn.execute(
-        "INSERT INTO jobs (id, fingerprint, title, company, stage, relevance_score, created_at) VALUES (?,?,?,?,?,?,?)",
-        ("id-dash", "fp-dash", "Data Center Lead", "Meta", "scored", 8, _iso_days_ago(0)),
+        "INSERT INTO jobs (id, fingerprint, title, company, url, source, stage, relevance_score, created_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?)",
+        (
+            "id-dash",
+            "fp-dash",
+            "Data Center Lead",
+            "Meta",
+            "https://example.com/x",
+            "test",
+            "scored",
+            8,
+            _iso_days_ago(0),
+        ),
     )
     conn.execute(
-        "INSERT INTO jobs (id, fingerprint, title, company, stage) VALUES (?,?,?,?,?)",
-        ("id-app", "fp-app", "NPI Lead", "Meta Platforms", "applied"),
+        "INSERT INTO jobs (id, fingerprint, title, company, url, source, stage) VALUES (?,?,?,?,?,?,?)",
+        ("id-app", "fp-app", "NPI Lead", "Meta Platforms", "https://example.com/x", "test", "applied"),
     )
     return _finalize(tmp_path, conn, db)
 
@@ -281,12 +313,23 @@ def rejected_excluded_client(tmp_path: Path) -> TestClient:
     """Operator-rejected jobs must NOT count in history (AC7)."""
     conn, db = _make_client(tmp_path)
     conn.execute(
-        "INSERT INTO jobs (id, fingerprint, title, company, stage, relevance_score, created_at) VALUES (?,?,?,?,?,?,?)",
-        ("id-dash", "fp-dash", "Infra PM", "Microsoft", "scored", 8, _iso_days_ago(0)),
+        "INSERT INTO jobs (id, fingerprint, title, company, url, source, stage, relevance_score, created_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?)",
+        ("id-dash", "fp-dash", "Infra PM", "Microsoft", "https://example.com/x", "test", "scored", 8, _iso_days_ago(0)),
     )
     conn.execute(
-        "INSERT INTO jobs (id, fingerprint, title, company, stage, reject_reason) VALUES (?,?,?,?,?,?)",
-        ("id-rej", "fp-rej", "Wrong Stack", "Microsoft", "rejected", "Tech Stack Mismatch"),
+        "INSERT INTO jobs (id, fingerprint, title, company, url, source, stage, reject_reason) "
+        "VALUES (?,?,?,?,?,?,?,?)",
+        (
+            "id-rej",
+            "fp-rej",
+            "Wrong Stack",
+            "Microsoft",
+            "https://example.com/x",
+            "test",
+            "rejected",
+            "Tech Stack Mismatch",
+        ),
     )
     return _finalize(tmp_path, conn, db)
 
@@ -313,8 +356,8 @@ def self_exclusion_client(tmp_path: Path) -> TestClient:
     # One waitlisted row at Meta with no siblings — should see no history,
     # not "1 pending" counting itself.
     conn.execute(
-        "INSERT INTO jobs (id, fingerprint, title, company, stage, created_at) VALUES (?,?,?,?,?,?)",
-        ("id-sole", "fp-sole", "Sole Role", "Meta", "waitlisted", _iso_days_ago(0)),
+        "INSERT INTO jobs (id, fingerprint, title, company, url, source, stage, created_at) VALUES (?,?,?,?,?,?,?,?)",
+        ("id-sole", "fp-sole", "Sole Role", "Meta", "https://example.com/x", "test", "waitlisted", _iso_days_ago(0)),
     )
     return _finalize(tmp_path, conn, db)
 
@@ -336,12 +379,13 @@ def waitlist_history_client(tmp_path: Path) -> TestClient:
     """A waitlisted Meta row with an applied Meta Platforms sibling (loose match)."""
     conn, db = _make_client(tmp_path)
     conn.execute(
-        "INSERT INTO jobs (id, fingerprint, title, company, stage, relevance_score, created_at) VALUES (?,?,?,?,?,?,?)",
-        ("id-wait", "fp-wait", "Ops Lead", "Meta", "waitlisted", 8, _iso_days_ago(0)),
+        "INSERT INTO jobs (id, fingerprint, title, company, url, source, stage, relevance_score, created_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?)",
+        ("id-wait", "fp-wait", "Ops Lead", "Meta", "https://example.com/x", "test", "waitlisted", 8, _iso_days_ago(0)),
     )
     conn.execute(
-        "INSERT INTO jobs (id, fingerprint, title, company, stage) VALUES (?,?,?,?,?)",
-        ("id-app", "fp-app", "NPI Lead", "Meta Platforms", "applied"),
+        "INSERT INTO jobs (id, fingerprint, title, company, url, source, stage) VALUES (?,?,?,?,?,?,?)",
+        ("id-app", "fp-app", "NPI Lead", "Meta Platforms", "https://example.com/x", "test", "applied"),
     )
     return _finalize(tmp_path, conn, db)
 
@@ -367,8 +411,8 @@ def swap_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     same company — the swapped row should render '1 pending' in its history cell."""
     conn, db = _make_client(tmp_path)
     conn.execute(
-        "INSERT INTO jobs (id, fingerprint, title, company, stage, relevance_score, url, created_at) "
-        "VALUES (?,?,?,?,?,?,?,?)",
+        "INSERT INTO jobs (id, fingerprint, title, company, stage, relevance_score, url, source, created_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?)",
         (
             "id-dash",
             "fp-dash",
@@ -377,12 +421,13 @@ def swap_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
             "scored",
             8,
             "https://example.com/j",
+            "test",
             _iso_days_ago(0),
         ),
     )
     conn.execute(
-        "INSERT INTO jobs (id, fingerprint, title, company, stage) VALUES (?,?,?,?,?)",
-        ("id-app", "fp-app", "NPI Lead", "Meta", "applied"),
+        "INSERT INTO jobs (id, fingerprint, title, company, url, source, stage) VALUES (?,?,?,?,?,?,?)",
+        ("id-app", "fp-app", "NPI Lead", "Meta", "https://example.com/x", "test", "applied"),
     )
     client = _finalize(tmp_path, conn, db)
 
@@ -390,6 +435,10 @@ def swap_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     from findajob.web.routes import board_actions
 
     class _FakePopen:
+        # The launcher reads ``proc.pid`` to backfill background_tasks.pid
+        # — set a fake int so the SQLite UPDATE doesn't crash.
+        pid = 99999
+
         def __init__(self, *_a, **_kw) -> None:  # noqa: ANN003
             pass
 

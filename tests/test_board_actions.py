@@ -20,74 +20,19 @@ from findajob.onboarding import mark_complete
 from findajob.web import routes as _web_routes
 from findajob.web.app import create_app
 
-SCHEMA = """
-CREATE TABLE jobs (
-    id TEXT PRIMARY KEY,
-    fingerprint TEXT UNIQUE NOT NULL,
-    url TEXT NOT NULL,
-    title TEXT NOT NULL,
-    company TEXT NOT NULL,
-    location TEXT DEFAULT '',
-    remote_status TEXT DEFAULT 'Unknown',
-    known_contacts TEXT DEFAULT '',
-    comp_estimate TEXT DEFAULT '',
-    ai_notes TEXT,
-    relevance_score INTEGER,
-    fit_score REAL,
-    probability_score REAL,
-    interview_likelihood INTEGER,
-    score_status TEXT,
-    score_flag_reason TEXT,
-    stage TEXT,
-    stage_updated TEXT,
-    apply_flag INTEGER DEFAULT 0,
-    prep_folder_path TEXT,
-    raw_jd_text TEXT,
-    reject_reason TEXT DEFAULT '',
-    user_notes TEXT DEFAULT '',
-    gdrive_folder_url TEXT,
-    source TEXT DEFAULT 'test',
-    created_at TEXT DEFAULT (datetime('now')),
-    updated_at TEXT DEFAULT (datetime('now')),
-    synthetic INTEGER NOT NULL DEFAULT 0
-);
+# Schema is built from the production migration runner so the fixture
+# matches the real shape exactly. Pre-M5/M6 a hand-written CREATE TABLE
+# block lived here and drifted whenever a column / table landed.
 
-CREATE TABLE audit_log (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    job_id TEXT NOT NULL,
-    field_changed TEXT NOT NULL,
-    old_value TEXT,
-    new_value TEXT,
-    changed_at TEXT DEFAULT (datetime('now')),
-    changed_by TEXT DEFAULT 'system'
-);
 
-CREATE TABLE feedback_log (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    job_id TEXT NOT NULL,
-    title TEXT NOT NULL,
-    company TEXT NOT NULL,
-    relevance_score INTEGER,
-    reject_reason TEXT NOT NULL,
-    jd_excerpt TEXT DEFAULT '',
-    created_at TEXT DEFAULT (datetime('now'))
-);
+def _build_pipeline_db(db_path: Path) -> None:
+    from findajob.db.migrate import apply_pending
 
-CREATE TABLE cost_log (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    job_id TEXT,
-    operation TEXT NOT NULL,
-    model TEXT NOT NULL,
-    latency_ms INTEGER,
-    success INTEGER DEFAULT 1,
-    error_message TEXT,
-    input_tokens INTEGER,
-    output_tokens INTEGER,
-    cost_usd REAL,
-    logged_at TEXT DEFAULT (datetime('now'))
-);
-
-"""
+    conn = sqlite3.connect(db_path)
+    try:
+        apply_pending(conn)
+    finally:
+        conn.close()
 
 
 def _insert_job(
@@ -103,7 +48,8 @@ def _insert_job(
 ) -> str:
     job_id = job_id or fingerprint.replace("fp", "id")
     conn.execute(
-        "INSERT INTO jobs (id, fingerprint, url, title, company, stage, relevance_score) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO jobs (id, fingerprint, url, title, company, source, stage, relevance_score) "
+        "VALUES (?, ?, ?, ?, ?, 'test', ?, ?)",
         (job_id, fingerprint, url, title, company, stage, score),
     )
     conn.commit()
@@ -117,6 +63,10 @@ def popen_calls(monkeypatch) -> list[list[str]]:
     calls: list[list[str]] = []
 
     class _FakePopen:
+        # The launcher reads ``proc.pid`` to backfill background_tasks.pid
+        # — set a fake one so the launcher's UPDATE doesn't crash.
+        pid = 99999
+
         def __init__(self, args, **_kw):
             calls.append(args)
 
@@ -141,8 +91,8 @@ def client(tmp_path: Path, monkeypatch, popen_calls) -> TestClient:
     monkeypatch.setattr(actions, "BASE", str(tmp_path))
 
     db_path = tmp_path / "pipeline.db"
+    _build_pipeline_db(db_path)
     conn = sqlite3.connect(db_path)
-    conn.executescript(SCHEMA)
     _insert_job(conn, fingerprint="fp_scored", stage="scored")
     _insert_job(conn, fingerprint="fp_manual", stage="manual_review")
     _insert_job(conn, fingerprint="fp_prep", stage="prep_in_progress")
@@ -343,8 +293,8 @@ class TestReject:
         """A waitlisted sibling at the same company triggers a notification."""
         conn = sqlite3.connect(client._db_path)
         conn.execute(
-            "INSERT INTO jobs (id, fingerprint, url, title, company, stage) "
-            "VALUES ('sib','fp_sib','u','Other','Acme Corp','waitlisted')"
+            "INSERT INTO jobs (id, fingerprint, url, title, company, source, stage) "
+            "VALUES ('sib','fp_sib','u','Other','Acme Corp','test','waitlisted')"
         )
         conn.commit()
         conn.close()
@@ -480,8 +430,8 @@ class TestNotSelected:
     def test_fires_waitlist_resurface(self, client: TestClient, popen_calls):
         conn = sqlite3.connect(client._db_path)
         conn.execute(
-            "INSERT INTO jobs (id, fingerprint, url, title, company, stage) "
-            "VALUES ('sib','fp_sib','u','Other','Acme Corp','waitlisted')"
+            "INSERT INTO jobs (id, fingerprint, url, title, company, source, stage) "
+            "VALUES ('sib','fp_sib','u','Other','Acme Corp','test','waitlisted')"
         )
         conn.commit()
         conn.close()
@@ -613,12 +563,12 @@ class TestPrepConcurrencyCap:
         """Three jobs already in prep_in_progress (fp_prep + 2 new)."""
         conn = sqlite3.connect(client._db_path)
         conn.execute(
-            "INSERT INTO jobs (id, fingerprint, url, title, company, stage) "
-            "VALUES ('inflight1','fp_inflight1','u','T','C','prep_in_progress')"
+            "INSERT INTO jobs (id, fingerprint, url, title, company, source, stage) "
+            "VALUES ('inflight1','fp_inflight1','u','T','C','test','prep_in_progress')"
         )
         conn.execute(
-            "INSERT INTO jobs (id, fingerprint, url, title, company, stage) "
-            "VALUES ('inflight2','fp_inflight2','u','T','C','prep_in_progress')"
+            "INSERT INTO jobs (id, fingerprint, url, title, company, source, stage) "
+            "VALUES ('inflight2','fp_inflight2','u','T','C','test','prep_in_progress')"
         )
         # fp_prep is already prep_in_progress → 3 in flight total
         conn.commit()
@@ -654,8 +604,8 @@ class TestPrepConcurrencyCap:
         """With 2 in flight, a 3rd prep is allowed."""
         conn = sqlite3.connect(client._db_path)
         conn.execute(
-            "INSERT INTO jobs (id, fingerprint, url, title, company, stage) "
-            "VALUES ('inflight1','fp_inflight1','u','T','C','prep_in_progress')"
+            "INSERT INTO jobs (id, fingerprint, url, title, company, source, stage) "
+            "VALUES ('inflight1','fp_inflight1','u','T','C','test','prep_in_progress')"
         )
         # fp_prep is the 2nd in flight
         conn.commit()
@@ -1171,8 +1121,8 @@ class TestWithdraw:
     def _seed_waitlisted_sibling(self, client: TestClient, company: str) -> None:
         conn = sqlite3.connect(client._db_path)
         conn.execute(
-            "INSERT INTO jobs (id, fingerprint, url, title, company, stage) "
-            "VALUES ('sib', 'fp_sibling', 'u', 'Other role', ?, 'waitlisted')",
+            "INSERT INTO jobs (id, fingerprint, url, title, company, source, stage) "
+            "VALUES ('sib', 'fp_sibling', 'u', 'Other role', ?,'test', 'waitlisted')",
             (company,),
         )
         conn.commit()
