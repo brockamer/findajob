@@ -11,8 +11,8 @@ from findajob.paths import BASE
 CONNECTIONS = f"{BASE}/data/connections.csv"
 
 
-def find_contacts(company):
-    contacts = []
+def find_contacts(company: str | None) -> list[str]:
+    contacts: list[str] = []
     if not company or not company.strip():
         return contacts
     try:
