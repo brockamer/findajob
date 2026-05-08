@@ -10,7 +10,8 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
-_(no entries yet)_
+### Added
+- **#513 #514 schema baseline regression tests.** Two paired tests lock the schema contract before the M3+ structural refactor work: `tests/test_schema_baseline_fresh.py` asserts that a fresh `init_db.py` against an empty tmpdir matches a committed JSON snapshot at `tests/fixtures/schema_baseline_fresh.json`; `tests/test_schema_baseline_legacy.py` asserts that a v0.10.0-shape fixture run through the production deployment arc (`init_db.py` + `migrate_schema()`) ends up structurally identical to the fresh baseline. The snapshot captures `sqlite_master.sql` text per object (whitespace + comment normalized) alongside structured PRAGMA output, so `CHECK` constraints and partial-index `WHERE` clauses are part of the contract — not just columns and FKs. To regenerate the snapshot when a schema change is intentional: `UPDATE_SCHEMA_SNAPSHOT=1 uv run pytest tests/test_schema_baseline_fresh.py`. Drift now fails the test and forces an explicit migration decision in the same PR.
 
 ## [0.20.3] — 2026-05-07
 
