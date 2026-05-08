@@ -74,89 +74,17 @@ file. If you're refactoring an old hardcoded section, add a note to `docs/mainta
 
 ---
 
-## Pipeline Context Table
+## Pipeline Context
 
-| Item | Value |
-|------|-------|
-| Default model | `openrouter:google/gemini-3-flash-preview` |
-| `job_scorer` | `openrouter:deepseek/deepseek-v3.2` — profile.md injected directly; `--rag` NEVER used |
-| `resume_tailor` / `cover_letter_writer` | `openrouter:anthropic/claude-opus-4.7`, `max_tokens: 4096` |
-| `company_discoverer` | `openrouter:perplexity/sonar-reasoning-pro` — runs weekly Sun 02:00; emits `candidate_context/discovered_companies.md` + `.json`; field-agnostic, augments static `## Target Companies`. Surfaced to operator via Dashboard widget (banner showing count + last-run date) and a success ntfy on each run (#288). |
-| `company_researcher` | `openrouter:perplexity/sonar-reasoning-pro` |
-| `briefing_writer` | `openrouter:anthropic/claude-opus-4.7` — cascades into `resume_tailor` + `cover_letter_writer`, both Opus 4.7 |
-| `outreach_drafter` | `openrouter:anthropic/claude-opus-4.7` — profile + voice samples injected directly |
-| `fit_analyst` | `openrouter:perplexity/sonar-reasoning-pro` — appended to company briefing |
-| `resume_change_reviewer` / `network_analyst` | `openrouter:google/gemini-3-flash-preview` |
-| `recruiter_critic` | `openrouter:anthropic/claude-opus-4.7`, `max_tokens: 1024` — sees company, title, JD, tailored resume, cover; NOT profile/briefing/fit |
-| `interview_prep` | `openrouter:anthropic/claude-opus-4.7`, `max_tokens: 4096` — fires on `applied → interview` transition; expands briefing's interview-questions + stories sections. |
-| `candidate_led_briefing` | `openrouter:perplexity/sonar-deep-research` — async (1–5 min); drives the speculative briefing pass via `scripts/run_speculative_research.py`. |
-| `speculative_roles_synth` | `openrouter:anthropic/claude-sonnet-4.6`, `max_tokens: 4096` — synthesizes 1–5 candidate-tailored role cards from the briefing. |
-| Job ingestion | Pluggable via `JobSourceAdapter` (`src/findajob/fetchers/adapters/`); jobs-api14 + JSearch ship in v0.14; per-stack active list in `config/active_sources.txt`. Greenhouse / Ashby / Lever / Gmail still function-style — migration tracked in #410. v0.15 adds `JobsApi14IndeedAdapter` (Indeed via jobs-api14 with sortType=date + post-filter, restoring pre-#408 coverage) and consolidates RapidAPI credentials to a shared `RAPIDAPI_KEY` env var (legacy `JOBS_API14_KEY` / `JSEARCH_API_KEY` work as fallbacks) (#414). |
-| Cost tracking | Every LLM call writes `cost_log.cost_usd` from `response.usage.cost` (OpenRouter authoritative; no heuristic, no calibration). `findajob.cost_rollups` helpers (`per_job_cost`, `per_job_breakdown`, `weekly_spend`, `projected_monthly`, `spend_this_month`) sum directly from `cost_log` to back the nav spend chip, dashboard burn-rate widget, Applied cost cell, Materials breakdown, and notify-stats projection. |
-| Package manager | `uv sync` for dev deps; `uv run` prefix for pytest/ruff/mypy/uvicorn |
-| Path resolution | `src/findajob/paths.py` — reads `config/paths.env`; BASE derived from `__file__` |
-| Roles dir | `config/roles/` |
-| Master resume | `candidate_context/master_resume.md` |
-| Profile | `candidate_context/profile.md` |
-| DB | `data/pipeline.db` |
-| Pre-filter | `src/findajob/scorer_prefilter.py` — Stage 1 regex hard reject, Stage 2 no-JD default |
-| Board writes | `src/findajob/web/routes/board_actions.py` — every STATUS / REJECT_REASON transition is a POST handler calling `findajob.actions`. SQLite is the single source of truth. |
-| Watchdog | `scripts/watchdog.py` every 10 min — resets jobs stuck in `prep_in_progress` > 60 min. |
-| Scheduler | supercronic in-container; schedules declared in `ops/scheduled-jobs.yaml`, rendered to `/app/crontab` by `scripts/render_crontab.py` at entrypoint. Per-job env overrides: `FINDAJOB_<JOB>_SCHEDULE` / `FINDAJOB_<JOB>_ENABLED` (#344). |
-| ntfy topic | in `data/.env` as `NTFY_TOPIC`; also in `CLAUDE.local.md` |
-| Google Form | URL and response sheet ID in `CLAUDE.local.md` and `config/form_responses_sheet_id.txt` |
+Per-role model assignments, container path shifts, and pipeline plumbing reference: [`docs/maintainers/pipeline-context.md`](docs/maintainers/pipeline-context.md). Read it when working on a specific role, fetcher, or path question.
 
----
-
-## Container Context (when running from the findajob Docker image)
-
-When the pipeline runs inside the `ghcr.io/brockamer/findajob` image, paths shift:
-
-| Thing | Native install | Container |
-|---|---|---|
-| `BASE` (from `findajob.paths`) | Repo clone path | `/app` (set via `JSP_BASE=/app` in compose) |
-| `data/pipeline.db` | `<repo>/data/pipeline.db` | `/app/data/pipeline.db` (bind-mounted from `./state/data/`) |
-| `config/roles/` | `<repo>/config/roles/` | `/app/config/roles/` (baked into image — NOT from bind mount) |
-| Personal config (`config/*.yaml|.txt|.json`) | `<repo>/config/` | `/app/config/` (bind-mounted from `./state/config/`) |
-| `candidate_context/` | `<repo>/candidate_context/` | `/app/candidate_context/` (bind-mount) |
-| `discovered_companies.md/.json` | `<repo>/candidate_context/discovered_companies.{md,json}` (gitignored, generated) | `/app/candidate_context/discovered_companies.{md,json}` (generated into bind-mount) |
-| `companies/` | `<repo>/companies/` | `/app/companies/` (bind-mount) |
-| Cross-stack mount (operator-mode only) | n/a | `/opt/stacks/:/opt/stacks:ro` (added to operator's `compose.yaml` only) |
-| `FINDAJOB_OPERATOR_MODE` env | n/a | `1` on operator's stack only; unset on testers' (#333) |
-| `FINDAJOB_OPERATOR_HANDLE` env (optional) | n/a | Operator's stack handle (e.g. matches the trailing dir component of `/opt/stacks/findajob-{handle}`); when set, that row floats to the top of the `/admin/stacks/` table. Unset = pure alphabetical (#333). |
-| Onboarding sentinel | `<repo>/data/.onboarding-complete` | `/app/data/.onboarding-complete` (bind-mount from `./state/data/`) |
-| Onboarding backups | `<repo>/.backups/{UTC-stamp}/` | `/app/.backups/` (bind-mount from `./state/.backups/`) |
-| Scheduler | systemd user services | supercronic inside the container |
-| Web viewer | `src/findajob/web/` (package) | uvicorn co-process on container port 8090 (mapped to `FINDAJOB_MATERIALS_PORT`) |
-
-**When authoring new scripts or tests:**
-- Always use `findajob.paths.BASE` — never hardcode `/home/...` or `/app/`.
-- Binary subprocess calls go through `PANDOC` from `findajob.paths`.
-- LLM calls go through `findajob.llm.openrouter.complete()`.
-- Tests must not depend on absolute paths — use tmpdirs or `BASE`-relative paths.
+The pipeline is Docker-only: image `ghcr.io/brockamer/findajob`, supercronic + uvicorn co-process inside one container, paths under `/app/...` (override via `JSP_BASE`). All scripts use `findajob.paths.BASE` — never hardcode `/home/...` or `/app/`. All LLM calls go through `findajob.llm.openrouter.complete()`.
 
 ---
 
 ## Data Ownership
 
-Audit anchor — classifies persisted state by ownership and recoverability. When backup work lands (#426), update the "Backup-critical?" column to reflect what's actually included in the nightly tarball. Deep reference: `docs/superpowers/specs/2026-05-03-301-data-model-audit.md` §1.
-
-| Path | Source | Backup-critical? | Rebuildable if lost? |
-|---|---|---|---|
-| `data/pipeline.db` | Pipeline-generated; operator-curated via stage transitions, notes, score corrections | **Yes** | **No** — fetcher results from past dates aren't retrievable; transitions are operator decisions |
-| `candidate_context/profile.md`, `master_resume.md`, `voice_samples/` | Operator-authored | **Yes** | **No** — re-interview loses weeks of hand-tuning |
-| `candidate_context/discovered_companies.{md,json}` | Pipeline-generated (weekly cron) | No | **Yes** — next Sunday discoverer run reproduces |
-| `config/` (operator-curated subset: `target_companies.md`, `prefilter_rules.yaml`, `excluded_employers.yaml`, `feed_urls.txt`, `jsearch_queries.txt`, `target_locations.txt`, `feedback_weights.yaml`, `gmail.json`, `gsheets_creds.json`, etc.) | Operator-curated (interview-emitted seed + accumulated edits) | **Yes** | **No** — re-interview emits ~half; hand-curation gone |
-| `config/gmail_state.json` | Pipeline-generated (IMAP UID checkpoint) | No | **Yes** — re-syncs on next poll |
-| `config/roles/`, `config/scoring_schema.json`, `config/model_pricing.yaml`, `config/reference.docx`, `config/strip-bookmarks.lua` | Repo-baked (in image, not bind-mount) | No | **Yes** — `docker compose pull` restores |
-| `data/.env` | Operator-curated (API keys, NTFY_TOPIC) | **Yes** | **No** — rotation-grade pain to re-collect |
-| `data/.onboarding-complete` | Pipeline-generated sentinel | No | **Yes** — re-emit on next interview |
-| `data/connections.csv` | Operator-uploaded (LinkedIn export) | No | **Yes** — re-export from LinkedIn (minutes) |
-| `companies/` (active + `_applied/` + `_waitlisted/` + `_rejected/` + `.stale/`) | Pipeline-generated | Selective (skip `.stale/`) | **Partially** — re-runnable per-job, but stale JD URLs no longer reachable |
-| `logs/pipeline.jsonl` | Pipeline-generated | No (observability, not state) | **No** — historical observability lost if dropped |
-| `logs/{form-ingest,jobsync,poller,triage,notify,ci-check,rescore_backfill}.log` | Legacy / pipeline-generated | No | **Yes** — mostly stale; safe to drop |
-
-The data layer is the only thing `docker compose pull` + a fresh interview can't regenerate.
+Per-path classification (source, backup-critical, rebuildable) lives in [`docs/maintainers/data-ownership.md`](docs/maintainers/data-ownership.md). The data layer is the only thing `docker compose pull` + a fresh interview can't regenerate.
 
 ---
 
@@ -181,14 +109,12 @@ Foundational decisions (design rationale lives in operator-private specs):
 
 **`/onboarding/`** — first-run NUX. Two-step structure:
 
-- **Step 1 — API keys.** Tester provides own OpenRouter (required) + RapidAPI account key (optional; one account-level key authorizes every API the user has subscribed to under that RapidAPI account, collected uniformly as `RAPIDAPI_KEY` per #414; the Step 2 Section 3h picker selects which adapter is active, not which credential is collected). Collected via `POST /onboarding/keys`; persisted into the credentials-only row in `onboarding_sessions` (UPDATE-not-INSERT on retry). Format validators in `findajob.onboarding.key_validation`; OpenRouter live smoke check at collection. Linked help: `docs/getting-started/api-keys.md`.
-- **Step 2 — Run the interview.** Disabled until Step 1 succeeds. Tester runs the entire interview as a chat inside findajob's UI. Server-side persistent — close the tab and reload to resume. Routes live in `findajob.web.routes.onboarding_interview`; runtime-gate per request via `_resolved_chat_key`. Chat is funded by the tester's own OpenRouter key collected in Step 1 — the pipeline (triage, scoring, prep) and the in-app interview both run on that key. There is no operator-funded fallback (the `OPENROUTER_OPERATOR_KEY` env var that briefly existed in v0.11.0 was reverted in v0.11.1 / #401 — operator clarified that path was never supposed to be supported). ~$3-6 per onboarding for Sonnet 4.6 with prompt caching (system-prompt `cache_control` breakpoint; voice-samples emission is the dominant cost driver in long interviews).
+- **Step 1 — API keys.** Tester provides own OpenRouter (required) + RapidAPI (optional, `RAPIDAPI_KEY` per #414). Collected via `POST /onboarding/keys`; live OpenRouter smoke check at collection. Help: `docs/getting-started/api-keys.md`.
+- **Step 2 — Run the interview.** In-app chat surface, server-side persistent (`onboarding_sessions` table). Funded by the tester's own OpenRouter key — no operator-funded fallback. ~$3–6 per onboarding for Sonnet 4.6 with prompt caching; voice-samples emission dominates the cost in long interviews.
 
-The earlier paste-back path (run the interview in another LLM, paste the emission back into a textarea on /onboarding/) was retired 2026-05-02 — it created a phantom OpenRouter input on the finalize form that broke the smoke check when Step 1 had already collected a key, and it doubled the prompt-rewrite surface area whenever the role changed. The in-app flow is the single supported path.
+Module surface: `findajob.onboarding.{parser,injector,voice_processor,openrouter_smoke,session_store,interview_runner,key_validation}`. Routes: `findajob.web.routes.onboarding_interview`. The `findajob.web.onboarding_guard` dependency redirects `/`, `/board/*`, `/materials/*`, `/stats/*` to `/onboarding/` while `data/.onboarding-complete` is missing. Re-trigger via `/onboarding/?mode=rerun`. The injector writes ~10 canonical files atomically with backups under `.backups/{UTC-stamp}/`; the sentinel itself is written only by the Gmail-config gate (`/onboarding/gmail-config/{sid}/finish` or `/skip`) per #407.
 
-The interview shares: parser (`<<<FILE: name>>>` block protocol — emission delimited blocks are extracted from the cumulative assistant transcript on every turn), injector (atomic file writes + backup + per-stack `data/.env` merge for collected keys), and the `findajob.web.onboarding_guard` dependency that redirects `/`, `/board/*`, `/materials/*`, `/stats/*` to `/onboarding/` when `data/.onboarding-complete` is missing. Re-triggerable via `/onboarding/?mode=rerun`. The injector atomically writes ~10 canonical files under `candidate_context/`/`config/`/`data/`, merges OpenRouter + RapidAPI account (`RAPIDAPI_KEY`, #414) keys into `data/.env` (blank-not-written semantic — `findajob.fetchers` uses `os.environ.get(K, "")` truthiness for skip-vs-call routing), backs up existing destinations to `.backups/{UTC-stamp}/`, optionally processes pasted `voice-samples.md` (markdown-strip + PII-generalization), and verifies the OpenRouter key with a 1-token live call. The injector itself **never writes the sentinel** (#407) — every onboarding flow ends at the Gmail-config gate (`/onboarding/gmail-config/{sid}/`), whose `/finish` (verified IMAP) or `/skip` endpoint is the single sentinel-write site. See `findajob.onboarding.{parser,injector,voice_processor,openrouter_smoke,session_store,interview_runner,key_validation}` for boundaries.
-
-**Per-stack key isolation invariant (#339):** every tester stack's `data/.env` carries only that tester's collected credentials; no operator-key leakage. The schema migration (`migrate_schema()` in `session_store.py`) runs idempotently at app startup. Existing tester stacks with the sentinel already present skip the new collection flow — migration applies only to net-new onboardings.
+**Per-stack key isolation invariant (#339):** every tester stack's `data/.env` carries only that tester's credentials. `migrate_schema()` in `session_store.py` runs idempotently at app startup.
 
 **`/docs/`** — renders `docs/usage.md`, `docs/troubleshooting.md`, `docs/getting-started/*` inline in the web UI. Slug allowlist in `findajob.web.routes.docs`; rendering via `findajob.web.markdown.render_markdown()` (handles `.md` cross-link rewriting + `target="_blank"` on external links).
 
@@ -253,9 +179,7 @@ Stage 1: title regex → score 1, no LLM. Stage 2: in-domain + no JD → score 5
 Never rely on LLM prompt instructions alone for boolean classification tasks.
 
 ### Cost Tracking Is Native
-Every LLM call goes through `findajob.llm.openrouter.complete()`, which writes `cost_log.cost_usd` from OpenRouter's `response.usage.cost` (authoritative). Every cost number rendered in the UI (nav spend chip, dashboard burn-rate widget, Applied cost cell, Materials breakdown, notify-stats projection) sums directly from `cost_log` via `findajob.cost_rollups` helpers — no heuristic, no calibration, no multiplier. If a new surface needs cost data, add a helper to `cost_rollups.py` so the math stays in one place.
-
-The earlier calibration stack (`cost_calibration` table, `poll_openrouter_credits` cron, multiplier-application across the rollup helpers) was retired in v0.20.0 (#472) once Phase 1+2 of the OpenRouter native migration (#469 epic) had ported every production call site to the wrapper.
+Every LLM call goes through `findajob.llm.openrouter.complete()`, which writes `cost_log.cost_usd` from OpenRouter's `response.usage.cost` (authoritative — no heuristic, no calibration, no multiplier). UI surfaces (nav spend chip, dashboard burn-rate widget, Applied cost cell, Materials breakdown, notify-stats projection) sum directly from `cost_log` via `findajob.cost_rollups` helpers. If a new surface needs cost data, add a helper to `cost_rollups.py` so the math stays in one place.
 
 ### Synthetic Jobs Convention (Speculative Cold-Outreach)
 
@@ -364,29 +288,11 @@ Gmail ingestion uses IMAP + app password, configured per-stack at `/config/gmail
 
 ### Auth Gate Must Be Verified Post-Deploy
 
-After every `docker compose up -d` on any findajob stack, the basic-auth gate must be auto-verified. If it isn't healthy, the stack is auto-shutdown until fixed. **No exceptions** — including hotfixes, rollbacks, and one-off restarts.
+After every `docker compose up -d` on any stack, the basic-auth gate must be verified by running `python -m findajob.web.verify_auth` (image-baked) inside the running container. If the verifier exits non-zero, the stack is taken down until fixed. **No exceptions** — including hotfixes, rollbacks, and one-off restarts.
 
-The verifier is `findajob.web.verify_auth` (image-baked). Run from inside the running container:
+Exit codes: 2 = `FINDAJOB_AUTH_USER`/`FINDAJOB_AUTH_PASS` empty; 3 = anonymous request didn't get `401 + WWW-Authenticate: Basic`; 4 = authenticated request didn't get `200`; 5 = network failure.
 
-```bash
-docker exec <stack>-scheduler-1 python -m findajob.web.verify_auth
-```
-
-It checks three things and exits non-zero on any failure:
-1. `FINDAJOB_AUTH_USER` and `FINDAJOB_AUTH_PASS` are non-empty in the runtime env (exit 2)
-2. An anonymous request to a protected route returns `401` with a `WWW-Authenticate: Basic` header (exit 3)
-3. An authenticated request with the configured creds returns `200` (exit 4)
-   (Network-level failures are exit 5.)
-
-On any non-zero exit:
-
-```bash
-cd /opt/stacks/<stack> && docker compose down
-```
-
-The operator (or Claude on the operator's behalf) must fix before bringing back up. Why this is a hard rule: in 2026-05-07, `findajob-test` was found internet-exposed without auth because no one verified after a previous recompose. This rule makes that class of incident detectable in the same operational pass that caused it, instead of relying on accidental discovery.
-
-This applies to every stack, including operator-only ones. A stack that doesn't have basic auth configured (e.g., a future stack reachable only via an internal mesh perimeter that explicitly chooses no app-level auth) is expected to fail with exit 2 — that's the signal to either configure auth or document the explicit allowlist exception in CLAUDE.local.md.
+A stack that intentionally has no app-level auth (e.g., behind an internal-mesh perimeter) will fail with exit 2 — that's the signal to either configure auth or document the explicit exception in CLAUDE.local.md. Applies to every stack, operator-only or tester.
 
 ---
 
