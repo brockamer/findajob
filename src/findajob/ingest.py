@@ -30,6 +30,7 @@ from datetime import UTC, datetime
 from typing import Literal
 
 from findajob.actions import reactivate_from_ingest, refresh_active_job, un_reject_job
+from findajob.audit import log_event
 from findajob.cleaning import (
     clean_company,
     clean_title,
@@ -37,7 +38,6 @@ from findajob.cleaning import (
     is_coarse_location,
     loose_fingerprint,
 )
-from findajob.utils import log_event
 
 
 @dataclass(frozen=True)

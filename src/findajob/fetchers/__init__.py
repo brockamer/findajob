@@ -7,10 +7,11 @@ import subprocess
 import sys
 import time
 
+from findajob.audit import log_event
+from findajob.classification import JD_MAX_CHARS, strip_jd_boilerplate
 from findajob.cleaning import clean_company, clean_title, extract_linkedin_job_id
 from findajob.fetchers.adapters._keys import resolve_rapidapi_key
 from findajob.paths import BASE, PANDOC
-from findajob.utils import JD_MAX_CHARS, log_event, strip_jd_boilerplate
 
 # Per-call throttle to keep morning triage from bursting past the RapidAPI
 # per-minute cap on /v2/linkedin/get. 214-job triage × ~30% LinkedIn ≈ 13s added.

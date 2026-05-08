@@ -4,21 +4,18 @@ import json
 
 import pytest
 
-from findajob import utils as utils_mod
-from findajob.utils import (
-    _clean_profile_field,
-    build_outreach_filename,
-    build_prep_filenames,
-    extract_json_payload,
+from findajob import audit as audit_mod
+from findajob.audit import log_event
+from findajob.classification import (
     is_aggregator_company,
     is_ingest_noise_title,
     is_valid_company,
     jd_is_usable,
-    load_voice_samples,
-    log_event,
-    safe_filename_part,
     strip_jd_boilerplate,
 )
+from findajob.llm_parsing import extract_json_payload
+from findajob.prep_naming import build_outreach_filename, build_prep_filenames, safe_filename_part
+from findajob.profile import _clean_profile_field, load_voice_samples
 
 # ── log_event ──────────────────────────────────────────────────────────────
 
@@ -27,7 +24,7 @@ class TestLogEvent:
     def test_creates_missing_parent_dir(self, tmp_path, monkeypatch):
         log_path = tmp_path / "nonexistent" / "pipeline.jsonl"
         assert not log_path.parent.exists()
-        monkeypatch.setattr(utils_mod, "LOG_PATH", str(log_path))
+        monkeypatch.setattr(audit_mod, "LOG_PATH", str(log_path))
 
         log_event("fresh_install_smoke", source="test")
 
@@ -581,26 +578,26 @@ class TestExtractJsonPayload:
 
 
 def test_is_synthetic_job_true_for_flag_one():
-    from findajob.utils import is_synthetic_job
+    from findajob.classification import is_synthetic_job
 
     assert is_synthetic_job({"synthetic": 1}) is True
 
 
 def test_is_synthetic_job_false_for_flag_zero():
-    from findajob.utils import is_synthetic_job
+    from findajob.classification import is_synthetic_job
 
     assert is_synthetic_job({"synthetic": 0}) is False
 
 
 def test_is_synthetic_job_false_when_key_missing():
-    from findajob.utils import is_synthetic_job
+    from findajob.classification import is_synthetic_job
 
     # Legacy / partial dicts default to non-synthetic.
     assert is_synthetic_job({}) is False
 
 
 def test_is_synthetic_job_truthy_string_treated_as_true():
-    from findajob.utils import is_synthetic_job
+    from findajob.classification import is_synthetic_job
 
     # SQLite returns 1/0 as int but be defensive against driver quirks.
     assert is_synthetic_job({"synthetic": "1"}) is True

@@ -19,6 +19,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import NamedTuple
 
+from findajob.audit import log_event
 from findajob.cost_tracking import log_call, role_model
 from findajob.db import connect
 from findajob.discoverer.parser import DiscoveryParseError, parse_markdown
@@ -26,7 +27,6 @@ from findajob.discoverer.prompt import build_prompt
 from findajob.discoverer.writer import commit_atomically
 from findajob.llm.openrouter import OpenRouterError, complete
 from findajob.paths import BASE
-from findajob.utils import log_event
 
 _DEFAULT_TIMEOUT_S = 540  # under cron's 600s timeout, room for IO
 _DEFAULT_COST_THRESHOLD_USD = 1.00

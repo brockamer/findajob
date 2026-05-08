@@ -32,10 +32,10 @@ import sqlite3
 import sys
 from pathlib import Path
 
+from findajob.audit import write_audit
 from findajob.config_loader import load_reject_reasons
 from findajob.db import connect
 from findajob.paths import BASE
-from findajob.utils import write_audit
 
 DB_PATH = Path(BASE) / "data" / "pipeline.db"
 CHANGED_BY = "reject_reason_cleanup_445"

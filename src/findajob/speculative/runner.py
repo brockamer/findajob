@@ -20,11 +20,11 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
+from findajob.audit import log_event
 from findajob.cost_tracking import log_call, role_model
 from findajob.llm.openrouter import OpenRouterError, complete
 from findajob.speculative.parser import parse_role_cards
 from findajob.speculative.storage import write_briefing
-from findajob.utils import log_event
 
 _BRIEFING_ROLE = "candidate_led_briefing"
 _SYNTH_ROLE = "speculative_roles_synth"

@@ -18,14 +18,14 @@ from tests.test_onboarding_injector import _minimal_found_dict
 
 @pytest.fixture(autouse=True)
 def _patch_log_path(tmp_path: Path, monkeypatch):
-    """Force findajob.utils.log_event to write to tmp_path/logs/pipeline.jsonl.
+    """Force findajob.audit.log_event to write to tmp_path/logs/pipeline.jsonl.
 
     LOG_PATH is resolved at module-import time from findajob.paths.BASE, so
-    we patch findajob.utils.LOG_PATH directly — the only reference log_event
+    we patch findajob.audit.LOG_PATH directly — the only reference log_event
     actually reads at call time.
     """
     monkeypatch.setattr(
-        "findajob.utils.LOG_PATH",
+        "findajob.audit.LOG_PATH",
         str(tmp_path / "logs" / "pipeline.jsonl"),
     )
     yield

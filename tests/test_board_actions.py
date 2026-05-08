@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from findajob import utils
+from findajob import audit
 from findajob.onboarding import mark_complete
 from findajob.web import routes as _web_routes
 from findajob.web.app import create_app
@@ -133,7 +133,7 @@ def client(tmp_path: Path, monkeypatch, popen_calls) -> TestClient:
     from findajob import actions
     from findajob.web.routes import board_actions
 
-    monkeypatch.setattr(utils, "LOG_PATH", str(tmp_path / "events.jsonl"))
+    monkeypatch.setattr(audit, "LOG_PATH", str(tmp_path / "events.jsonl"))
     # /apply resolves its destination folder via board_actions.BASE; actions.BASE
     # drives handle_waitlist / handle_reactivate folder moves. Point both at the
     # test's tmp_path so folder ops don't reach into the real repo.

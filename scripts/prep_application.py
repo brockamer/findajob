@@ -12,10 +12,10 @@ findajob.web.routes.board_actions).
 import sys
 
 from findajob.actions import reset_prep_to_scored
+from findajob.audit import log_event
 from findajob.db import connect
 from findajob.paths import BASE
 from findajob.prep.orchestrator import main
-from findajob.utils import log_event
 
 DB_PATH = f"{BASE}/data/pipeline.db"
 

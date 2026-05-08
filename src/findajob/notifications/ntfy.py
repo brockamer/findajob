@@ -26,8 +26,7 @@ import subprocess
 from datetime import UTC, datetime, timedelta
 
 from findajob.db import connect
-from findajob.paths import BASE
-from findajob.utils import load_env
+from findajob.paths import BASE, load_env
 
 DB_PATH = f"{BASE}/data/pipeline.db"
 LOG_PATH = f"{BASE}/logs/pipeline.jsonl"

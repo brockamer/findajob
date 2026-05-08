@@ -422,7 +422,7 @@ class TestResetPrepToScored:
     def _redirect_log(self, monkeypatch, tmp_path):
         # log_event writes to findajob.paths.BASE/logs/pipeline.jsonl — redirect
         # so tests don't append to the real log.
-        from findajob import utils
+        from findajob import audit as utils
 
         monkeypatch.setattr(utils, "LOG_PATH", str(tmp_path / "events.jsonl"))
 
@@ -528,12 +528,12 @@ class TestQuarantineStalePrepFolders:
     rather than delete so a racing prep's files are recoverable."""
 
     def _redirect_log(self, monkeypatch, tmp_path):
-        from findajob import utils as _utils
+        from findajob import audit as _utils
 
         monkeypatch.setattr(_utils, "LOG_PATH", str(tmp_path / "events.jsonl"))
 
     def test_no_matching_folders_returns_empty(self, db, tmp_path, monkeypatch):
-        from findajob.utils import quarantine_stale_prep_folders
+        from findajob.prep.quarantine import quarantine_stale_prep_folders
 
         self._redirect_log(monkeypatch, tmp_path)
         companies = tmp_path / "companies"
@@ -548,7 +548,7 @@ class TestQuarantineStalePrepFolders:
         assert moved == []
 
     def test_untracked_sibling_moved_to_stale(self, db, tmp_path, monkeypatch):
-        from findajob.utils import quarantine_stale_prep_folders
+        from findajob.prep.quarantine import quarantine_stale_prep_folders
 
         self._redirect_log(monkeypatch, tmp_path)
         companies = tmp_path / "companies"
@@ -570,7 +570,7 @@ class TestQuarantineStalePrepFolders:
 
     def test_current_folder_never_moved(self, db, tmp_path, monkeypatch):
         """The folder being used by THIS prep run must not be moved."""
-        from findajob.utils import quarantine_stale_prep_folders
+        from findajob.prep.quarantine import quarantine_stale_prep_folders
 
         self._redirect_log(monkeypatch, tmp_path)
         companies = tmp_path / "companies"
@@ -589,7 +589,7 @@ class TestQuarantineStalePrepFolders:
     def test_db_tracked_folder_never_moved(self, db, tmp_path, monkeypatch):
         """Defensive: if another job's prep_folder_path points here, don't clobber it
         even if the name accidentally matches our prefix."""
-        from findajob.utils import quarantine_stale_prep_folders
+        from findajob.prep.quarantine import quarantine_stale_prep_folders
 
         self._redirect_log(monkeypatch, tmp_path)
         companies = tmp_path / "companies"
@@ -608,7 +608,7 @@ class TestQuarantineStalePrepFolders:
         assert tracked_folder.is_dir()
 
     def test_different_prefix_left_alone(self, db, tmp_path, monkeypatch):
-        from findajob.utils import quarantine_stale_prep_folders
+        from findajob.prep.quarantine import quarantine_stale_prep_folders
 
         self._redirect_log(monkeypatch, tmp_path)
         companies = tmp_path / "companies"
@@ -628,7 +628,7 @@ class TestQuarantineStalePrepFolders:
     def test_underscore_prefix_subdirs_skipped(self, db, tmp_path, monkeypatch):
         """_applied, _rejected, _waitlisted are stage holding areas
         — they must never be quarantined even if prefix would match."""
-        from findajob.utils import quarantine_stale_prep_folders
+        from findajob.prep.quarantine import quarantine_stale_prep_folders
 
         self._redirect_log(monkeypatch, tmp_path)
         companies = tmp_path / "companies"
@@ -650,7 +650,7 @@ class TestQuarantineStalePrepFolders:
 
     def test_four_stale_siblings_all_quarantined(self, db, tmp_path, monkeypatch):
         """The exact 2026-04-22 incident: 4 folders for same job, cleanup leaves current + stale/."""
-        from findajob.utils import quarantine_stale_prep_folders
+        from findajob.prep.quarantine import quarantine_stale_prep_folders
 
         self._redirect_log(monkeypatch, tmp_path)
         companies = tmp_path / "companies"
@@ -675,7 +675,7 @@ class TestQuarantineStalePrepFolders:
         assert len(list((companies / ".stale").iterdir())) == 4
 
     def test_nonexistent_companies_dir_no_crash(self, db, tmp_path, monkeypatch):
-        from findajob.utils import quarantine_stale_prep_folders
+        from findajob.prep.quarantine import quarantine_stale_prep_folders
 
         self._redirect_log(monkeypatch, tmp_path)
         moved = quarantine_stale_prep_folders(
@@ -687,7 +687,7 @@ class TestQuarantineStalePrepFolders:
         assert moved == []
 
     def test_regular_files_not_moved(self, db, tmp_path, monkeypatch):
-        from findajob.utils import quarantine_stale_prep_folders
+        from findajob.prep.quarantine import quarantine_stale_prep_folders
 
         self._redirect_log(monkeypatch, tmp_path)
         companies = tmp_path / "companies"

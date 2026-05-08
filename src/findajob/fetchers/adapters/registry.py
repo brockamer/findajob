@@ -5,8 +5,8 @@ from __future__ import annotations
 from collections.abc import Iterator
 from pathlib import Path
 
+from findajob.audit import log_event
 from findajob.paths import BASE
-from findajob.utils import log_event
 
 from .base import JobSourceAdapter
 from .jobs_api14 import JobsApi14Adapter

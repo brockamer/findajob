@@ -10,10 +10,10 @@ import argparse
 import sys
 from pathlib import Path
 
+from findajob.audit import log_event
 from findajob.discoverer import run as run_discovery
 from findajob.onboarding import is_complete as _onboarding_is_complete
 from findajob.paths import BASE
-from findajob.utils import log_event
 
 
 def main() -> int:

@@ -22,21 +22,16 @@ import sys
 from datetime import UTC, datetime
 
 from findajob.actions import reset_prep_to_scored
+from findajob.audit import log_event, write_audit
+from findajob.classification import JD_MAX_CHARS
 from findajob.db import connect
 from findajob.llm.role_runner import run_role
 from findajob.notifications.ntfy import quick_notify
-from findajob.paths import BASE, PANDOC
+from findajob.paths import BASE, PANDOC, load_env
 from findajob.prep.docx_postprocess import _add_cover_letter_spacing, _linkify_contact_info
-from findajob.utils import (
-    JD_MAX_CHARS,
-    build_prep_filenames,
-    load_env,
-    load_voice_samples,
-    log_event,
-    quarantine_stale_prep_folders,
-    read_file_prefix,
-    write_audit,
-)
+from findajob.prep.quarantine import quarantine_stale_prep_folders
+from findajob.prep_naming import build_prep_filenames
+from findajob.profile import load_voice_samples, read_file_prefix
 
 DB_PATH = f"{BASE}/data/pipeline.db"
 PROFILE_PATH = f"{BASE}/candidate_context/profile.md"

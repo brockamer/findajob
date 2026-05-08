@@ -19,9 +19,10 @@ import sys
 import time
 from datetime import UTC, datetime
 
+from findajob.audit import log_event
+from findajob.classification import JD_MAX_CHARS, strip_jd_boilerplate
 from findajob.db import connect
-from findajob.paths import BASE
-from findajob.utils import JD_MAX_CHARS, load_env, log_event, strip_jd_boilerplate
+from findajob.paths import BASE, load_env
 
 DB_PATH = f"{BASE}/data/pipeline.db"
 

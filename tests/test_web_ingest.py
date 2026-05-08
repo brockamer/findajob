@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from findajob import utils
+from findajob import audit
 from findajob.web.app import create_app
 
 SCHEMA = """
@@ -85,7 +85,7 @@ _VALID_FORM: dict[str, str] = {
 
 @pytest.fixture()
 def client(tmp_path: Path, monkeypatch) -> TestClient:
-    monkeypatch.setattr(utils, "LOG_PATH", str(tmp_path / "events.jsonl"))
+    monkeypatch.setattr(audit, "LOG_PATH", str(tmp_path / "events.jsonl"))
 
     db_path = tmp_path / "pipeline.db"
     conn = sqlite3.connect(db_path)

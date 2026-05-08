@@ -19,11 +19,11 @@ import sys
 import time
 from datetime import UTC, datetime
 
+from findajob.audit import log_event, write_audit
 from findajob.cost_tracking import log_call, role_model
 from findajob.db import connect
-from findajob.paths import BASE
+from findajob.paths import BASE, load_env
 from findajob.scoring import _build_feedback_block, score_job
-from findajob.utils import load_env, log_event, write_audit
 
 DB_PATH = f"{BASE}/data/pipeline.db"
 PROFILE_PATH = f"{BASE}/candidate_context/profile.md"

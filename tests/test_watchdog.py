@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from findajob import actions, utils
+from findajob import actions, audit
 
 # scripts/ isn't on sys.path by default; tests need watchdog importable.
 SCRIPTS = Path(__file__).parent.parent / "scripts"
@@ -56,7 +56,7 @@ def db():
 @pytest.fixture(autouse=True)
 def _patch_log(tmp_path, monkeypatch):
     log_path = tmp_path / "events.jsonl"
-    monkeypatch.setattr(utils, "LOG_PATH", str(log_path))
+    monkeypatch.setattr(audit, "LOG_PATH", str(log_path))
     monkeypatch.setattr(actions, "BASE", str(tmp_path))
     return log_path
 

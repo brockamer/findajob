@@ -12,8 +12,8 @@ regenerates a fresh artifact with a new timestamp.
 
 import sys
 
+from findajob.audit import log_event
 from findajob.interview.orchestrator import main
-from findajob.utils import log_event
 
 if __name__ == "__main__":
     try:

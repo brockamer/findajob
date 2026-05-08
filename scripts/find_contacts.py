@@ -16,18 +16,13 @@ import sys
 import time
 from datetime import datetime
 
+from findajob.audit import log_event
 from findajob.cost_tracking import log_call, role_model
 from findajob.db import connect
 from findajob.llm.openrouter import OpenRouterError, complete
-from findajob.paths import BASE
-from findajob.utils import (
-    build_outreach_filename,
-    load_env,
-    load_voice_samples,
-    log_event,
-    read_candidate_name,
-    read_file_prefix,
-)
+from findajob.paths import BASE, load_env
+from findajob.prep_naming import build_outreach_filename
+from findajob.profile import load_voice_samples, read_candidate_name, read_file_prefix
 
 DB_PATH = f"{BASE}/data/pipeline.db"
 

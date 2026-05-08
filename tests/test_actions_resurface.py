@@ -55,7 +55,7 @@ CREATE TABLE feedback_log (
 
 @pytest.fixture()
 def db(tmp_path, monkeypatch):
-    import findajob.utils as utils_mod
+    import findajob.audit as utils_mod
 
     monkeypatch.setattr(utils_mod, "LOG_PATH", str(tmp_path / "events.jsonl"))
     conn = sqlite3.connect(":memory:")

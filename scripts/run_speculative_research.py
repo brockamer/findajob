@@ -15,10 +15,10 @@ import sqlite3
 import sys
 from pathlib import Path
 
+from findajob.audit import log_event
 from findajob.db import connect
 from findajob.paths import BASE
 from findajob.speculative.runner import run_research
-from findajob.utils import log_event
 
 
 def main(argv: list[str]) -> int:

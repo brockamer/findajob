@@ -25,6 +25,7 @@ from pathlib import Path
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from findajob.audit import log_event
 from findajob.cost_tracking import log_call, role_model
 from findajob.db import connect
 from findajob.onboarding import OnboardingSmokeCheckFailed, inject
@@ -41,7 +42,6 @@ from findajob.onboarding.session_store import (
     set_error,
     update_captured_blocks,
 )
-from findajob.utils import log_event
 from findajob.web.markdown import render_chat_assistant_html
 
 _INTERVIEWER_MODEL = role_model("onboarding_interviewer")

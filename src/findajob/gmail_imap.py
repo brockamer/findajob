@@ -19,8 +19,8 @@ from datetime import UTC, datetime, timedelta
 from enum import Enum
 from pathlib import Path
 
+from findajob.audit import log_event
 from findajob.paths import BASE
-from findajob.utils import log_event
 
 GMAIL_CONFIG_PATH = f"{BASE}/config/gmail.json"
 GMAIL_STATE_PATH = f"{BASE}/config/gmail_state.json"

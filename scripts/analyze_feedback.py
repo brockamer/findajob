@@ -26,8 +26,7 @@ from datetime import datetime
 
 from findajob.config_loader import load_reject_reasons
 from findajob.db import connect
-from findajob.paths import BASE
-from findajob.utils import load_env
+from findajob.paths import BASE, load_env
 
 DB_PATH = f"{BASE}/data/pipeline.db"
 

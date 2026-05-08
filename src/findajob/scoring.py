@@ -6,11 +6,13 @@ import json
 import sqlite3
 import time
 
+from findajob.audit import log_event
+from findajob.classification import jd_is_usable
 from findajob.db import connect
 from findajob.llm.openrouter import CompletionResult, OpenRouterError, complete
+from findajob.llm_parsing import extract_json_payload, validate_llm_json
 from findajob.paths import BASE
 from findajob.scorer_prefilter import _hard_reject_match, prefilter_score
-from findajob.utils import extract_json_payload, jd_is_usable, log_event, validate_llm_json
 
 DB_PATH: str = f"{BASE}/data/pipeline.db"
 SCHEMA_PATH: str = f"{BASE}/config/scoring_schema.json"

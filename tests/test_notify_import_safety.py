@@ -35,9 +35,9 @@ def test_ntfy_module_loads_without_env_read(monkeypatch):
     """
     calls: list[object] = []
 
-    import findajob.utils
+    import findajob.paths
 
-    monkeypatch.setattr(findajob.utils, "load_env", lambda *a, **kw: calls.append(("load_env", a, kw)) or {})
+    monkeypatch.setattr(findajob.paths, "load_env", lambda *a, **kw: calls.append(("load_env", a, kw)) or {})
 
     _reimport("findajob.notifications.ntfy")
 

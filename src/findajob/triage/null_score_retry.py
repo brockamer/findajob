@@ -6,8 +6,8 @@ Extracted from `scripts/triage.py` in M3 (#537). Behavior preserved verbatim.
 import sqlite3
 from datetime import UTC, datetime, timedelta
 
+from findajob.audit import log_event, write_audit
 from findajob.scoring import score_job
-from findajob.utils import log_event, write_audit
 
 NULL_SCORE_RETRY_LIMIT = 50  # max null-score rows retried per triage run
 NULL_SCORE_RETRY_DAYS = 7  # rows older than this are skipped (genuinely broken JD)

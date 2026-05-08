@@ -22,6 +22,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 from pathlib import Path
 
+from findajob.audit import log_event, write_audit
+from findajob.classification import is_aggregator_company, is_ingest_noise_title
 from findajob.cleaning import fingerprint, is_coarse_location, loose_fingerprint, normalize
 from findajob.cost_tracking import log_call, role_model
 from findajob.db import connect
@@ -37,17 +39,10 @@ from findajob.fetchers import (
 from findajob.fetchers.adapters import iter_configured_adapters
 from findajob.notifications.ntfy import quick_notify
 from findajob.onboarding import is_complete as _onboarding_is_complete
-from findajob.paths import BASE
+from findajob.paths import BASE, load_env
 from findajob.scoring import _build_feedback_block, score_job
 from findajob.triage.contacts import find_contacts
 from findajob.triage.null_score_retry import score_null_manual_review_rows
-from findajob.utils import (
-    is_aggregator_company,
-    is_ingest_noise_title,
-    load_env,
-    log_event,
-    write_audit,
-)
 
 DB_PATH = f"{BASE}/data/pipeline.db"
 PROFILE_PATH = f"{BASE}/candidate_context/profile.md"

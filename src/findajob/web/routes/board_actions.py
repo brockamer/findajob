@@ -29,8 +29,9 @@ from findajob.actions import (
     promote_to_scored,
     un_reject_job,
 )
+from findajob.audit import log_event, write_audit
+from findajob.classification import is_synthetic_job
 from findajob.paths import BASE
-from findajob.utils import is_synthetic_job, log_event, write_audit
 from findajob.web.company_history import build_history_by_fp, fetch_company_history
 from findajob.web.filters import registry as filter_registry
 from findajob.web.routes.materials import get_db

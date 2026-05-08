@@ -42,3 +42,30 @@ if _penv.exists():
 # Binary paths — defaults are Linux-appropriate.
 # Override via config/paths.env if your install is non-standard.
 PANDOC: str = _cfg.get("PANDOC", "/usr/bin/pandoc")
+
+
+def load_env(path: str | None = None) -> dict[str, str]:
+    """Load key=value pairs from a .env file into os.environ. Returns dict.
+
+    Lives here because path/config resolution is the same domain — both
+    derive from BASE and read from disk to populate runtime state.
+    Default path is ``data/.env`` under BASE; override via the ``path``
+    arg or set ``JSP_BASE`` to redirect. Missing file is a silent no-op
+    so tests and partial-init environments don't crash.
+    """
+    if path is None:
+        path = f"{BASE}/data/.env"
+    env: dict[str, str] = {}
+    try:
+        with open(os.path.expanduser(path)) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, _, val = line.partition("=")
+                    key = key.strip()
+                    val = val.strip().strip("'\"")
+                    os.environ[key] = val
+                    env[key] = val
+    except FileNotFoundError:
+        pass
+    return env

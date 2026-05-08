@@ -17,9 +17,9 @@ import re
 import sqlite3
 import time
 
+from findajob.audit import log_event
 from findajob.cost_tracking import log_call, role_model
 from findajob.llm.openrouter import OpenRouterError, complete
-from findajob.utils import log_event
 
 
 def run_role(

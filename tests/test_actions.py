@@ -13,7 +13,7 @@ import uuid
 
 import pytest
 
-from findajob import actions, utils
+from findajob import actions, audit
 
 SCHEMA = """
 CREATE TABLE jobs (
@@ -86,7 +86,7 @@ def db():
 def _patch_base_and_log(tmp_path, monkeypatch):
     """Redirect BASE and the event log so tests don't touch the real repo."""
     monkeypatch.setattr(actions, "BASE", str(tmp_path))
-    monkeypatch.setattr(utils, "LOG_PATH", str(tmp_path / "events.jsonl"))
+    monkeypatch.setattr(audit, "LOG_PATH", str(tmp_path / "events.jsonl"))
     os.makedirs(tmp_path / "companies" / "_applied", exist_ok=True)
     os.makedirs(tmp_path / "companies" / "_rejected", exist_ok=True)
     os.makedirs(tmp_path / "companies" / "_waitlisted", exist_ok=True)

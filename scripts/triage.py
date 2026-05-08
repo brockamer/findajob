@@ -15,8 +15,8 @@ import argparse
 import signal
 import traceback
 
+from findajob.audit import log_event
 from findajob.triage.orchestrator import _on_sigterm, main
-from findajob.utils import log_event
 
 if __name__ == "__main__":
     signal.signal(signal.SIGTERM, _on_sigterm)

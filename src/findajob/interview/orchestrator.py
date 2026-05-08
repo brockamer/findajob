@@ -14,17 +14,14 @@ import subprocess
 import sys
 from datetime import datetime
 
+from findajob.audit import log_event
 from findajob.db import connect
 from findajob.interview.sentinel import SENTINEL_NAME, _sentinel_blocks_run
 from findajob.llm.role_runner import run_role
 from findajob.notifications.ntfy import quick_notify
-from findajob.paths import BASE, PANDOC
-from findajob.utils import (
-    load_env,
-    log_event,
-    read_file_prefix,
-    safe_filename_part,
-)
+from findajob.paths import BASE, PANDOC, load_env
+from findajob.prep_naming import safe_filename_part
+from findajob.profile import read_file_prefix
 
 DB_PATH = f"{BASE}/data/pipeline.db"
 PROFILE_PATH = f"{BASE}/candidate_context/profile.md"

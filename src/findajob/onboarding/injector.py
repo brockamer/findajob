@@ -26,6 +26,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import NamedTuple
 
+from findajob.audit import log_event
+
 # Imported lazily inside inject() to avoid a circular import on the
 # discoverer side, and to keep this module importable even when the
 # discoverer package isn't yet on the path during unit tests of unrelated
@@ -36,7 +38,6 @@ from findajob.onboarding.openrouter_smoke import (
 )
 from findajob.onboarding.parser import ALLOWED_FILENAMES
 from findajob.onboarding.voice_processor import process_voice_samples
-from findajob.utils import log_event
 
 # Maps emission filename -> destination relative path (relative to base_root).
 # Plain-file destinations: emission body is written verbatim to this file.

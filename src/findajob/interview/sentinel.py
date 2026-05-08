@@ -11,7 +11,7 @@ Extracted from `scripts/interview_prep.py` in M3 (#537). Behavior preserved.
 import os
 import time
 
-from findajob.utils import log_event
+from findajob.audit import log_event
 
 SENTINEL_NAME = ".interview_prep_in_progress"
 

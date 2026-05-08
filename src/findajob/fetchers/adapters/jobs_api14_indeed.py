@@ -25,9 +25,9 @@ from typing import ClassVar
 
 import requests
 
+from findajob.audit import log_event
 from findajob.cleaning import clean_company, clean_title
 from findajob.config_loader import load_indeed_title_allow_rules
-from findajob.utils import log_event
 
 from ._keys import resolve_rapidapi_key
 from ._locations import read_target_locations

@@ -28,9 +28,9 @@ import re
 import sqlite3
 import time
 
+from findajob.audit import log_event
 from findajob.cost_tracking import log_call, role_model
 from findajob.llm.openrouter import OpenRouterError, complete
-from findajob.utils import log_event
 
 _FRONTMATTER_RE = re.compile(r"\A---\n.*?\n---\n", re.DOTALL)
 _FENCED_CODE_BLOCK_RE = re.compile(r"^```[^\n]*\n.*?\n```\s*$", re.MULTILINE | re.DOTALL)

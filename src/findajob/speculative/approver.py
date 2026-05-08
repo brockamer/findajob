@@ -16,9 +16,9 @@ import sqlite3
 import uuid
 from datetime import UTC, datetime
 
+from findajob.audit import log_event, write_audit
 from findajob.cleaning import fingerprint
 from findajob.speculative.parser import parse_role_cards
-from findajob.utils import log_event, write_audit
 
 
 def approve_request(

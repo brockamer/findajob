@@ -12,8 +12,8 @@ from pathlib import Path
 
 import pytest
 
+from findajob import audit as findajob_utils
 from findajob import ingest as ingest_mod
-from findajob import utils as findajob_utils
 from findajob.cleaning import clean_company, clean_title, fingerprint, loose_fingerprint
 
 SCHEMA = """

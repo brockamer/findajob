@@ -30,9 +30,9 @@ def test_orchestrator_loads_without_env_read(monkeypatch):
     """Importing `findajob.interview.orchestrator` must not call load_env()."""
     calls: list[object] = []
 
-    import findajob.utils
+    import findajob.paths
 
-    monkeypatch.setattr(findajob.utils, "load_env", lambda *a, **kw: calls.append(("load_env", a, kw)) or {})
+    monkeypatch.setattr(findajob.paths, "load_env", lambda *a, **kw: calls.append(("load_env", a, kw)) or {})
 
     _reimport("findajob.interview.orchestrator")
 

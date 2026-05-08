@@ -163,7 +163,7 @@ def gather(stack: StackPath, *, now: datetime | None = None) -> StackHealth:
 def _parse_ts(raw: object) -> datetime | None:
     """Parse an ISO-8601 timestamp; coerce naïve values to UTC.
 
-    `findajob.utils.log_event` always emits tz-aware ISO strings, but a
+    `findajob.audit.log_event` always emits tz-aware ISO strings, but a
     hand-edited or older log file may contain naïve timestamps. Comparing
     those against `cutoff_24h` (tz-aware) raises TypeError and crashes
     the dashboard render. Coerce here so the comparison is always valid.

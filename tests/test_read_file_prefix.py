@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from findajob.utils import read_file_prefix
+from findajob.profile import read_file_prefix
 
 
 def _write_profile(tmp_path: Path, body: str) -> Path:
