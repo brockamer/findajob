@@ -10,7 +10,7 @@
 # working pipeline with no operator intervention.
 #
 # This is the pre-tag release gate. Claude runs it from a docker-equipped
-# host before proposing any v0.1.x tag cut. See docs/release-process.md
+# host before proposing any v0.1.x tag cut. See docs/maintainers/release-process.md
 # §"Pre-tag smoke check".
 #
 # Prereqs:

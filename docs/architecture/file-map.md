@@ -82,7 +82,7 @@ When this map drifts from the actual code (renamed file, new route module, retir
 <repo>/logs/pipeline.jsonl                  # structured event log
 
 # ── Operations ──────────────────────────────────────────────────────────────
-<repo>/docs/release-process.md              # Claude's release orchestration runbook — dogfood gate, tag cut, rollback
+<repo>/docs/maintainers/release-process.md              # Claude's release orchestration runbook — dogfood gate, tag cut, rollback
 <repo>/docs/getting-started/install-docker.md         # external-user Docker install + operations guide
 
 # ── Quality ─────────────────────────────────────────────────────────────────

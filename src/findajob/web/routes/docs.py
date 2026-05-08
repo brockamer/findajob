@@ -27,6 +27,7 @@ _PAGES: dict[str, str] = {
     "getting-started/configure": "getting-started/configure.md",
     "getting-started/gmail": "getting-started/gmail.md",
     "getting-started/api-keys": "getting-started/api-keys.md",
+    "getting-started/notifications": "getting-started/notifications.md",
     "operations": "operations/README.md",
     "operations/internet-exposure": "operations/internet-exposure.md",
     "operations/restore": "operations/restore.md",

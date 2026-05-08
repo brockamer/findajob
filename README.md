@@ -92,7 +92,7 @@ Live status of every issue and milestone is on the **[project board](https://git
 - **No more switching between Linear, Notion, Gmail, and three browser tabs.** Dashboard, Applied, Waitlist, Review, Rejected, Archive are all filtered views of the same SQLite table. Sort, filter, density toggles are URL query params — any view is bookmarkable and shareable.
 - **Your tailored resumes and cover letters stay yours.** Generated folders sit on your Docker host as plain `.docx` and `.md` files; the web UI renders Markdown inline and serves the docs as downloads. Nothing is locked behind a vendor login.
 - **When you reject a job, you tell it why — and tomorrow's scorer remembers.** Every rejection is a labeled training example. Every manual-review flag points at the part of your profile the LLM found ambiguous, so you know exactly where to tune.
-- **Built by a data center ops candidate; designed to work for a social worker, teacher, accountant, or trades professional too.** Same pipeline, same setup — only `profile.md` changes. See [`docs/GENERALIZATION.md`](docs/GENERALIZATION.md) for the state of the field-agnostic work.
+- **Built by a data center ops candidate; designed to work for a social worker, teacher, accountant, or trades professional too.** Same pipeline, same setup — only `profile.md` changes. See [`docs/maintainers/generalization.md`](docs/maintainers/generalization.md) for the state of the field-agnostic work.
 - **Your data stays local.** SQLite on your Docker host. The only outbound calls are to the LLM providers you've configured; the repo contains zero personal data.
 
 ---
@@ -182,8 +182,16 @@ Start here:
 | [docs/operations/README.md](docs/operations/README.md) | Operator reference: manual commands, monitoring |
 | [docs/operations/internet-exposure.md](docs/operations/internet-exposure.md) | Exposing the stack to the public internet |
 | [docs/operations/restore.md](docs/operations/restore.md) | Restore from backup |
-| [docs/notifications.md](docs/notifications.md) | ntfy.sh setup and notification schedule |
-| [docs/GENERALIZATION.md](docs/GENERALIZATION.md) | Making the pipeline work for non-tech fields |
+| [docs/getting-started/notifications.md](docs/getting-started/notifications.md) | ntfy.sh setup |
+
+**For contributors:**
+
+| Doc | Contents |
+|---|---|
+| [docs/maintainers/release-process.md](docs/maintainers/release-process.md) | Release ceremony, dogfood gate, CHANGELOG conventions |
+| [docs/maintainers/project-board.md](docs/maintainers/project-board.md) | GitHub Projects v2 board conventions and CLI |
+| [docs/maintainers/plan-conventions.md](docs/maintainers/plan-conventions.md) | What every implementation plan must contain |
+| [docs/maintainers/generalization.md](docs/maintainers/generalization.md) | Making the pipeline work for non-tech fields |
 
 </details>
 

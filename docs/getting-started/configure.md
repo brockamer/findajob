@@ -272,7 +272,7 @@ leaking the PII to public CI logs). Find the line locally, fix, push.
 handle to the local hook, re-run the install command above to push the updated
 list to the secret.
 
-See also `docs/GENERALIZATION.md` for the broader tracking of domain-specific content that
+See also `docs/maintainers/generalization.md` for the broader tracking of domain-specific content that
 should not land in tracked files.
 
 ## Rotating API keys on a deployed stack

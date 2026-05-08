@@ -42,7 +42,7 @@ which is **gitignored** (#430). Files stay on disk for local session use; they a
 tracked. Never re-add them to the index, even temporarily for "just this PR." They are
 session-execution diaries, not pedagogical artifacts — outsiders aren't the audience and
 the operator-topology leak surface is too large to police line-by-line. See
-`docs/plan-conventions.md` for what every plan must contain (the *content* discipline
+`docs/maintainers/plan-conventions.md` for what every plan must contain (the *content* discipline
 remains; only the *storage location* changed).
 
 ### Never hardcode field-specific content in tracked files
@@ -66,10 +66,10 @@ Before staging any change to a tracked file, ask:
 3. Would this change make the pipeline harder to use for someone in a different field (social work, education, healthcare, finance, skilled trades)?
 
 If YES to any: put the content in a gitignored config file and reference it from the tracked
-file. If you're refactoring an old hardcoded section, add a note to `docs/GENERALIZATION.md`.
+file. If you're refactoring an old hardcoded section, add a note to `docs/maintainers/generalization.md`.
 
 ### See also
-- `docs/GENERALIZATION.md` — tracks every remaining piece of domain-locked content and the plan to neutralize it
+- `docs/maintainers/generalization.md` — tracks every remaining piece of domain-locked content and the plan to neutralize it
 - `docs/getting-started/configure.md` — how to configure the pre-commit hook and set up personal config files
 
 ---
@@ -410,7 +410,7 @@ The full PR + maintainer checklists, deprecation table, dependency-add criteria,
 
 All work is tracked on the GitHub Project board at https://github.com/users/brockamer/projects/1. **Not on the board = not on the roadmap.** No markdown tracking files, no TODO lists.
 
-Canonical conventions live in [`docs/project-board.md`](docs/project-board.md). Read it before any work that creates, moves, or reprioritizes issues. That doc covers columns, Priority field, labels, triage checklist, and `gh project` CLI IDs.
+Canonical conventions live in [`docs/maintainers/project-board.md`](docs/maintainers/project-board.md). Read it before any work that creates, moves, or reprioritizes issues. That doc covers columns, Priority field, labels, triage checklist, and `gh project` CLI IDs.
 
 Core rules (enforced — see the doc for detail):
 - Creating an issue is **two steps**: `gh issue create` then `gh project item-add 1 --owner brockamer --url <url>`. New issues do not auto-add. The `/jared file` skill atomizes this — prefer it over manual `gh` calls.
@@ -421,13 +421,13 @@ Core rules (enforced — see the doc for detail):
 - Status transitions: Backlog → Up Next → In Progress → Done. Closing an issue auto-moves to Done; verify after closing.
 - Re-sync board state before changing it — other sessions may have updated it.
 
-**When board usage evolves** (new column, new label, new workflow, new convention): update `docs/project-board.md` in the same change. The doc describes how the board actually works, not how it used to work. Behavior drifting ahead of docs is the main failure mode.
+**When board usage evolves** (new column, new label, new workflow, new convention): update `docs/maintainers/project-board.md` in the same change. The doc describes how the board actually works, not how it used to work. Behavior drifting ahead of docs is the main failure mode.
 
 ---
 
 ## Plan Conventions
 
-Implementation plans live in an operator-private location (`docs/superpowers/plans/` is gitignored — files exist on disk for session use, but are not tracked). Conventions for plan *content* are documented in [`docs/plan-conventions.md`](docs/plan-conventions.md).
+Implementation plans live in an operator-private location (`docs/superpowers/plans/` is gitignored — files exist on disk for session use, but are not tracked). Conventions for plan *content* are documented in [`docs/maintainers/plan-conventions.md`](docs/maintainers/plan-conventions.md).
 
 **Hard requirements for every plan:**
 - Numbered tasks with files, steps, verification commands, commit messages
@@ -441,7 +441,7 @@ A plan without Documentation Impact is incomplete — push back rather than exec
 
 ## Release Management
 
-Docker image releases follow [`docs/release-process.md`](docs/release-process.md). Claude owns orchestration (dogfood gate, CHANGELOG drafting, tag cut, post-tag verification, rollback); the user reviews and approves the proposed cut. The dogfood gate is a binary 48h window on `:latest` — six observable signals must all be clean before any `v*.*.*` tag is pushed. PRs containing schema/config/crontab/mount/compose-down changes get the `migration-required` label at PR-open time so that release notes surface them for external users.
+Docker image releases follow [`docs/maintainers/release-process.md`](docs/maintainers/release-process.md). Claude owns orchestration (dogfood gate, CHANGELOG drafting, tag cut, post-tag verification, rollback); the user reviews and approves the proposed cut. The dogfood gate is a binary 48h window on `:latest` — six observable signals must all be clean before any `v*.*.*` tag is pushed. PRs containing schema/config/crontab/mount/compose-down changes get the `migration-required` label at PR-open time so that release notes surface them for external users.
 
 ---
 

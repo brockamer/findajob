@@ -2,7 +2,7 @@
 
 > **New here?** Start at [`README.md`](README.md) — it sequences prerequisites → install → configure in order.
 
-This is the install + operations guide for external users running findajob from the prebuilt `ghcr.io/brockamer/findajob` image via Docker Compose. Claude's release orchestration runbook lives separately at [`docs/release-process.md`](../release-process.md).
+This is the install + operations guide for external users running findajob from the prebuilt `ghcr.io/brockamer/findajob` image via Docker Compose. Claude's release orchestration runbook lives separately at [`docs/maintainers/release-process.md`](../release-process.md).
 
 ## Who this is for
 
@@ -390,7 +390,7 @@ Before running `docker compose pull && docker compose up -d`:
    ```
    Or click **Pull** + **Deploy** in Dockge.
 
-The "Action required" section is driven by PRs labeled `migration-required` (see [`docs/release-process.md`](../release-process.md) for the criteria). If a release has no such PRs in its range, the section won't appear.
+The "Action required" section is driven by PRs labeled `migration-required` (see [`docs/maintainers/release-process.md`](../release-process.md) for the criteria). If a release has no such PRs in its range, the section won't appear.
 
 ### Optional tuning: RapidAPI multi-page
 

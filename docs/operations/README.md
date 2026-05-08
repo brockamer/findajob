@@ -213,3 +213,192 @@ docker compose down
 ```
 
 The scheduler inside the container is **supercronic**. Schedules are declared in `ops/scheduled-jobs.yaml` and rendered to `/app/crontab` by `scripts/render_crontab.py` at entrypoint. Per-job env overrides are documented in CLAUDE.md (`FINDAJOB_<JOB>_SCHEDULE` / `FINDAJOB_<JOB>_ENABLED`).
+
+---
+
+## Notifications
+
+ntfy push notifications sent by `scripts/notify.py`. The topic is read from `NTFY_TOPIC` in `data/.env`. For initial setup (registering a topic, installing the phone app), see [`../getting-started/notifications.md`](../getting-started/notifications.md).
+
+### `daily-stats` — Morning summary
+**Schedule:** 06:15 daily (15 min after triage's completion window).
+
+Queue depth, jobs added in the last 24h, in-progress applications (prepped/applied/interviewing), last successful triage timestamp.
+
+### `health-check` — Pipeline health
+**Schedule:** 07:00 daily.
+
+Whether triage completed in the last 25h (looks for `pipeline_complete` event in logs), error events from `pipeline.jsonl` in the last 25h, count of `manual_review` jobs (potential scoring failures), last completion timestamp.
+
+The 7h offset gives triage (which can take 30–60 min) comfortable headroom. Firing earlier would race the run.
+
+### `issues-ping` — Open issues reminder
+**Schedule:** Mon/Wed/Fri 08:00.
+
+Open issues from `gh issue list`. Silent if the list is clean.
+
+### `apply-reminder` — Daily nudge
+**Schedule:** 06:00 daily.
+
+Rotating motivational quip + a reminder to submit one application today. Quips are mildly sarcastic tech-industry humor; edit `scripts/notify.py` to customize them.
+
+### `feedback-review` — Rejection-pattern alert
+**Schedule:** Sunday 08:00.
+
+Fires only when `feedback_log` has ≥ 10 entries. Prompts you to review rejection patterns and adjust scoring or profile.
+
+To review manually:
+```bash
+docker compose exec scheduler python3 -c '
+import csv, sqlite3, sys
+conn = sqlite3.connect("data/pipeline.db")
+rows = conn.execute(
+    "SELECT reject_reason, count(*) AS n FROM feedback_log GROUP BY reject_reason ORDER BY n DESC"
+).fetchall()
+w = csv.writer(sys.stdout, quoting=csv.QUOTE_ALL)
+w.writerow(["reject_reason", "n"]); w.writerows(rows)
+'
+```
+
+### `scoreboard` — Weekly pipeline funnel
+**Schedule:** Monday 08:30.
+
+Updates issue #31 with funnel metrics from the last 7 days: triage throughput, apply rate, interview rate, LLM spend, low-signal feed diagnostics. Pinned issue — no user action required.
+
+### `send-raw` — Arbitrary notification
+**Manual only.**
+
+```bash
+docker compose exec scheduler python3 scripts/notify.py send-raw "My Title" "My message body"
+```
+
+Useful for testing ntfy connectivity or sending one-off alerts from other scripts.
+
+### `ci-check` — CI failure alert
+**Schedule:** triggered after each push (or run manually).
+
+Checks the latest GitHub Actions CI run. Sends a high-priority notification if it failed; silent if passing.
+
+### Schedule summary
+
+| Notification | Schedule |
+|---|---|
+| `apply-reminder` | 06:00 daily |
+| `daily-stats` | 06:15 daily |
+| `health-check` | 07:00 daily |
+| `issues-ping` | Mon/Wed/Fri 08:00 |
+| `scoreboard` | Monday 08:30 |
+| `feedback-review` | Sunday 08:00 |
+| `send-raw` | Manual only |
+| `ci-check` | Manual / on-push |
+
+### Customizing
+
+All notification content lives in `scripts/notify.py`. To add a new notification type:
+
+1. Add a function in `notify.py` (follow the pattern of existing ones).
+2. Add an `elif` branch in `main()` for the new subcommand name.
+3. Add a new entry to `ops/scheduled-jobs.yaml`.
+
+ntfy supports priorities, tags, and actions via curl headers; see `notify.py`'s `send()` function to add header support.
+
+---
+
+## Scripts reference
+
+All scripts live in `scripts/`. Diag scripts live in `scripts/diag/` and are run manually only. All scripts import `BASE` and `PANDOC` from `findajob.paths` (`src/findajob/paths.py`). Never hardcode binary paths in scripts — add overrides to `config/paths.env` instead.
+
+Each entry below carries a **Manual run** line in the Docker form (`docker compose exec scheduler …`).
+
+### Core pipeline scripts
+
+#### `triage.py`
+**Run by:** scheduler (daily 00:00 PT). No arguments.
+**Manual run:** `docker compose exec scheduler python3 scripts/triage.py`
+
+Fetches jobs from all sources, deduplicates, enriches with JD text, then scores with LLM in parallel (6 concurrent threads), writes to SQLite.
+
+**Sources:**
+- LinkedIn / Indeed via RapidAPI jobs-api14 + JSearch (per `config/active_sources.txt`).
+- Gmail IMAP (LinkedIn job alerts, Indeed digests, recruiter messages — config at `/config/gmail/`).
+- Greenhouse / Lever / Ashby JSON APIs (slugs / URLs in `config/feed_urls.txt`).
+
+**Key events logged:** `triage_started`, `job_ingested`, `job_deduplicated`, `job_scored`, `pipeline_complete`.
+
+#### `prep_application.py`
+**Run by:** `POST /board/jobs/{fp}/prep` or `/regenerate` (detached subprocess); also callable manually. Args: `company title url job_id`.
+**Manual run:** `docker compose exec scheduler python3 scripts/prep_application.py "Acme" "Engineer" "https://..." "<job_id>"`
+
+Generates a full application package for one job. LLM calls run sequentially.
+
+**Outputs (in `companies/{Company}_{AbbrevTitle}_{date}_{time}/`):**
+- `tailored_resume_DRAFT.md` + `.docx`
+- `tailored_resume_CHANGES.md`
+- `cover_letter_DRAFT.md` + `.docx`
+- `company_briefing.md` + `.docx`
+- `outreach_*.txt` (one per matching contact, if any)
+- `job_description.txt`
+- `REVIEW_CHECKLIST.md`
+
+After completion: updates DB to `stage=materials_drafted`, sends ntfy notification.
+
+#### `watchdog.py`
+**Run by:** scheduler (every 10 min). No arguments.
+**Manual run:** `docker compose exec scheduler python3 scripts/watchdog.py`
+
+Resets any job stuck in `stage='prep_in_progress'` for more than 60 minutes back to `scored`. Calls `findajob.actions.reset_prep_to_scored()` which writes an `audit_log` row and emits `prep_failed_reset`. Emits a `watchdog_run` summary event at the end of each run.
+
+#### `notify.py`
+**Run by:** scheduler (8 subcommands; see [Notifications](#notifications) above for the per-subcommand schedule and content).
+**Manual run:** `docker compose exec scheduler python3 scripts/notify.py <subcommand>`
+
+#### `find_contacts.py`
+**Run by:** `prep_application.py` (step 5). Args: `company jd_text_excerpt outdir`.
+**Manual run:** `docker compose exec scheduler python3 scripts/find_contacts.py "Acme" "<jd-excerpt>" companies/<folder>`
+
+Reads `data/connections.csv`, finds LinkedIn connections at the target company, generates personalized outreach drafts via the OpenRouter wrapper.
+
+**Output:** `{outdir}/outreach_{FirstName}_{LastName}.txt` for each match.
+
+**Key guard:** `company_match()` always checks `if not s or not c: return False` — blank company strings would otherwise match everything.
+
+#### `manual_prep.py`
+**Run by:** manually (when you have a job outside the pipeline). Args: optional path to a job file (default: `manual_job.txt`).
+**Manual run:** `docker compose exec scheduler python3 scripts/manual_prep.py [path/to/job.txt]`
+
+File format:
+```
+company: CompanyName
+title: Job Title
+url: https://...
+---
+Full JD text below this line
+```
+
+Inserts the job into DB and calls `prep_application.py` immediately.
+
+#### `rescore_all.py`
+**Run by:** manually (after model or prompt changes). No arguments.
+**Manual run:** `docker compose exec scheduler python3 scripts/rescore_all.py`
+
+Re-runs the scorer on all jobs that have JD text.
+
+#### `rename_folders.py`
+**Run by:** manually. No arguments.
+**Manual run:** `docker compose exec scheduler python3 scripts/rename_folders.py`
+
+Renames `companies/` folders from old format (`{Company}_{date}_{time}`) to new format (`{Company}_{AbbrevTitle}_{date}_{time}`). Looks up DB for title, updates `prep_folder_path` in DB. Safe to re-run.
+
+#### `init_db.py`
+**Run by:** once on new install. No arguments.
+**Manual run:** `docker compose exec scheduler python3 scripts/init_db.py`
+
+Creates `data/pipeline.db` with all tables. Safe to re-run — uses `CREATE TABLE IF NOT EXISTS`.
+
+### Diag scripts (`scripts/diag/`)
+
+Run manually for debugging. Not part of normal pipeline operation.
+
+#### `debug_contacts.py`
+Shows contact matching diagnostics for a batch of jobs. Useful for debugging false positive/negative company-name matches.
+**Manual run:** `docker compose exec scheduler python3 scripts/diag/debug_contacts.py`
