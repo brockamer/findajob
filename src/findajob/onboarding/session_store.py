@@ -41,41 +41,6 @@ class Credentials:
     rapidapi_key: str | None
 
 
-# Schema additions layered on the original #336 onboarding_sessions table.
-# Each entry is (column, type+default). migrate_schema() applies them
-# idempotently at app startup.
-_ADDED_COLUMNS: tuple[tuple[str, str], ...] = (
-    # Credential columns (#339) — per-tester API keys collected at Step 1.
-    ("tester_openrouter_key", "TEXT DEFAULT NULL"),
-    ("tester_rapidapi_key", "TEXT DEFAULT NULL"),
-    # Cumulative chat cost in USD (2026-05-02). OpenRouter returns
-    # `usage.cost` per response (in credits, 1:1 with USD); we sum it onto
-    # this column on every turn so the chat UI can show a live total.
-    ("cumulative_cost_usd", "REAL NOT NULL DEFAULT 0"),
-)
-
-# Columns removed from onboarding_sessions (SQLite 3.40+, DROP COLUMN).
-# migrate_schema() drops these idempotently at app startup so existing stacks
-# shed the column automatically on the next container restart.
-_REMOVED_COLUMNS: tuple[str, ...] = ("tester_google_key",)
-
-
-def migrate_schema(db: sqlite3.Connection) -> None:
-    """Add layered columns and drop removed columns on onboarding_sessions.
-
-    Safe to call on every app start — skips columns that are already present
-    (for ADD) and columns that are already absent (for DROP).
-    """
-    existing = {row[1] for row in db.execute("PRAGMA table_info(onboarding_sessions)").fetchall()}
-    for col_name, col_def in _ADDED_COLUMNS:
-        if col_name not in existing:
-            db.execute(f"ALTER TABLE onboarding_sessions ADD COLUMN {col_name} {col_def}")
-    for col_name in _REMOVED_COLUMNS:
-        if col_name in existing:
-            db.execute(f"ALTER TABLE onboarding_sessions DROP COLUMN {col_name}")
-    db.commit()
-
-
 def _utcnow_iso() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 

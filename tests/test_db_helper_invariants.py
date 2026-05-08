@@ -2,17 +2,19 @@
 
 Replaces ``tests/test_admin_sqlite_uri_invariants.py`` (the #515 admin URI
 test). After M4.E1.I2 swept all 32 call sites to use the helper,
-``sqlite3.connect`` only exists inside ``src/findajob/db.py`` itself —
+``sqlite3.connect`` only exists inside the ``findajob.db`` package —
 the old test's "every admin connect uses cross-stack URI" shape no
-longer has admin connect calls to inspect.
+longer has admin connect calls to inspect. M5 expanded the package
+(adding ``findajob.db.migrate``); the global-ban check allows
+``sqlite3.connect`` anywhere inside the package directory.
 
 Two complementary invariants live here:
 
 1. **Global ban** — no ``sqlite3.connect(...)`` call anywhere in
-   ``src/findajob/`` or ``scripts/`` outside of ``src/findajob/db.py``
-   itself. This is the load-bearing assertion: if it ever fires, a
-   regression has reintroduced a direct ``sqlite3.connect`` somewhere
-   the helper was supposed to mediate.
+   ``src/findajob/`` or ``scripts/`` outside of the
+   ``src/findajob/db/`` package. This is the load-bearing assertion:
+   if it ever fires, a regression has reintroduced a direct
+   ``sqlite3.connect`` somewhere the helper was supposed to mediate.
 
 2. **Admin cross-stack invariant** — every ``connect(...)`` call inside
    ``src/findajob/admin/`` must pass ``cross_stack=True`` AND
@@ -36,7 +38,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC_DIR = REPO_ROOT / "src" / "findajob"
 SCRIPTS_DIR = REPO_ROOT / "scripts"
 ADMIN_DIR = SRC_DIR / "admin"
-DB_HELPER = SRC_DIR / "db.py"
+DB_PKG = SRC_DIR / "db"
 
 
 def _python_files(root: Path) -> list[Path]:
@@ -88,8 +90,9 @@ def test_no_sqlite3_connect_outside_helper() -> None:
     threadpool race from #486).
     """
     violations: list[str] = []
+    db_pkg_resolved = DB_PKG.resolve()
     for path in _python_files(SRC_DIR) + _python_files(SCRIPTS_DIR):
-        if path.resolve() == DB_HELPER.resolve():
+        if path.resolve().is_relative_to(db_pkg_resolved):
             continue
         try:
             tree = ast.parse(path.read_text(encoding="utf-8"))

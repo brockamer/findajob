@@ -23,7 +23,6 @@ from findajob.onboarding.session_store import (
     get_credentials,
     get_session,
     mark_complete,
-    migrate_schema,
     set_credentials,
     set_error,
     update_captured_blocks,
@@ -35,14 +34,10 @@ def db(tmp_path):
     """Initialize a fresh pipeline.db via init_db.py and yield a connection."""
     base = tmp_path / "repo"
     (base / "data").mkdir(parents=True)
-    (base / "src" / "findajob").mkdir(parents=True)
-    (base / "src" / "findajob" / "__init__.py").write_text("")
-    (base / "src" / "findajob" / "paths.py").write_text(f'BASE = r"{base}"\n')
-    repo_root = Path(__file__).resolve().parents[1]
-    (base / "src" / "findajob" / "db.py").write_text((repo_root / "src" / "findajob" / "db.py").read_text())
 
     env = os.environ.copy()
-    env["PYTHONPATH"] = str(base / "src")
+    env["JSP_BASE"] = str(base)
+    repo_root = Path(__file__).resolve().parents[1]
     init_db = repo_root / "scripts" / "init_db.py"
     result = subprocess.run([sys.executable, str(init_db)], env=env, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
@@ -343,100 +338,13 @@ def test_find_active_max_age_hours_parameter_works(db):
     assert find_active(db, max_age_hours=24).id == sid
 
 
-# ── migrate_schema + credentials (#339 Task 1) ────────────────────────────────
-
-
-def test_migrate_schema_is_idempotent(db):
-    """Calling migrate_schema twice raises no error and all expected columns exist."""
-    migrate_schema(db)
-    migrate_schema(db)
-    cols = {row[1] for row in db.execute("PRAGMA table_info(onboarding_sessions)").fetchall()}
-    assert "tester_openrouter_key" in cols
-    assert "tester_rapidapi_key" in cols
-    assert "tester_google_key" not in cols
-
-
-def test_migrate_schema_on_table_without_credential_columns(tmp_path):
-    """ALTER TABLE adds credential columns to a pre-existing table that lacks them."""
-    # Build a minimal DB with the original onboarding_sessions schema (no cred cols).
-    db_path = tmp_path / "pipeline.db"
-    conn = sqlite3.connect(str(db_path))
-    conn.execute(
-        """CREATE TABLE onboarding_sessions (
-               id TEXT PRIMARY KEY,
-               history_json TEXT NOT NULL,
-               captured_blocks_json TEXT NOT NULL DEFAULT '{}',
-               started_at TEXT NOT NULL,
-               last_turn_at TEXT NOT NULL,
-               completed_at TEXT,
-               error_state TEXT
-           )"""
-    )
-    conn.commit()
-
-    # Confirm columns are absent before migration.
-    cols_before = {row[1] for row in conn.execute("PRAGMA table_info(onboarding_sessions)").fetchall()}
-    assert "tester_openrouter_key" not in cols_before
-
-    migrate_schema(conn)
-
-    cols_after = {row[1] for row in conn.execute("PRAGMA table_info(onboarding_sessions)").fetchall()}
-    assert "tester_openrouter_key" in cols_after
-    assert "tester_rapidapi_key" in cols_after
-    # tester_google_key was never added on this schema path, so it should be absent.
-    assert "tester_google_key" not in cols_after
-    conn.close()
-
-
-def test_migrate_schema_drops_tester_google_key_when_present(tmp_path):
-    """migrate_schema() idempotently drops tester_google_key from a legacy DB.
-
-    Regression test for the _REMOVED_COLUMNS migration path (#455).
-    Builds a DB with the old schema that includes tester_google_key, runs
-    migrate_schema(), and asserts the column is gone afterwards.
-    """
-    db_path = tmp_path / "legacy.db"
-    conn = sqlite3.connect(str(db_path))
-    conn.execute(
-        """CREATE TABLE onboarding_sessions (
-               id TEXT PRIMARY KEY,
-               history_json TEXT NOT NULL DEFAULT '[]',
-               captured_blocks_json TEXT NOT NULL DEFAULT '{}',
-               started_at TEXT NOT NULL DEFAULT '',
-               last_turn_at TEXT NOT NULL DEFAULT '',
-               completed_at TEXT,
-               error_state TEXT,
-               tester_openrouter_key TEXT DEFAULT NULL,
-               tester_rapidapi_key TEXT DEFAULT NULL,
-               tester_google_key TEXT DEFAULT NULL,
-               cumulative_cost_usd REAL NOT NULL DEFAULT 0
-           )"""
-    )
-    conn.commit()
-
-    # Confirm tester_google_key is present before migration.
-    cols_before = {row[1] for row in conn.execute("PRAGMA table_info(onboarding_sessions)").fetchall()}
-    assert "tester_google_key" in cols_before
-
-    migrate_schema(conn)
-
-    cols_after = {row[1] for row in conn.execute("PRAGMA table_info(onboarding_sessions)").fetchall()}
-    assert "tester_google_key" not in cols_after
-    # Other columns must survive the migration.
-    assert "tester_openrouter_key" in cols_after
-    assert "tester_rapidapi_key" in cols_after
-    assert "cumulative_cost_usd" in cols_after
-
-    # Calling migrate_schema again must be idempotent (no error on re-drop).
-    migrate_schema(conn)
-    cols_final = {row[1] for row in conn.execute("PRAGMA table_info(onboarding_sessions)").fetchall()}
-    assert "tester_google_key" not in cols_final
-    conn.close()
+# Note: the prior `test_migrate_schema_*` block (#339 Task 1) was removed
+# in M5.E1 — its behavior moved into findajob.db.migrate.apply_pending
+# and is covered by tests/test_db_migrate.py::test_legacy_v0_10_bridges_to_equilibrium.
 
 
 def test_set_and_get_credentials_round_trip(db):
     """set_credentials stores values; get_credentials returns them intact."""
-    migrate_schema(db)
     sid = create_session(db)
     set_credentials(
         db,
@@ -452,7 +360,6 @@ def test_set_and_get_credentials_round_trip(db):
 
 def test_set_credentials_blank_strings_stored_as_null(db):
     """Blank strings must be coerced to NULL, not persisted as empty strings."""
-    migrate_schema(db)
     sid = create_session(db)
     set_credentials(
         db,
@@ -475,7 +382,6 @@ def test_set_credentials_blank_strings_stored_as_null(db):
 
 def test_set_credentials_all_blank_get_returns_none(db):
     """When both are blank, get_credentials must return None (not collected)."""
-    migrate_schema(db)
     sid = create_session(db)
     set_credentials(db, sid, openrouter_api_key="", rapidapi_key="")
     assert get_credentials(db, sid) is None
@@ -483,7 +389,6 @@ def test_set_credentials_all_blank_get_returns_none(db):
 
 def test_set_credentials_raises_for_unknown_session(db):
     """set_credentials must raise KeyError when session_id doesn't exist."""
-    migrate_schema(db)
     with pytest.raises(KeyError):
         set_credentials(
             db,
@@ -495,7 +400,6 @@ def test_set_credentials_raises_for_unknown_session(db):
 
 def test_find_credentials_only_returns_credentialed_no_history_session(db):
     """find_credentials_only should return the session with creds and no chat history."""
-    migrate_schema(db)
     sid = create_session(db)
     set_credentials(db, sid, openrouter_api_key="sk-or-x", rapidapi_key="rapi-x")
     result = find_credentials_only(db)
@@ -505,7 +409,6 @@ def test_find_credentials_only_returns_credentialed_no_history_session(db):
 
 def test_find_credentials_only_excludes_session_with_chat_history(db):
     """A session that already has chat turns must NOT be returned."""
-    migrate_schema(db)
     sid = create_session(db)
     set_credentials(db, sid, openrouter_api_key="sk-or-x", rapidapi_key="")
     append_turn(db, sid, "assistant", "Welcome!")
@@ -514,7 +417,6 @@ def test_find_credentials_only_excludes_session_with_chat_history(db):
 
 def test_find_credentials_only_returns_most_recent_of_multiple(db):
     """When multiple credentialed no-history sessions exist, the most recent wins."""
-    migrate_schema(db)
     sid_older = create_session(db)
     sid_newer = create_session(db)
     set_credentials(db, sid_older, openrouter_api_key="sk-or-old", rapidapi_key="")
@@ -533,7 +435,6 @@ def test_find_credentials_only_returns_most_recent_of_multiple(db):
 
 def test_find_credentials_only_returns_none_when_no_credentialed_sessions(db):
     """Returns None when no session has any credential set."""
-    migrate_schema(db)
     _sid = create_session(db)  # no credentials set
     assert find_credentials_only(db) is None
 
@@ -547,7 +448,6 @@ def test_credentials_dataclass_is_frozen():
 
 def test_add_turn_cost_accumulates_across_calls(db):
     """Two turns of cost data sum into cumulative_cost_usd."""
-    migrate_schema(db)
     sid = create_session(db)
     add_turn_cost(db, sid, {"cost": 0.0125, "prompt_tokens": 100})
     add_turn_cost(db, sid, {"cost": 0.0050})
@@ -558,7 +458,6 @@ def test_add_turn_cost_accumulates_across_calls(db):
 
 def test_add_turn_cost_falls_back_to_upstream_inference_cost(db):
     """BYOK responses sometimes report cost under cost_details.upstream_inference_cost."""
-    migrate_schema(db)
     sid = create_session(db)
     add_turn_cost(db, sid, {"cost_details": {"upstream_inference_cost": 0.42}})
     sess = get_session(db, sid)
@@ -568,7 +467,6 @@ def test_add_turn_cost_falls_back_to_upstream_inference_cost(db):
 
 def test_add_turn_cost_no_op_on_empty_or_missing_cost(db):
     """Empty / missing / non-numeric cost must not corrupt the running total."""
-    migrate_schema(db)
     sid = create_session(db)
     add_turn_cost(db, sid, {})
     add_turn_cost(db, sid, {"cost": None})
@@ -584,7 +482,6 @@ def test_lifetime_cost_usd_sums_across_sessions(db):
     """lifetime_cost_usd sums cumulative_cost_usd across every session row."""
     from findajob.onboarding.session_store import lifetime_cost_usd
 
-    migrate_schema(db)
     sid_a = create_session(db)
     sid_b = create_session(db)
     add_turn_cost(db, sid_a, {"cost": 0.10})

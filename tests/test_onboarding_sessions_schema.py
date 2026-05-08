@@ -19,15 +19,11 @@ import pytest
 def fresh_db(tmp_path):
     base = tmp_path / "repo"
     (base / "data").mkdir(parents=True)
-    (base / "src" / "findajob").mkdir(parents=True)
-    (base / "src" / "findajob" / "__init__.py").write_text("")
-    (base / "src" / "findajob" / "paths.py").write_text(f'BASE = r"{base}"\n')
-    repo_root = Path(__file__).resolve().parents[1]
-    (base / "src" / "findajob" / "db.py").write_text((repo_root / "src" / "findajob" / "db.py").read_text())
 
     env = os.environ.copy()
-    env["PYTHONPATH"] = str(base / "src")
+    env["JSP_BASE"] = str(base)
 
+    repo_root = Path(__file__).resolve().parents[1]
     init_db = repo_root / "scripts" / "init_db.py"
 
     result = subprocess.run(

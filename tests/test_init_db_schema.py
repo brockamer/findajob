@@ -25,18 +25,15 @@ def fresh_db(tmp_path, monkeypatch):
     """Run init_db.py against a scratch BASE and return the DB path."""
     base = tmp_path / "repo"
     (base / "data").mkdir(parents=True)
-    (base / "src" / "findajob").mkdir(parents=True)
-    # Provide minimal findajob.paths and findajob.db modules so init_db.py's
-    # imports resolve. db.py is copied verbatim from the real source so the
-    # fixture's behavior matches production rather than diverging via a stub.
-    (base / "src" / "findajob" / "__init__.py").write_text("")
-    (base / "src" / "findajob" / "paths.py").write_text(f'BASE = r"{base}"\n')
-    repo_root = Path(__file__).resolve().parents[1]
-    (base / "src" / "findajob" / "db.py").write_text((repo_root / "src" / "findajob" / "db.py").read_text())
 
+    # Use JSP_BASE to redirect findajob.paths.BASE to the scratch tree.
+    # No PYTHONPATH manipulation — migrations now live inside the
+    # findajob package (src/findajob/migrations/) so they're discoverable
+    # alongside the real findajob.db.migrate module.
     env = os.environ.copy()
-    env["PYTHONPATH"] = str(base / "src")
+    env["JSP_BASE"] = str(base)
 
+    repo_root = Path(__file__).resolve().parents[1]
     init_db = repo_root / "scripts" / "init_db.py"
 
     result = subprocess.run(

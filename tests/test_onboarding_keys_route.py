@@ -16,35 +16,6 @@ from fastapi.testclient import TestClient
 
 from findajob.web.app import create_app
 
-_SCHEMA = """
-CREATE TABLE jobs (
-    id TEXT PRIMARY KEY,
-    fingerprint TEXT UNIQUE NOT NULL,
-    title TEXT NOT NULL,
-    company TEXT NOT NULL,
-    stage TEXT DEFAULT 'discovered',
-    created_at TEXT DEFAULT (datetime('now')),
-    synthetic INTEGER NOT NULL DEFAULT 0
-);
-CREATE TABLE audit_log (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    job_id TEXT NOT NULL,
-    field_changed TEXT NOT NULL,
-    old_value TEXT,
-    new_value TEXT,
-    changed_at TEXT DEFAULT (datetime('now'))
-);
-CREATE TABLE onboarding_sessions (
-    id TEXT PRIMARY KEY,
-    history_json TEXT NOT NULL,
-    captured_blocks_json TEXT NOT NULL DEFAULT '{}',
-    started_at TEXT NOT NULL,
-    last_turn_at TEXT NOT NULL,
-    completed_at TEXT,
-    error_state TEXT
-);
-"""
-
 _VALID_OR = "sk-or-v1-tester-fake-test-1234"
 _VALID_RAPID = "fakeRapidApiTesterKey1234567890abcdef"
 
@@ -55,10 +26,19 @@ def base_root(tmp_path: Path) -> Path:
     (tmp_path / "companies").mkdir()
     (tmp_path / "candidate_context").mkdir()
     (tmp_path / "config").mkdir()
+
+    # Build the pipeline DB via the production migration runner so the
+    # fixture's schema matches the real shape exactly. Pre-M5 a
+    # hand-written CREATE TABLE block lived here and drifted whenever a
+    # column was added.
+    from findajob.db.migrate import apply_pending
+
     db_path = tmp_path / "data" / "pipeline.db"
     conn = sqlite3.connect(db_path)
-    conn.executescript(_SCHEMA)
-    conn.close()
+    try:
+        apply_pending(conn)
+    finally:
+        conn.close()
     return tmp_path
 
 

@@ -10,50 +10,29 @@ from fastapi.testclient import TestClient
 
 from findajob.web.app import create_app
 
-_MINIMAL_SCHEMA = """
-CREATE TABLE jobs (
-    id TEXT PRIMARY KEY,
-    fingerprint TEXT UNIQUE NOT NULL,
-    title TEXT NOT NULL,
-    company TEXT NOT NULL,
-    stage TEXT DEFAULT 'discovered',
-    created_at TEXT DEFAULT (datetime('now')),
-    synthetic INTEGER NOT NULL DEFAULT 0
-);
-CREATE TABLE audit_log (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    job_id TEXT NOT NULL,
-    field_changed TEXT NOT NULL,
-    old_value TEXT,
-    new_value TEXT,
-    changed_at TEXT DEFAULT (datetime('now'))
-);
-"""
+# Schema is built from the production migration runner so the fixture
+# matches the real shape exactly. Pre-M5 these fixtures carried hand-written
+# CREATE TABLE blocks that drifted from production whenever a column landed.
 
-# Extended schema for tests that need the onboarding_sessions table.
-# Credential columns (tester_*) are added by migrate_schema() inside create_app().
-_SCHEMA_WITH_SESSIONS = (
-    _MINIMAL_SCHEMA
-    + """
-CREATE TABLE onboarding_sessions (
-    id TEXT PRIMARY KEY,
-    history_json TEXT NOT NULL,
-    captured_blocks_json TEXT NOT NULL DEFAULT '{}',
-    started_at TEXT NOT NULL,
-    last_turn_at TEXT NOT NULL,
-    completed_at TEXT,
-    error_state TEXT
-);
-"""
-)
+
+def _build_pipeline_db(db_path: Path) -> None:
+    """Run the migration runner against a fresh DB at ``db_path``.
+
+    Equivalent to what ``ops/entrypoint.sh`` does at every container start.
+    """
+    from findajob.db.migrate import apply_pending
+
+    conn = sqlite3.connect(db_path)
+    try:
+        apply_pending(conn)
+    finally:
+        conn.close()
 
 
 @pytest.fixture()
 def client(tmp_path: Path) -> TestClient:
     db_path = tmp_path / "pipeline.db"
-    conn = sqlite3.connect(db_path)
-    conn.executescript(_MINIMAL_SCHEMA)
-    conn.close()
+    _build_pipeline_db(db_path)
     (tmp_path / "companies").mkdir()
     app = create_app(
         companies_root=tmp_path / "companies",
@@ -115,19 +94,21 @@ def client_with_credentials_only_session(tmp_path: Path) -> TestClient:
     resume-banner false positive (#401 PR B Task 1).
     """
     db_path = tmp_path / "pipeline.db"
+    _build_pipeline_db(db_path)
+    # Insert a credentials-only session row WITH its tester credential
+    # already set. Under the M5 migration runner, all schema columns
+    # exist by the time create_app runs, so we can write the row in
+    # one shot rather than the prior two-phase pattern (insert row,
+    # then UPDATE the column post-create_app).
     conn = sqlite3.connect(db_path)
-    conn.executescript(_SCHEMA_WITH_SESSIONS)
-    # Insert a credentials-only session row: history_json='[]', no completed_at,
-    # last_turn_at=now — satisfies find_active's filter but has no chat history.
     conn.execute(
         """INSERT INTO onboarding_sessions
-               (id, history_json, captured_blocks_json, started_at, last_turn_at)
+               (id, history_json, captured_blocks_json, started_at, last_turn_at,
+                tester_openrouter_key)
            VALUES ('cred-only-session', '[]', '{}',
-                   datetime('now'), datetime('now'))"""
+                   datetime('now'), datetime('now'),
+                   'sk-or-v1-fake-tester-key-for-test')"""
     )
-    # Populate the tester credential column directly (migrate_schema will have
-    # added it by the time create_app runs, but we need it for has_any_credentials
-    # to gate _has_in_app_interview_capability correctly).
     conn.commit()
     conn.close()
     (tmp_path / "companies").mkdir()
@@ -136,14 +117,6 @@ def client_with_credentials_only_session(tmp_path: Path) -> TestClient:
         db_path=db_path,
         base_root=tmp_path,
     )
-    # Set the credential column after migrate_schema has run (column now exists).
-    conn2 = sqlite3.connect(db_path)
-    conn2.execute(
-        "UPDATE onboarding_sessions SET tester_openrouter_key = ? WHERE id = ?",
-        ("sk-or-v1-fake-tester-key-for-test", "cred-only-session"),
-    )
-    conn2.commit()
-    conn2.close()
     return TestClient(app, follow_redirects=False)
 
 

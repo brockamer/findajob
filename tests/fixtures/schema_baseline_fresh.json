@@ -83,6 +83,31 @@
         {
           "cid": 0,
           "dflt_value": null,
+          "name": "key",
+          "notnull": 0,
+          "pk": 1,
+          "type": "TEXT"
+        },
+        {
+          "cid": 1,
+          "dflt_value": null,
+          "name": "value",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        }
+      ],
+      "foreign_keys": [],
+      "name": "_meta",
+      "sql": "CREATE TABLE _meta(key TEXT PRIMARY KEY,value TEXT)",
+      "tbl_name": "_meta",
+      "type": "table"
+    },
+    {
+      "columns": [
+        {
+          "cid": 0,
+          "dflt_value": null,
           "name": "id",
           "notnull": 0,
           "pk": 1,
