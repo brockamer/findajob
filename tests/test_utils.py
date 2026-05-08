@@ -101,16 +101,16 @@ class TestJdIsUsable:
 
 class TestCleanProfileField:
     def test_strips_asterisks(self):
-        assert _clean_profile_field("**Daniel**") == "Daniel"
+        assert _clean_profile_field("**Jane**") == "Jane"
 
     def test_strips_backticks(self):
-        assert _clean_profile_field("`Daniel`") == "Daniel"
+        assert _clean_profile_field("`Jane`") == "Jane"
 
     def test_strips_whitespace(self):
-        assert _clean_profile_field("  Daniel  ") == "Daniel"
+        assert _clean_profile_field("  Jane  ") == "Jane"
 
     def test_combined_formatting(self):
-        assert _clean_profile_field(" **`Daniel`** ") == "Daniel"
+        assert _clean_profile_field(" **`Jane`** ") == "Jane"
 
     def test_none_returns_empty(self):
         assert _clean_profile_field(None) == ""
