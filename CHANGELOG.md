@@ -10,6 +10,9 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Removed
+- **#508 chore(scripts): deleted 5 dead `migrate_*.py` files.** Each represented a one-shot migration that already landed on every active stack and was unreferenced anywhere else in the codebase (verified via `git grep`). Deleted: `scripts/migrate_add_loose_fingerprint.py`, `scripts/migrate_add_user_notes.py`, `scripts/migrate_add_waitlisted.py`, `scripts/migrate_ashby_lever_company_names.py`, `scripts/migrate_cost_log_columns.py`. **No migration required** — each migration already ran. The future versioned migration runner (#9) will replace the ad-hoc pattern these scripts represented.
+
 ### Changed
 - **#530 docs(pii): evicted residual real-name leaks from tracked content.** Two surfaces touched: a test-fixture string in `tests/test_utils.py::TestCleanProfileField` (replaced with a neutral placeholder name), and one historical CHANGELOG entry (the `#314` PII-scan workflow note) that originally named a specific person and a literal regex pattern containing that person's surname (rewritten to describe the failure mode generically while preserving what shipped). Public-handle aliases used elsewhere in the repo (operator-chosen anonymized labels for testers and stacks) stay — those aren't personal info. Wide grep for first/last names across `git ls-files` returns empty after the change.
 
