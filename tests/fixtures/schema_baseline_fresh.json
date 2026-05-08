@@ -950,6 +950,5 @@
       "tbl_name": "speculative_requests",
       "type": "table"
     }
-  ],
-  "sqlite_version": "3.46.1"
+  ]
 }

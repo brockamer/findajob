@@ -53,7 +53,16 @@ def _normalize_sql(sql: str | None) -> str | None:
 
 
 def introspect(conn: sqlite3.Connection) -> dict[str, Any]:
-    """Return a deterministic dict describing the schema of ``conn``."""
+    """Return a deterministic dict describing the schema of ``conn``.
+
+    The returned shape is ``{"objects": [...]}`` — sorted, JSON-serializable.
+    SQLite version is intentionally **not** captured: it is metadata about
+    the runtime, not the schema, and its inclusion in earlier drafts caused
+    CI / local SQLite-version skew to false-positive the equality check.
+    Any genuine change in how SQLite stores ``sqlite_master.sql`` between
+    versions still surfaces — through the ``sql`` field of the affected
+    objects, which is the actual contract.
+    """
     objects: list[dict[str, Any]] = []
     rows = conn.execute(
         "SELECT type, name, tbl_name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name"
@@ -100,24 +109,17 @@ def introspect(conn: sqlite3.Connection) -> dict[str, Any]:
                 ) in conn.execute(f'PRAGMA foreign_key_list("{name}")').fetchall()
             ]
         objects.append(obj)
-    return {
-        "sqlite_version": sqlite3.sqlite_version,
-        "objects": objects,
-    }
+    return {"objects": objects}
 
 
 def diff_summary(actual: dict[str, Any], expected: dict[str, Any]) -> str:
     """Produce a readable summary of where two introspection dicts differ.
 
     Returns the empty string when they match. Otherwise lists, in order:
-    sqlite_version mismatch, added objects, removed objects, changed objects
-    (with a per-field breakdown).
+    added objects, removed objects, changed objects (with a per-field
+    breakdown).
     """
     lines: list[str] = []
-    if actual.get("sqlite_version") != expected.get("sqlite_version"):
-        lines.append(
-            f"sqlite_version: actual={actual.get('sqlite_version')!r} expected={expected.get('sqlite_version')!r}"
-        )
     actual_by_key = {(o["type"], o["name"]): o for o in actual.get("objects", [])}
     expected_by_key = {(o["type"], o["name"]): o for o in expected.get("objects", [])}
     added = sorted(actual_by_key.keys() - expected_by_key.keys())
