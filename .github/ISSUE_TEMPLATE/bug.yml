@@ -1,0 +1,80 @@
+name: Bug report
+description: Something is broken or doesn't behave as documented
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug.
+
+        For **security-relevant** bugs, please don't file here — use the [private vulnerability disclosure](../security/policy) flow instead. See [`SECURITY.md`](../blob/main/SECURITY.md) for the full path.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened
+      description: A clear, concise description of the bug — what you tried, what broke.
+      placeholder: e.g. "Clicking 'Flag for Prep' on the dashboard returned a 500 instead of starting prep."
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Exact commands, exact URLs, exact tab in the web UI. The more concrete, the faster the fix.
+      placeholder: |
+        1. Navigate to /board/dashboard
+        2. Click "Flag for Prep" on a job with score >= 7
+        3. Observe 500 response
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should have happened.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What happened instead. Paste any error messages or stack traces.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Image tag / version
+      description: |
+        From the host running your stack: `docker compose images scheduler` (last column is the digest; first column is the tag).
+        Or: `docker compose ps --format "{{.Image}}"`.
+      placeholder: "ghcr.io/brockamer/findajob:v0.20"
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log lines
+      description: |
+        Paste the relevant slice of `pipeline.jsonl` (or container stdout) — typically the last 20–50 lines around the failure. Strip anything personal first.
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: env
+    attributes:
+      label: Anything else
+      description: |
+        - Custom changes to `compose.yaml` or `data/.env`?
+        - Other stacks running on the same host?
+        - Hardware / resource constraints (low RAM, slow disk)?
+      placeholder: "Default compose.yaml; running on Ubuntu 24.04 LTS."
+    validations:
+      required: false

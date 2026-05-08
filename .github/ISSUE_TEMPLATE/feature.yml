@@ -1,0 +1,51 @@
+name: Feature request
+description: Propose a new feature or enhancement
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for proposing a feature. Concrete proposals with motivation move faster than open-ended "wouldn't it be nice if…" threads.
+
+        For **open-ended discussion** (still figuring out what the right thing is), prefer [Discussions](../discussions) over an issue.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: A one-or-two sentence description of the feature.
+      placeholder: "Add a 'snooze' state on the board so I can defer a job for N days without rejecting it."
+    validations:
+      required: true
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation — why does this matter?
+      description: |
+        What problem does this solve? What's the cost of not having it? Concrete examples from your own use are valuable.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Proposed acceptance criteria
+      description: |
+        How would we know this is done? List the observable behaviors. Use checkboxes if you have multiple criteria.
+      placeholder: |
+        - [ ] New "Snoozed" stage column on the dashboard
+        - [ ] `POST /board/jobs/{fp}/snooze?days=N` handler
+        - [ ] Watchdog re-surfaces snoozed jobs after N days
+        - [ ] Test coverage on the auto-resurface path
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: |
+        What else did you consider? Why is the proposed approach better?
+    validations:
+      required: false

@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Open-ended discussion
+    url: https://github.com/brockamer/findajob/discussions
+    about: Use Discussions for "how do I..." threads, design conversations, or anything that's not yet a concrete bug or feature.
+  - name: Security advisory
+    url: https://github.com/brockamer/findajob/security/advisories/new
+    about: Don't file public issues for security-relevant bugs. Open a private advisory thread instead.
