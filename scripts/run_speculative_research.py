@@ -15,6 +15,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
+from findajob.db import connect
 from findajob.paths import BASE
 from findajob.speculative.runner import run_research
 from findajob.utils import log_event
@@ -31,7 +32,7 @@ def main(argv: list[str]) -> int:
     master_resume = Path(BASE) / "candidate_context" / "master_resume.md"
     companies_dir = Path(BASE) / "companies"
 
-    conn = sqlite3.connect(str(db_path), timeout=30)
+    conn = connect(db_path, timeout=30)
     conn.row_factory = sqlite3.Row
     try:
         run_research(

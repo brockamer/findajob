@@ -26,6 +26,7 @@ from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from findajob.cost_tracking import log_call, role_model
+from findajob.db import connect
 from findajob.onboarding import OnboardingSmokeCheckFailed, inject
 from findajob.onboarding.interview_runner import InterviewRunnerError, run_turn
 from findajob.onboarding.parser import ALLOWED_FILENAMES, parse_emission
@@ -93,7 +94,7 @@ def _unavailable_503() -> HTTPException:
 
 def _conn(request: Request) -> sqlite3.Connection:
     db_path: Path = request.app.state.db_path
-    conn = sqlite3.connect(str(db_path), timeout=30)
+    conn = connect(db_path, timeout=30)
     conn.row_factory = sqlite3.Row
     return conn
 

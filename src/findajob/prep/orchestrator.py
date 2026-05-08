@@ -22,6 +22,7 @@ import sys
 from datetime import UTC, datetime
 
 from findajob.actions import reset_prep_to_scored
+from findajob.db import connect
 from findajob.llm.role_runner import run_role
 from findajob.notifications.ntfy import quick_notify
 from findajob.paths import BASE, PANDOC
@@ -57,7 +58,7 @@ def main() -> None:
     company, title, url, job_id = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 
     # Guard: skip if prep already completed for this job
-    conn_check = sqlite3.connect(DB_PATH, timeout=30)
+    conn_check = connect(DB_PATH, timeout=30)
     conn_check.row_factory = sqlite3.Row
     existing = conn_check.execute("SELECT prep_folder_path, stage FROM jobs WHERE id=?", (job_id,)).fetchone()
     conn_check.close()
@@ -76,7 +77,7 @@ def main() -> None:
 
     # Quarantine any prior prep folders for this {company, title} that aren't
     # tracked by the DB — Regenerate and prep races otherwise leave orphans (#174).
-    cleanup_conn = sqlite3.connect(DB_PATH, timeout=30)
+    cleanup_conn = connect(DB_PATH, timeout=30)
     try:
         quarantine_stale_prep_folders(cleanup_conn, companies_dir, folder_prefix, os.path.basename(outdir))
     finally:
@@ -96,7 +97,7 @@ def main() -> None:
 
     # ── Step 1: Load JD from DB (already fetched during triage) ──
     # Do NOT re-curl — LinkedIn and many other URLs require auth and will return garbage.
-    conn = sqlite3.connect(DB_PATH, timeout=30)
+    conn = connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     row = conn.execute(
         "SELECT raw_jd_text, stage, synthetic, speculative_briefing_folder FROM jobs WHERE id=?",

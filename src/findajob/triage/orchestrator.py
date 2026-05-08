@@ -24,6 +24,7 @@ from pathlib import Path
 
 from findajob.cleaning import fingerprint, is_coarse_location, loose_fingerprint, normalize
 from findajob.cost_tracking import log_call, role_model
+from findajob.db import connect
 from findajob.fetchers import (
     fetch_ashby_jobs,
     fetch_gmail_jobs,
@@ -87,7 +88,7 @@ def main(gmail_since_days: int | None = None):
     if os.path.exists(DB_PATH):
         shutil.copy2(DB_PATH, f"{DB_PATH}.bak")
 
-    conn = sqlite3.connect(DB_PATH, timeout=30)
+    conn = connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
 

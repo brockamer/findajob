@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from findajob.db import connect
 from findajob.web.auth import install_basic_auth
 from findajob.web.constants import FOLDER_STAGES
 from findajob.web.helpers import (
@@ -55,7 +56,7 @@ def create_app(
     # request re-queries; cost_log rows arrive whenever the wrapper writes one.
     def _spend_this_month_for_template() -> float:
         try:
-            conn = sqlite3.connect(str(db_path), timeout=5)
+            conn = connect(db_path, timeout=5)
             conn.row_factory = sqlite3.Row
         except sqlite3.Error:
             return 0.0
@@ -98,7 +99,7 @@ def create_app(
     try:
         from findajob.onboarding.session_store import migrate_schema as _migrate_sessions
 
-        _conn = sqlite3.connect(str(db_path))
+        _conn = connect(db_path, timeout=5.0)
         try:
             _migrate_sessions(_conn)
         finally:
@@ -113,7 +114,7 @@ def create_app(
         # different threadpool workers under concurrent load. Per-request
         # connection + serialized SQLite mode = safe to disable the thread guard.
         # See #486.
-        conn = sqlite3.connect(str(db_path), check_same_thread=False)
+        conn = connect(db_path, check_same_thread=False)
         conn.row_factory = sqlite3.Row
         try:
             yield conn

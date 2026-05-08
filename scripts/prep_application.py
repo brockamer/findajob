@@ -9,10 +9,10 @@ Launched as a detached subprocess from POST /board/jobs/{fp}/prep (see
 findajob.web.routes.board_actions).
 """
 
-import sqlite3
 import sys
 
 from findajob.actions import reset_prep_to_scored
+from findajob.db import connect
 from findajob.paths import BASE
 from findajob.prep.orchestrator import main
 from findajob.utils import log_event
@@ -37,7 +37,7 @@ if __name__ == "__main__":
             error=f"{type(exc).__name__}: {exc}",
         )
         try:
-            conn = sqlite3.connect(DB_PATH, timeout=30)
+            conn = connect(DB_PATH, timeout=30)
             reset_prep_to_scored(conn, job_id, reason=f"exception:{type(exc).__name__}")
             conn.close()
         except Exception:

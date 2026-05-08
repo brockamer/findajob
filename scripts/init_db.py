@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # scripts/init_db.py
-import sqlite3
 import sys
 
+from findajob.db import connect
 from findajob.paths import BASE
 
 DB_PATH = sys.argv[1] if len(sys.argv) > 1 else f"{BASE}/data/pipeline.db"
 
-conn = sqlite3.connect(DB_PATH, timeout=30)
+conn = connect(DB_PATH, timeout=30)
 
 # Legacy-stack migrations: CREATE TABLE IF NOT EXISTS is a no-op when the
 # table already exists, which means new columns declared below never land

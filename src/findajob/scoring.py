@@ -6,6 +6,7 @@ import json
 import sqlite3
 import time
 
+from findajob.db import connect
 from findajob.llm.openrouter import CompletionResult, OpenRouterError, complete
 from findajob.paths import BASE
 from findajob.scorer_prefilter import _hard_reject_match, prefilter_score
@@ -62,7 +63,7 @@ def _build_feedback_block() -> str:
     """Query feedback_log and return a compact rejection-history block for the scorer prompt.
     Returns empty string if no feedback exists."""
     try:
-        conn = sqlite3.connect(DB_PATH, timeout=30)
+        conn = connect(DB_PATH, timeout=30)
         conn.row_factory = sqlite3.Row
         rows = conn.execute("""
             SELECT f.reject_reason, f.title, f.relevance_score

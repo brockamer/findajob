@@ -26,14 +26,19 @@ def fresh_db(tmp_path, monkeypatch):
     base = tmp_path / "repo"
     (base / "data").mkdir(parents=True)
     (base / "src" / "findajob").mkdir(parents=True)
-    # Provide a minimal findajob.paths module so init_db.py's import resolves.
+    # Provide minimal findajob.paths and findajob.db modules so init_db.py's
+    # imports resolve. db.py is copied verbatim from the real source so the
+    # fixture's behavior matches production rather than diverging via a stub.
     (base / "src" / "findajob" / "__init__.py").write_text("")
     (base / "src" / "findajob" / "paths.py").write_text(f'BASE = r"{base}"\n')
+    repo_root = Path(__file__).resolve().parents[1]
+    (base / "src" / "findajob" / "db.py").write_text(
+        (repo_root / "src" / "findajob" / "db.py").read_text()
+    )
 
     env = os.environ.copy()
     env["PYTHONPATH"] = str(base / "src")
 
-    repo_root = Path(__file__).resolve().parents[1]
     init_db = repo_root / "scripts" / "init_db.py"
 
     result = subprocess.run(

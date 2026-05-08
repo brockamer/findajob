@@ -21,6 +21,7 @@ from pathlib import Path
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from findajob.db import connect
 from findajob.onboarding.key_validation import (
     validate_openrouter_format,
     validate_rapidapi_format,
@@ -79,7 +80,7 @@ def _has_in_app_interview_capability(request: Request) -> bool:
     if db_path is None:
         return False
     try:
-        conn = sqlite3.connect(str(db_path), timeout=5)
+        conn = connect(db_path, timeout=5)
     except sqlite3.Error:
         return False
     try:
@@ -109,7 +110,7 @@ def _active_session_for_index(request: Request) -> Session | None:
     if db_path is None:
         return None
     try:
-        conn = sqlite3.connect(str(db_path), timeout=5)
+        conn = connect(db_path, timeout=5)
     except sqlite3.Error:
         return None
     try:
@@ -140,7 +141,7 @@ def _credentials_for_index(request: Request) -> Credentials | None:
     if db_path is None:
         return None
     try:
-        conn = sqlite3.connect(str(db_path), timeout=5)
+        conn = connect(db_path, timeout=5)
     except sqlite3.Error:
         return None
     try:
@@ -250,7 +251,7 @@ def onboarding_keys(
     OpenRouter key the user re-supplies via Step 1.
     """
     db_path: Path = request.app.state.db_path
-    conn = sqlite3.connect(str(db_path), timeout=5)
+    conn = connect(db_path, timeout=5)
     try:
         if reset == "1":
             existing = find_credentials_only(conn)

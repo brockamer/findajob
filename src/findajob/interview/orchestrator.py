@@ -14,6 +14,7 @@ import subprocess
 import sys
 from datetime import datetime
 
+from findajob.db import connect
 from findajob.interview.sentinel import SENTINEL_NAME, _sentinel_blocks_run
 from findajob.llm.role_runner import run_role
 from findajob.notifications.ntfy import quick_notify
@@ -67,7 +68,7 @@ def main() -> None:
     company, title, job_id = sys.argv[1], sys.argv[2], sys.argv[3]
 
     # ── Look up job + prep folder ──
-    conn = sqlite3.connect(DB_PATH, timeout=30)
+    conn = connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     row = conn.execute(
         "SELECT prep_folder_path, raw_jd_text, stage FROM jobs WHERE id=?",

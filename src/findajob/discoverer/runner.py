@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import os
 import re
-import sqlite3
 import subprocess
 import sys
 import time
@@ -21,6 +20,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from findajob.cost_tracking import log_call, role_model
+from findajob.db import connect
 from findajob.discoverer.parser import DiscoveryParseError, parse_markdown
 from findajob.discoverer.prompt import build_prompt
 from findajob.discoverer.writer import commit_atomically
@@ -106,7 +106,7 @@ def _log_cost_safely(
     can never break the discovery run's never-raise contract.
     """
     try:
-        conn = sqlite3.connect(db_path)
+        conn = connect(db_path, timeout=5.0)
         try:
             log_call(
                 conn,

@@ -7,8 +7,9 @@ fixture intent is visible in the test source.
 from __future__ import annotations
 
 import json
-import sqlite3
 from pathlib import Path
+
+from findajob.db import connect
 
 _JOBS_SCHEMA = """
 CREATE TABLE jobs (
@@ -31,7 +32,7 @@ def build_pipeline_db(
     prep — same column the production stuck-prep query reads.
     """
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(db_path)
+    conn = connect(db_path, timeout=5.0)
     conn.executescript(_JOBS_SCHEMA)
     for r in rows or []:
         conn.execute(

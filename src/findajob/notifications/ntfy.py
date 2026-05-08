@@ -25,6 +25,7 @@ import sqlite3
 import subprocess
 from datetime import UTC, datetime, timedelta
 
+from findajob.db import connect
 from findajob.paths import BASE
 from findajob.utils import load_env
 
@@ -166,7 +167,7 @@ def _p(n: int, singular: str, plural: str | None = None) -> str:
 
 
 def db_connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH, timeout=30)
+    conn = connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     return conn
 

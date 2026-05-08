@@ -17,6 +17,7 @@ import time
 from datetime import datetime
 
 from findajob.cost_tracking import log_call, role_model
+from findajob.db import connect
 from findajob.llm.openrouter import OpenRouterError, complete
 from findajob.paths import BASE
 from findajob.utils import (
@@ -222,7 +223,7 @@ def main():
 
     log_event("find_contacts", company=company, found=len(contacts), drafting=len(top))
 
-    conn = sqlite3.connect(DB_PATH, timeout=30)
+    conn = connect(DB_PATH, timeout=30)
     try:
         for contact in top:
             generate_outreach(

@@ -33,6 +33,7 @@ import sys
 from pathlib import Path
 
 from findajob.config_loader import load_reject_reasons
+from findajob.db import connect
 from findajob.paths import BASE
 from findajob.utils import write_audit
 
@@ -76,7 +77,7 @@ def cleanup(dry_run: bool = False) -> int:
         )
         return 1
 
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = connect(DB_PATH, timeout=5.0)
     conn.row_factory = sqlite3.Row
 
     rows = conn.execute(

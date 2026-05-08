@@ -32,6 +32,7 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
 from findajob.cleaning import fingerprint, is_coarse_location, loose_fingerprint
+from findajob.db import connect
 from findajob.paths import BASE
 from findajob.utils import load_env, log_event
 
@@ -90,7 +91,7 @@ def main():
         print("No form responses found.")
         return
 
-    conn = sqlite3.connect(DB_PATH, timeout=30)
+    conn = connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     load_env()
 

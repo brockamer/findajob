@@ -20,6 +20,7 @@ import time
 from datetime import UTC, datetime
 
 from findajob.cost_tracking import log_call, role_model
+from findajob.db import connect
 from findajob.paths import BASE
 from findajob.scoring import _build_feedback_block, score_job
 from findajob.utils import load_env, log_event, write_audit
@@ -49,7 +50,7 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="Report what would be rescored without making LLM calls")
     args = parser.parse_args()
 
-    conn = sqlite3.connect(DB_PATH, timeout=30)
+    conn = connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
 

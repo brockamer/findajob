@@ -25,6 +25,7 @@ from collections import Counter
 from datetime import datetime
 
 from findajob.config_loader import load_reject_reasons
+from findajob.db import connect
 from findajob.paths import BASE
 from findajob.utils import load_env
 
@@ -403,7 +404,7 @@ def main():
     notify_flag = "--notify" in sys.argv
     json_flag = "--json" in sys.argv
 
-    conn = sqlite3.connect(DB_PATH, timeout=30)
+    conn = connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
 
     data = analyze(conn)

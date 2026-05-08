@@ -22,6 +22,7 @@ from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from findajob.db import connect
 from findajob.paths import BASE
 from findajob.speculative.approver import approve_request
 from findajob.speculative.parser import parse_role_cards
@@ -34,7 +35,7 @@ DB_PATH = Path(BASE) / "data" / "pipeline.db"
 
 
 def _conn() -> sqlite3.Connection:
-    conn = sqlite3.connect(str(DB_PATH), timeout=30)
+    conn = connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     return conn
 

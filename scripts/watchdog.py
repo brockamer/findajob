@@ -25,6 +25,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from findajob.actions import reset_prep_to_scored
+from findajob.db import connect
 from findajob.paths import BASE
 from findajob.utils import log_event
 
@@ -166,7 +167,7 @@ def sweep_orphan_folders(conn: sqlite3.Connection) -> int:
 
 
 def main() -> None:
-    conn = sqlite3.connect(DB_PATH, timeout=30)
+    conn = connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     try:
         count = run_watchdog(conn)

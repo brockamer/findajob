@@ -6,6 +6,7 @@ import csv
 import re
 import sqlite3
 
+from findajob.db import connect
 from findajob.paths import BASE
 
 DB = f"{BASE}/data/pipeline.db"
@@ -48,7 +49,7 @@ blank_cos = [r for r in contacts if not r.get("Company", "").strip()]
 print(f"Contacts with blank Company field: {len(blank_cos)} — these match EVERY job\n")
 
 # Pull 20 jobs from DB
-con = sqlite3.connect(DB)
+con = connect(DB, timeout=5.0)
 con.row_factory = sqlite3.Row
 rows = con.execute("SELECT id, title, company, relevance_score FROM jobs ORDER BY created_at DESC LIMIT 20").fetchall()
 con.close()
