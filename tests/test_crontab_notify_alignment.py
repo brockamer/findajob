@@ -23,20 +23,21 @@ import yaml
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 SCHEDULED_JOBS = REPO_ROOT / "ops" / "scheduled-jobs.yaml"
-NOTIFY = REPO_ROOT / "scripts" / "notify.py"
+# Post-#537: the dispatch table moved from `scripts/notify.py` (now a 22-LOC
+# shim) into `src/findajob/notifications/cli.py`.
+NOTIFY_CLI = REPO_ROOT / "src" / "findajob" / "notifications" / "cli.py"
 
 _CRON_NOTIFY_RE = re.compile(r"notify\.py\s+([a-z0-9-]+)")
 
 
 def _notify_commands() -> set[str]:
-    """Parse scripts/notify.py and return the keys of the top-level COMMANDS dict."""
-    tree = ast.parse(NOTIFY.read_text())
+    """Parse findajob.notifications.cli and return the keys of the top-level COMMANDS dict."""
+    tree = ast.parse(NOTIFY_CLI.read_text())
     for node in tree.body:
         if (
-            isinstance(node, ast.Assign)
-            and len(node.targets) == 1
-            and isinstance(node.targets[0], ast.Name)
-            and node.targets[0].id == "COMMANDS"
+            isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            and node.target.id == "COMMANDS"
             and isinstance(node.value, ast.Dict)
         ):
             keys: set[str] = set()
@@ -44,7 +45,19 @@ def _notify_commands() -> set[str]:
                 assert isinstance(k, ast.Constant) and isinstance(k.value, str)
                 keys.add(k.value)
             return keys
-    raise AssertionError("COMMANDS dict not found in scripts/notify.py")
+        if (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and node.targets[0].id == "COMMANDS"
+            and isinstance(node.value, ast.Dict)
+        ):
+            keys = set()
+            for k in node.value.keys:
+                assert isinstance(k, ast.Constant) and isinstance(k.value, str)
+                keys.add(k.value)
+            return keys
+    raise AssertionError(f"COMMANDS dict not found in {NOTIFY_CLI}")
 
 
 def _crontab_notify_subcommands() -> list[str]:

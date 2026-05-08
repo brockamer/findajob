@@ -1,4 +1,4 @@
-"""De-jargon guard for notify.py user-facing subcommands (#151).
+"""De-jargon guard for findajob.notifications user-facing subcommands (#151).
 
 Three subcommands are direct user nudges (notifications a non-technical
 beta tester reads): daily-stats, apply-reminder, feedback-review. Their
@@ -6,21 +6,22 @@ body strings must avoid pipeline-internal jargon. Operator diagnostics
 (health-check, ci-check, scoreboard) keep their technical detail; only
 the titles are branded.
 
-This test imports scripts/notify.py with DB_PATH and send() monkeypatched,
-calls each subcommand, and asserts on the captured send() args.
+Post-#537: per-command modules live in `findajob.notifications.*`; the
+test monkeypatches the `send` binding inside each command module's
+namespace (which is where the `from .ntfy import send` reference lives).
 """
 
 from __future__ import annotations
 
-import importlib.util
+import inspect
+import re
 import sqlite3
-import sys
 from pathlib import Path
 
 import pytest
 
 REPO = Path(__file__).resolve().parents[1]
-NOTIFY_PATH = REPO / "scripts" / "notify.py"
+NOTIFY_PKG = REPO / "src" / "findajob" / "notifications"
 
 # Pipeline-internal terms that must not appear in user-facing notification bodies.
 # Operator-facing subcommands (health-check, ci-check, scoreboard) are exempt.
@@ -44,19 +45,9 @@ USER_FACING_JARGON = (
 BRAND = "💼 findajob"
 
 
-def _load_notify_module(db_path: Path):
-    """Import scripts/notify.py as a module so we can monkeypatch its globals."""
-    spec = importlib.util.spec_from_file_location("notify_under_test", NOTIFY_PATH)
-    assert spec and spec.loader
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules["notify_under_test"] = mod
-    spec.loader.exec_module(mod)
-    mod.DB_PATH = str(db_path)
-    return mod
-
-
 @pytest.fixture
-def notify_module(tmp_path, monkeypatch):
+def fixtured_db(tmp_path, monkeypatch):
+    """Set up a tmp pipeline.db, point ntfy.DB_PATH at it, and capture send() calls."""
     db = tmp_path / "pipeline.db"
     conn = sqlite3.connect(db)
     conn.executescript(
@@ -94,15 +85,16 @@ def notify_module(tmp_path, monkeypatch):
     conn.commit()
     conn.close()
 
-    mod = _load_notify_module(db)
+    from findajob.notifications import ntfy
+
+    monkeypatch.setattr(ntfy, "DB_PATH", str(db))
+
     sent: list[dict] = []
 
     def fake_send(title, body, **kw):
         sent.append({"title": title, "body": body, **kw})
 
-    monkeypatch.setattr(mod, "send", fake_send)
-    mod._sent = sent  # type: ignore[attr-defined]
-    return mod
+    return db, sent, fake_send
 
 
 def _assert_no_jargon(body: str, label: str):
@@ -110,42 +102,54 @@ def _assert_no_jargon(body: str, label: str):
         assert token not in body, f"{label} body contains pipeline jargon {token!r}: {body!r}"
 
 
-def test_daily_stats_is_branded_and_plain_english(notify_module):
-    notify_module.cmd_daily_stats()
-    assert notify_module._sent, "send() not called"
-    msg = notify_module._sent[0]
+def test_daily_stats_is_branded_and_plain_english(fixtured_db, monkeypatch):
+    _db, sent, fake_send = fixtured_db
+    from findajob.notifications import daily_stats
+
+    monkeypatch.setattr(daily_stats, "send", fake_send)
+    daily_stats.cmd_daily_stats()
+
+    assert sent, "send() not called"
+    msg = sent[0]
     assert msg["title"].startswith(BRAND), f"title not branded: {msg['title']!r}"
     _assert_no_jargon(msg["body"], "daily-stats")
 
 
-def test_apply_reminder_is_branded_and_plain_english(notify_module):
-    notify_module.cmd_apply_reminder()
-    assert notify_module._sent, "send() not called"
-    msg = notify_module._sent[0]
+def test_apply_reminder_is_branded_and_plain_english(fixtured_db, monkeypatch):
+    _db, sent, fake_send = fixtured_db
+    from findajob.notifications import apply_reminder
+
+    monkeypatch.setattr(apply_reminder, "send", fake_send)
+    apply_reminder.cmd_apply_reminder()
+
+    assert sent, "send() not called"
+    msg = sent[0]
     assert msg["title"].startswith(BRAND), f"title not branded: {msg['title']!r}"
     _assert_no_jargon(msg["body"], "apply-reminder")
 
 
-def test_apply_reminder_quips_have_no_tech_specific_jokes(notify_module):
-    quips = [
+def test_apply_reminder_quips_have_no_tech_specific_jokes():
+    quips_to_keep = (
         "The perfect resume is the enemy of the submitted one. Go click Apply.",
         "Your resume can't apply to itself. We checked. Open a tab.",
-    ]
-    # Fetch the actual QUIPS list from the module to guard against any new entry
-    # sneaking in tech-specific terms.
-    import inspect
+    )
+    from findajob.notifications import apply_reminder
 
-    src = inspect.getsource(notify_module.cmd_apply_reminder)
+    src = inspect.getsource(apply_reminder)
     for token in ("DeepSeek", "GPT-", "ChatGPT", "Claude ", "the pipeline", "the Dashboard"):
-        assert token not in src, f"cmd_apply_reminder source contains tech-specific token {token!r}"
-    # Sanity: at least the kept quips are still present.
-    for q in quips:
+        assert token not in src, f"apply_reminder source contains tech-specific token {token!r}"
+    for q in quips_to_keep:
         assert q in src, f"expected quip missing: {q!r}"
 
 
-def test_feedback_review_is_branded_and_plain_english(notify_module):
+def test_feedback_review_is_branded_and_plain_english(fixtured_db, monkeypatch):
+    db, sent, fake_send = fixtured_db
+    from findajob.notifications import feedback_review
+
+    monkeypatch.setattr(feedback_review, "send", fake_send)
+
     # cmd_feedback_review only sends when feedback_log has >= 10 entries.
-    conn = sqlite3.connect(notify_module.DB_PATH)
+    conn = sqlite3.connect(db)
     for i in range(15):
         conn.execute(
             "INSERT INTO feedback_log (job_id, reason) VALUES (?, ?)",
@@ -154,22 +158,28 @@ def test_feedback_review_is_branded_and_plain_english(notify_module):
     conn.commit()
     conn.close()
 
-    notify_module.cmd_feedback_review()
-    assert notify_module._sent, "send() not called for >=10 feedback entries"
-    msg = notify_module._sent[0]
+    feedback_review.cmd_feedback_review()
+    assert sent, "send() not called for >=10 feedback entries"
+    msg = sent[0]
     assert msg["title"].startswith(BRAND), f"title not branded: {msg['title']!r}"
     _assert_no_jargon(msg["body"], "feedback-review")
 
 
 def test_all_send_titles_are_branded():
     """Every send() call site (except the passthrough send-raw) must use the
-    💼 findajob brand prefix on its title literal."""
-    import re
+    💼 findajob brand prefix on its title literal.
 
-    text = NOTIFY_PATH.read_text()
-    # Capture the first string-literal arg to send(...) calls; matches both
-    # `send("Title", ...)` and `send(\n    "Title",\n    ...)`.
-    titles = re.findall(r'send\(\s*["\']([^"\']+)["\']', text)
-    assert titles, "regex failed to find any send() title literals"
+    Post-extraction: scan all per-command modules in
+    `src/findajob/notifications/`. send_raw.py is exempt (passthrough).
+    """
+    titles: list[str] = []
+    for module_path in NOTIFY_PKG.glob("*.py"):
+        if module_path.name in {"__init__.py", "cli.py", "ntfy.py", "send_raw.py"}:
+            continue
+        text = module_path.read_text()
+        # Match send("Title", ...) or send(\n    "Title",\n    ...)
+        titles.extend(re.findall(r'send\(\s*["\']([^"\']+)["\']', text))
+
+    assert titles, "regex failed to find any send() title literals across notification modules"
     unbranded = [t for t in titles if not t.startswith(BRAND)]
     assert not unbranded, f"unbranded send() titles: {unbranded}"

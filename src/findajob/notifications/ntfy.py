@@ -1,0 +1,219 @@
+"""Shared infrastructure for the notification suite.
+
+- `send()` — persist to `notifications` table, then POST to ntfy.sh
+- `_persist_notification()` — DB write that survives ntfy outages
+- `db_connect()` — pipeline DB connection
+- `recent_log_events()` — pipeline.jsonl tail
+- `open_issues()` — `gh issue list` shell-out
+- `_p()` — pluralization helper
+- `NOTIFICATION_KINDS` — closed-set taxonomy
+
+Module-load side effect (the original `_env = load_env()` + NTFY_TOPIC /
+NTFY_URL / WEB_BASE_URL globals) is replaced with a `functools.cache`-d
+`_runtime()` accessor so the file read happens on first call, not at
+import time.
+"""
+
+import functools
+import json
+import os
+import sqlite3
+import subprocess
+from datetime import UTC, datetime, timedelta
+
+from findajob.paths import BASE
+from findajob.utils import load_env
+
+DB_PATH = f"{BASE}/data/pipeline.db"
+LOG_PATH = f"{BASE}/logs/pipeline.jsonl"
+REPO_SLUG = "brockamer/findajob"
+
+
+@functools.cache
+def _runtime() -> dict[str, str]:
+    """Lazy runtime config — env loaded on first call, not at import.
+
+    `data/.env` may not exist on a brand-new stack; `load_env()` is a
+    graceful no-op there. The defaults match the pre-extraction module
+    globals literally.
+    """
+    env = load_env()
+    return {
+        "ntfy_topic": env.get("NTFY_TOPIC") or os.environ.get("NTFY_TOPIC", "jobsearch-pipeline"),
+        "web_base_url": (
+            env.get("FINDAJOB_WEB_URL") or os.environ.get("FINDAJOB_WEB_URL", "http://localhost:8090")
+        ).rstrip("/"),
+    }
+
+
+def _ntfy_url() -> str:
+    return f"https://ntfy.sh/{_runtime()['ntfy_topic']}"
+
+
+# Closed-set kind taxonomy (#440). Adding a new kind = update this tuple AND
+# the per-kind color/label in templates/notifications/_kind.html.
+NOTIFICATION_KINDS: tuple[str, ...] = (
+    "daily_stats",
+    "apply_reminder",
+    "feedback_review",
+    "scoreboard",
+    "health_check",
+    "issues_ping",
+    "ci_check",
+    "send_raw",
+    "discovery_run",
+    "gmail_auth_failure",
+    "rejection_detected",  # consumed by #362 when it lands
+)
+
+
+def _persist_notification(
+    kind: str,
+    title: str,
+    body: str,
+    priority: str,
+    tags: str | None,
+    delivery_status: str,
+    delivery_error: str | None,
+    cta_url: str | None,
+) -> int | None:
+    """Insert a row into the notifications table. Returns row id, or None on error.
+
+    Persistence failures must NOT crash the caller — ntfy delivery and audit
+    persistence are independent. A missing table on a brand-new stack with no
+    init_db run is the only realistic failure; in that case we skip silently.
+    """
+    try:
+        conn = db_connect()
+        try:
+            cur = conn.execute(
+                """
+                INSERT INTO notifications
+                    (kind, title, body, priority, tags, delivery_status, delivery_error, cta_url)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (kind, title, body, priority, tags, delivery_status, delivery_error, cta_url),
+            )
+            conn.commit()
+            return cur.lastrowid
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return None
+
+
+def send(title, body, priority="default", tags=None, kind="send_raw", cta_url=None):
+    """Persist a notification row, then push via ntfy.sh.
+
+    The DB row is the source of truth for the in-app notification dashboard
+    (#440). We insert FIRST so the audit trail captures even ntfy outages,
+    then attempt delivery. If ntfy.sh fails (network, 5xx), the row stays
+    with `delivery_status='failed'` and `delivery_error` populated — never
+    deleted. Returns the row id (or None if persistence itself failed).
+
+    `kind` should match one of NOTIFICATION_KINDS; arbitrary strings are
+    accepted but render as plain badges in the UI.
+    """
+    headers = [
+        "-H",
+        f"Title: {title}",
+        "-H",
+        f"Priority: {priority}",
+    ]
+    if tags:
+        headers += ["-H", f"Tags: {tags}"]
+    result = subprocess.run(
+        [
+            "curl",
+            "-s",
+            "-X",
+            "POST",
+            _ntfy_url(),
+            "-H",
+            "Content-Type: text/plain; charset=utf-8",
+            *headers,
+            "-d",
+            body,
+        ],
+        check=False,
+        capture_output=True,
+    )
+    if result.returncode == 0:
+        delivery_status = "sent"
+        delivery_error = None
+    else:
+        delivery_status = "failed"
+        delivery_error = (result.stderr or b"").decode("utf-8", errors="replace")[:500] or "curl exited non-zero"
+    return _persist_notification(
+        kind=kind,
+        title=title,
+        body=body,
+        priority=priority,
+        tags=tags,
+        delivery_status=delivery_status,
+        delivery_error=delivery_error,
+        cta_url=cta_url,
+    )
+
+
+def _p(n: int, singular: str, plural: str | None = None) -> str:
+    """Pluralize for user-facing notification strings (#151)."""
+    return f"{n} {singular}" if n == 1 else f"{n} {plural or singular + 's'}"
+
+
+def db_connect() -> sqlite3.Connection:
+    conn = sqlite3.connect(DB_PATH, timeout=30)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def recent_log_events(hours: int = 25) -> list[dict]:
+    """Return log entries from the last N hours."""
+    cutoff = (datetime.now(UTC) - timedelta(hours=hours)).isoformat()
+    events: list[dict] = []
+    try:
+        with open(LOG_PATH) as f:
+            for line in f:
+                try:
+                    e = json.loads(line)
+                    if e.get("ts", "") >= cutoff:
+                        events.append(e)
+                except json.JSONDecodeError:
+                    pass
+    except FileNotFoundError:
+        pass
+    return events
+
+
+def open_issues() -> list[str]:
+    """Fetch open issues from GitHub via `gh issue list`."""
+    try:
+        rc = subprocess.run(
+            [
+                "gh",
+                "issue",
+                "list",
+                "--repo",
+                REPO_SLUG,
+                "--state",
+                "open",
+                "--json",
+                "number,title,labels",
+                "--limit",
+                "50",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if rc.returncode != 0:
+            return []
+        items = json.loads(rc.stdout)
+        results: list[str] = []
+        for item in items:
+            labels = ", ".join(lbl["name"] for lbl in item.get("labels", []))
+            tag = f" [{labels}]" if labels else ""
+            results.append(f"#{item['number']}: {item['title']}{tag}")
+        return results
+    except Exception:
+        return []

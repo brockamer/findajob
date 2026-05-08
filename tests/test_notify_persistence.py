@@ -1,27 +1,18 @@
-"""notify.py:send() persists notifications rows before/after ntfy POST (#440)."""
+"""findajob.notifications.ntfy.send() persists rows before/after ntfy POST (#440).
+
+Post-#537: notification logic lives in `findajob.notifications.*`; the
+`importlib.util.spec_from_file_location` workaround is no longer needed.
+"""
 
 from __future__ import annotations
 
-import importlib.util
 import sqlite3
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
 
-REPO = Path(__file__).resolve().parents[1]
-NOTIFY_PATH = REPO / "scripts" / "notify.py"
-
-
-def _load_notify_module(db_path: Path):
-    spec = importlib.util.spec_from_file_location("notify_persistence_under_test", NOTIFY_PATH)
-    assert spec and spec.loader
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules["notify_persistence_under_test"] = mod
-    spec.loader.exec_module(mod)
-    mod.DB_PATH = str(db_path)
-    return mod
+from findajob.notifications import ntfy
 
 
 def _build_notifications_db(db_path: Path) -> None:
@@ -51,8 +42,8 @@ def _build_notifications_db(db_path: Path) -> None:
 def notify(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     db = tmp_path / "pipeline.db"
     _build_notifications_db(db)
-    mod = _load_notify_module(db)
-    return mod
+    monkeypatch.setattr(ntfy, "DB_PATH", str(db))
+    return ntfy
 
 
 def _read_rows(db_path) -> list[sqlite3.Row]:
@@ -135,7 +126,8 @@ def test_send_does_not_crash_when_table_missing(tmp_path, monkeypatch):
     """Brand-new stack with no init_db run yet: send() should not crash."""
     db = tmp_path / "pipeline.db"
     sqlite3.connect(db).close()  # empty DB, no tables
-    mod = _load_notify_module(db)
+
+    monkeypatch.setattr(ntfy, "DB_PATH", str(db))
 
     class _Result:
         returncode = 0
@@ -143,7 +135,7 @@ def test_send_does_not_crash_when_table_missing(tmp_path, monkeypatch):
 
     monkeypatch.setattr(subprocess, "run", lambda *a, **kw: _Result())
 
-    rid = mod.send("title", "body", kind="daily_stats")
+    rid = ntfy.send("title", "body", kind="daily_stats")
     assert rid is None  # silent skip, no exception
 
 
