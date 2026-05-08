@@ -63,7 +63,7 @@ FINDAJOB_AUTH_PASS=<a strong password>
 ```
 
 the perimeter VPN-only / LAN-only instances can skip this — the perimeter is the gate.
-See [`internet-exposure.md`](internet-exposure.md) for the full threat model.
+See [`../operations/internet-exposure.md`](../operations/internet-exposure.md) for the full threat model.
 
 ### What the entrypoint does automatically
 

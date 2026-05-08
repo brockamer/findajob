@@ -1,8 +1,8 @@
 # Operations
 
-> **New to findajob?** Start at [`usage.md`](usage.md). This page is the operator reference for running the stack by hand — triage, sync, prep, notifications — from a shell.
+> **New to findajob?** Start at [`../usage.md`](../usage.md). This page is the operator reference for running the stack by hand — triage, sync, prep, notifications — from a shell.
 
-Day-to-day operation of the pipeline. The `ghcr.io/brockamer/findajob` image runs supercronic + uvicorn co-process inside one container. Setup: [`getting-started/install-docker.md`](getting-started/install-docker.md). All pipeline commands below are shown in their Docker form (`docker compose exec scheduler …`).
+Day-to-day operation of the pipeline. The `ghcr.io/brockamer/findajob` image runs supercronic + uvicorn co-process inside one container. Setup: [`../getting-started/install-docker.md`](../getting-started/install-docker.md). All pipeline commands below are shown in their Docker form (`docker compose exec scheduler …`).
 
 ---
 
@@ -21,9 +21,6 @@ The pipeline is mostly autonomous. Your job is:
 ---
 
 ## Manual Commands
-
-Commands below are in their Docker form. For native installs, drop the
-`docker compose exec scheduler ` prefix and run from the repo root.
 
 ### Run triage manually (test or catch-up)
 ```bash
@@ -130,7 +127,7 @@ docker compose exec scheduler sqlite3 data/pipeline.db \
 2. No restart needed — profile is read fresh on every triage + every prep
 
 ### Update a role prompt
-1. Edit `config/roles/{role_name}.md` — under Docker, this file is **baked into the image** at `/app/config/roles/`, NOT bind-mounted. Edit the file in your repo clone, rebuild the image, and `docker compose pull` to deploy. (Native installs edit in place.)
+1. Edit `config/roles/{role_name}.md` — this file is **baked into the image** at `/app/config/roles/`, NOT bind-mounted. Edit the file in your repo clone, rebuild the image, and `docker compose pull` to deploy.
 2. The OpenRouter wrapper reads the role file (frontmatter `model:`, `temperature:`, `max_tokens:`) fresh on every invocation — no restart.
 
 ### Change a role's model
@@ -160,7 +157,7 @@ Safe to re-run — skips already-renamed folders. Historical migration script fo
 
 ## Web UI + Materials Viewer
 
-The container publishes the full web UI (board, ingest, materials viewer, config editor) on `FINDAJOB_MATERIALS_PORT` (default `8090`). Access at `http://<host>:<port>/` on your LAN or via reverse proxy (see [`getting-started/internet-exposure.md`](getting-started/internet-exposure.md)).
+The container publishes the full web UI (board, ingest, materials viewer, config editor) on `FINDAJOB_MATERIALS_PORT` (default `8090`). Access at `http://<host>:<port>/` on your LAN or via reverse proxy (see [`internet-exposure.md`](internet-exposure.md)).
 
 ```bash
 curl http://localhost:8090/healthz    # expect: ok
@@ -174,7 +171,8 @@ The materials sub-view (`/materials/`) renders prep-folder contents grouped by s
 
 `logs/pipeline.jsonl` grows without bound. Rotation #8 is open; until that lands, rotate manually or set up `logrotate` on the host targeting the bind-mounted log directory.
 
-**Docker** (logrotate runs on the host against the bind-mounted directory):
+Run `logrotate` on the host against the bind-mounted directory:
+
 ```
 /opt/stacks/findajob-{handle}/state/logs/*.jsonl {
     weekly
@@ -185,20 +183,9 @@ The materials sub-view (`/materials/`) renders prep-folder contents grouped by s
 }
 ```
 
-**Native** (logrotate against the repo's `logs/` dir):
-```
-/home/USERNAME/findajob/logs/*.jsonl {
-    weekly
-    rotate 4
-    compress
-    missingok
-    notifempty
-}
-```
-
 ---
 
-## Docker Operations (Compose)
+## Stack operations
 
 Operate the stack from the host as the user that owns `/opt/stacks/findajob-{handle}/`.
 
@@ -225,27 +212,4 @@ docker compose pull && docker compose up -d
 docker compose down
 ```
 
-The scheduler inside the container is **supercronic**, not systemd. Schedules are declared in `ops/scheduled-jobs.yaml` and rendered to `/app/crontab` by `scripts/render_crontab.py` at entrypoint. Per-job env overrides are documented in CLAUDE.md (`FINDAJOB_<JOB>_SCHEDULE` / `FINDAJOB_<JOB>_ENABLED`).
-
----
-
-## Native Operations (systemd)
-
-```bash
-# Check all timer status
-systemctl --user list-timers | grep findajob
-
-# Check last run of a specific service
-systemctl --user status findajob-triage.service
-
-# View logs
-journalctl --user -u findajob-triage.service --since "24 hours ago"
-
-# Force a manual run now
-systemctl --user start findajob-triage.service
-
-# Disable a timer temporarily
-systemctl --user stop findajob-triage.timer
-systemctl --user start findajob-triage.timer  # re-enable
-```
-
+The scheduler inside the container is **supercronic**. Schedules are declared in `ops/scheduled-jobs.yaml` and rendered to `/app/crontab` by `scripts/render_crontab.py` at entrypoint. Per-job env overrides are documented in CLAUDE.md (`FINDAJOB_<JOB>_SCHEDULE` / `FINDAJOB_<JOB>_ENABLED`).

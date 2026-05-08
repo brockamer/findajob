@@ -91,7 +91,7 @@ Remaining roles audited 2026-04-22 and found clean: `briefing_writer.md`, `fit_a
 ### Documentation — `docs/*.md`
 
 - [x] **`docs/architecture.md`** — generic, OK
-- [ ] **`docs/operations.md`** — may reference tech workflows; needs review
+- [ ] **`docs/operations/README.md`** — may reference tech workflows; needs review
 - [ ] **`docs/getting-started/configure.md`** — may mention AI company examples
 
 ### Search / ingestion logic — `scripts/triage.py`

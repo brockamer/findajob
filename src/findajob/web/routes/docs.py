@@ -13,10 +13,10 @@ from findajob.web.markdown import render_markdown
 router = APIRouter()
 
 
-# Slug → path relative to the repo's `docs/` directory. The three guides named
-# in the top-nav index (getting-started, usage, troubleshooting) anchor the
-# user-facing doc set; the getting-started sub-pages are included so cross-links
-# from getting-started/README.md resolve in-app instead of 404ing.
+# Slug → path relative to the repo's `docs/` directory. The four guides named
+# in the top-nav index (getting-started, usage, operations, troubleshooting)
+# anchor the user-facing doc set; sub-pages within each guide are included so
+# cross-links from the guide's README.md resolve in-app instead of 404ing.
 _PAGES: dict[str, str] = {
     "usage": "usage.md",
     "usage/expanding-sources": "usage/expanding-sources.md",
@@ -25,9 +25,11 @@ _PAGES: dict[str, str] = {
     "getting-started/prerequisites": "getting-started/prerequisites.md",
     "getting-started/install-docker": "getting-started/install-docker.md",
     "getting-started/configure": "getting-started/configure.md",
-    "getting-started/internet-exposure": "getting-started/internet-exposure.md",
     "getting-started/gmail": "getting-started/gmail.md",
     "getting-started/api-keys": "getting-started/api-keys.md",
+    "operations": "operations/README.md",
+    "operations/internet-exposure": "operations/internet-exposure.md",
+    "operations/restore": "operations/restore.md",
 }
 
 _INDEX_GUIDES = [
@@ -40,6 +42,11 @@ _INDEX_GUIDES = [
         "slug": "usage",
         "title": "Usage",
         "blurb": "Daily workflow — how to drive the pipeline through the web UI, tab by tab.",
+    },
+    {
+        "slug": "operations",
+        "title": "Operations",
+        "blurb": "Running the stack by hand: manual commands, log rotation, restore, internet exposure.",
     },
     {
         "slug": "troubleshooting",

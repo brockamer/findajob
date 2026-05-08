@@ -179,7 +179,9 @@ Start here:
 | [docs/getting-started/install-docker.md](docs/getting-started/install-docker.md) | Docker Compose setup |
 | [docs/getting-started/api-keys.md](docs/getting-started/api-keys.md) | Getting your three API keys (OpenRouter, RapidAPI, Google AI Studio) |
 | [docs/getting-started/configure.md](docs/getting-started/configure.md) | Profile, resume, search queries, advanced config |
-| [docs/operations.md](docs/operations.md) | Operator reference: manual commands, monitoring |
+| [docs/operations/README.md](docs/operations/README.md) | Operator reference: manual commands, monitoring |
+| [docs/operations/internet-exposure.md](docs/operations/internet-exposure.md) | Exposing the stack to the public internet |
+| [docs/operations/restore.md](docs/operations/restore.md) | Restore from backup |
 | [docs/notifications.md](docs/notifications.md) | ntfy.sh setup and notification schedule |
 | [docs/GENERALIZATION.md](docs/GENERALIZATION.md) | Making the pipeline work for non-tech fields |
 

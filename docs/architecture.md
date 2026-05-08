@@ -1,24 +1,17 @@
 # Architecture
 
-The same Python codebase runs identically under Docker and native installs.
-What differs is the **scheduler layer** (supercronic in the container vs.
-systemd timers natively) and the **process model** (uvicorn co-process inside
-the same container under Docker; separate user service natively). Everything
-described below — fetchers, prefilter, scorer, prep, DB schema — is platform-
-agnostic.
-
-For setup, see [`getting-started/install-docker.md`](getting-started/install-docker.md).
+The pipeline runs as a single Docker container (`ghcr.io/brockamer/findajob`)
+with supercronic and uvicorn as co-processes. For setup, see
+[`getting-started/install-docker.md`](getting-started/install-docker.md).
 
 ## Scheduler
 
-Schedules live in **`ops/scheduled-jobs.yaml`** (canonical, repo-tracked). Under
-Docker, `scripts/render_crontab.py` renders that YAML to `/app/crontab` at
-entrypoint, and **supercronic** runs the resulting cron file in the foreground
-of the container. Under native installs, the same YAML is materialized into
-`systemctl --user` timers. Per-job overrides (`FINDAJOB_<JOB>_SCHEDULE`,
-`FINDAJOB_<JOB>_ENABLED`) work in either mode — they're consumed by the
-crontab renderer / unit-file generator. See CLAUDE.md§"Container Context" for
-the full env-override surface.
+Schedules live in **`ops/scheduled-jobs.yaml`** (canonical, repo-tracked).
+`scripts/render_crontab.py` renders that YAML to `/app/crontab` at entrypoint,
+and **supercronic** runs the resulting cron file in the foreground of the
+container. Per-job overrides (`FINDAJOB_<JOB>_SCHEDULE`,
+`FINDAJOB_<JOB>_ENABLED`) are consumed by the crontab renderer. See
+CLAUDE.md§"Container Context" for the full env-override surface.
 
 ## Overview
 
@@ -26,10 +19,10 @@ Two distinct workflows, both scheduler-driven:
 
 | Workflow | Trigger | Duration | Output |
 |---|---|---|---|
-| **Daily Triage** | 00:00 daily (supercronic / systemd timer) | 30–60 min | 100–500 jobs scored and written to SQLite |
+| **Daily Triage** | 00:00 daily (supercronic) | 30–60 min | 100–500 jobs scored and written to SQLite |
 | **Prep** | User flags a job in the Dashboard | 5–10 min | Folder with resume, cover letter, briefing, outreach drafts |
 
-Everything between them is mediated by SQLite. The Google Sheet is a synced view — not the source of truth (sync path slated for retirement, #331).
+Everything between them is mediated by SQLite.
 
 ---
 
@@ -37,7 +30,7 @@ Everything between them is mediated by SQLite. The Google Sheet is a synced view
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  triage.py (00:00 daily — supercronic / systemd timer)  │
+│  triage.py (00:00 daily — supercronic)  │
 └──────────────────────┬──────────────────────────────────┘
                        │
           ┌────────────┴────────────┐

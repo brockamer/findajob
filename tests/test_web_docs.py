@@ -54,7 +54,8 @@ GETTING_STARTED_README_MD = textwrap.dedent(
 GETTING_STARTED_PREREQ_MD = "# Prerequisites\n\nNeeded before install.\n"
 GETTING_STARTED_INSTALL_DOCKER_MD = "# Install with Docker\n\nThe primary install path.\n"
 GETTING_STARTED_CONFIGURE_MD = "# Configure\n\nFile-by-file config walkthrough.\n"
-GETTING_STARTED_INTERNET_EXPOSURE_MD = "# Exposing findajob to the public internet\n\nBasic auth pattern.\n"
+OPERATIONS_README_MD = "# Operations\n\nManual commands, log rotation, restore.\n"
+OPERATIONS_INTERNET_EXPOSURE_MD = "# Exposing findajob to the public internet\n\nBasic auth pattern.\n"
 
 
 @pytest.fixture
@@ -67,22 +68,25 @@ def client(tmp_path: Path) -> TestClient:
     # Seed docs/ under tmp_path so app.state.base_root=tmp_path finds them.
     docs = tmp_path / "docs"
     (docs / "getting-started").mkdir(parents=True)
+    (docs / "operations").mkdir(parents=True)
     (docs / "usage.md").write_text(USAGE_MD)
     (docs / "troubleshooting.md").write_text(TROUBLESHOOTING_MD)
     (docs / "getting-started" / "README.md").write_text(GETTING_STARTED_README_MD)
     (docs / "getting-started" / "prerequisites.md").write_text(GETTING_STARTED_PREREQ_MD)
     (docs / "getting-started" / "install-docker.md").write_text(GETTING_STARTED_INSTALL_DOCKER_MD)
     (docs / "getting-started" / "configure.md").write_text(GETTING_STARTED_CONFIGURE_MD)
-    (docs / "getting-started" / "internet-exposure.md").write_text(GETTING_STARTED_INTERNET_EXPOSURE_MD)
+    (docs / "operations" / "README.md").write_text(OPERATIONS_README_MD)
+    (docs / "operations" / "internet-exposure.md").write_text(OPERATIONS_INTERNET_EXPOSURE_MD)
 
     return TestClient(create_app(companies_root=companies, db_path=db, base_root=tmp_path))
 
 
-def test_index_lists_three_guides(client: TestClient) -> None:
+def test_index_lists_four_guides(client: TestClient) -> None:
     r = client.get("/docs/")
     assert r.status_code == 200
     assert 'href="/docs/getting-started"' in r.text
     assert 'href="/docs/usage"' in r.text
+    assert 'href="/docs/operations"' in r.text
     assert 'href="/docs/troubleshooting"' in r.text
     # One-line descriptions surface on the index.
     assert "Daily workflow" in r.text
@@ -125,9 +129,15 @@ def test_getting_started_subpage_renders(client: TestClient) -> None:
     assert "Install with Docker" in r.text
 
 
+def test_operations_readme_renders(client: TestClient) -> None:
+    r = client.get("/docs/operations")
+    assert r.status_code == 200
+    assert ">Operations</h1>" in r.text
+
+
 def test_internet_exposure_subpage_renders(client: TestClient) -> None:
-    """#327: new pattern doc reachable in-app via the docs viewer's slug allowlist."""
-    r = client.get("/docs/getting-started/internet-exposure")
+    """#327: pattern doc reachable in-app under operations/ via the docs viewer's slug allowlist."""
+    r = client.get("/docs/operations/internet-exposure")
     assert r.status_code == 200
     assert "Exposing findajob to the public internet" in r.text
 

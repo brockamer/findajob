@@ -175,7 +175,7 @@ Foundational decisions (design rationale lives in operator-private specs):
 - URL query params for UI state (not cookies/localStorage)
 - Alpine.js added only when ephemeral client state is needed
 
-**`/config/`** — in-browser editor for editable pipeline config; allowlist in `findajob.web.config_files`. No per-user authorization inside findajob — perimeter is the boundary. Default perimeter is a VPN-only mesh; internet-exposed instances additionally require HTTP Basic Auth via `FINDAJOB_AUTH_USER` / `FINDAJOB_AUTH_PASS` (see `findajob.web.auth` and `docs/getting-started/internet-exposure.md`).
+**`/config/`** — in-browser editor for editable pipeline config; allowlist in `findajob.web.config_files`. No per-user authorization inside findajob — perimeter is the boundary. Default perimeter is a VPN-only mesh; internet-exposed instances additionally require HTTP Basic Auth via `FINDAJOB_AUTH_USER` / `FINDAJOB_AUTH_PASS` (see `findajob.web.auth` and `docs/operations/internet-exposure.md`).
 
 **`/settings/`** — domain-aware config editors with rich UX. First occupant: `/settings/reject-reasons/` (#490) — editable rows + per-row `title-signal` checkbox for `config/reject_reasons.yaml`. Distinguished from `/config/` (raw text editor for any allowlisted file): `/settings/` has per-page UX tailored to the config it edits (validation, structured rows, HTMX partial-swap save flow). Saves take effect on the next request without container restart — `findajob.config_loader.load_reject_reasons` is no-cache and `ColumnSpec.enum_values` accepts a callable so dropdown + filter chip values both refresh per request. Future similar editors (e.g., `prefilter_rules.yaml`, `in_domain_patterns.yaml`) live here.
 
