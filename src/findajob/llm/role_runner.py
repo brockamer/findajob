@@ -1,8 +1,16 @@
 """LLM role runner — single OpenRouter call wrapped with cost-log persistence.
 
-Byte-equivalent copy of `findajob.prep.role_runner.run_role`. Both copies
-exist transiently per the M3 import-only discipline; the cleanup PR (M3+
-or M3's 6th child) consolidates them into `findajob.llm.role_runner`.
+Consolidates the byte-equivalent copies that lived in
+`findajob.prep.role_runner` and `findajob.interview.role_runner` after
+M3's import-only extractions (#537). The two duplicates are removed in
+this PR; their callsites now import from here.
+
+This is the canonical surface for any future caller that needs:
+- a single OpenRouter call (with optional prompt-cache prefix and
+  provider pinning)
+- API-authoritative cost logging via `cost_log` (when `conn` is provided)
+- silent recovery from `OpenRouterError` (returns "" rather than raising)
+- best-effort cost-log writes (failures don't break the caller)
 """
 
 import re
@@ -27,8 +35,10 @@ def run_role(
     """Call openrouter.complete() and return assistant text.
 
     When ``conn`` is provided, a cost_log row is written after a successful
-    response. Cost-log failures are swallowed so they cannot break
-    interview-prep generation.
+    response. Cost-log failures are swallowed — they cannot break the
+    caller. Each call writes at most one row; caller-side retries
+    (e.g. prep's briefing_writer retry) intentionally produce multiple
+    rows by invoking run_role() multiple times.
     """
     start = time.time()
     try:

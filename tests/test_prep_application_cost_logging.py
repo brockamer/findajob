@@ -1,8 +1,10 @@
 """Cost-logging tests for the run_role() helper.
 
-Post-#537: `run_role()` lives in `findajob.prep.role_runner` (extracted
-from `scripts/prep_application.py` in M3 PR #3). The test surface is
-unchanged — only the import path and the patch target moved.
+Post-#537 (M3 cleanup PR): `run_role()` was consolidated into
+`findajob.llm.role_runner` from byte-equivalent copies that lived in
+`findajob.{prep,interview}.role_runner` after the import-only extractions.
+The test surface is unchanged — only the import path and the patch
+target moved.
 
 HTTP-mocked tests for the wrapper-driven run_role() helper after the Phase 2 port.
 Each call to run_role() writes a cost_log row with API-authoritative cost_usd
@@ -19,7 +21,7 @@ import urllib.error
 from io import BytesIO
 from unittest.mock import patch
 
-from findajob.prep.role_runner import run_role
+from findajob.llm.role_runner import run_role
 
 # Fake key satisfies the OPENROUTER_API_KEY guard in openrouter.complete() without
 # a real network call — used in conjunction with the urlopen mock.
@@ -166,7 +168,7 @@ def test_run_role_passes_cached_prefix_to_wrapper():
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
     conn.executescript(COST_LOG_SCHEMA)
-    with patch("findajob.prep.role_runner.complete", _fake_complete):
+    with patch("findajob.llm.role_runner.complete", _fake_complete):
         run_role(
             "resume_tailor",
             "tailor this",

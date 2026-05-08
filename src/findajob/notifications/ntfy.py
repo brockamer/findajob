@@ -1,6 +1,10 @@
 """Shared infrastructure for the notification suite.
 
 - `send()` — persist to `notifications` table, then POST to ntfy.sh
+- `quick_notify()` — fire-and-forget ntfy push; no DB persistence,
+  dual-source topic lookup. Used by background scripts (triage, prep,
+  interview) where the audit trail is pipeline.jsonl, not the
+  notifications table.
 - `_persist_notification()` — DB write that survives ntfy outages
 - `db_connect()` — pipeline DB connection
 - `recent_log_events()` — pipeline.jsonl tail
@@ -217,3 +221,54 @@ def open_issues() -> list[str]:
         return results
     except Exception:
         return []
+
+
+def quick_notify(message: str) -> None:
+    """Fire-and-forget ntfy push for background scripts.
+
+    Used by `findajob.{triage,prep,interview}.orchestrator` to surface
+    pipeline events (completion, failure, abort) to the operator's
+    phone. Distinct from `send()`:
+
+    - **Dual-source topic lookup.** Reads ``config/ntfy_topic.txt``
+      first, falling back to ``data/.env``'s ``NTFY_TOPIC``. The legacy
+      ntfy_topic.txt path predates the .env convention; both are still
+      supported on existing stacks.
+    - **No DB persistence.** Skips the `notifications` table write.
+      Background scripts have their own structured audit trail in
+      `pipeline.jsonl` via ``log_event``; the in-app notification
+      dashboard is a separate concern (and on a brand-new stack the
+      table may not exist yet).
+    - **Silent failure.** Both topic-load paths and the curl shell-out
+      swallow exceptions — alerts are best-effort.
+
+    Consolidates the byte-equivalent copies that lived in each of the
+    three orchestrators after the M3 import-only extractions (#537).
+    """
+    topic = None
+    try:
+        with open(f"{BASE}/config/ntfy_topic.txt") as f:
+            topic = f.read().strip()
+    except FileNotFoundError:
+        pass
+    if not topic:
+        # Fall back to data/.env NTFY_TOPIC
+        try:
+            with open(f"{BASE}/data/.env") as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith("NTFY_TOPIC") and "=" in line:
+                        topic = line.split("=", 1)[1].strip().strip("'\"")
+                        break
+        except Exception:
+            pass
+    if not topic:
+        return
+    try:
+        subprocess.run(
+            ["curl", "-s", "-d", message, f"https://ntfy.sh/{topic}"],
+            capture_output=True,
+            timeout=10,
+        )
+    except Exception:
+        pass

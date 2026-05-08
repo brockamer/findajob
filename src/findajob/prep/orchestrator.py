@@ -1,15 +1,15 @@
 """Application-materials prep orchestrator.
 
-Extracted from `scripts/prep_application.py` in M3 (#537). Behavior preserved
-verbatim. Module-load `load_env()` moved into `main()` so this module is
-import-safe (no env file read at import time).
+Extracted from `scripts/prep_application.py` in M3 (#537). Module-load
+`load_env()` moved into `main()` so this module is import-safe (no env
+file read at import time).
 
-`abbrev_title()` and the lightweight `notify()` ntfy wrapper stay in this
-module despite being duplicated elsewhere (`abbrev_title` also lives in
-`scripts/rename_folders.py`; `notify` also lives in
-`findajob.triage.orchestrator` and `scripts/interview_prep.py`). The
-import-only M3 discipline forbids consolidation in the same PR as the
-move; both are M3+ cleanup candidates.
+`run_role()` was consolidated to `findajob.llm.role_runner` and
+`notify()` to `findajob.notifications.ntfy.quick_notify` in M3's cleanup
+PR; this module imports both rather than redefining them.
+
+`abbrev_title()` is still duplicated with `scripts/rename_folders.py` —
+M3+ cleanup target.
 """
 
 import json
@@ -22,9 +22,10 @@ import sys
 from datetime import UTC, datetime
 
 from findajob.actions import reset_prep_to_scored
+from findajob.llm.role_runner import run_role
+from findajob.notifications.ntfy import quick_notify
 from findajob.paths import BASE, PANDOC
 from findajob.prep.docx_postprocess import _add_cover_letter_spacing, _linkify_contact_info
-from findajob.prep.role_runner import run_role
 from findajob.utils import (
     JD_MAX_CHARS,
     build_prep_filenames,
@@ -47,32 +48,6 @@ def abbrev_title(title: str, max_words: int = 3) -> str:
     title = re.sub(r"[^\w\s-]", "", title)  # remove punctuation
     words = [w for w in title.split() if w][:max_words]
     return "_".join(words) if words else "Job"
-
-
-def notify(message: str) -> None:
-    topic = None
-    try:
-        with open(f"{BASE}/config/ntfy_topic.txt") as f:
-            topic = f.read().strip()
-    except FileNotFoundError:
-        pass
-    if not topic:
-        # Fall back to data/.env NTFY_TOPIC
-        try:
-            with open(f"{BASE}/data/.env") as f:
-                for line in f:
-                    line = line.strip()
-                    if line.startswith("NTFY_TOPIC") and "=" in line:
-                        topic = line.split("=", 1)[1].strip().strip("'\"")
-                        break
-        except Exception:
-            pass
-    if not topic:
-        return
-    try:
-        subprocess.run(["curl", "-s", "-d", message, f"https://ntfy.sh/{topic}"], capture_output=True, timeout=10)
-    except Exception:
-        pass
 
 
 def main() -> None:
@@ -167,7 +142,7 @@ def main() -> None:
         log_event("prep_missing_candidate_files", job_id=job_id, company=company, missing="; ".join(missing_files))
         shutil.rmtree(outdir, ignore_errors=True)
         reset_prep_to_scored(conn, job_id, reason="missing_candidate_files")
-        notify(f"PREP ABORTED (missing candidate files): {company} — {title}\n{'; '.join(missing_files)}")
+        quick_notify(f"PREP ABORTED (missing candidate files): {company} — {title}\n{'; '.join(missing_files)}")
         return
 
     # ── Build shared cached_prefix strings for Opus stages ──
@@ -522,7 +497,7 @@ Generated: {date}
         )
         shutil.rmtree(outdir, ignore_errors=True)
         reset_prep_to_scored(conn, job_id, reason="validation_failed")
-        notify(f"PREP FAILED (empty files): {company} — {title}\n{'; '.join(validation_failures)}")
+        quick_notify(f"PREP FAILED (empty files): {company} — {title}\n{'; '.join(validation_failures)}")
         return
 
     # ── Step 8: Update SQLite (stage + scores) ──
@@ -541,7 +516,7 @@ Generated: {date}
     write_audit(conn, job_id, "stage", old_stage, "materials_drafted")
 
     log_event("prep_complete", company=company, title=title, folder=outdir)
-    notify(f"Drafts ready: {company} — {title}\n{outdir}")
+    quick_notify(f"Drafts ready: {company} — {title}\n{outdir}")
 
     conn.close()
 

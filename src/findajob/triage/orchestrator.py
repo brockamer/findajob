@@ -34,6 +34,7 @@ from findajob.fetchers import (
     reset_linkedin_rate_limit_stats,
 )
 from findajob.fetchers.adapters import iter_configured_adapters
+from findajob.notifications.ntfy import quick_notify
 from findajob.onboarding import is_complete as _onboarding_is_complete
 from findajob.paths import BASE
 from findajob.scoring import _build_feedback_block, score_job
@@ -507,30 +508,4 @@ def main(gmail_since_days: int | None = None):
         noise_skipped=noise_count,
     )
 
-    notify(f"Triage done: {new_count} new, {dupe_count} dupes, {scored_count} scored ({SCORE_WORKERS} workers)")
-
-
-def notify(message):
-    topic = None
-    try:
-        with open(f"{BASE}/config/ntfy_topic.txt") as f:
-            topic = f.read().strip()
-    except FileNotFoundError:
-        pass
-    if not topic:
-        # Fall back to data/.env NTFY_TOPIC
-        try:
-            with open(f"{BASE}/data/.env") as f:
-                for line in f:
-                    line = line.strip()
-                    if line.startswith("NTFY_TOPIC") and "=" in line:
-                        topic = line.split("=", 1)[1].strip().strip("'\"")
-                        break
-        except Exception:
-            pass
-    if not topic:
-        return
-    try:
-        subprocess.run(["curl", "-s", "-d", message, f"https://ntfy.sh/{topic}"], capture_output=True, timeout=10)
-    except Exception:
-        pass
+    quick_notify(f"Triage done: {new_count} new, {dupe_count} dupes, {scored_count} scored ({SCORE_WORKERS} workers)")

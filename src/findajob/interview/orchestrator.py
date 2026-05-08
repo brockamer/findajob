@@ -1,9 +1,10 @@
 """Interview-prep orchestrator.
 
 Extracted from `scripts/interview_prep.py` in M3 (#537). Module-load
-`load_env()` deferred into `main()`. `notify()` lightweight ntfy
-wrapper preserved verbatim (also lives in `findajob.triage.orchestrator`
-and `findajob.prep.orchestrator`); cleanup PR consolidates.
+`load_env()` deferred into `main()`. `run_role()` was consolidated to
+`findajob.llm.role_runner` and `notify()` to
+`findajob.notifications.ntfy.quick_notify` in M3's cleanup PR; this
+module imports both rather than redefining them.
 """
 
 import os
@@ -13,8 +14,9 @@ import subprocess
 import sys
 from datetime import datetime
 
-from findajob.interview.role_runner import run_role
 from findajob.interview.sentinel import SENTINEL_NAME, _sentinel_blocks_run
+from findajob.llm.role_runner import run_role
+from findajob.notifications.ntfy import quick_notify
 from findajob.paths import BASE, PANDOC
 from findajob.utils import (
     load_env,
@@ -54,35 +56,6 @@ def _read_or_empty(path: str | None) -> str:
         return ""
 
 
-def notify(message: str) -> None:
-    topic = None
-    try:
-        with open(f"{BASE}/config/ntfy_topic.txt") as f:
-            topic = f.read().strip()
-    except FileNotFoundError:
-        pass
-    if not topic:
-        try:
-            with open(f"{BASE}/data/.env") as f:
-                for line in f:
-                    line = line.strip()
-                    if line.startswith("NTFY_TOPIC") and "=" in line:
-                        topic = line.split("=", 1)[1].strip().strip("'\"")
-                        break
-        except Exception:
-            pass
-    if not topic:
-        return
-    try:
-        subprocess.run(
-            ["curl", "-s", "-d", message, f"https://ntfy.sh/{topic}"],
-            capture_output=True,
-            timeout=10,
-        )
-    except Exception:
-        pass
-
-
 def main() -> None:
     # Module-load side effect deferred to here so import is safe.
     load_env()
@@ -117,7 +90,7 @@ def main() -> None:
                 reason="no_prep_folder",
                 folder=prep_folder,
             )
-            notify(f"INTERVIEW PREP SKIPPED: {company} — {title}\nNo prep folder; apply was likely manual.")
+            quick_notify(f"INTERVIEW PREP SKIPPED: {company} — {title}\nNo prep folder; apply was likely manual.")
             return
 
         # ── Concurrency guard: refuse if a fresh run is already in flight for this folder ──
@@ -188,7 +161,7 @@ def _generate(
             reason="no_briefing_in_prep_folder",
             folder=prep_folder,
         )
-        notify(f"INTERVIEW PREP FAILED: {company} — {title}\nNo briefing found in prep folder; cannot expand.")
+        quick_notify(f"INTERVIEW PREP FAILED: {company} — {title}\nNo briefing found in prep folder; cannot expand.")
         return
 
     # ── Load profile + master resume — injected directly, never via RAG ──
@@ -205,7 +178,7 @@ def _generate(
             profile=bool(profile),
             master=bool(master),
         )
-        notify(f"INTERVIEW PREP FAILED: {company} — {title}\nMissing profile.md or master_resume.md.")
+        quick_notify(f"INTERVIEW PREP FAILED: {company} — {title}\nMissing profile.md or master_resume.md.")
         return
 
     # ── Build prompt ──
@@ -246,7 +219,7 @@ def _generate(
             reason="empty_or_short_output",
             chars=len(output_md) if output_md else 0,
         )
-        notify(f"INTERVIEW PREP FAILED: {company} — {title}\nLLM returned empty/short output.")
+        quick_notify(f"INTERVIEW PREP FAILED: {company} — {title}\nLLM returned empty/short output.")
         return
 
     # ── Write artifact ──
@@ -284,5 +257,5 @@ def _generate(
         md=os.path.basename(md_path),
         chars=len(output_md),
     )
-    notify(f"Interview prep ready: {company} — {title}\n{md_path}")
+    quick_notify(f"Interview prep ready: {company} — {title}\n{md_path}")
     print(f"INTERVIEW_PREP_COMPLETE:{md_path}")

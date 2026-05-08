@@ -1,16 +1,12 @@
 """Characterization test: importing `findajob.prep.*` is side-effect-free.
 
-Pre-extraction (PR #539-era), `scripts/prep_application.py` ran
-`load_env()` at module import — silent file I/O on every test that
-imported the script.
+Pre-extraction `scripts/prep_application.py` ran `load_env()` at module
+import. After M3 PR #3 the call lives inside `main()`. This test fails
+if any module re-introduces module-load env reads.
 
-After this PR (M3 PR #3), env loading lives inside `main()`. This test
-fails if any module re-introduces module-load env reads.
-
-Also locks the cross-script duplication invariant: `run_role()` in
-`findajob.prep.role_runner` is byte-equivalent to the copy in
-`scripts/interview_prep.py` until the cleanup PR consolidates them
-into `findajob.llm.role_runner`.
+The duplication invariant for `run_role()` is now obsolete: M3's
+cleanup PR consolidated the two copies (prep + interview) into
+`findajob.llm.role_runner`. The orchestrator imports from there.
 """
 
 from __future__ import annotations
@@ -27,11 +23,10 @@ def _reimport(name: str):
 def test_orchestrator_loads_without_env_read(monkeypatch):
     """Importing `findajob.prep.orchestrator` must not call load_env().
 
-    The original `scripts/prep_application.py` had `load_env()` at module
-    top-level. After this PR the call lives inside `main()`. Re-importing
-    only the orchestrator is the right scope: `role_runner.py` and
-    `docx_postprocess.py` never had module-load env reads, and reimporting
-    them would invalidate `from findajob.prep.role_runner import run_role`
+    Re-importing only the orchestrator is the right scope:
+    `docx_postprocess.py` never had module-load env reads, and
+    reimporting it would invalidate
+    `from findajob.prep.docx_postprocess import _linkify_contact_info`
     references already taken by other tests in the suite (the closure
     points at the old module's globals).
     """
@@ -46,13 +41,16 @@ def test_orchestrator_loads_without_env_read(monkeypatch):
     assert calls == [], f"importing findajob.prep.orchestrator called load_env() {len(calls)} time(s); expected 0"
 
 
-def test_orchestrator_exposes_main_and_helpers():
-    """`main`, `abbrev_title`, and `notify` are deliberate public symbols."""
-    from findajob.prep.orchestrator import abbrev_title, main, notify
+def test_orchestrator_exposes_main_and_abbrev_title():
+    """`main` and `abbrev_title` are the deliberate public symbols.
+
+    `notify` was removed in the M3 cleanup PR — callers now import
+    `quick_notify` from `findajob.notifications.ntfy`.
+    """
+    from findajob.prep.orchestrator import abbrev_title, main
 
     assert callable(main)
     assert callable(abbrev_title)
-    assert callable(notify)
 
 
 def test_abbrev_title_behavior():
@@ -73,13 +71,6 @@ def test_abbrev_title_behavior():
     assert abbrev_title("") == "Job"
     assert abbrev_title("   ") == "Job"
     assert abbrev_title("()") == "Job"
-
-
-def test_run_role_module_callable():
-    """`findajob.prep.role_runner.run_role` is the public symbol the orchestrator imports."""
-    from findajob.prep.role_runner import run_role
-
-    assert callable(run_role)
 
 
 def test_docx_postprocess_helpers_callable():

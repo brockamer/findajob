@@ -18,7 +18,7 @@ import urllib.error
 from io import BytesIO
 from unittest.mock import patch
 
-from findajob.interview.role_runner import run_role
+from findajob.llm.role_runner import run_role
 
 # Fake key satisfies the OPENROUTER_API_KEY guard in openrouter.complete() without
 # a real network call — used in conjunction with the urlopen mock.
@@ -129,7 +129,7 @@ def test_interview_prep_passes_cached_prefix():
     master_content = "MASTER RESUME: 20 years DC infra"
     cached_prefix = profile_content + "\n\n" + master_content
 
-    with patch("findajob.interview.role_runner.complete", _fake_complete):
+    with patch("findajob.llm.role_runner.complete", _fake_complete):
         run_role(
             "interview_prep",
             "Company: Acme\nTitle: Director\nJD: ...\nBRIEFING: ...",
