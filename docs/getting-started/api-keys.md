@@ -190,7 +190,7 @@ key fresh on each rebuild.
 
 If the operator manages your stack and you want them to rotate a key
 on your behalf, they can edit `data/.env` directly via SSH —
-documented in `docs/setup/install-docker.md` under "Operating an
+documented in `docs/getting-started/install-docker.md` under "Operating an
 existing stack."
 
 ---

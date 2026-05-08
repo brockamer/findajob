@@ -94,7 +94,7 @@ reference the new tag, the file is inconsistent — fix before cutting.
 
 - For PRs touching `src/findajob/gmail_imap.py` or `src/findajob/fetchers/__init__.py:fetch_gmail_jobs`: re-run `uv run pytest tests/test_transparency_invariants.py -v` and link the green run in the PR description.
 
-- For releases that include any `migration-required` PR touching schema, onboarding, mounts, or the entrypoint: confirm a recent (≤ 1 release cycle) restore exercise has passed against a backup tarball produced by the current image. The procedure is documented in [`setup/restore.md`](setup/restore.md). If no recent exercise is on file, run one before tagging — a backup that has not been restored is not a backup, and a release that breaks restore must not ship.
+- For releases that include any `migration-required` PR touching schema, onboarding, mounts, or the entrypoint: confirm a recent (≤ 1 release cycle) restore exercise has passed against a backup tarball produced by the current image. The procedure is documented in [`getting-started/restore.md`](getting-started/restore.md). If no recent exercise is on file, run one before tagging — a backup that has not been restored is not a backup, and a release that breaks restore must not ship.
 
 ## Pre-tag smoke check
 

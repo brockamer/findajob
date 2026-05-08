@@ -3,7 +3,7 @@
 #
 # INSTALLATION:
 #   1. Copy this file to .git/hooks/pre-commit:
-#        cp docs/setup/pre-commit-hook.example.sh .git/hooks/pre-commit
+#        cp docs/getting-started/pre-commit-hook.example.sh .git/hooks/pre-commit
 #        chmod +x .git/hooks/pre-commit
 #   2. Edit the PATTERNS array below to match YOUR personal identifiers.
 #   3. Test: try `git commit` with a staged file containing one of your patterns.

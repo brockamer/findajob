@@ -148,8 +148,8 @@ Skipping RapidAPI means LinkedIn + Indeed search is inactive, but
 Greenhouse / Ashby / Lever feeds and Gmail alert ingestion still work.
 Skipping Google means the REPL-only RAG index won't rebuild — the daily
 pipeline runs identically. Full sign-up walk-throughs:
-[`docs/setup/api-keys.md`](api-keys.md) — also reachable in-app at
-`/docs/setup/api-keys`.
+[`docs/getting-started/api-keys.md`](api-keys.md) — also reachable in-app at
+`/docs/getting-started/api-keys`.
 
 **Step 2 — Run the interview.** Click "Start interview." findajob opens a
 chat surface where you have a structured 60–90 minute conversation with
@@ -400,8 +400,6 @@ Operators on PRO tier can raise per-query page counts via env vars in `data/.env
 - `JSEARCH_NUM_PAGES=3` — `JSearchAdapter` server-side pagination width (#414 PR3)
 
 Each additional page is one billed RapidAPI request; both default to 1 (pre-#414 behavior). See [`api-keys.md` → Pagination tuning](api-keys.md#pagination-tuning-pro-tier) for the cost math.
-
-For instructions on migrating from rclone/Drive to the materials viewer, see [`docs/setup/state-migration.md`](state-migration.md).
 
 ## Rolling back locally
 

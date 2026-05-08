@@ -2,7 +2,7 @@
 
 When something's wrong, read the logs first, check the health check second, then work through the symptom index.
 
-If you're just getting started, see [`setup/README.md`](setup/README.md). If you're looking for the daily workflow, see [`usage.md`](usage.md).
+If you're just getting started, see [`getting-started/README.md`](getting-started/README.md). If you're looking for the daily workflow, see [`usage.md`](usage.md).
 
 ---
 

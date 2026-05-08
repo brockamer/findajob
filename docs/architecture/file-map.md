@@ -83,7 +83,7 @@ When this map drifts from the actual code (renamed file, new route module, retir
 
 # ── Operations ──────────────────────────────────────────────────────────────
 <repo>/docs/release-process.md              # Claude's release orchestration runbook — dogfood gate, tag cut, rollback
-<repo>/docs/setup/install-docker.md         # external-user Docker install + operations guide
+<repo>/docs/getting-started/install-docker.md         # external-user Docker install + operations guide
 
 # ── Quality ─────────────────────────────────────────────────────────────────
 <repo>/pyproject.toml                       # deps, pytest, ruff, mypy config

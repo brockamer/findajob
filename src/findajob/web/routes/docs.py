@@ -14,28 +14,26 @@ router = APIRouter()
 
 
 # Slug → path relative to the repo's `docs/` directory. The three guides named
-# in the top-nav index (setup, usage, troubleshooting) anchor the user-facing
-# doc set; the setup sub-pages are included so cross-links from setup/README.md
-# resolve in-app instead of 404ing.
+# in the top-nav index (getting-started, usage, troubleshooting) anchor the
+# user-facing doc set; the getting-started sub-pages are included so cross-links
+# from getting-started/README.md resolve in-app instead of 404ing.
 _PAGES: dict[str, str] = {
     "usage": "usage.md",
     "usage/expanding-sources": "usage/expanding-sources.md",
     "troubleshooting": "troubleshooting.md",
-    "setup": "setup/README.md",
-    "setup/prerequisites": "setup/prerequisites.md",
-    "setup/install-docker": "setup/install-docker.md",
-    "setup/install-linux": "setup/install-linux.md",
-    "setup/configure": "setup/configure.md",
-    "setup/state-migration": "setup/state-migration.md",
-    "setup/internet-exposure": "setup/internet-exposure.md",
-    "setup/gmail": "setup/gmail.md",
-    "setup/api-keys": "setup/api-keys.md",
+    "getting-started": "getting-started/README.md",
+    "getting-started/prerequisites": "getting-started/prerequisites.md",
+    "getting-started/install-docker": "getting-started/install-docker.md",
+    "getting-started/configure": "getting-started/configure.md",
+    "getting-started/internet-exposure": "getting-started/internet-exposure.md",
+    "getting-started/gmail": "getting-started/gmail.md",
+    "getting-started/api-keys": "getting-started/api-keys.md",
 }
 
 _INDEX_GUIDES = [
     {
-        "slug": "setup",
-        "title": "Setup",
+        "slug": "getting-started",
+        "title": "Getting started",
         "blurb": "From zero to a running container: prerequisites, Docker install, onboarding, verification.",
     },
     {
@@ -80,7 +78,7 @@ def docs_page(slug: str, request: Request) -> HTMLResponse:
     body = path.read_text(encoding="utf-8", errors="replace")
     templates = request.app.state.templates
     rendered_md = render_markdown(body, source=rel)
-    if slug == "setup/gmail":
+    if slug == "getting-started/gmail":
         _MARKER = "<!-- gmail-disclosure-sync -->"
         if _MARKER in rendered_md:
             partial_html = templates.get_template("_gmail_disclosure.html").render(

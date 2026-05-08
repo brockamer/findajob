@@ -55,7 +55,7 @@ remains; only the *storage location* changed).
 ### Pre-commit hook
 A local pre-commit hook at `.git/hooks/pre-commit` blocks commits containing the user's
 personal identifiers. The hook is **not tracked** — each clone must install its own. See
-`docs/setup/configure.md` for setup. When adding new personal identifiers (new ntfy topic,
+`docs/getting-started/configure.md` for setup. When adding new personal identifiers (new ntfy topic,
 new form URL), extend the hook's `PATTERNS` array.
 
 ### Self-check before any commit
@@ -70,7 +70,7 @@ file. If you're refactoring an old hardcoded section, add a note to `docs/GENERA
 
 ### See also
 - `docs/GENERALIZATION.md` — tracks every remaining piece of domain-locked content and the plan to neutralize it
-- `docs/setup/configure.md` — how to configure the pre-commit hook and set up personal config files
+- `docs/getting-started/configure.md` — how to configure the pre-commit hook and set up personal config files
 
 ---
 
@@ -175,13 +175,13 @@ Foundational decisions (design rationale lives in operator-private specs):
 - URL query params for UI state (not cookies/localStorage)
 - Alpine.js added only when ephemeral client state is needed
 
-**`/config/`** — in-browser editor for editable pipeline config; allowlist in `findajob.web.config_files`. No per-user authorization inside findajob — perimeter is the boundary. Default perimeter is Wireguard; internet-exposed instances additionally require HTTP Basic Auth via `FINDAJOB_AUTH_USER` / `FINDAJOB_AUTH_PASS` (see `findajob.web.auth` and `docs/setup/internet-exposure.md`).
+**`/config/`** — in-browser editor for editable pipeline config; allowlist in `findajob.web.config_files`. No per-user authorization inside findajob — perimeter is the boundary. Default perimeter is a VPN-only mesh; internet-exposed instances additionally require HTTP Basic Auth via `FINDAJOB_AUTH_USER` / `FINDAJOB_AUTH_PASS` (see `findajob.web.auth` and `docs/getting-started/internet-exposure.md`).
 
 **`/settings/`** — domain-aware config editors with rich UX. First occupant: `/settings/reject-reasons/` (#490) — editable rows + per-row `title-signal` checkbox for `config/reject_reasons.yaml`. Distinguished from `/config/` (raw text editor for any allowlisted file): `/settings/` has per-page UX tailored to the config it edits (validation, structured rows, HTMX partial-swap save flow). Saves take effect on the next request without container restart — `findajob.config_loader.load_reject_reasons` is no-cache and `ColumnSpec.enum_values` accepts a callable so dropdown + filter chip values both refresh per request. Future similar editors (e.g., `prefilter_rules.yaml`, `in_domain_patterns.yaml`) live here.
 
 **`/onboarding/`** — first-run NUX. Two-step structure:
 
-- **Step 1 — API keys.** Tester provides own OpenRouter (required) + RapidAPI account key (optional; one account-level key authorizes every API the user has subscribed to under that RapidAPI account, collected uniformly as `RAPIDAPI_KEY` per #414; the Step 2 Section 3h picker selects which adapter is active, not which credential is collected). Collected via `POST /onboarding/keys`; persisted into the credentials-only row in `onboarding_sessions` (UPDATE-not-INSERT on retry). Format validators in `findajob.onboarding.key_validation`; OpenRouter live smoke check at collection. Linked help: `docs/setup/api-keys.md`.
+- **Step 1 — API keys.** Tester provides own OpenRouter (required) + RapidAPI account key (optional; one account-level key authorizes every API the user has subscribed to under that RapidAPI account, collected uniformly as `RAPIDAPI_KEY` per #414; the Step 2 Section 3h picker selects which adapter is active, not which credential is collected). Collected via `POST /onboarding/keys`; persisted into the credentials-only row in `onboarding_sessions` (UPDATE-not-INSERT on retry). Format validators in `findajob.onboarding.key_validation`; OpenRouter live smoke check at collection. Linked help: `docs/getting-started/api-keys.md`.
 - **Step 2 — Run the interview.** Disabled until Step 1 succeeds. Tester runs the entire interview as a chat inside findajob's UI. Server-side persistent — close the tab and reload to resume. Routes live in `findajob.web.routes.onboarding_interview`; runtime-gate per request via `_resolved_chat_key`. Chat is funded by the tester's own OpenRouter key collected in Step 1 — the pipeline (triage, scoring, prep) and the in-app interview both run on that key. There is no operator-funded fallback (the `OPENROUTER_OPERATOR_KEY` env var that briefly existed in v0.11.0 was reverted in v0.11.1 / #401 — operator clarified that path was never supposed to be supported). ~$3-6 per onboarding for Sonnet 4.6 with prompt caching (system-prompt `cache_control` breakpoint; voice-samples emission is the dominant cost driver in long interviews).
 
 The earlier paste-back path (run the interview in another LLM, paste the emission back into a textarea on /onboarding/) was retired 2026-05-02 — it created a phantom OpenRouter input on the finalize form that broke the smoke check when Step 1 had already collected a key, and it doubled the prompt-rewrite surface area whenever the role changed. The in-app flow is the single supported path.
@@ -190,14 +190,14 @@ The interview shares: parser (`<<<FILE: name>>>` block protocol — emission del
 
 **Per-stack key isolation invariant (#339):** every tester stack's `data/.env` carries only that tester's collected credentials; no operator-key leakage. The schema migration (`migrate_schema()` in `session_store.py`) runs idempotently at app startup. Existing tester stacks with the sentinel already present skip the new collection flow — migration applies only to net-new onboardings.
 
-**`/docs/`** — renders `docs/usage.md`, `docs/troubleshooting.md`, `docs/setup/*` inline in the web UI. Slug allowlist in `findajob.web.routes.docs`; rendering via `findajob.web.markdown.render_markdown()` (handles `.md` cross-link rewriting + `target="_blank"` on external links).
+**`/docs/`** — renders `docs/usage.md`, `docs/troubleshooting.md`, `docs/getting-started/*` inline in the web UI. Slug allowlist in `findajob.web.routes.docs`; rendering via `findajob.web.markdown.render_markdown()` (handles `.md` cross-link rewriting + `target="_blank"` on external links).
 
 **Operator mode** — gated by `FINDAJOB_OPERATOR_MODE=1` (operator's stack only;
 never set on testers'). Adds `/admin/stacks/` route and renders the top nav in
 red on every page. The route is the **only** code path that reads cross-stack
 state from inside `findajob.web` — invariant: read-only, no POST handlers, all
 SQLite handles open with `mode=ro` URI. See `findajob.admin.{stack_discovery,
-stack_health,jsonl_tail}` and `docs/setup/install-docker.md` "Operator mode"
+stack_health,jsonl_tail}` and `docs/getting-started/install-docker.md` "Operator mode"
 subsection.
 
 ### Per-column filter framework
@@ -431,7 +431,7 @@ Implementation plans live in an operator-private location (`docs/superpowers/pla
 
 **Hard requirements for every plan:**
 - Numbered tasks with files, steps, verification commands, commit messages
-- A **Documentation Impact** section enumerating every doc surface that needs to change (README, docs/setup/*, CLAUDE.md, CHANGELOG.md, spec doc, docstrings). If none, say "None" — never omit the section
+- A **Documentation Impact** section enumerating every doc surface that needs to change (README, docs/getting-started/*, CLAUDE.md, CHANGELOG.md, spec doc, docstrings). If none, say "None" — never omit the section
 - A whole-feature verification gate distinct from per-task checks
 - A self-review checklist mapping every spec section to its implementing task(s)
 

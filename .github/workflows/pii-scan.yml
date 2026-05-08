@@ -49,7 +49,7 @@ jobs:
           set -euo pipefail
           if [ -z "${PATTERNS:-}" ]; then
             echo "::warning::PII_PATTERNS_REGEX secret not set — skipping scan."
-            echo "::warning::Install per docs/setup/configure.md or this guard is inert."
+            echo "::warning::Install per docs/getting-started/configure.md or this guard is inert."
             exit 0
           fi
 

@@ -15,7 +15,7 @@ Use sys.executable (not a PYTHON constant) for subprocess calls to other pipelin
 Containerized deploys:
     When running in the findajob Docker image, the app is installed at /app
     (not the repo's filesystem location). The compose file sets
-    JSP_BASE=/app to pin BASE correctly. See docs/setup/install-docker.md
+    JSP_BASE=/app to pin BASE correctly. See docs/getting-started/install-docker.md
     for the container architecture.
 """
 

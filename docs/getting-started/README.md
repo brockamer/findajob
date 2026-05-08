@@ -1,4 +1,4 @@
-# Setup
+# Getting started
 
 This page is a map. Read it top to bottom; each numbered link is a stop on the way to a running pipeline. The full walkthrough is spread across a few files on purpose — each one focuses on a single thing you have to do once.
 
@@ -12,7 +12,7 @@ What you need to have before touching the stack: a Linux host, Docker + Compose,
 
 ## 2. Install → [`install-docker.md`](install-docker.md)
 
-Create `/opt/stacks/findajob-<you>/`, drop `compose.yaml`, start the container. The guide explains each mount, each env var, and what happens on first boot. Docker is the supported install path; the [legacy native install](install-linux.md) remains in-repo as a fallback.
+Create `/opt/stacks/findajob-<you>/`, drop `compose.yaml`, start the container. The guide explains each mount, each env var, and what happens on first boot. Docker is the only supported install path.
 
 ## 3. Configure → in-app interview (or manual)
 

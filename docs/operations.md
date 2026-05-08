@@ -2,12 +2,7 @@
 
 > **New to findajob?** Start at [`usage.md`](usage.md). This page is the operator reference for running the stack by hand — triage, sync, prep, notifications — from a shell.
 
-Day-to-day operation of the pipeline. Two run modes are supported:
-
-- **Docker (canonical).** The `ghcr.io/brockamer/findajob` image runs supercronic + uvicorn co-process inside one container. Setup: [`setup/install-docker.md`](setup/install-docker.md). All pipeline commands below are shown in their Docker form (`docker compose exec scheduler …`).
-- **Native (fallback).** A direct clone running on systemd timers. Setup: [`setup/install-linux.md`](setup/install-linux.md). To run any Docker command natively, drop the `docker compose exec scheduler ` prefix and run from the repo root.
-
-Where the two modes genuinely diverge (process inspection, log paths, restart procedure, env edits), this doc has [parallel sections](#docker-operations-compose) below.
+Day-to-day operation of the pipeline. The `ghcr.io/brockamer/findajob` image runs supercronic + uvicorn co-process inside one container. Setup: [`getting-started/install-docker.md`](getting-started/install-docker.md). All pipeline commands below are shown in their Docker form (`docker compose exec scheduler …`).
 
 ---
 
@@ -165,7 +160,7 @@ Safe to re-run — skips already-renamed folders. Historical migration script fo
 
 ## Web UI + Materials Viewer
 
-The container publishes the full web UI (board, ingest, materials viewer, config editor) on `FINDAJOB_MATERIALS_PORT` (default `8090`). Access at `http://<host>:<port>/` on your LAN or via reverse proxy (see [`setup/internet-exposure.md`](setup/internet-exposure.md)).
+The container publishes the full web UI (board, ingest, materials viewer, config editor) on `FINDAJOB_MATERIALS_PORT` (default `8090`). Access at `http://<host>:<port>/` on your LAN or via reverse proxy (see [`getting-started/internet-exposure.md`](getting-started/internet-exposure.md)).
 
 ```bash
 curl http://localhost:8090/healthz    # expect: ok

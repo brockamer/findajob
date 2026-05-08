@@ -106,7 +106,7 @@ Live status of every issue and milestone is on the **[project board](https://git
 | Company research | Perplexity Sonar Pro via OpenRouter |
 | LLM transport | `findajob.llm.openrouter` — stdlib HTTP wrapper with prompt caching (Anthropic) and provider pinning |
 | Storage | SQLite |
-| Job sources | RapidAPI jobs-api14, Greenhouse JSON, Gmail IMAP/app-password (configurable; see [`docs/setup/gmail.md`](docs/setup/gmail.md)) |
+| Job sources | RapidAPI jobs-api14, Greenhouse JSON, Gmail IMAP/app-password (configurable; see [`docs/getting-started/gmail.md`](docs/getting-started/gmail.md)) |
 | Web UI | FastAPI + HTMX + Tailwind + Chart.js |
 | Push notifications | [ntfy.sh](https://ntfy.sh) |
 | Scheduler | supercronic (in-container) |
@@ -119,7 +119,7 @@ The pipeline ships as `ghcr.io/brockamer/findajob` pulled via Docker Compose.
 
 ### What you'll need
 
-Two API keys before you start. Sign-up walkthroughs + cost expectations are in [`docs/setup/api-keys.md`](docs/setup/api-keys.md):
+Two API keys before you start. Sign-up walkthroughs + cost expectations are in [`docs/getting-started/api-keys.md`](docs/getting-started/api-keys.md):
 
 | Provider | Required? | What you'll spend | What findajob uses it for |
 |---|---|---|---|
@@ -153,7 +153,7 @@ Open `http://<your-host>:<port>/` in a browser. A fresh stack redirects you stra
 
 Cost runs ~$3-6 per onboarding (Claude Sonnet 4.6 with prompt caching). The next scheduled triage run (00:00 in your `TZ`) ingests its first batch of jobs.
 
-Full walkthrough → [`docs/setup/install-docker.md`](docs/setup/install-docker.md) (or start at [`docs/setup/README.md`](docs/setup/README.md) for the guided sequence). Native-host install remains as a legacy fallback → [`docs/setup/install-linux.md`](docs/setup/install-linux.md).
+Full walkthrough → [`docs/getting-started/install-docker.md`](docs/getting-started/install-docker.md) (or start at [`docs/getting-started/README.md`](docs/getting-started/README.md) for the guided sequence).
 
 ---
 
@@ -161,7 +161,7 @@ Full walkthrough → [`docs/setup/install-docker.md`](docs/setup/install-docker.
 
 Start here:
 
-- **[Setup](docs/setup/README.md)** — guided sequence for getting your stack running
+- **[Getting started](docs/getting-started/README.md)** — guided sequence for getting your stack running
 - **[Daily workflow](docs/usage.md)** — what to do each day, tab by tab in the web UI
 - **[Troubleshooting](docs/troubleshooting.md)** — symptom index, log reading, health alerts
 - **[Architecture](docs/architecture.md)** — system design, data flow, component map (for operators who want to read the code)
@@ -171,16 +171,14 @@ Start here:
 
 | Doc | Contents |
 |---|---|
-| [docs/setup/README.md](docs/setup/README.md) | Setup — start here |
+| [docs/getting-started/README.md](docs/getting-started/README.md) | Getting started — start here |
 | [docs/usage.md](docs/usage.md) | Daily workflow: web UI tab by tab |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | Symptom index + log reading + health alerts |
 | [docs/architecture.md](docs/architecture.md) | System design, data flow, component map |
-| [docs/setup/prerequisites.md](docs/setup/prerequisites.md) | API keys, accounts, tools you need |
-| [docs/setup/install-docker.md](docs/setup/install-docker.md) | Docker Compose setup (recommended) |
-| [docs/setup/install-linux.md](docs/setup/install-linux.md) | Legacy native install (Ubuntu + systemd) |
-| [docs/setup/api-keys.md](docs/setup/api-keys.md) | Getting your three API keys (OpenRouter, RapidAPI, Google AI Studio) |
-| [docs/setup/configure.md](docs/setup/configure.md) | Profile, resume, search queries, advanced config |
-| [docs/setup/state-migration.md](docs/setup/state-migration.md) | Moving an existing pipeline to a new host |
+| [docs/getting-started/prerequisites.md](docs/getting-started/prerequisites.md) | API keys, accounts, tools you need |
+| [docs/getting-started/install-docker.md](docs/getting-started/install-docker.md) | Docker Compose setup |
+| [docs/getting-started/api-keys.md](docs/getting-started/api-keys.md) | Getting your three API keys (OpenRouter, RapidAPI, Google AI Studio) |
+| [docs/getting-started/configure.md](docs/getting-started/configure.md) | Profile, resume, search queries, advanced config |
 | [docs/operations.md](docs/operations.md) | Operator reference: manual commands, monitoring |
 | [docs/notifications.md](docs/notifications.md) | ntfy.sh setup and notification schedule |
 | [docs/GENERALIZATION.md](docs/GENERALIZATION.md) | Making the pipeline work for non-tech fields |
@@ -215,7 +213,7 @@ The repository contains no personal data. All candidate content (resume, profile
 
 - **[Project board](https://github.com/users/brockamer/projects/1)** — what's being worked on, what's blocked, what's on the roadmap. The single source of truth for active work.
 - **[Issues](https://github.com/brockamer/findajob/issues)** — file a bug, request a feature, or browse the open ones. New issues land in the board's Backlog and get triaged with a Priority field.
-- **In-app feedback widget** — if you're running an instance, the floating "Feedback" button on every page files a GitHub issue directly from the web UI (configure with a fine-grained PAT per `docs/setup/configure.md`).
+- **In-app feedback widget** — if you're running an instance, the floating "Feedback" button on every page files a GitHub issue directly from the web UI (configure with a fine-grained PAT per `docs/getting-started/configure.md`).
 - **[Discussions](https://github.com/brockamer/findajob/discussions)** — for "how do I..." or "have you considered..." threads that aren't bug reports yet.
 
 This is a personal project, but contributions are welcome. The code is opinionated, the docs are written for an external reader trying it for the first time, and the pre-commit hook will block any PII you accidentally try to commit.

@@ -2,7 +2,7 @@
 # Copy to your Dockge stack directory (e.g., /opt/stacks/findajob-<user>/compose.yaml)
 # and edit the adjacent .env to match your instance.
 #
-# See docs/setup/install-docker.md and ops/stack.env.example for setup.
+# See docs/getting-started/install-docker.md and ops/stack.env.example for setup.
 
 services:
   scheduler:
@@ -21,7 +21,7 @@ services:
       FINDAJOB_MATERIALS_BASE_URL: ${FINDAJOB_MATERIALS_BASE_URL:-}
       # Per-job schedule + enabled overrides (#344) — empty default means "use
       # YAML default." Set per-stack in .env to stagger same-TZ multi-tenant
-      # hosts. See docs/setup/install-docker.md "Multi-tenant hosts" section.
+      # hosts. See docs/getting-started/install-docker.md "Multi-tenant hosts" section.
       FINDAJOB_TRIAGE_SCHEDULE: ${FINDAJOB_TRIAGE_SCHEDULE:-}
       FINDAJOB_TRIAGE_ENABLED: ${FINDAJOB_TRIAGE_ENABLED:-}
       FINDAJOB_WATCHDOG_SCHEDULE: ${FINDAJOB_WATCHDOG_SCHEDULE:-}

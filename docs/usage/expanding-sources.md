@@ -15,7 +15,7 @@ For the broader source-strategy picture — including the paid RapidAPI feeds, c
 3. The pipeline reads those emails via IMAP (configured at `/config/gmail/`), parses the embedded job rows, and submits each LinkedIn URL to the `gmail_linkedin` fetcher.
 4. The fetcher resolves the job ID, calls the RapidAPI LinkedIn endpoint to retrieve the full posting (title / company / location / JD), and queues it for scoring.
 
-The first step is the only one you re-touch as you tune. Steps 2–4 are automatic once Gmail integration is configured (see [`setup/gmail.md`](../setup/gmail.md)).
+The first step is the only one you re-touch as you tune. Steps 2–4 are automatic once Gmail integration is configured (see [`getting-started/gmail.md`](../getting-started/gmail.md)).
 
 ---
 
@@ -130,4 +130,4 @@ If a search runs for several days without producing any jobs in the Dashboard:
 - **Programmatic alert creation.** LinkedIn's UI is the only sane path today; no API surface for managing saved searches.
 - **Other email-alert sources** (Indeed, Glassdoor, Otta). They work technically — the same Gmail-ingest path will pick them up — but parsing reliability varies and is tracked separately.
 
-See also: [`setup/gmail.md`](../setup/gmail.md) for IMAP / Gmail configuration; [`usage.md`](../usage.md#gmail-ingest-alerts) for the source-strategy overview.
+See also: [`getting-started/gmail.md`](../getting-started/gmail.md) for IMAP / Gmail configuration; [`usage.md`](../usage.md#gmail-ingest-alerts) for the source-strategy overview.

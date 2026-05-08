@@ -16,7 +16,7 @@ USAGE_MD = textwrap.dedent(
     # Usage
 
     This page walks through the daily workflow. If you're setting up for the first
-    time, read [`setup/README.md`](setup/README.md) first.
+    time, read [`getting-started/README.md`](getting-started/README.md) first.
 
     ## Dashboard
 
@@ -33,31 +33,28 @@ TROUBLESHOOTING_MD = textwrap.dedent(
     """\
     # Troubleshooting
 
-    See [`setup/README.md`](setup/README.md) and [`usage.md`](usage.md).
+    See [`getting-started/README.md`](getting-started/README.md) and [`usage.md`](usage.md).
     """
 )
 
 
-SETUP_README_MD = textwrap.dedent(
+GETTING_STARTED_README_MD = textwrap.dedent(
     """\
-    # Setup
+    # Getting started
 
     ## 1. Prerequisites → [`prerequisites.md`](prerequisites.md)
 
     ## 2. Install → [`install-docker.md`](install-docker.md)
 
-    Also see [`../troubleshooting.md`](../troubleshooting.md) and the
-    [legacy native install](install-linux.md).
+    Also see [`../troubleshooting.md`](../troubleshooting.md).
     """
 )
 
 
-SETUP_PREREQ_MD = "# Prerequisites\n\nNeeded before install.\n"
-SETUP_INSTALL_DOCKER_MD = "# Install with Docker\n\nThe primary install path.\n"
-SETUP_INSTALL_LINUX_MD = "# Install on Linux (legacy)\n\nFallback.\n"
-SETUP_CONFIGURE_MD = "# Configure\n\nFile-by-file config walkthrough.\n"
-SETUP_STATE_MIGRATION_MD = "# State migration\n\nMoving from rclone to viewer.\n"
-SETUP_INTERNET_EXPOSURE_MD = "# Exposing findajob to the public internet\n\nBasic auth pattern.\n"
+GETTING_STARTED_PREREQ_MD = "# Prerequisites\n\nNeeded before install.\n"
+GETTING_STARTED_INSTALL_DOCKER_MD = "# Install with Docker\n\nThe primary install path.\n"
+GETTING_STARTED_CONFIGURE_MD = "# Configure\n\nFile-by-file config walkthrough.\n"
+GETTING_STARTED_INTERNET_EXPOSURE_MD = "# Exposing findajob to the public internet\n\nBasic auth pattern.\n"
 
 
 @pytest.fixture
@@ -69,16 +66,14 @@ def client(tmp_path: Path) -> TestClient:
 
     # Seed docs/ under tmp_path so app.state.base_root=tmp_path finds them.
     docs = tmp_path / "docs"
-    (docs / "setup").mkdir(parents=True)
+    (docs / "getting-started").mkdir(parents=True)
     (docs / "usage.md").write_text(USAGE_MD)
     (docs / "troubleshooting.md").write_text(TROUBLESHOOTING_MD)
-    (docs / "setup" / "README.md").write_text(SETUP_README_MD)
-    (docs / "setup" / "prerequisites.md").write_text(SETUP_PREREQ_MD)
-    (docs / "setup" / "install-docker.md").write_text(SETUP_INSTALL_DOCKER_MD)
-    (docs / "setup" / "install-linux.md").write_text(SETUP_INSTALL_LINUX_MD)
-    (docs / "setup" / "configure.md").write_text(SETUP_CONFIGURE_MD)
-    (docs / "setup" / "state-migration.md").write_text(SETUP_STATE_MIGRATION_MD)
-    (docs / "setup" / "internet-exposure.md").write_text(SETUP_INTERNET_EXPOSURE_MD)
+    (docs / "getting-started" / "README.md").write_text(GETTING_STARTED_README_MD)
+    (docs / "getting-started" / "prerequisites.md").write_text(GETTING_STARTED_PREREQ_MD)
+    (docs / "getting-started" / "install-docker.md").write_text(GETTING_STARTED_INSTALL_DOCKER_MD)
+    (docs / "getting-started" / "configure.md").write_text(GETTING_STARTED_CONFIGURE_MD)
+    (docs / "getting-started" / "internet-exposure.md").write_text(GETTING_STARTED_INTERNET_EXPOSURE_MD)
 
     return TestClient(create_app(companies_root=companies, db_path=db, base_root=tmp_path))
 
@@ -86,7 +81,7 @@ def client(tmp_path: Path) -> TestClient:
 def test_index_lists_three_guides(client: TestClient) -> None:
     r = client.get("/docs/")
     assert r.status_code == 200
-    assert 'href="/docs/setup"' in r.text
+    assert 'href="/docs/getting-started"' in r.text
     assert 'href="/docs/usage"' in r.text
     assert 'href="/docs/troubleshooting"' in r.text
     # One-line descriptions surface on the index.
@@ -118,21 +113,21 @@ def test_troubleshooting_renders(client: TestClient) -> None:
     assert ">Troubleshooting</h1>" in r.text
 
 
-def test_setup_readme_renders(client: TestClient) -> None:
-    r = client.get("/docs/setup")
+def test_getting_started_readme_renders(client: TestClient) -> None:
+    r = client.get("/docs/getting-started")
     assert r.status_code == 200
-    assert ">Setup</h1>" in r.text
+    assert ">Getting started</h1>" in r.text
 
 
-def test_setup_subpage_renders(client: TestClient) -> None:
-    r = client.get("/docs/setup/install-docker")
+def test_getting_started_subpage_renders(client: TestClient) -> None:
+    r = client.get("/docs/getting-started/install-docker")
     assert r.status_code == 200
     assert "Install with Docker" in r.text
 
 
 def test_internet_exposure_subpage_renders(client: TestClient) -> None:
     """#327: new pattern doc reachable in-app via the docs viewer's slug allowlist."""
-    r = client.get("/docs/setup/internet-exposure")
+    r = client.get("/docs/getting-started/internet-exposure")
     assert r.status_code == 200
     assert "Exposing findajob to the public internet" in r.text
 
@@ -143,30 +138,29 @@ def test_unknown_slug_404s(client: TestClient) -> None:
 
 
 def test_md_sibling_links_rewrite(client: TestClient) -> None:
-    # usage.md → setup/README.md ends up as /docs/setup (README stripped).
+    # usage.md → getting-started/README.md ends up as /docs/getting-started (README stripped).
     r = client.get("/docs/usage")
-    assert 'href="/docs/setup"' in r.text
-    assert 'href="setup/README.md"' not in r.text
+    assert 'href="/docs/getting-started"' in r.text
+    assert 'href="getting-started/README.md"' not in r.text
 
 
 def test_md_parent_links_rewrite(client: TestClient) -> None:
-    # setup/README.md → ../troubleshooting.md ends up as /docs/troubleshooting.
-    r = client.get("/docs/setup")
+    # getting-started/README.md → ../troubleshooting.md ends up as /docs/troubleshooting.
+    r = client.get("/docs/getting-started")
     assert 'href="/docs/troubleshooting"' in r.text
     assert 'href="../troubleshooting.md"' not in r.text
 
 
 def test_md_relative_subpage_links_rewrite(client: TestClient) -> None:
-    # setup/README.md → prerequisites.md ends up as /docs/setup/prerequisites.
-    r = client.get("/docs/setup")
-    assert 'href="/docs/setup/prerequisites"' in r.text
-    assert 'href="/docs/setup/install-docker"' in r.text
-    assert 'href="/docs/setup/install-linux"' in r.text
+    # getting-started/README.md → prerequisites.md ends up as /docs/getting-started/prerequisites.
+    r = client.get("/docs/getting-started")
+    assert 'href="/docs/getting-started/prerequisites"' in r.text
+    assert 'href="/docs/getting-started/install-docker"' in r.text
 
 
 def test_troubleshooting_cross_links_rewrite(client: TestClient) -> None:
     r = client.get("/docs/troubleshooting")
-    assert 'href="/docs/setup"' in r.text
+    assert 'href="/docs/getting-started"' in r.text
     assert 'href="/docs/usage"' in r.text
 
 

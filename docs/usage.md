@@ -2,7 +2,7 @@
 
 findajob runs overnight. You wake up, triage, prep a handful of applications, submit, and mark what you sent. Everything happens in a web browser.
 
-This page walks through each `/board/` tab in the order you'll use them. If you're setting up for the first time, read [`setup/README.md`](setup/README.md) first.
+This page walks through each `/board/` tab in the order you'll use them. If you're setting up for the first time, read [`getting-started/README.md`](getting-started/README.md) first.
 
 ---
 

@@ -113,5 +113,6 @@ def test_pre_commit_hook_blocks_gmail_creds():
         pytest.skip("No pre-commit hook installed in this clone")
     text = hook.read_text()
     assert "gmail.json" in text or "gmail_token" in text, (
-        "Pre-commit hook does not mention gmail credentials — extend its PATTERNS array per docs/setup/configure.md."
+        "Pre-commit hook does not mention gmail credentials — extend its PATTERNS "
+        "array per docs/getting-started/configure.md."
     )

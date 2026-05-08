@@ -7,8 +7,7 @@ the same container under Docker; separate user service natively). Everything
 described below — fetchers, prefilter, scorer, prep, DB schema — is platform-
 agnostic.
 
-For setup, see [`setup/install-docker.md`](setup/install-docker.md) (canonical)
-or [`setup/install-linux.md`](setup/install-linux.md) (fallback).
+For setup, see [`getting-started/install-docker.md`](getting-started/install-docker.md).
 
 ## Scheduler
 

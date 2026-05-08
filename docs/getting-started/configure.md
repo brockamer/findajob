@@ -122,7 +122,7 @@ live connection test against every query in `config/jsearch_queries.txt`.
 **To change your active source after onboarding:** visit `/onboarding/?mode=rerun`.
 Section 3h re-runs the picker; the new choice overwrites `config/active_sources.txt`.
 
-See `docs/setup/api-keys.md` for per-feed sign-up walkthroughs.
+See `docs/getting-started/api-keys.md` for per-feed sign-up walkthroughs.
 
 ---
 
@@ -219,7 +219,7 @@ repo must install its own.
 
 **Install:**
 ```bash
-cp docs/setup/pre-commit-hook.example.sh .git/hooks/pre-commit
+cp docs/getting-started/pre-commit-hook.example.sh .git/hooks/pre-commit
 chmod +x .git/hooks/pre-commit
 ```
 

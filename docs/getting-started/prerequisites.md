@@ -22,7 +22,7 @@ Used by: LinkedIn and Indeed job search in `triage.py` (via pluggable adapter)
 - The onboarding interview's Section 3h recommends the right feed for your field
 - Subscribe to your chosen feed (both have a free tier)
 - Add API key to `data/.env` as `RAPIDAPI_KEY` (canonical, covers all RapidAPI feeds) — legacy per-adapter vars `JOBS_API14_KEY` / `JSEARCH_API_KEY` still work as fallback (#414)
-- See `docs/setup/api-keys.md` for per-feed sign-up walkthroughs
+- See `docs/getting-started/api-keys.md` for per-feed sign-up walkthroughs
 
 ### 3. Google Cloud — Sheets API + Gmail API
 

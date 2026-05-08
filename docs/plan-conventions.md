@@ -28,7 +28,7 @@ Prescriptive enough that a fresh subagent can execute the task without re-readin
 For each documentation surface that the work touches, name the file and the change:
 
 - `README.md` — does the install path, tech stack, or quick-start need updating?
-- `docs/setup/*.md` — install / configure / state-migration guides
+- `docs/getting-started/*.md` — install + configure guides
 - `CLAUDE.md` and `CLAUDE.local.md` — operating context for future sessions
 - `CHANGELOG.md` — user-facing release note entry
 - Spec doc in `docs/superpowers/specs/` — does this plan amend the original spec? Capture material decisions made during implementation.

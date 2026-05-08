@@ -139,7 +139,7 @@ setup_personal_config() {
   if [ "${created}" -gt 0 ]; then
     echo ""
     warn "  ${created} config file(s) created from templates."
-    warn "  Edit them before running the pipeline. See docs/setup/configure.md"
+    warn "  Edit them before running the pipeline. See docs/getting-started/configure.md"
     echo ""
   fi
 }
@@ -360,7 +360,7 @@ verify_install() {
   if [ "${warn_count}" -gt 0 ]; then
     echo ""
     warn "  Complete the missing items before running triage."
-    echo "  See docs/setup/configure.md and docs/setup/prerequisites.md"
+    echo "  See docs/getting-started/configure.md and docs/getting-started/prerequisites.md"
   fi
 }
 
@@ -405,5 +405,4 @@ echo "  6. Add Greenhouse slugs:      edit ${CONFIG_DIR}/feed_urls.txt"
 echo "  7. Start the timers:          systemctl --user start findajob-triage.timer"
 echo "  8. Test a manual run:         python3 scripts/triage.py"
 echo ""
-echo "  See docs/setup/install-linux.md for the full walkthrough."
 echo ""
