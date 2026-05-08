@@ -39,9 +39,7 @@ def db(tmp_path):
     (base / "src" / "findajob" / "__init__.py").write_text("")
     (base / "src" / "findajob" / "paths.py").write_text(f'BASE = r"{base}"\n')
     repo_root = Path(__file__).resolve().parents[1]
-    (base / "src" / "findajob" / "db.py").write_text(
-        (repo_root / "src" / "findajob" / "db.py").read_text()
-    )
+    (base / "src" / "findajob" / "db.py").write_text((repo_root / "src" / "findajob" / "db.py").read_text())
 
     env = os.environ.copy()
     env["PYTHONPATH"] = str(base / "src")
