@@ -131,10 +131,10 @@ one-line correction rather than a 60s startup timeout to debug.
 and Claude may propose the cut.** No time window, no 24h/48h observation. A
 binary signal tied to what a fresh tester actually exercises.
 
-The `findajob-test` stack on `<deployment-host>` is a separate clean-NUX simulator
-(distinct from the smoke script's throwaway stack). Reset it after any release
-that touches onboarding, schema, config layout, or entrypoint — full procedure
-in [`findajob-test-reset.md`](findajob-test-reset.md).
+A separate clean-NUX simulator stack (distinct from the smoke script's
+throwaway stack) is reset after any release that touches onboarding, schema,
+config layout, or entrypoint. Procedure is operator-private; see
+`CLAUDE.local.md` for the per-operator stack name and reset script path.
 
 CI wiring for this smoke is deferred to a follow-up issue: the script depends
 on 9 live API keys + a writable Google Sheet, and wiring that into GitHub
