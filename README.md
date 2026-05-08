@@ -224,6 +224,7 @@ The repository contains no personal data. All candidate content (resume, profile
 - **[Issues](https://github.com/brockamer/findajob/issues)** — file a bug, request a feature, or browse the open ones. New issues land in the board's Backlog and get triaged with a Priority field.
 - **In-app feedback widget** — if you're running an instance, the floating "Feedback" button on every page files a GitHub issue directly from the web UI (configure with a fine-grained PAT per `docs/getting-started/configure.md`).
 - **[Discussions](https://github.com/brockamer/findajob/discussions)** — for "how do I..." or "have you considered..." threads that aren't bug reports yet.
+- **Security disclosures** — please don't file public issues for security-relevant bugs. See [`SECURITY.md`](SECURITY.md) for the private disclosure path.
 
 This is a personal project, but contributions are welcome. The code is opinionated, the docs are written for an external reader trying it for the first time, and the pre-commit hook will block any PII you accidentally try to commit. Start at [`CONTRIBUTING.md`](CONTRIBUTING.md) — it covers dev setup, commit conventions, the `migration-required` label, and the architectural invariants the code enforces.
 
