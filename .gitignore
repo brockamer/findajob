@@ -42,7 +42,6 @@ docs/archive/
 uv.lock
 scripts/clean_company.py
 data/pipeline.db-shm
-docs/master_resume.md.example
 
 config/prefilter_rules.yaml
 config/in_domain_patterns.yaml

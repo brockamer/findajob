@@ -182,7 +182,6 @@ Start here:
 | [docs/operations.md](docs/operations.md) | Operator reference: manual commands, monitoring |
 | [docs/notifications.md](docs/notifications.md) | ntfy.sh setup and notification schedule |
 | [docs/GENERALIZATION.md](docs/GENERALIZATION.md) | Making the pipeline work for non-tech fields |
-| [docs/claude-code.md](docs/claude-code.md) | Using Claude Code as a pipeline operator |
 
 </details>
 
@@ -205,7 +204,7 @@ Total: ~$0.50/day when triaging only; ~$5–15 on days you prep a few applicatio
 
 ## Privacy
 
-The repository contains no personal data. All candidate content (resume, profile, writing samples, search queries, API keys) lives in gitignored paths populated from `.example` templates. See [`docs/claude-code.md`](docs/claude-code.md) for how to keep personal context out of Claude Code sessions touching this repo.
+The repository contains no personal data. All candidate content (resume, profile, writing samples, search queries, API keys) lives in gitignored paths populated from `.example` templates. The Claude Code session pattern is split: tracked `CLAUDE.md` carries generic project guidance, gitignored `CLAUDE.local.md` carries personal identifiers — see the top of `CLAUDE.md` for the contract.
 
 ---
 

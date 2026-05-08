@@ -118,7 +118,6 @@ setup_personal_config() {
   }
 
   copy_if_missing "${CONFIG_DIR}/profile.md.example"               "${CONFIG_DIR}/profile.md"
-  copy_if_missing "${REPO}/docs/master_resume.md.example"          "${REPO}/rag_sources/master_resume.md"
   copy_if_missing "${CONFIG_DIR}/jsearch_queries.txt.example"      "${CONFIG_DIR}/jsearch_queries.txt"
   copy_if_missing "${CONFIG_DIR}/feed_urls.txt.example"            "${CONFIG_DIR}/feed_urls.txt"
   copy_if_missing "${CONFIG_DIR}/target_companies.md.example"      "${CONFIG_DIR}/target_companies.md"
