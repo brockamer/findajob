@@ -24,6 +24,14 @@ dev = [
     "mypy>=1.20.0",
     "httpx>=0.27.0",
     "playwright>=1.40",
+    # Type stubs for the runtime deps that mypy needs to type-check
+    # against. Added in M7 when the strict gate landed for
+    # findajob.* — without these, the strict gate flags every
+    # `import requests` / `import yaml` / etc. as `import-untyped`.
+    "types-requests>=2.31.0",
+    "types-PyYAML>=6.0",
+    "types-Markdown>=3.7",
+    "types-jsonschema>=4.26.0",
 ]
 
 [tool.setuptools.packages.find]
@@ -34,9 +42,51 @@ testpaths = ["tests"]
 pythonpath = ["."]
 
 [tool.mypy]
-ignore_missing_imports = true
+# Default config — applies to scripts/ and any module not covered by
+# an override below. Lenient because scripts/ are entry-point shims;
+# the strict gate lives on findajob.* (per M7).
+#
+# Module-level strictness flags (warn_unused_ignores,
+# warn_redundant_casts, no_implicit_optional, strict_equality) are set
+# globally here because mypy only allows per-module overrides for
+# import-resolution flags. The pre-M7 config disabled all of them; M7
+# turns them on and keeps them on for everything mypy checks.
 check_untyped_defs = true
+ignore_missing_imports = true
 disable_error_code = ["import-untyped"]
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+strict_equality = true
+
+# Strict gate for the findajob package. Removes the broad
+# import-untyped silencer so missing stubs surface; per M7 the strict
+# gate is scoped to findajob.* so scripts/ stay on the lenient default.
+# Per M7 acceptance: no new `# type: ignore` comments — install stubs
+# or scope per-module overrides instead.
+[[tool.mypy.overrides]]
+module = "findajob.*"
+ignore_missing_imports = false
+disable_error_code = []
+
+# `python-docx` ships no type stubs upstream; the prep DOCX
+# post-processor imports it. Scoping the ignore here keeps the strict
+# gate for the rest of findajob.* without a ``# type: ignore`` at the
+# import line (per M7 "no new ignores" acceptance — scoping via
+# pyproject is the M7-blessed path).
+[[tool.mypy.overrides]]
+module = ["docx", "docx.*"]
+ignore_missing_imports = true
+
+# `findajob.notifications.scoreboard` imports the script-side
+# `analyze_feedback` module (which lives in scripts/, off mypy's
+# package path). Issue #558 tracks extracting it into
+# `findajob.analyze_feedback`; until then, scope the missing-import
+# error here rather than introduce a ``# type: ignore`` at the import
+# site.
+[[tool.mypy.overrides]]
+module = "analyze_feedback"
+ignore_missing_imports = true
 
 [tool.ruff]
 target-version = "py312"

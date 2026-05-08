@@ -6,6 +6,7 @@ import re
 import subprocess
 import sys
 import time
+from typing import Any
 
 from findajob.audit import log_event
 from findajob.classification import JD_MAX_CHARS, strip_jd_boilerplate
@@ -422,7 +423,9 @@ def fetch_jobsapi_jobs(queries_path):
     date_posted = _date_posted_for_install()
     log_event("jobsapi_date_posted", value=date_posted)
 
-    sources = [
+    # Heterogeneous dict — string fields, a lambda, etc. ``Any`` keeps
+    # the existing intent without forcing every consumer to narrow.
+    sources: list[dict[str, Any]] = [
         {
             "name": "linkedin",
             "url": "https://jobs-api14.p.rapidapi.com/v2/linkedin/search",
@@ -447,7 +450,7 @@ def fetch_jobsapi_jobs(queries_path):
                 response = req.get(
                     source["url"],
                     headers=headers,
-                    params=source["params"](query),  # type: ignore[operator]
+                    params=source["params"](query),
                     timeout=30,
                 )
                 if response.status_code == 429:
@@ -457,7 +460,7 @@ def fetch_jobsapi_jobs(queries_path):
                     response = req.get(
                         source["url"],
                         headers=headers,
-                        params=source["params"](query),  # type: ignore[operator]
+                        params=source["params"](query),
                         timeout=30,
                     )
                 response.raise_for_status()
