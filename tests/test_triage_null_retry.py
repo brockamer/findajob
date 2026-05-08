@@ -1,19 +1,22 @@
-"""Tests for null-score manual_review retry logic in triage.py.
+"""Tests for null-score manual_review retry logic.
 
-score_null_manual_review_rows() re-scores rows that landed in
+`score_null_manual_review_rows()` re-scores rows that landed in
 manual_review with relevance_score=NULL (scorer timeout/failure).
+
+Lives in `findajob.triage.null_score_retry` after the M3 extraction
+(#537). Pre-extraction these tests loaded `scripts/triage.py` via
+`importlib.util` and had to patch `findajob.scoring` to dodge the
+module-load `_FEEDBACK_BLOCK = _build_feedback_block()` DB read; that
+hack is no longer needed because the orchestrator import is now
+side-effect-free.
 """
 
-import importlib.util
 import sqlite3
-import sys
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
-SCRIPTS_DIR = Path(__file__).parent.parent / "scripts"
-sys.path.insert(0, str(SCRIPTS_DIR))
+from findajob.triage.null_score_retry import score_null_manual_review_rows
 
 MINIMAL_SCHEMA = """
 CREATE TABLE jobs (
@@ -82,21 +85,6 @@ def _insert_job(conn, job_id, stage, relevance_score=None, days_old=0):
     conn.commit()
 
 
-def _load_triage():
-
-    spec = importlib.util.spec_from_file_location("triage", SCRIPTS_DIR / "triage.py")
-    mod = importlib.util.module_from_spec(spec)
-    # Patch heavy module-level deps before exec
-    with (
-        patch.dict(sys.modules, {"findajob.scoring": __import__("unittest.mock", fromlist=["MagicMock"]).MagicMock()}),
-    ):
-        try:
-            spec.loader.exec_module(mod)
-        except Exception:
-            pass
-    return mod
-
-
 def test_null_score_row_rescored_to_scored(db):
     """A manual_review row with null relevance_score is re-scored on the next triage run."""
     _insert_job(db, "fp1", "manual_review", relevance_score=None)
@@ -104,10 +92,10 @@ def test_null_score_row_rescored_to_scored(db):
     fake_score = {**GOOD_SCORE}
     fake_latency = 500
 
-    # Import the function under test (extracted from triage.py)
-    from triage import score_null_manual_review_rows  # noqa: PLC0415
-
-    with patch("triage.score_job", return_value=(fake_score, fake_latency, None)):
+    with patch(
+        "findajob.triage.null_score_retry.score_job",
+        return_value=(fake_score, fake_latency, None),
+    ):
         count = score_null_manual_review_rows(db, "profile text", "", limit=50)
 
     assert count == 1
@@ -126,9 +114,7 @@ def test_real_flag_row_not_retried(db):
     """A manual_review row with a real relevance_score is not re-scored."""
     _insert_job(db, "fp2", "manual_review", relevance_score=5)
 
-    from triage import score_null_manual_review_rows  # noqa: PLC0415
-
-    with patch("triage.score_job") as mock_score:
+    with patch("findajob.triage.null_score_retry.score_job") as mock_score:
         score_null_manual_review_rows(db, "profile text", "", limit=50)
 
     mock_score.assert_not_called()
@@ -138,9 +124,7 @@ def test_aged_out_rows_excluded(db):
     """Null-score rows older than 7 days are skipped to avoid retrying genuinely broken JDs."""
     _insert_job(db, "fp3", "manual_review", relevance_score=None, days_old=8)
 
-    from triage import score_null_manual_review_rows  # noqa: PLC0415
-
-    with patch("triage.score_job") as mock_score:
+    with patch("findajob.triage.null_score_retry.score_job") as mock_score:
         score_null_manual_review_rows(db, "profile text", "", limit=50)
 
     mock_score.assert_not_called()
@@ -153,9 +137,10 @@ def test_limit_caps_retry_batch(db):
 
     fake_score = {**GOOD_SCORE}
 
-    from triage import score_null_manual_review_rows  # noqa: PLC0415
-
-    with patch("triage.score_job", return_value=(fake_score, 100, None)):
+    with patch(
+        "findajob.triage.null_score_retry.score_job",
+        return_value=(fake_score, 100, None),
+    ):
         count = score_null_manual_review_rows(db, "profile text", "", limit=3)
 
     assert count == 3

@@ -34,15 +34,21 @@ def _load_script(name: str):
 
 
 def test_triage_skipped_when_not_onboarded(tmp_path: Path, monkeypatch):
-    """Cron fires triage.py on a tester stack with no profile.md/sentinel —
+    """Cron fires triage on a tester stack with no profile.md/sentinel —
     must emit `triage_skipped` and return cleanly instead of raising
-    FileNotFoundError on PROFILE_PATH."""
-    triage = _load_script("triage")
-    events: list[dict] = []
-    monkeypatch.setattr(triage, "BASE", str(tmp_path))
-    monkeypatch.setattr(triage, "log_event", lambda event, **kw: events.append({"event": event, **kw}))
+    FileNotFoundError on PROFILE_PATH.
 
-    triage.main()
+    Post-#537: triage logic lives in `findajob.triage.orchestrator`; the
+    `_load_script` importlib hack is no longer needed because the module
+    is now safely importable.
+    """
+    from findajob.triage import orchestrator
+
+    events: list[dict] = []
+    monkeypatch.setattr(orchestrator, "BASE", str(tmp_path))
+    monkeypatch.setattr(orchestrator, "log_event", lambda event, **kw: events.append({"event": event, **kw}))
+
+    orchestrator.main()
 
     skipped = [e for e in events if e["event"] == "triage_skipped"]
     assert len(skipped) == 1
@@ -56,16 +62,17 @@ def test_triage_runs_when_onboarded(tmp_path: Path, monkeypatch):
     (tmp_path / "data").mkdir(parents=True)
     (tmp_path / "data" / ".onboarding-complete").write_text("2026-05-01T00:00:00Z\n")
 
-    triage = _load_script("triage")
+    from findajob.triage import orchestrator
+
     events: list[dict] = []
-    monkeypatch.setattr(triage, "BASE", str(tmp_path))
-    monkeypatch.setattr(triage, "log_event", lambda event, **kw: events.append({"event": event, **kw}))
+    monkeypatch.setattr(orchestrator, "BASE", str(tmp_path))
+    monkeypatch.setattr(orchestrator, "log_event", lambda event, **kw: events.append({"event": event, **kw}))
     # Stop main() right after the guard by exploding on the first DB op.
-    monkeypatch.setattr(triage.shutil, "copy2", MagicMock())
-    monkeypatch.setattr(triage.sqlite3, "connect", MagicMock(side_effect=RuntimeError("stop here")))
+    monkeypatch.setattr(orchestrator.shutil, "copy2", MagicMock())
+    monkeypatch.setattr(orchestrator.sqlite3, "connect", MagicMock(side_effect=RuntimeError("stop here")))
 
     try:
-        triage.main()
+        orchestrator.main()
     except RuntimeError as e:
         assert "stop here" in str(e)
 
