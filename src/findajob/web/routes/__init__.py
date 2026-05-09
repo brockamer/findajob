@@ -19,6 +19,7 @@ from findajob.web.routes import (
     onboarding_feed_config,
     onboarding_gmail_config,
     rejections_review,
+    settings_active_sources,
     settings_reject_reasons,
     speculative,
     stats,
@@ -42,6 +43,7 @@ router.include_router(board.router, dependencies=_guard)
 router.include_router(board_actions.router, dependencies=_guard)
 router.include_router(ingest.router)
 router.include_router(settings_reject_reasons.router, dependencies=_guard)
+router.include_router(settings_active_sources.router, dependencies=_guard)
 router.include_router(rejections_review.router, dependencies=_guard)
 router.include_router(speculative.router, dependencies=_guard)
 router.include_router(stats.router, dependencies=_guard)

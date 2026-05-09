@@ -66,7 +66,7 @@ Foundational decisions (design rationale lives in operator-private specs):
 **Top-level URL groups:**
 
 - `/config/` — raw text editor for allowlisted config files (`findajob.web.config_files`).
-- `/settings/` — domain-aware config editors with per-page UX (validation, structured rows, HTMX partial-swap). First occupant: `/settings/reject-reasons/`. Saves take effect on the next request without container restart; `findajob.config_loader` loaders are no-cache.
+- `/settings/` — domain-aware config editors with per-page UX (validation, structured rows, HTMX partial-swap). Occupants: `/settings/reject-reasons/` (#490) and `/settings/active-sources/` (#603 — checkbox list of `REGISTERED_ADAPTERS` with per-row `is_configured()` badge; writes `config/active_sources.txt` atomically). Saves take effect on the next request without container restart; `findajob.config_loader` loaders are no-cache. The `/board/dashboard` shows a dismissible banner when `active_sources.txt` is absent, pointing at `/settings/active-sources/`.
 - `/onboarding/` — first-run NUX, two steps: API keys (tester's own OpenRouter required) and chat interview (`onboarding_sessions` table). Sentinel `data/.onboarding-complete` written by the Gmail-config gate; `findajob.web.onboarding_guard` redirects most routes to `/onboarding/` until it exists.
 - `/docs/` — renders `docs/usage.md`, `docs/troubleshooting.md`, `docs/getting-started/*` inline. Slug allowlist in `findajob.web.routes.docs`.
 - `/admin/stacks/` — gated by `FINDAJOB_OPERATOR_MODE=1` (operator's stack only). The **only** code path that reads cross-stack state from inside `findajob.web`. Read-only, no POST handlers, all SQLite handles open with `?mode=ro&immutable=1`. Adds a red top nav on every page as a visual safeguard.

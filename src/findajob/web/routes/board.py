@@ -6,8 +6,9 @@ import os
 import sqlite3
 
 from fastapi import APIRouter, Depends, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 
+from findajob.fetchers.adapters import registry as _adapter_registry
 from findajob.web.company_history import build_history_by_fp, fetch_company_history
 from findajob.web.discoveries import load_discoveries_summary
 from findajob.web.filters import ColumnSpec, ParsedFilters, build_filter_clauses, parse_filter_params
@@ -88,8 +89,23 @@ def _dashboard_query(parsed: ParsedFilters) -> tuple[str, list[object]]:
 def dashboard(
     request: Request,
     density: str = Query(default=_DEFAULT_DENSITY),
+    dismiss_active_sources_banner: int = Query(default=0),
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
 ) -> HTMLResponse:
+    # #603: ?dismiss_active_sources_banner=1 sets a 1-year cookie and
+    # redirects back to the bare dashboard URL so subsequent loads use
+    # the cookie path.
+    if dismiss_active_sources_banner:
+        redirect = RedirectResponse(url="/board/dashboard", status_code=303)
+        redirect.set_cookie(
+            "active_sources_banner_dismissed",
+            "1",
+            max_age=31536000,  # 1 year
+            httponly=False,
+            samesite="lax",
+        )
+        return redirect  # type: ignore[return-value]
+
     specs = filter_registry.DASHBOARD_COLUMNS
     parsed = parse_filter_params(specs, request.query_params)
     sql, params = _dashboard_query(parsed)
@@ -99,6 +115,7 @@ def dashboard(
     visible = _resolve_visible(specs, parsed)
     discoveries = load_discoveries_summary(request.app.state.base_root)
     rejections_pending = _rejections_pending_count(db)
+    show_banner, default_count = _active_sources_banner_state(request)
     templates = request.app.state.templates
     return templates.TemplateResponse(
         request=request,
@@ -114,8 +131,38 @@ def dashboard(
             "materials_base_url": materials_base_url,
             "discoveries": discoveries,
             "rejections_pending": rejections_pending,
+            "active_sources_banner": show_banner,
+            "active_sources_default_count": default_count,
         },
     )
+
+
+def _active_sources_banner_state(request: Request) -> tuple[bool, int]:
+    """Decide whether to show the #603 banner + how many adapters would
+    fetch under the default. Returns ``(show_banner, default_count)``.
+
+    Banner shows iff `config/active_sources.txt` is absent AND the
+    `active_sources_banner_dismissed` cookie is unset. `default_count`
+    is included in the banner copy to give operators a concrete
+    "X adapters fetchable" signal even when they choose not to customize.
+    """
+    if request.cookies.get("active_sources_banner_dismissed") == "1":
+        return False, 0
+    if _adapter_registry._active_sources_path().exists():
+        return False, 0
+    # Count adapters that would actually fetch under the default — i.e.,
+    # in _DEFAULT_ACTIVE_SOURCES AND is_configured() True.
+    default_set = set(_adapter_registry._DEFAULT_ACTIVE_SOURCES)
+    count = 0
+    for cls in _adapter_registry.REGISTERED_ADAPTERS:
+        if cls.name not in default_set:
+            continue
+        try:
+            if cls().is_configured():
+                count += 1
+        except Exception:
+            pass
+    return True, count
 
 
 def _rejections_pending_count(db: sqlite3.Connection) -> int:

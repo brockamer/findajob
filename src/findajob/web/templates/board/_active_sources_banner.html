@@ -1,0 +1,23 @@
+{# #603: shown only when config/active_sources.txt is absent AND the
+   `active_sources_banner_dismissed` cookie is unset. Once the operator
+   either saves at /settings/active-sources/ (writes the file) or clicks
+   "Don't show again" (sets the cookie), the banner stops appearing. #}
+{% if active_sources_banner %}
+<div class="bg-amber-50 border border-amber-200 rounded p-3 mb-4 flex items-start gap-3">
+  <div class="flex-1 text-sm text-amber-900">
+    <strong>Using default adapter selection</strong>
+    ({{ active_sources_default_count }} adapter{{ '' if active_sources_default_count == 1 else 's' }} fetchable on this stack).
+    Customize at
+    <a href="/settings/active-sources/" class="underline font-medium hover:text-amber-700">
+      /settings/active-sources/
+    </a>.
+  </div>
+  <a
+    href="?dismiss_active_sources_banner=1"
+    class="text-xs text-amber-700 hover:text-amber-900 whitespace-nowrap"
+    title="Stop showing this banner. You can still customize at /settings/active-sources/."
+  >
+    Don't show again
+  </a>
+</div>
+{% endif %}

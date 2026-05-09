@@ -89,3 +89,25 @@ def iter_configured_adapters() -> Iterator[JobSourceAdapter]:
             log_event("adapter_not_configured", adapter=cls.name)
             continue
         yield instance
+
+
+def _write_active_sources(names: list[str], path: Path | None = None) -> None:
+    """Atomically write the active-sources list to ``config/active_sources.txt``.
+
+    Header comment + one adapter name per line. Atomic via tmp + os.replace
+    so a crash mid-write doesn't truncate the file (matches the
+    `gmail_imap.save_config` pattern). Empty `names` produces a header-only
+    file — `_read_active_sources` treats that as empty and falls back to
+    `_DEFAULT_ACTIVE_SOURCES`, which is the intentional behavior for the
+    settings UI's "uncheck everything → revert to default" flow.
+    """
+    import os
+
+    target = path or _active_sources_path()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_suffix(target.suffix + ".tmp")
+    body = "# Managed by /settings/active-sources/. Edit there to keep this file in sync.\n"
+    for name in names:
+        body += f"{name}\n"
+    tmp.write_text(body)
+    os.replace(str(tmp), str(target))

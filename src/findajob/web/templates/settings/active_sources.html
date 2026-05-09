@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Active sources — Settings{% endblock %}
+{% block content %}
+<div class="max-w-2xl">
+  <h1 class="text-2xl font-semibold mb-1">Active sources</h1>
+  <p class="text-sm text-slate-600 mb-2">
+    These are the job sources findajob fetches from. Tick the ones you want
+    on; untick to skip. Most operators want every source that's
+    <strong>Fetchable</strong> turned on — but this page lets you opt out
+    if a source is too noisy for your search.
+  </p>
+  <p class="text-sm text-slate-600 mb-6">
+    The <strong>Fetchable</strong> badge shows whether a source can actually
+    run on this stack right now (env keys present, config files in place).
+    You can still tick a source that's <em>Not configured</em> — it just
+    won't return anything until you set up its credentials.
+    {% if not file_present %}
+    <span class="block mt-2 text-amber-700">
+      <strong>Currently using defaults.</strong> Saving here writes
+      <code>config/active_sources.txt</code> and locks in your choice.
+    </span>
+    {% endif %}
+  </p>
+
+  <form
+    hx-post="/settings/active-sources/"
+    hx-target="#save-result"
+    hx-swap="innerHTML"
+    class="space-y-2"
+  >
+    {% for row in rows %}
+    <div class="flex items-center gap-3 py-2 border-b border-slate-100">
+      <label class="flex items-center gap-2 flex-1 cursor-pointer">
+        <input
+          type="checkbox"
+          name="adapter"
+          value="{{ row.name }}"
+          {% if row.checked %}checked{% endif %}
+          class="rounded border-slate-400 text-slate-700 focus:ring-slate-500"
+        />
+        <span class="text-sm font-medium text-slate-800">{{ row.display_name }}</span>
+        <code class="text-xs text-slate-500">{{ row.name }}</code>
+      </label>
+      {% if row.is_configured %}
+      <span class="text-xs px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200" title="Credentials and config in place; this adapter will fetch when triage runs.">
+        ✓ Fetchable
+      </span>
+      {% else %}
+      <span class="text-xs px-2 py-0.5 rounded-full bg-slate-50 text-slate-600 border border-slate-200" title="Adapter is registered but its credentials or config aren't set up on this stack. Enabling it is harmless — it'll be a no-op until configured.">
+        ✗ Not configured
+      </span>
+      {% endif %}
+    </div>
+    {% endfor %}
+
+    <div class="flex items-center gap-3 pt-4">
+      <button
+        type="submit"
+        class="bg-slate-800 text-white text-sm font-medium rounded px-4 py-1.5 hover:bg-slate-700"
+      >
+        Save
+      </button>
+      <span class="text-xs text-slate-500 htmx-indicator">Saving…</span>
+    </div>
+  </form>
+
+  <div id="save-result" class="mt-4"></div>
+</div>
+{% endblock %}
