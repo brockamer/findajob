@@ -27,6 +27,17 @@ GMAIL_STATE_PATH = f"{BASE}/config/gmail_state.json"
 
 _SCHEMA_VERSION = 1
 
+# Default ATS sender allowlist for rejection-detection scanning (#362).
+# Spec: docs/superpowers/specs/2026-05-01-362-rejection-detection-design.md §3.1.
+# Workday-style talent.{company}.com / {company}@myworkday.com senders are
+# matched at the rejection_detector layer via suffix; can't be enumerated here.
+DEFAULT_REJECTION_ALLOWLIST: tuple[str, ...] = (
+    "no-reply@us.greenhouse-mail.io",
+    "no-reply@eu.greenhouse-mail.io",
+    "no-reply@ashbyhq.com",
+    "no-reply@hire.lever.co",
+)
+
 
 @dataclass(frozen=True)
 class GmailConfig:
@@ -34,6 +45,7 @@ class GmailConfig:
     app_password: str
     sender_allowlist: list[str]
     configured_at: str
+    rejection_sender_allowlist: list[str] = field(default_factory=lambda: list(DEFAULT_REJECTION_ALLOWLIST))
 
 
 def _validate_config_payload(payload: dict) -> bool:
@@ -53,6 +65,12 @@ def _validate_config_payload(payload: dict) -> bool:
         return False
     if not all(isinstance(s, str) and "@" in s for s in senders):
         return False
+    rej_senders = payload.get("rejection_sender_allowlist")
+    if rej_senders is not None:
+        if not isinstance(rej_senders, list) or len(rej_senders) > 50:
+            return False
+        if not all(isinstance(s, str) and "@" in s for s in rej_senders):
+            return False
     return True
 
 
@@ -79,6 +97,7 @@ def load_config() -> GmailConfig | None:
         app_password=payload["app_password"].replace(" ", ""),
         sender_allowlist=list(payload["sender_allowlist"]),
         configured_at=payload["configured_at"],
+        rejection_sender_allowlist=list(payload.get("rejection_sender_allowlist", DEFAULT_REJECTION_ALLOWLIST)),
     )
 
 
@@ -90,6 +109,9 @@ class GmailState:
     last_fetched_at: str | None = None
     last_login_at: str | None = None
     last_error: str | None = None
+    rejection_last_uid: int = 0
+    rejection_backlog_scan_complete: bool = False
+    rejection_backlog_window_days: int = 0
 
 
 def load_state() -> GmailState:
@@ -112,6 +134,9 @@ def load_state() -> GmailState:
         last_fetched_at=payload.get("last_fetched_at"),
         last_login_at=payload.get("last_login_at"),
         last_error=payload.get("last_error"),
+        rejection_last_uid=int(payload.get("rejection_last_uid", 0)),
+        rejection_backlog_scan_complete=bool(payload.get("rejection_backlog_scan_complete", False)),
+        rejection_backlog_window_days=int(payload.get("rejection_backlog_window_days", 0)),
     )
 
 
@@ -138,6 +163,7 @@ def save_config(config: GmailConfig) -> None:
         "app_password": config.app_password,
         "sender_allowlist": list(config.sender_allowlist),
         "configured_at": config.configured_at,
+        "rejection_sender_allowlist": list(config.rejection_sender_allowlist),
     }
     p = Path(GMAIL_CONFIG_PATH)
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -320,6 +346,85 @@ def fetch_new_messages(config: GmailConfig, state: GmailState, since_days: int |
                             max_uid = uid
                         break
 
+        return FetchOutcome(
+            result=TestResult.SUCCESS,
+            messages=all_messages,
+            new_uid=max_uid,
+            new_uidvalidity=current_uidvalidity,
+        )
+    except BaseException as exc:  # noqa: BLE001
+        return FetchOutcome(result=_classify_error(exc))
+    finally:
+        if client is not None:
+            try:
+                client.logout()
+            except Exception:
+                pass
+
+
+def fetch_new_messages_for_rejection_scan(
+    config: GmailConfig,
+    state: GmailState,
+    since_days: int | None = None,
+) -> FetchOutcome:
+    """Fetch new messages from ``rejection_sender_allowlist`` for classification.
+
+    Read-only IMAP semantics matching :func:`fetch_new_messages` (BODY.PEEK,
+    no STORE/COPY/EXPUNGE/APPEND/MOVE/CREATE/DELETE). Maintains a separate
+    UID checkpoint at ``state.rejection_last_uid`` so the rejection scan
+    cycle is independent of the job-fetch cycle.
+
+    Does NOT do cold-start widening — first-run backlog scan is the
+    caller's responsibility (``scripts/detect_rejections.py`` in M-stage 4).
+    Pass ``since_days`` for the one-shot first-run backlog scan; logs
+    ``rejection_scan_since_override``.
+
+    Spec: docs/superpowers/specs/2026-05-01-362-rejection-detection-design.md §4.4
+    """
+    client: imaplib.IMAP4_SSL | None = None
+    try:
+        client = _connect(config)
+        client.select("INBOX", readonly=True)
+
+        uidvalidity_raw = client.untagged_responses.get("UIDVALIDITY", [b"0"])[0]
+        if isinstance(uidvalidity_raw, tuple):
+            uidvalidity_raw = uidvalidity_raw[0]
+        current_uidvalidity = int(uidvalidity_raw) if uidvalidity_raw else 0
+
+        override_since_date: str | None = None
+        if since_days is not None:
+            override_since_date = (datetime.now(UTC) - timedelta(days=since_days)).strftime("%d-%b-%Y")
+            log_event("rejection_scan_since_override", days=since_days, since_date=override_since_date)
+
+        all_messages: list[tuple[str, bytes]] = []
+        seen_uids: set[int] = set()
+        max_uid = state.rejection_last_uid
+
+        for sender in config.rejection_sender_allowlist:
+            if override_since_date:
+                criteria = f'(SINCE "{override_since_date}" FROM "{sender}")'
+            else:
+                criteria = f'(UID {state.rejection_last_uid + 1}:* FROM "{sender}")'
+            typ, search_resp = client.uid("SEARCH", criteria)
+            if typ != "OK":
+                continue
+            uids = _parse_search_uids(search_resp)
+            for uid in uids:
+                if uid in seen_uids:
+                    continue
+                seen_uids.add(uid)
+                fetch_typ, fetch_resp = client.uid("FETCH", str(uid), "(BODY.PEEK[])")
+                if fetch_typ != "OK":
+                    continue
+                for entry in fetch_resp:
+                    if isinstance(entry, tuple) and len(entry) >= 2:
+                        all_messages.append((sender, entry[1]))
+                        if uid > max_uid:
+                            max_uid = uid
+                        log_event("rejection_email_scanned", uid=uid, sender=sender)
+                        break
+
+        log_event("rejection_scan_completed", count=len(all_messages), max_uid=max_uid)
         return FetchOutcome(
             result=TestResult.SUCCESS,
             messages=all_messages,
