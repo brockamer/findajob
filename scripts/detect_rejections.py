@@ -25,6 +25,7 @@ Spec: ``docs/superpowers/specs/2026-05-01-362-rejection-detection-design.md``
 from __future__ import annotations
 
 import dataclasses
+import re
 import sqlite3
 import sys
 from typing import Any
@@ -58,6 +59,15 @@ _MAX_BACKLOG_WINDOW_DAYS = 60
 # in the orchestrator — the matcher's threshold is the design anchor, not
 # a runtime dependency.
 _CORROBORATION_FUZZ_THRESHOLD = 80
+
+# Minimum length of a handled-stage ``jobs.company`` value to consider in the
+# subject/body fallback (#586). Avoids "Co" / "IBM" / "HP" false positives
+# where a 2- or 3-letter company name would match coincidentally in body
+# text. The tradeoff is accepting false-negative corroboration on
+# short-named companies (suggestion gets surfaced, operator dismisses) —
+# preferable to false-positive corroboration (suggestion suppressed when
+# it shouldn't be).
+_CORROBORATION_MIN_COMPANY_LEN = 4
 
 
 def main() -> int:
@@ -102,6 +112,15 @@ def main() -> int:
 
             if match.status == "unmatched":
                 handled_id = _find_corroborating_handled_job(conn, suggestion.extracted_company)
+                if handled_id is None:
+                    # Fallback (#586): extraction may have misfired entirely OR
+                    # captured a wrong token (e.g. a role string instead of the
+                    # company). The email's subject + body excerpt may still
+                    # mention a handled-stage company verbatim — scan for it
+                    # so already-resolved rejections don't leak through to the
+                    # review queue. Independent of `extracted_company`, so
+                    # robust to extraction-shape regressions we haven't seen.
+                    handled_id = _find_corroborating_handled_job_fallback(conn, suggestion)
                 if handled_id is not None:
                     log_event(
                         "rejection_email_corroborated",
@@ -153,6 +172,49 @@ def main() -> int:
         is_backlog_run=is_backlog_run,
     )
     return 0
+
+
+def _find_corroborating_handled_job_fallback(conn: sqlite3.Connection, suggestion: Any) -> str | None:
+    """Subject/body fallback for §4.8 corroboration when extraction misfired.
+
+    The primary path (``_find_corroborating_handled_job``) uses
+    ``suggestion.extracted_company`` as the query key. When the classifier's
+    extraction returns None or a wrong token (e.g. a role substring like
+    ``"the Program Manager"`` from a Zoox-shape body), the primary lookup
+    silently fails and the suggestion lands in the review queue even if
+    the underlying rejection is already represented at ``not_selected`` or
+    ``rejected`` somewhere in the DB.
+
+    This fallback closes that gap: it scans the email's subject + body
+    excerpt for any handled-stage ``jobs.company`` value, using
+    word-boundary matching so a 4-char company doesn't false-positive
+    against longer words (e.g. ``acme`` in ``acmestaff``). Bounded by the
+    number of distinct companies the operator has applied to (typically
+    well under 500 rows), so the per-cycle cost is negligible.
+
+    Decoupled from extraction by design — robust to future extraction-
+    shape regressions we haven't anticipated. Length floor
+    ``_CORROBORATION_MIN_COMPANY_LEN`` accepts false-negative corroboration
+    on short-named companies in exchange for zero false-positive
+    corroboration that would suppress a real signal.
+    """
+    haystack = (suggestion.subject + " " + suggestion.body_excerpt).lower()
+    rows = conn.execute(
+        """
+        SELECT id, company FROM jobs
+        WHERE stage IN ('not_selected', 'rejected')
+          AND synthetic = 0
+          AND company IS NOT NULL
+          AND company != ''
+        """
+    ).fetchall()
+    for row in rows:
+        company = (row["company"] or "").strip().lower()
+        if len(company) < _CORROBORATION_MIN_COMPANY_LEN:
+            continue
+        if re.search(r"\b" + re.escape(company) + r"\b", haystack):
+            return row["id"]
+    return None
 
 
 def _find_corroborating_handled_job(conn: sqlite3.Connection, extracted_company: str | None) -> str | None:

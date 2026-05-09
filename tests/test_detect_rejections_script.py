@@ -343,3 +343,250 @@ def test_matched_suggestion_persists_to_db(harness):
     assert match_status == "matched"
     assert confidence == "high"
     assert reason == "Company passed"
+
+
+# ─── #586: subject/body fallback when extraction fails ───────────────────────
+
+
+def _make_suggestion_with_text(
+    *,
+    subject: str,
+    body: str,
+    extracted_company: str | None = None,
+    extracted_role: str | None = None,
+) -> RejectionSuggestion:
+    """Construct a RejectionSuggestion with explicit subject/body for fallback tests.
+
+    The fallback path keys off `subject + body_excerpt` (lowercased), so these
+    tests need control over both fields independently of the extracted_company
+    that the primary corroboration path uses.
+    """
+    return RejectionSuggestion(
+        gmail_message_id="msg-fallback-1",
+        received_at="2026-05-09T00:00:00+00:00",
+        sender="no-reply@us.greenhouse-mail.io",
+        subject=subject,
+        body_excerpt=body,
+        extracted_company=extracted_company,
+        extracted_role=extracted_role,
+        confidence="high",
+        suggested_reason="Company passed",
+    )
+
+
+def _seed_handled_job(harness, *, job_id: str, company: str, stage: str = "not_selected") -> None:
+    """Insert a handled-stage (not_selected/rejected) job for fallback tests."""
+    import sqlite3
+
+    conn = sqlite3.connect(detect_rejections.DB_PATH)
+    conn.execute(
+        """
+        INSERT INTO jobs (
+            id, fingerprint, title, company, url, source, status, stage, synthetic
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            job_id,
+            f"fp-{job_id}",
+            "Senior Engineer",
+            company,
+            f"https://example.com/{job_id}",
+            "web_manual",
+            "manual_review",
+            stage,
+            0,
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+
+def test_corroboration_fallback_catches_company_in_body_when_extraction_fails(harness):
+    """Extraction returns None but the company name is in the email body.
+
+    Regression for the operator's 2026-05-09 first-run backlog: an
+    Anthropic-shape email had `extracted_company=None` (the "so much"
+    interjection broke `_INTEREST_RE`), so the primary corroboration
+    query had nothing to match against. Fallback scans subject+body
+    for any handled-stage company name and corroborates if found.
+    """
+    _write_config(harness)
+    _make_db(harness)
+    _seed_handled_job(harness, job_id="job-handled-anthropic", company="Anthropic", stage="rejected")
+
+    suggestion = _make_suggestion_with_text(
+        subject="Anthropic Follow-Up for Staff Engineer",
+        body="Hi, Thank you so much for your interest in Anthropic and for the time and effort.",
+        extracted_company=None,  # extraction failed
+    )
+    outcome = FetchOutcome(
+        result=_RESULT_SUCCESS,
+        messages=[("no-reply@us.greenhouse-mail.io", b"raw")],
+        new_uid=42,
+        new_uidvalidity=99,
+    )
+
+    with (
+        patch.object(detect_rejections, "fetch_new_messages_for_rejection_scan", return_value=outcome),
+        patch.object(detect_rejections, "classify_email", return_value=suggestion),
+        patch.object(detect_rejections, "match_job", return_value=MatchResult(job_id=None, status="unmatched")),
+    ):
+        rc = detect_rejections.main()
+
+    assert rc == 0
+
+    events = _read_events(harness)
+    corroborated_events = [e for e in events if e["event"] == "rejection_email_corroborated"]
+    assert len(corroborated_events) == 1
+    assert corroborated_events[0]["matched_job_id"] == "job-handled-anthropic"
+
+    # No suggestion row inserted — corroboration suppressed it.
+    import sqlite3
+
+    conn = sqlite3.connect(detect_rejections.DB_PATH)
+    count = conn.execute("SELECT COUNT(*) FROM rejection_suggestions").fetchone()[0]
+    conn.close()
+    assert count == 0
+
+
+def test_corroboration_fallback_skips_short_company_names(harness):
+    """Companies shorter than _CORROBORATION_MIN_COMPANY_LEN (4) MUST NOT match.
+
+    'IBM' or 'HP' would substring-match too liberally in body text. The
+    length floor accepts false-negative corroboration on short-named
+    companies in exchange for zero false-positive corroboration that
+    would suppress real signals.
+    """
+    _write_config(harness)
+    _make_db(harness)
+    _seed_handled_job(harness, job_id="job-handled-ibm", company="IBM", stage="rejected")
+
+    # Body literally contains 'IBM' but the floor blocks the match.
+    suggestion = _make_suggestion_with_text(
+        subject="Update on your application",
+        body="Thanks for your interest at IBM. Unfortunately we have decided to move forward with other candidates.",
+        extracted_company=None,
+    )
+    outcome = FetchOutcome(
+        result=_RESULT_SUCCESS,
+        messages=[("no-reply@us.greenhouse-mail.io", b"raw")],
+        new_uid=42,
+        new_uidvalidity=99,
+    )
+
+    with (
+        patch.object(detect_rejections, "fetch_new_messages_for_rejection_scan", return_value=outcome),
+        patch.object(detect_rejections, "classify_email", return_value=suggestion),
+        patch.object(detect_rejections, "match_job", return_value=MatchResult(job_id=None, status="unmatched")),
+        patch.object(detect_rejections.ntfy, "send"),
+    ):
+        rc = detect_rejections.main()
+
+    assert rc == 0
+
+    events = _read_events(harness)
+    corroborated_events = [e for e in events if e["event"] == "rejection_email_corroborated"]
+    assert len(corroborated_events) == 0  # IBM is too short — fallback skipped it
+
+    # Suggestion gets persisted (operator can dismiss manually).
+    import sqlite3
+
+    conn = sqlite3.connect(detect_rejections.DB_PATH)
+    count = conn.execute("SELECT COUNT(*) FROM rejection_suggestions").fetchone()[0]
+    conn.close()
+    assert count == 1
+
+
+def test_corroboration_fallback_word_boundary_avoids_substring_false_positives(harness):
+    """A 4-char company name MUST NOT match against a longer word.
+
+    Without word-boundary anchors, 'Acme' (the company) would substring-match
+    'acmestaff' or 'acmeworks' in body text and produce false-positive
+    corroboration that suppresses a real signal.
+    """
+    _write_config(harness)
+    _make_db(harness)
+    _seed_handled_job(harness, job_id="job-handled-acme", company="Acme", stage="not_selected")
+
+    # Body mentions 'acmeship' (an unrelated word containing 'acme').
+    # Word-boundary regex must reject this match.
+    suggestion = _make_suggestion_with_text(
+        subject="Update on your application",
+        body=(
+            "We use acmeship and acmestaff platforms internally — "
+            "but unfortunately we have decided to move forward with other "
+            "candidates whose backgrounds align more closely."
+        ),
+        extracted_company=None,
+    )
+    outcome = FetchOutcome(
+        result=_RESULT_SUCCESS,
+        messages=[("no-reply@us.greenhouse-mail.io", b"raw")],
+        new_uid=42,
+        new_uidvalidity=99,
+    )
+
+    with (
+        patch.object(detect_rejections, "fetch_new_messages_for_rejection_scan", return_value=outcome),
+        patch.object(detect_rejections, "classify_email", return_value=suggestion),
+        patch.object(detect_rejections, "match_job", return_value=MatchResult(job_id=None, status="unmatched")),
+        patch.object(detect_rejections.ntfy, "send"),
+    ):
+        rc = detect_rejections.main()
+
+    assert rc == 0
+
+    events = _read_events(harness)
+    corroborated_events = [e for e in events if e["event"] == "rejection_email_corroborated"]
+    assert len(corroborated_events) == 0  # 'acme' must not substring-match 'acmeship'
+
+    import sqlite3
+
+    conn = sqlite3.connect(detect_rejections.DB_PATH)
+    count = conn.execute("SELECT COUNT(*) FROM rejection_suggestions").fetchone()[0]
+    conn.close()
+    assert count == 1  # suggestion persists
+
+
+def test_corroboration_fallback_no_match_persists_suggestion(harness):
+    """Generic recruiter email with no handled company in subject/body → suggestion persists."""
+    _write_config(harness)
+    _make_db(harness)
+    _seed_handled_job(harness, job_id="job-handled-anthropic", company="Anthropic", stage="rejected")
+
+    # Body mentions no handled-stage company.
+    suggestion = _make_suggestion_with_text(
+        subject="Application update",
+        body=(
+            "Thank you for your interest. After careful consideration "
+            "we have decided to move forward with other candidates."
+        ),
+        extracted_company=None,
+    )
+    outcome = FetchOutcome(
+        result=_RESULT_SUCCESS,
+        messages=[("no-reply@us.greenhouse-mail.io", b"raw")],
+        new_uid=42,
+        new_uidvalidity=99,
+    )
+
+    with (
+        patch.object(detect_rejections, "fetch_new_messages_for_rejection_scan", return_value=outcome),
+        patch.object(detect_rejections, "classify_email", return_value=suggestion),
+        patch.object(detect_rejections, "match_job", return_value=MatchResult(job_id=None, status="unmatched")),
+        patch.object(detect_rejections.ntfy, "send"),
+    ):
+        rc = detect_rejections.main()
+
+    assert rc == 0
+
+    events = _read_events(harness)
+    corroborated_events = [e for e in events if e["event"] == "rejection_email_corroborated"]
+    assert len(corroborated_events) == 0
+
+    import sqlite3
+
+    conn = sqlite3.connect(detect_rejections.DB_PATH)
+    count = conn.execute("SELECT COUNT(*) FROM rejection_suggestions").fetchone()[0]
+    conn.close()
+    assert count == 1  # suggestion persisted; operator handles manually
