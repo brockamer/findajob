@@ -10,6 +10,8 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+## [0.22.0] — 2026-05-09
+
 ### Migration required
 - **#362 (Task 1): migration `0003_rejection_suggestions` adds the `rejection_suggestions` table.** Backs the operator-confirmation queue for Gmail-detected company rejection emails (full feature lands across Tasks 2–6 of the rejection-detection epic). `docker compose pull && docker compose up -d` is the entire migration path — `apply_pending` runs 0003 on first boot, advancing `_meta.schema_version` from 2 → 3 and creating the table + 2 indexes (`rejection_suggestions_user_action`, `rejection_suggestions_matched_job`). Verify post-deploy: `sqlite3 state/data/pipeline.db "SELECT value FROM _meta WHERE key='schema_version'"` → `3`; `sqlite3 state/data/pipeline.db ".schema rejection_suggestions"` → table + indexes. Until subsequent tasks land detector/UI code, the table sits empty — the migration is a forward-compatible no-op for existing flows.
 
@@ -993,7 +995,8 @@ from GHCR and deployed via Docker Compose on a shared Docker host.
 - Documentation cleanup — removing `sigoden/aichat` references in favor of
   `blob42/aichat-ng` — is tracked in #70
 
-[Unreleased]: https://github.com/brockamer/findajob/compare/v0.21.0...HEAD
+[Unreleased]: https://github.com/brockamer/findajob/compare/v0.22.0...HEAD
+[0.22.0]: https://github.com/brockamer/findajob/releases/tag/v0.22.0
 [0.21.0]: https://github.com/brockamer/findajob/releases/tag/v0.21.0
 [0.20.3]: https://github.com/brockamer/findajob/releases/tag/v0.20.3
 [0.20.2]: https://github.com/brockamer/findajob/releases/tag/v0.20.2
