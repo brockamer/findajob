@@ -50,7 +50,7 @@ _FUNNEL_WINDOW_DAYS = 30
 # via `findajob.config_loader.load_reject_reasons()` — single source of truth
 # shared with the dropdown in `board/_reject_cell.html`, the filter chips in
 # `web/filters/registry.py`, and the prefilter analyzer in
-# `scripts/analyze_feedback.py`. Reasons seen in feedback_log but not in the
+# `findajob.analyze_feedback`. Reasons seen in feedback_log but not in the
 # config render after the canonical set (legacy / free-text entries).
 
 _FEEDBACK_WINDOW_DAYS = 28

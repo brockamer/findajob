@@ -1,11 +1,10 @@
 """Pipeline funnel scoreboard — refreshes the operator-facing GitHub issue."""
 
 import subprocess
-import sys
 from datetime import UTC, datetime
 
+from findajob.analyze_feedback import analyze as feedback_analyze
 from findajob.notifications.ntfy import db_connect, send
-from findajob.paths import BASE
 
 SCOREBOARD_ISSUE = 31
 SCOREBOARD_REPO = "brockamer/findajob"
@@ -116,19 +115,13 @@ def cmd_scoreboard() -> None:
     # Title n-grams that recur in score-7+ rejections with title-related reject
     # reasons. Each one is a concrete candidate to add to scorer_prefilter.py.
     # Human-approved — this is a proposal list, nothing is auto-applied.
-    candidates = []
+    candidates: list[dict] = []
     try:
-        # analyze_feedback.py lives in scripts/ alongside the legacy entry-points;
-        # importing it requires the scripts directory on sys.path. Keeping the
-        # import dynamic preserves the pre-extraction behavior verbatim.
-        sys.path.insert(0, f"{BASE}/scripts")
-        from analyze_feedback import analyze as feedback_analyze  # noqa: PLC0415
-
         fb_conn = db_connect()
         fb = feedback_analyze(fb_conn)
         fb_conn.close()
         candidates = fb.get("prefilter_candidates", [])[:10]
-    except Exception:
+    except Exception:  # noqa: BLE001 — scoreboard must not crash on feedback-analysis failure
         candidates = []
     # ── LLM spend (last 7d, populated cost_log rows only) ──
     spend_conn = db_connect()

@@ -325,8 +325,8 @@ def load_reject_reasons() -> tuple[tuple[str, ...], frozenset[str]]:
     drift bug surfaced by the #301 audit (§2.1).
 
     `title_signal_reasons` is the subset of `reasons` that signals the SCORER
-    MISSED the title — used by `scripts/analyze_feedback.py` to identify
-    prefilter candidates. Reasons not in this set are excluded from that
+    MISSED the title — used by `findajob.analyze_feedback._prefilter_candidates`
+    to identify prefilter candidates. Reasons not in this set are excluded from that
     analysis. May be empty (analysis becomes a no-op).
 
     Missing file or empty `reasons:` → returns the field-agnostic defaults
