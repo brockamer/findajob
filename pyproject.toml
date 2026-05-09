@@ -15,6 +15,7 @@ dependencies = [
     "jinja2>=3.1.0",
     "markdown>=3.7",
     "python-multipart>=0.0.20",
+    "rapidfuzz>=3.0",
 ]
 
 [project.optional-dependencies]

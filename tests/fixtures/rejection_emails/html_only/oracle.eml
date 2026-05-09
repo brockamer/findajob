@@ -1,0 +1,17 @@
+From: Oracle Talent <noreply@oracle.com>
+To: jane.doe@example.com
+Subject: We received your application
+Message-ID: <oracle-html-001@oracle.com>
+Date: Thu, 23 Apr 2026 14:09:55 +0000
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+
+<html><body>
+<p>Hi Jane,</p>
+<p>Thank you for your application to Oracle. Your application for the
+<strong>Senior Datacenter Engineer</strong> position has been received
+and is under review.</p>
+<p>If your qualifications match the role, a recruiter will reach out
+directly. Thank you for your interest in Oracle.</p>
+<p>Oracle Talent Team</p>
+</body></html>
