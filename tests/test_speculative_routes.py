@@ -163,6 +163,104 @@ def test_status_page_renders_hx_trigger_inline(tmp_path):
     assert 'hx-trigger="every 5s"' in resp.text
 
 
+# ── #561: status page enriched with background_tasks info ───────────────────
+
+
+def test_status_page_surfaces_background_task_pid_and_started_at(tmp_path):
+    """Researching status shows the latest background_tasks row's PID + started_at.
+
+    The operator can confirm a subprocess is actually running rather than
+    relying on the workflow-level ``researching`` status alone.
+    """
+    db = _make_db(tmp_path)
+    conn = sqlite3.connect(str(db))
+    conn.execute("INSERT INTO speculative_requests (company, status) VALUES ('PSI', 'researching')")
+    conn.execute(
+        "INSERT INTO background_tasks (id, job_id, kind, started_at, status, pid) "
+        "VALUES (10, '1', 'speculative_research', '2026-05-09 01:00:00', 'running', 12345)"
+    )
+    conn.commit()
+    conn.close()
+
+    app = _make_app(db)
+    client = TestClient(app)
+    resp = client.get("/speculative/status/1")
+    assert resp.status_code == 200
+    assert "Researching" in resp.text
+    assert "Subprocess started at 2026-05-09 01:00:00" in resp.text
+    assert "PID 12345" in resp.text
+
+
+def test_status_page_uses_latest_background_task_when_multiple(tmp_path):
+    """When a request has multiple background_tasks rows (regenerate path),
+    the status page surfaces the latest by id — that's the current run.
+    """
+    db = _make_db(tmp_path)
+    conn = sqlite3.connect(str(db))
+    conn.execute("INSERT INTO speculative_requests (company, status) VALUES ('PSI', 'researching')")
+    # Earlier run (failed); newer run (still running)
+    conn.execute(
+        "INSERT INTO background_tasks (id, job_id, kind, started_at, status, pid, error_message) "
+        "VALUES (5, '1', 'speculative_research', '2026-05-09 00:00:00', 'failed', 99, 'old failure')"
+    )
+    conn.execute(
+        "INSERT INTO background_tasks (id, job_id, kind, started_at, status, pid) "
+        "VALUES (10, '1', 'speculative_research', '2026-05-09 01:00:00', 'running', 12345)"
+    )
+    conn.commit()
+    conn.close()
+
+    app = _make_app(db)
+    client = TestClient(app)
+    resp = client.get("/speculative/status/1")
+    assert "PID 12345" in resp.text
+    assert "old failure" not in resp.text  # earlier row's error must not leak through
+
+
+def test_failed_status_falls_back_to_background_task_error_when_main_empty(tmp_path):
+    """When ``speculative_requests.error_message`` is empty but the
+    background_tasks row has an error_message (e.g., Popen failure captured
+    by ``record_failed``), the fragment shows the bg_task message.
+    """
+    db = _make_db(tmp_path)
+    conn = sqlite3.connect(str(db))
+    # speculative_requests.error_message is NULL — Popen failed before the
+    # orchestrator's except-handler could write the workflow-level message.
+    conn.execute("INSERT INTO speculative_requests (company, status) VALUES ('PSI', 'failed')")
+    conn.execute(
+        "INSERT INTO background_tasks (id, job_id, kind, started_at, finished_at, status, error_message) "
+        "VALUES (10, '1', 'speculative_research', '2026-05-09 01:00:00', '2026-05-09 01:00:02', "
+        "'failed', 'Popen failed: ENOENT')"
+    )
+    conn.commit()
+    conn.close()
+
+    app = _make_app(db)
+    client = TestClient(app)
+    resp = client.get("/speculative/status/1")
+    assert "Popen failed: ENOENT" in resp.text
+
+
+def test_status_page_handles_no_background_task_row(tmp_path):
+    """Status page renders cleanly when no background_tasks row exists yet
+    (race window between speculative_requests INSERT and background_tasks INSERT,
+    or a pre-M6 row that predates the writeback contract).
+    """
+    db = _make_db(tmp_path)
+    conn = sqlite3.connect(str(db))
+    conn.execute("INSERT INTO speculative_requests (company, status) VALUES ('PSI', 'researching')")
+    # No background_tasks row.
+    conn.commit()
+    conn.close()
+
+    app = _make_app(db)
+    client = TestClient(app)
+    resp = client.get("/speculative/status/1")
+    assert resp.status_code == 200
+    # The bg_task block is conditional on `if bg_task` — must not appear.
+    assert "Subprocess started at" not in resp.text
+
+
 # ── T23: review page ─────────────────────────────────────────────────────
 
 

@@ -42,6 +42,27 @@ def _conn() -> sqlite3.Connection:
     return conn
 
 
+def _latest_bg_task(conn: sqlite3.Connection, request_id: int) -> dict | None:
+    """Return the most recent ``background_tasks`` row for this speculative
+    request, or None if no row exists.
+
+    Latest by ``id`` (matches insert order). Speculative regenerate spawns
+    a new subprocess (and inserts a new row) without finalizing the prior
+    one when the prior is already terminal — see ``record_start`` in
+    ``findajob.background_tasks``. The status page wants the most recent
+    so the operator sees the current run's PID + timestamps.
+    """
+    row = conn.execute(
+        "SELECT id, job_id, kind, started_at, finished_at, status, error_message, pid "
+        "FROM background_tasks "
+        "WHERE kind='speculative_research' AND job_id=? "
+        "ORDER BY id DESC "
+        "LIMIT 1",
+        (str(request_id),),
+    ).fetchone()
+    return dict(row) if row else None
+
+
 def _launch_speculative_research_subprocess(conn: sqlite3.Connection, request_id: int) -> int:
     """Insert a ``background_tasks`` row, then spawn the research subprocess.
 
@@ -107,11 +128,16 @@ def get_status(request: Request, request_id: int):
     conn = _conn()
     try:
         row = conn.execute("SELECT * FROM speculative_requests WHERE id=?", (request_id,)).fetchone()
+        bg_task = _latest_bg_task(conn, request_id) if row is not None else None
     finally:
         conn.close()
     if row is None:
         raise HTTPException(status_code=404, detail="speculative request not found")
-    return templates.TemplateResponse(request=request, name="speculative/status.html", context={"row": dict(row)})
+    return templates.TemplateResponse(
+        request=request,
+        name="speculative/status.html",
+        context={"row": dict(row), "bg_task": bg_task},
+    )
 
 
 @router.get("/speculative/status/{request_id}/poll", response_class=HTMLResponse)
@@ -119,6 +145,7 @@ def poll_status(request: Request, request_id: int):
     conn = _conn()
     try:
         row = conn.execute("SELECT * FROM speculative_requests WHERE id=?", (request_id,)).fetchone()
+        bg_task = _latest_bg_task(conn, request_id) if row is not None else None
     finally:
         conn.close()
     if row is None:
@@ -126,7 +153,7 @@ def poll_status(request: Request, request_id: int):
     return templates.TemplateResponse(
         request=request,
         name="speculative/_status_fragment.html",
-        context={"row": dict(row)},
+        context={"row": dict(row), "bg_task": bg_task},
     )
 
 

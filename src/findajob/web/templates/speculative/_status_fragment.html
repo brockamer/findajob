@@ -1,7 +1,12 @@
 {# Each branch's outer element carries id="status" + hx-* attrs so that an
    outerHTML swap from the poll endpoint replaces the wrapper with another
    wrapper that ALSO carries the trigger. Without this, the first swap drops
-   the trigger and polling silently stops after one tick. #}
+   the trigger and polling silently stops after one tick.
+
+   `bg_task` is the latest `background_tasks` row for this speculative
+   request (None if no subprocess record exists — pre-M6 stacks or the
+   row hasn't been inserted yet). Surfaces PID + timestamps + error_message
+   from the M6 writeback contract; see #561. #}
 {% if row.status == 'researching' %}
   <div id="status"
        hx-get="/speculative/status/{{ row.id }}/poll"
@@ -10,6 +15,12 @@
        class="rounded border p-4 bg-blue-50">
     <div class="font-semibold">Researching — Perplexity Deep Research takes 1–5 minutes.</div>
     <div class="text-sm text-gray-600 mt-2">This page auto-refreshes every 5 seconds.</div>
+    {% if bg_task %}
+      <div class="text-xs text-gray-500 mt-3">
+        Subprocess started at {{ bg_task.started_at }}
+        {%- if bg_task.pid %} — PID {{ bg_task.pid }}{% endif %}
+      </div>
+    {% endif %}
   </div>
 {% elif row.status == 'ready_for_review' %}
   <div id="status" class="rounded border p-4 bg-green-50">
@@ -19,7 +30,19 @@
 {% elif row.status == 'failed' %}
   <div id="status" class="rounded border p-4 bg-red-50">
     <div class="font-semibold">Research failed</div>
-    <div class="mt-2 text-sm">{{ row.error_message or "(no error message recorded)" }}</div>
+    {# `speculative_requests.error_message` is the workflow-level message
+       (set by `run_speculative_research.py`'s except handler). `bg_task.error_message`
+       is the subprocess-writeback message (set by `record_failed` — captures
+       Popen failures and unhandled exceptions in the orchestrator). Show
+       speculative_requests's first when present; fall back to bg_task's. #}
+    <div class="mt-2 text-sm">{{ row.error_message or (bg_task and bg_task.error_message) or "(no error message recorded)" }}</div>
+    {% if bg_task and bg_task.started_at %}
+      <div class="text-xs text-gray-500 mt-2">
+        Subprocess started at {{ bg_task.started_at }}
+        {%- if bg_task.finished_at %}, finished at {{ bg_task.finished_at }}{% endif %}
+        {%- if bg_task.pid %} (PID {{ bg_task.pid }}){% endif %}
+      </div>
+    {% endif %}
     <form method="post" action="/speculative/regenerate/{{ row.id }}" class="mt-4" hx-boost="false">
       <button type="submit" class="btn btn-primary">Retry</button>
     </form>
