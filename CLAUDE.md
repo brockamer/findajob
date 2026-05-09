@@ -188,6 +188,11 @@ responds in the same request — no poll cycle, no mirror table.
 | Promote | `POST /board/jobs/{fp}/promote` | Review button |
 | Reactivate | `POST /board/jobs/{fp}/reactivate` | Waitlist button |
 | Edit user_notes | `POST /board/jobs/{fp}/notes` | Applied notes input (800ms debounce) |
+| Confirm rejection email | `POST /board/rejections-review/{id}/confirm` | Rejections-review queue (#362) |
+| Dismiss rejection email | `POST /board/rejections-review/{id}/dismiss` | Rejections-review queue (#362) |
+| Reattribute rejection email | `POST /board/rejections-review/{id}/reattribute` | Rejections-review queue (#362) |
+
+The rejections-review row is keyed by `rejection_suggestions.id` rather than `jobs.fingerprint` — the suggestion is the source row, the job_id is found via `matched_job_id` (or operator-supplied on reattribute). Confirm/reattribute call `handle_not_selected(..., changed_by='gmail_rejection_detector')` so the audit trail tags the transition.
 
 **REJECT_REASON dropdown**: 11 options (includes "Low Fit Score"). Behavior depends on STATUS:
 - If STATUS = `Not Selected`: company rejection → `stage=not_selected`, NO `feedback_log`, folder stays in `_applied/` with `NOT_SELECTED_` marker file
@@ -204,6 +209,8 @@ responds in the same request — no poll cycle, no mirror table.
 ### Gmail Integration
 
 Gmail ingestion uses IMAP + app password, configured per-stack at `/config/gmail/`. Transparency contract codified as executable assertions in `tests/test_transparency_invariants.py` — failures there mean the disclosure banner is lying.
+
+The same IMAP integration also drives **rejection detection** (#362): every 30 minutes, `scripts/detect_rejections.py` scans Gmail against `config.rejection_sender_allowlist` (Greenhouse, Ashby, Lever, Workday-style ATS senders) and writes pending rows to `rejection_suggestions` for operator review at `/board/rejections-review/`. Cron entry `detect-rejections` in `ops/scheduled-jobs.yaml`. Operator confirms via the review-queue UI; never auto-flips. Spec: §4.x of `docs/superpowers/specs/2026-05-01-362-rejection-detection-design.md` (operator-private). Company-name aliases live in `config/company_aliases.yaml` (allowlisted in `/config/`; matcher hot-reloads on every cycle).
 
 ### Auth Gate Must Be Verified Post-Deploy
 

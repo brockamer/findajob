@@ -249,6 +249,43 @@ Every rejection, including rejections *from* you (stage = `rejected`) and reject
 
 ---
 
+## Auto-detected company rejections (`/board/rejections-review/`)
+
+When Gmail integration is configured, a background scan runs every 30 minutes against your inbox looking for company rejection emails (Greenhouse, Ashby, Lever, Workday-style, in-house ATS senders). Hits are matched against your active applications and surfaced as a review queue — **never auto-applied**. You confirm with one click and the row transitions to `not_selected` through the same `handle_not_selected` path the manual Reject button uses, with `audit_log.changed_by='gmail_rejection_detector'` so the trail distinguishes Gmail-confirmed from manual transitions later.
+
+**Where to find it:**
+
+- An info bar (📨 Rejection emails detected) appears above the dashboard queue when there are pending suggestions; click **review →** to jump to the queue.
+- Or navigate directly to `/board/rejections-review/`.
+
+**Per-card actions:**
+
+- **Confirm** — applies `not_selected` to the matched job. The matched-job stage must be `applied`/`interview`/`offer`; otherwise the endpoint 409s and you reattribute.
+- **Dismiss** — operator says "this isn't a rejection." The job's stage stays put; the suggestion is marked `dismissed`.
+- **Reattribute** — paste a different `jobs.id` if the matcher picked the wrong row (e.g. a duplicate application at the same company). Applies `not_selected` to the chosen job and records `user_chose_job_id` for traceability.
+
+Rows that the matcher couldn't auto-link to a current application surface as `unmatched` cards — Confirm is hidden, Reattribute or Dismiss are the only paths. The most common cause is **company-name aliasing**: the email's sender display name or body refers to a brand name that doesn't match `jobs.company`. To fix, add an entry to `config/company_aliases.yaml` via the `/config/` editor (the matcher hot-reloads on every cycle — no redeploy):
+
+```yaml
+# alias-or-display-name: canonical-DB-company
+cobot: collaborative robotics
+```
+
+**Schedule and triggers:**
+
+- Steady-state: every 30 minutes via supercronic (`detect-rejections` job in `ops/scheduled-jobs.yaml`). Per-stack timeout override via `FINDAJOB_DETECT_REJECTIONS_TIMEOUT` in `data/.env`.
+- First run on a stack: a backlog sweep over the prior 30 days (capped at 60) so existing inbox rejections aren't lost. Sentinel `gmail_state.json:rejection_backlog_scan_complete` flips on success.
+- A single ntfy notification fires when new suggestions land — opens directly to the review queue.
+
+**Caveats:**
+
+- **LinkedIn doesn't relay rejection emails** — applications submitted via LinkedIn's apply-on-LinkedIn flow get application receipts but not company-side rejections. This is a structural coverage gap, not a detector flaw. For LinkedIn-applied jobs, manual flips remain the path.
+- **HTML-only senders** (some Microsoft / Oracle / Smartrecruiters templates) are handled by a `bs4` fallback in the parser; if a particular sender shape produces empty bodies, you'll see it in `pipeline.jsonl` and the suggestion just won't surface — log a follow-up issue.
+- **Confirmed and dismissed rows are kept** as a write-once dedup log keyed by `gmail_message_id` (so re-running the scan doesn't re-suggest the same email). They don't appear in the queue but are queryable in `rejection_suggestions`.
+- **Already-handled rejections** (the operator already moved the job to `not_selected`/`rejected` before the detector caught up) emit a `rejection_email_corroborated` event in `pipeline.jsonl` and skip the queue, so the review surface stays focused on actionable rows.
+
+---
+
 ## The Materials viewer (`/materials/`)
 
 Three ways to get here:
