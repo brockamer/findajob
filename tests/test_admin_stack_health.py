@@ -63,17 +63,42 @@ def test_stage_counts_aggregate(tmp_path: Path) -> None:
 
 
 def test_stuck_prep_counts_only_over_60min(tmp_path: Path) -> None:
+    """Stuck-prep query reads from ``background_tasks`` (#559 / M6 follow-up).
+
+    Counts only ``running`` rows of ``kind='prep'`` whose ``started_at``
+    is older than 60min (the ``KIND_TIMEOUT_MINUTES['prep']`` threshold).
+    Wall-time format is the space-separated form ``datetime('now')`` writes,
+    matching the production format from ``findajob.background_tasks.record_start``.
+    """
     sp = _stackpath(tmp_path)
-    fresh = (NOW - timedelta(minutes=30)).isoformat()
-    stuck1 = (NOW - timedelta(minutes=61)).isoformat()
-    stuck2 = (NOW - timedelta(hours=3)).isoformat()
+    fresh = (NOW - timedelta(minutes=30)).strftime("%Y-%m-%d %H:%M:%S")
+    stuck1 = (NOW - timedelta(minutes=61)).strftime("%Y-%m-%d %H:%M:%S")
+    stuck2 = (NOW - timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
     build_pipeline_db(
         sp.db_path,
         rows=[
-            {"id": "a", "stage": "prep_in_progress", "prep_started_at": fresh},
-            {"id": "b", "stage": "prep_in_progress", "prep_started_at": stuck1},
-            {"id": "c", "stage": "prep_in_progress", "prep_started_at": stuck2},
-            {"id": "d", "stage": "scored"},  # not prep_in_progress, ignored
+            {"id": "a", "stage": "prep_in_progress"},
+            {"id": "b", "stage": "prep_in_progress"},
+            {"id": "c", "stage": "prep_in_progress"},
+            {"id": "d", "stage": "scored"},
+        ],
+        bg_tasks=[
+            # 'running' + age > 60min → counted
+            {"id": 1, "job_id": "b", "kind": "prep", "started_at": stuck1, "status": "running"},
+            {"id": 2, "job_id": "c", "kind": "prep", "started_at": stuck2, "status": "running"},
+            # 'running' + age < 60min → not counted
+            {"id": 3, "job_id": "a", "kind": "prep", "started_at": fresh, "status": "running"},
+            # 'running' but wrong kind → not counted (M6 has 3 kinds; only 'prep' counts here)
+            {"id": 4, "job_id": "a", "kind": "interview_prep", "started_at": stuck1, "status": "running"},
+            # 'succeeded' (not running) → not counted
+            {
+                "id": 5,
+                "job_id": "a",
+                "kind": "prep",
+                "started_at": stuck2,
+                "status": "succeeded",
+                "finished_at": stuck1,
+            },
         ],
     )
     build_pipeline_jsonl(sp.jsonl_path, [])

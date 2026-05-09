@@ -10,6 +10,7 @@ from typing import Literal
 
 from findajob.admin.jsonl_tail import tail_events
 from findajob.admin.stack_discovery import StackPath
+from findajob.background_tasks import KIND_TIMEOUT_MINUTES
 from findajob.db import connect
 
 logger = logging.getLogger(__name__)
@@ -70,19 +71,31 @@ def gather(stack: StackPath, *, now: datetime | None = None) -> StackHealth:
                     row["stage"]: row["n"]
                     for row in conn.execute("SELECT stage, COUNT(*) AS n FROM jobs GROUP BY stage")
                 }
-                # `stage_updated` is the canonical "when did stage last change"
-                # column written by web handlers (and read by scripts/watchdog.py
-                # for the same stuck-prep reset query). The earlier draft used
-                # a fictional `prep_started_at` column — production smoke 2026-04-30
-                # surfaced "no such column".
-                cutoff = (now - timedelta(minutes=60)).isoformat()
-                stuck_prep_count = conn.execute(
-                    "SELECT COUNT(*) FROM jobs "
-                    "WHERE stage = 'prep_in_progress' "
-                    "AND stage_updated IS NOT NULL "
-                    "AND stage_updated < ?",
-                    (cutoff,),
-                ).fetchone()[0]
+                # Stuck-prep count reads from M6's ``background_tasks`` table
+                # (#554) — the canonical "subprocess is running" signal. The
+                # pre-M6 query against ``jobs.stage='prep_in_progress' AND
+                # stage_updated < cutoff`` had two failure modes the new
+                # source eliminates: a subprocess that crashed before its
+                # exit handler updated stage would not show as stuck, and a
+                # stack with no recent activity could carry a stale stage.
+                # Threshold matches the watchdog reaper (60min for ``prep``)
+                # via ``KIND_TIMEOUT_MINUTES['prep']``. Format is the
+                # space-separated form ``datetime('now')`` writes.
+                #
+                # Pre-M6 stacks lack the ``background_tasks`` table — wrap
+                # the lookup so a missing table is silently 0, same shape
+                # as the ``notifications`` lookup below.
+                try:
+                    cutoff = (now - timedelta(minutes=KIND_TIMEOUT_MINUTES["prep"])).strftime("%Y-%m-%d %H:%M:%S")
+                    stuck_prep_count = conn.execute(
+                        "SELECT COUNT(*) FROM background_tasks "
+                        "WHERE status = 'running' "
+                        "AND kind = 'prep' "
+                        "AND started_at < ?",
+                        (cutoff,),
+                    ).fetchone()[0]
+                except sqlite3.OperationalError:
+                    stuck_prep_count = 0
                 # Notifications table is post-#440; older stacks may lack it.
                 # Wrap the lookup so a missing table is silently a 0.
                 try:
