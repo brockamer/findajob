@@ -265,3 +265,61 @@ def test_migration_filename_pattern(filename: str, should_match: bool) -> None:
 
     matched = _FILENAME_RE.match(filename) is not None
     assert matched is should_match, f"{filename}: expected match={should_match}, got {matched}"
+
+
+# ── #560: documented-dead column drift tripwires ────────────────────────────
+#
+# ``company_signal`` and ``feedback_version`` are columns that exist in the
+# operator's pre-M5 production stack but are absent from ``0001_initial.sql``.
+# Both are dead (no current code references; ``feedback_version`` retains
+# 196 rows of historical data on production). The migration file documents
+# them as intentionally-absent in its §"Intentionally-absent columns" block.
+#
+# These tests are tripwires: if ``src/`` or ``scripts/`` add a reference to
+# either name, OR if 0001 silently grows the column back, the introducer
+# must revisit the drift decision (re-add to 0001? new migration? drop?).
+
+_DOCUMENTED_DEAD_COLUMNS: tuple[str, ...] = ("company_signal", "feedback_version")
+
+
+def test_dead_columns_absent_from_0001() -> None:
+    """0001_initial.sql must not list either documented-dead column.
+
+    The fix in #560 is documentation-only — the columns stay absent from
+    fresh installs and stay present on existing stacks (preserving the
+    historical ``feedback_version`` data). Adding them to 0001 silently
+    would invalidate the drift documentation in the file's header.
+    """
+    initial_sql = (MIGRATIONS_DIR / "0001_initial.sql").read_text(encoding="utf-8")
+    # Strip comment lines so the documentation block in the header doesn't
+    # false-positive — only DDL bodies matter.
+    ddl_only = "\n".join(line for line in initial_sql.splitlines() if not line.lstrip().startswith("--"))
+    for col in _DOCUMENTED_DEAD_COLUMNS:
+        assert col not in ddl_only, (
+            f"Documented-dead column {col!r} appeared in 0001_initial.sql DDL. "
+            f"See the §'Intentionally-absent columns' block in that file (#560)."
+        )
+
+
+def test_dead_columns_absent_from_tracked_code() -> None:
+    """No tracked Python file in ``src/findajob`` or ``scripts`` references
+    either documented-dead column.
+
+    If a future feature wants to revive one, this test fires. The right
+    fix is then either: (a) ship a numbered migration that adds the column
+    via ``ALTER TABLE ... ADD COLUMN IF NOT EXISTS``, OR (b) explain in
+    the issue/PR why the dead-status documentation is wrong.
+    """
+    repo_root = Path(__file__).resolve().parent.parent
+    found: list[str] = []
+    for root in (repo_root / "src" / "findajob", repo_root / "scripts"):
+        for py in root.rglob("*.py"):
+            text = py.read_text(encoding="utf-8")
+            for col in _DOCUMENTED_DEAD_COLUMNS:
+                if col in text:
+                    found.append(f"{py.relative_to(repo_root)}: {col!r}")
+    assert not found, (
+        "Documented-dead column references found in tracked code (#560):\n"
+        + "\n".join(f"  {f}" for f in found)
+        + "\nSee migrations/0001_initial.sql §'Intentionally-absent columns'."
+    )

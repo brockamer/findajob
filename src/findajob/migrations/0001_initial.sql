@@ -14,6 +14,31 @@
 -- is safe (legacy stacks have already had these tables created via the
 -- pre-M5 path, and the M5 heuristic stamps them at version 1 without
 -- ever running this file). Fresh installs run this file exactly once.
+--
+-- ── Intentionally-absent columns (production drift, #560) ─────────────────
+--
+-- The operator's pre-M5 production stack's jobs table carries two columns
+-- that this file deliberately omits because both are dead:
+--
+--   * ``company_signal TEXT DEFAULT ''``  — deprecated in commit ``bd59e3c``;
+--     0 rows populated in production. Never re-introduced.
+--   * ``feedback_version TEXT``           — soft-dead (196/~15k rows
+--     populated historically; no current code path reads or writes it).
+--
+-- Both surfaced when M6 (#555) verified the operator's ``jobs.stage`` CHECK
+-- against this file. ``git grep`` across ``src/``, ``scripts/``, ``tests/``
+-- returns zero references for either name.
+--
+-- Treatment per #560: leave the columns in place on existing stacks
+-- (preserves the 196 rows of ``feedback_version`` data); don't add to 0001
+-- (no fresh-install need); don't ship a DROP migration (no behavior gain
+-- at the cost of irreversible data loss). The drift is documented here
+-- so future readers comparing ``.schema jobs`` on a populated stack
+-- against this file know the diff is intentional.
+--
+-- If a future feature wants to revive either column, the right move is a
+-- new numbered migration (``ALTER TABLE jobs ADD COLUMN ... IF NOT EXISTS``
+-- via PRAGMA pre-check) — never edit this file.
 
 CREATE TABLE IF NOT EXISTS jobs (
     id TEXT PRIMARY KEY,
