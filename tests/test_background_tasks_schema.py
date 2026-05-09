@@ -97,7 +97,8 @@ def test_background_tasks_indexes(db: sqlite3.Connection) -> None:
 
 
 def test_background_tasks_in_schema_version_2(db: sqlite3.Connection) -> None:
-    """After ``apply_pending``, the head migration is 0002 — schema_version=2."""
+    """``background_tasks`` ships at version 2 — schema_version is at least 2 once
+    the table exists. Later migrations advance the head; this test pins the floor."""
     row = db.execute("SELECT value FROM _meta WHERE key='schema_version'").fetchone()
     assert row is not None
-    assert int(row[0]) == 2
+    assert int(row[0]) >= 2

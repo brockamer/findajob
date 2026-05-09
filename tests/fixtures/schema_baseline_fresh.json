@@ -91,6 +91,18 @@
       "type": "index"
     },
     {
+      "name": "rejection_suggestions_matched_job",
+      "sql": "CREATE INDEX rejection_suggestions_matched_job ON rejection_suggestions(matched_job_id)",
+      "tbl_name": "rejection_suggestions",
+      "type": "index"
+    },
+    {
+      "name": "rejection_suggestions_user_action",
+      "sql": "CREATE INDEX rejection_suggestions_user_action ON rejection_suggestions(user_action)",
+      "tbl_name": "rejection_suggestions",
+      "type": "index"
+    },
+    {
       "columns": [
         {
           "cid": 0,
@@ -929,6 +941,143 @@
       "name": "onboarding_sessions",
       "sql": "CREATE TABLE onboarding_sessions(id TEXT PRIMARY KEY,history_json TEXT NOT NULL,captured_blocks_json TEXT NOT NULL DEFAULT '{}',started_at TEXT NOT NULL,last_turn_at TEXT NOT NULL,completed_at TEXT,error_state TEXT,tester_openrouter_key TEXT DEFAULT NULL,tester_rapidapi_key TEXT DEFAULT NULL,cumulative_cost_usd REAL NOT NULL DEFAULT 0)",
       "tbl_name": "onboarding_sessions",
+      "type": "table"
+    },
+    {
+      "columns": [
+        {
+          "cid": 0,
+          "dflt_value": null,
+          "name": "id",
+          "notnull": 0,
+          "pk": 1,
+          "type": "INTEGER"
+        },
+        {
+          "cid": 1,
+          "dflt_value": null,
+          "name": "gmail_message_id",
+          "notnull": 1,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "cid": 2,
+          "dflt_value": null,
+          "name": "received_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "cid": 3,
+          "dflt_value": "datetime('now')",
+          "name": "detected_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "cid": 4,
+          "dflt_value": null,
+          "name": "sender",
+          "notnull": 1,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "cid": 5,
+          "dflt_value": null,
+          "name": "subject",
+          "notnull": 1,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "cid": 6,
+          "dflt_value": null,
+          "name": "body_excerpt",
+          "notnull": 1,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "cid": 7,
+          "dflt_value": null,
+          "name": "extracted_company",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "cid": 8,
+          "dflt_value": null,
+          "name": "extracted_role",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "cid": 9,
+          "dflt_value": null,
+          "name": "matched_job_id",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "cid": 10,
+          "dflt_value": null,
+          "name": "match_status",
+          "notnull": 1,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "cid": 11,
+          "dflt_value": null,
+          "name": "confidence",
+          "notnull": 1,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "cid": 12,
+          "dflt_value": null,
+          "name": "suggested_reason",
+          "notnull": 1,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "cid": 13,
+          "dflt_value": "'pending'",
+          "name": "user_action",
+          "notnull": 1,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "cid": 14,
+          "dflt_value": null,
+          "name": "user_action_at",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "cid": 15,
+          "dflt_value": null,
+          "name": "user_chose_job_id",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        }
+      ],
+      "foreign_keys": [],
+      "name": "rejection_suggestions",
+      "sql": "CREATE TABLE rejection_suggestions(id INTEGER PRIMARY KEY AUTOINCREMENT,gmail_message_id TEXT NOT NULL UNIQUE,received_at TEXT NOT NULL,detected_at TEXT NOT NULL DEFAULT(datetime('now')),sender TEXT NOT NULL,subject TEXT NOT NULL,body_excerpt TEXT NOT NULL,extracted_company TEXT,extracted_role TEXT,matched_job_id TEXT,match_status TEXT NOT NULL,confidence TEXT NOT NULL,suggested_reason TEXT NOT NULL,user_action TEXT NOT NULL DEFAULT 'pending',user_action_at TEXT,user_chose_job_id TEXT)",
+      "tbl_name": "rejection_suggestions",
       "type": "table"
     },
     {
