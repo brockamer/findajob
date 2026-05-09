@@ -11,6 +11,7 @@ from findajob.audit import log_event
 from findajob.classification import JD_MAX_CHARS, strip_jd_boilerplate
 from findajob.cleaning import clean_company, clean_title, extract_linkedin_job_id
 from findajob.fetchers.adapters._keys import resolve_rapidapi_key
+from findajob.fetchers.adapters._slugs import _parse_feed_slugs
 from findajob.paths import BASE, PANDOC
 
 # Per-call throttle to keep morning triage from bursting past the RapidAPI
@@ -168,103 +169,13 @@ def fetch_greenhouse_jobs(feed_urls_path):
     return GreenhouseAdapter(feed_urls_path=feed_urls_path).fetch([])
 
 
-def _parse_feed_slugs(feed_urls_path, slug_regex):
-    """Extract (slug, display_name) from feed_urls.txt for a given URL pattern.
-
-    Inline comments like `https://jobs.lever.co/zoox  # Zoox` are recognized
-    as display-name overrides. Without a comment, the display name defaults
-    to the slug titlecased (best-effort — multi-word slugs still won't split).
-
-    De-duplicates by slug; first occurrence wins.
-
-    Args:
-        feed_urls_path: path to feed_urls.txt
-        slug_regex: compiled regex with one capture group for the slug
-    Returns:
-        list of (slug, display_name) tuples
-    """
-    try:
-        with open(feed_urls_path) as f:
-            lines = [line.rstrip("\n") for line in f]
-    except FileNotFoundError:
-        return []
-
-    results = []
-    seen: set[str] = set()
-    for raw in lines:
-        line = raw.strip()
-        if not line or line.startswith("#"):
-            continue
-        # Split off any trailing comment — the part BEFORE the # is the URL.
-        if "#" in line:
-            url_part, _, comment = line.partition("#")
-            url_part = url_part.strip()
-            display = comment.strip() or None
-        else:
-            url_part = line
-            display = None
-        m = slug_regex.search(url_part)
-        if not m:
-            continue
-        slug = m.group(1)
-        if slug in seen:
-            continue
-        seen.add(slug)
-        # Default display name: titlecase the slug so "zoox" → "Zoox".
-        # User-supplied comment wins when present.
-        results.append((slug, display or slug.title()))
-    return results
-
-
 def fetch_ashby_jobs(feed_urls_path):
-    """Fetch jobs via Ashby public posting API.
+    """Thin wrapper around `AshbyAdapter` retained for `triage.orchestrator`
+    backward compatibility until #410.5 cuts the orchestrator over to pure
+    registry iteration. New code should use `AshbyAdapter()` directly."""
+    from findajob.fetchers.adapters.ashby import AshbyAdapter
 
-    Parses slugs from ashbyhq.com URLs in feed_urls.txt. Supports inline
-    `# Display Name` comments for company-name override.
-    API: https://api.ashbyhq.com/posting-api/job-board/{slug}
-    """
-    import requests as req
-
-    jobs: list[dict[str, str]] = []
-    slug_re = re.compile(r"ashbyhq\.com/([A-Za-z0-9_.-]+)")
-    feeds = _parse_feed_slugs(feed_urls_path, slug_re)
-    if not feeds:
-        return jobs
-
-    headers = {"User-Agent": "findajob-pipeline/1.0 (personal job search tool)"}
-
-    for slug, display_name in feeds:
-        api_url = f"https://api.ashbyhq.com/posting-api/job-board/{slug}"
-        try:
-            try:
-                resp = req.get(api_url, headers=headers, timeout=30)
-            except req.exceptions.Timeout:
-                log_event("ashby_fetch_retry", slug=slug, reason="timeout")
-                resp = req.get(api_url, headers=headers, timeout=30)
-            if resp.status_code != 200:
-                log_event("ashby_fetch_skip", slug=slug, status=resp.status_code)
-                continue
-            ashby_jobs = resp.json().get("jobs", [])
-            for j in ashby_jobs:
-                loc = j.get("location") or ""
-                if isinstance(loc, dict):
-                    loc = loc.get("name", "")
-                jobs.append(
-                    {
-                        "title": clean_title(j.get("title", "")),
-                        "company": clean_company(display_name),
-                        "url": j.get("jobUrl", ""),
-                        "location": loc,
-                        "source": "ashby_json",
-                        "description": j.get("descriptionHtml", "") or j.get("descriptionPlain", ""),
-                    }
-                )
-            log_event("ashby_fetch", slug=slug, count=len(ashby_jobs))
-        except Exception as e:
-            log_event("ashby_fetch_error", slug=slug, error=str(e))
-        time.sleep(0.3)
-
-    return jobs
+    return AshbyAdapter(feed_urls_path=feed_urls_path).fetch([])
 
 
 def fetch_lever_jobs(feed_urls_path):
