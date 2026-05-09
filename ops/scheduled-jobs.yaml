@@ -73,3 +73,9 @@ jobs:
     command: "timeout 600 python3 /app/scripts/discover_companies.py"
     description: "Sunday 02:00 — competency-driven company discovery (#284)."
     enabled: true
+
+  detect-rejections:
+    schedule: "*/30 * * * *"
+    command: "timeout ${FINDAJOB_DETECT_REJECTIONS_TIMEOUT:-600} python3 /app/scripts/detect_rejections.py"
+    description: "Scan Gmail for company rejection emails matching active applications; surface as suggestions (#362)."
+    enabled: true

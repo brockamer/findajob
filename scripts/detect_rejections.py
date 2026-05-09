@@ -1,0 +1,218 @@
+"""Cron entry point for rejection detection (#362).
+
+Runs every 30 min via supercronic. Per-stack stagger via
+``FINDAJOB_DETECT_REJECTIONS_SCHEDULE`` in stack ``.env``.
+
+Flow:
+    1. ``load_config()`` — early exit if Gmail unconfigured (no-op).
+    2. First-run backlog sweep when ``state.rejection_backlog_scan_complete``
+       is False; otherwise incremental UID-checkpointed scan.
+    3. ``classify_email()`` per message; ``match_job()`` against
+       ``applied/interview/offer`` rows.
+    4. Spec §4.8 corroborated path: when classifier flags a confident
+       rejection but the matcher returns ``unmatched``, secondary lookup
+       against ``not_selected``/``rejected`` rows. Hits log
+       ``rejection_email_corroborated`` and skip the review queue.
+    5. Persist new suggestions to ``rejection_suggestions``; one ntfy
+       per cycle (§4.6 throttle).
+    6. Advance ``state.rejection_last_uid`` on every successful run so
+       steady-state cycles are incremental.
+
+Spec: ``docs/superpowers/specs/2026-05-01-362-rejection-detection-design.md``
+§4.1, §4.6, §4.7, §4.8.
+"""
+
+from __future__ import annotations
+
+import dataclasses
+import sqlite3
+import sys
+from typing import Any
+
+from rapidfuzz import fuzz
+
+from findajob.audit import log_event
+from findajob.db import connect
+from findajob.gmail_imap import (
+    TestResult,
+    fetch_new_messages_for_rejection_scan,
+    load_config,
+    load_state,
+    save_state,
+)
+from findajob.notifications import ntfy
+from findajob.paths import BASE
+from findajob.rejection_detector import classify_email, match_job
+
+DB_PATH = f"{BASE}/data/pipeline.db"
+
+# Spec §4.7: configurable, default 30 days, capped at 60. ``GmailState``
+# ships ``rejection_backlog_window_days=0`` as the unset sentinel; falling
+# back to this constant rather than bumping the dataclass default keeps
+# already-deployed stacks from silently re-triggering backlog scans.
+_DEFAULT_BACKLOG_WINDOW_DAYS = 30
+_MAX_BACKLOG_WINDOW_DAYS = 60
+
+# Mirrors ``rejection_detector.matcher._company_match`` (token_set_ratio >= 80).
+# Pinned here rather than imported because corroboration is a private path
+# in the orchestrator — the matcher's threshold is the design anchor, not
+# a runtime dependency.
+_CORROBORATION_FUZZ_THRESHOLD = 80
+
+
+def main() -> int:
+    config = load_config()
+    if config is None:
+        log_event("rejection_scan_skipped", reason="gmail_unconfigured")
+        return 0
+
+    state = load_state()
+    is_backlog_run = not state.rejection_backlog_scan_complete
+
+    if is_backlog_run:
+        window = state.rejection_backlog_window_days or _DEFAULT_BACKLOG_WINDOW_DAYS
+        window = min(window, _MAX_BACKLOG_WINDOW_DAYS)
+        log_event("rejection_backlog_scan_started", days=window)
+        outcome = fetch_new_messages_for_rejection_scan(config, state, since_days=window)
+    else:
+        window = None
+        outcome = fetch_new_messages_for_rejection_scan(config, state)
+
+    if outcome.result is not TestResult.SUCCESS:
+        log_event("rejection_scan_failed", reason=outcome.result.value)
+        return 0
+
+    suggestions_created = 0
+    corroborated = 0
+
+    conn = connect(DB_PATH, timeout=30)
+    conn.row_factory = sqlite3.Row
+    try:
+        for _sender, raw in outcome.messages:
+            suggestion = classify_email(raw)
+            if suggestion is None:
+                continue
+
+            match = match_job(
+                conn,
+                suggestion.extracted_company,
+                suggestion.extracted_role,
+                suggestion.received_at,
+            )
+
+            if match.status == "unmatched":
+                handled_id = _find_corroborating_handled_job(conn, suggestion.extracted_company)
+                if handled_id is not None:
+                    log_event(
+                        "rejection_email_corroborated",
+                        gmail_message_id=suggestion.gmail_message_id,
+                        matched_job_id=handled_id,
+                        confidence=suggestion.confidence,
+                        sender_domain=suggestion.sender.split("@", 1)[-1] if "@" in suggestion.sender else "",
+                    )
+                    corroborated += 1
+                    continue
+
+            if _persist_suggestion(conn, suggestion, match):
+                suggestions_created += 1
+    finally:
+        conn.close()
+
+    state_changed = False
+    if outcome.new_uid is not None and outcome.new_uid > state.rejection_last_uid:
+        state = dataclasses.replace(state, rejection_last_uid=outcome.new_uid)
+        state_changed = True
+    if is_backlog_run and not state.rejection_backlog_scan_complete:
+        state = dataclasses.replace(state, rejection_backlog_scan_complete=True)
+        state_changed = True
+    if state_changed:
+        save_state(state)
+
+    if suggestions_created > 0:
+        if is_backlog_run:
+            ntfy.send(
+                title="Rejection backlog scan complete",
+                body=(
+                    f"First-run backlog scan — {suggestions_created} rejection(s) detected "
+                    f"over prior {window} days. Review queue ready."
+                ),
+                cta_url="/board/rejections-review/",
+            )
+        else:
+            ntfy.send(
+                title="New rejection email(s) detected",
+                body=f"{suggestions_created} new rejection(s) — review queue updated.",
+                cta_url="/board/rejections-review/",
+            )
+
+    log_event(
+        "rejection_scan_completed",
+        scanned=len(outcome.messages),
+        suggestions_created=suggestions_created,
+        corroborated=corroborated,
+        is_backlog_run=is_backlog_run,
+    )
+    return 0
+
+
+def _find_corroborating_handled_job(conn: sqlite3.Connection, extracted_company: str | None) -> str | None:
+    """Find an already-handled (not_selected/rejected) job matching the email's company.
+
+    Coarse company match using rapidfuzz at the same threshold the matcher's
+    private ``_company_match`` uses. No alias-config lookup here —
+    corroboration is review-queue noise suppression, not the canonical
+    match path. False negatives only manifest as one extra ``unmatched``
+    suggestion the operator dismisses.
+    """
+    if not extracted_company:
+        return None
+    rows = conn.execute(
+        """
+        SELECT id, company FROM jobs
+        WHERE stage IN ('not_selected', 'rejected') AND synthetic = 0
+        """
+    ).fetchall()
+    extracted_lower = extracted_company.lower()
+    for row in rows:
+        company = row["company"] or ""
+        if not company:
+            continue
+        if fuzz.token_set_ratio(company.lower(), extracted_lower) >= _CORROBORATION_FUZZ_THRESHOLD:
+            return row["id"]
+    return None
+
+
+def _persist_suggestion(conn: sqlite3.Connection, suggestion: Any, match: Any) -> bool:
+    """Insert one rejection suggestion. Returns True on insert, False on dedup hit.
+
+    ``gmail_message_id`` UNIQUE constraint makes ``INSERT OR IGNORE`` the
+    durable dedup gate — a re-run after a crash will not double-suggest.
+    """
+    cur = conn.execute(
+        """
+        INSERT OR IGNORE INTO rejection_suggestions (
+            gmail_message_id, received_at, sender, subject, body_excerpt,
+            extracted_company, extracted_role, matched_job_id, match_status,
+            confidence, suggested_reason
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            suggestion.gmail_message_id,
+            suggestion.received_at,
+            suggestion.sender,
+            suggestion.subject,
+            suggestion.body_excerpt,
+            suggestion.extracted_company,
+            suggestion.extracted_role,
+            match.job_id,
+            match.status,
+            suggestion.confidence,
+            suggestion.suggested_reason,
+        ),
+    )
+    conn.commit()
+    return cur.rowcount > 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
