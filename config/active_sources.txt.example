@@ -4,15 +4,18 @@
 #
 # Adapter names match registry identifiers in
 # src/findajob/fetchers/adapters/registry.py — currently:
-#   - jobs-api14   # Jobs API (RapidAPI)
-#   - jsearch      # JSearch (RapidAPI)
-#   - greenhouse   # Greenhouse boards (public API; needs feed_urls.txt slugs)
-#   - ashby        # Ashby boards (public API; needs feed_urls.txt slugs)
-#   - lever        # Lever boards (public API; needs feed_urls.txt slugs)
-#   - gmail        # Gmail job-alert digests (IMAP; needs config/gmail.json)
+#   - jobs-api14         # Jobs API (RapidAPI)
+#   - jobs-api14-indeed  # Jobs API Indeed endpoint (RapidAPI; shares JOBS_API14_KEY)
+#   - jobs-api14-bing    # Jobs API Bing endpoint (RapidAPI; shares JOBS_API14_KEY) — opt-in
+#   - jsearch            # JSearch (RapidAPI)
+#   - greenhouse         # Greenhouse boards (public API; needs feed_urls.txt slugs)
+#   - ashby              # Ashby boards (public API; needs feed_urls.txt slugs)
+#   - lever              # Lever boards (public API; needs feed_urls.txt slugs)
+#   - gmail              # Gmail job-alert digests (IMAP; needs config/gmail.json)
 
 jobs-api14
 greenhouse
 ashby
 lever
 gmail
+# jobs-api14-bing  # Uncomment to enable Bing endpoint (#422; opt-in until first triage-day measurement decides title-allowlist tuning)

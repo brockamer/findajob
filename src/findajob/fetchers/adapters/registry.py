@@ -13,6 +13,7 @@ from .base import JobSourceAdapter
 from .gmail import GmailLinkedInAdapter
 from .greenhouse import GreenhouseAdapter
 from .jobs_api14 import JobsApi14Adapter
+from .jobs_api14_bing import JobsApi14BingAdapter
 from .jobs_api14_indeed import JobsApi14IndeedAdapter
 from .jsearch import JSearchAdapter
 from .lever import LeverAdapter
@@ -20,6 +21,7 @@ from .lever import LeverAdapter
 REGISTERED_ADAPTERS: list[type[JobSourceAdapter]] = [
     JobsApi14Adapter,  # type: ignore[list-item]
     JobsApi14IndeedAdapter,  # type: ignore[list-item]
+    JobsApi14BingAdapter,  # type: ignore[list-item]
     JSearchAdapter,  # type: ignore[list-item]
     GreenhouseAdapter,  # type: ignore[list-item]
     AshbyAdapter,  # type: ignore[list-item]
@@ -27,15 +29,22 @@ REGISTERED_ADAPTERS: list[type[JobSourceAdapter]] = [
     GmailLinkedInAdapter,  # type: ignore[list-item]
 ]
 
-# Default when config/active_sources.txt is missing or empty: every registered
-# adapter is enabled. Pre-#410.5 the orchestrator fired the four
+# Default when config/active_sources.txt is missing or empty: every adapter
+# whose pre-#410.5 behavior was "fired by the orchestrator regardless of
+# active_sources.txt." Pre-#410.5 the orchestrator fired the four
 # fetch_*_jobs wrappers (greenhouse / ashby / lever / gmail) unconditionally
-# and only the RapidAPI adapters were registry-gated, so the *effective*
-# default surface was "every adapter that is_configured()". Keeping the
-# pre-#408 ["jobs-api14"]-only default after #410.5 would silently drop four
-# sources for any stack without an explicit file. is_configured() remains the
-# correct gate for "can this adapter run on this stack" — active_sources.txt
-# is for "operator opted some out", not "operator forgot to opt in".
+# and only the RapidAPI adapters (jobs-api14 / jobs-api14-indeed / jsearch)
+# were registry-gated. Keeping the pre-#408 ["jobs-api14"]-only default
+# after #410.5 would silently drop four sources for any stack without an
+# explicit file. is_configured() remains the correct gate for "can this
+# adapter run on this stack" — active_sources.txt is for "operator opted
+# some out", not "operator forgot to opt in".
+#
+# **New adapters added post-#410.5 are NOT auto-enabled.** They go into
+# REGISTERED_ADAPTERS (so the conformance + registry-membership invariants
+# see them) but stay out of this default list — operators opt in via
+# `config/active_sources.txt`. `jobs-api14-bing` (#422) is the first
+# adapter to follow this opt-in pattern.
 _DEFAULT_ACTIVE_SOURCES: list[str] = [
     "jobs-api14",
     "jobs-api14-indeed",
@@ -44,6 +53,7 @@ _DEFAULT_ACTIVE_SOURCES: list[str] = [
     "ashby",
     "lever",
     "gmail",
+    # jobs-api14-bing intentionally omitted — opt-in only (#422 AC #3).
 ]
 
 

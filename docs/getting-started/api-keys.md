@@ -92,6 +92,7 @@ live connection test.
 |---|---|---|---|---|
 | **jobs-api14** | `jobs-api14` | `RAPIDAPI_KEY` (canonical) or `JOBS_API14_KEY` (legacy fallback, #414) | LinkedIn — broad coverage, LinkedIn-heavy | 150 req/month (BASIC); 20,000 req/month (PRO) |
 | **jobs-api14 (Indeed)** | `jobs-api14-indeed` | `RAPIDAPI_KEY` (canonical) or `JOBS_API14_KEY` (legacy fallback, #414) | Indeed — broad US coverage, inline JD | shares per-account quota with jobs-api14 |
+| **jobs-api14 (Bing)** | `jobs-api14-bing` | `RAPIDAPI_KEY` (canonical) or `JOBS_API14_KEY` (legacy fallback, #414) | Bing — 18 jobs/page, inline JD | shares per-account quota with jobs-api14 |
 | **JSearch** | `jsearch` | `RAPIDAPI_KEY` (canonical) or `JSEARCH_API_KEY` (legacy fallback, #414) | LinkedIn + Indeed + Glassdoor + ZipRecruiter | 200 req/month (BASIC); 20,000 req/month (PRO) |
 
 > **Adapter names matter.** The values in the "Adapter name" column above are what you must put in `config/active_sources.txt` — one per line. Stacks without `config/active_sources.txt` default to `jobs-api14` (LinkedIn-only); the file is written by the onboarding picker for new stacks.
@@ -102,9 +103,11 @@ live connection test.
 > jobs-api14-indeed
 > ```
 
-> **PRO/ULTRA/MEGA tiers:** Indeed and LinkedIn share the same per-account quota — upgrading your RapidAPI plan raises the limit for both feeds together (PRO: 20,000 req/month shared).
+> **PRO/ULTRA/MEGA tiers:** Indeed, Bing, and LinkedIn share the same per-account quota — upgrading your RapidAPI plan raises the limit for all three feeds together (PRO: 20,000 req/month shared).
 
 > **Note (Indeed title allowlist):** The `jobs-api14-indeed` adapter applies a hardcoded title allowlist tuned for engineering / operations / program-management / hardware / data-center families. Non-engineering candidates may see sparse Indeed pulls until a follow-up issue lifts this to a config file. See `_TITLE_ALLOW_PATTERN` in `src/findajob/fetchers/adapters/jobs_api14_indeed.py` for the full regex.
+
+> **Note (Bing — opt-in, no allowlist initially):** The `jobs-api14-bing` adapter (#422) is **default-off** — add `jobs-api14-bing` to `config/active_sources.txt` to enable it. Unlike Indeed, Bing ships with no title-allowlist post-filter; AC #4 of #422 calls for an empirical decision after one triage-day measurement (tracked in #601). Until that follow-up lands, all titles flow through. 18 jobs per page (vs Indeed's 20 / LinkedIn's 10) on the same shared quota.
 
 #### Pagination tuning (PRO-tier)
 
