@@ -8,7 +8,9 @@
 #   - jsearch      # JSearch (RapidAPI)
 #   - greenhouse   # Greenhouse boards (public API; needs feed_urls.txt slugs)
 #   - ashby        # Ashby boards (public API; needs feed_urls.txt slugs)
+#   - lever        # Lever boards (public API; needs feed_urls.txt slugs)
 
 jobs-api14
 greenhouse
 ashby
+lever

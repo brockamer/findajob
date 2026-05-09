@@ -14,6 +14,7 @@ from .greenhouse import GreenhouseAdapter
 from .jobs_api14 import JobsApi14Adapter
 from .jobs_api14_indeed import JobsApi14IndeedAdapter
 from .jsearch import JSearchAdapter
+from .lever import LeverAdapter
 
 REGISTERED_ADAPTERS: list[type[JobSourceAdapter]] = [
     JobsApi14Adapter,  # type: ignore[list-item]
@@ -21,6 +22,7 @@ REGISTERED_ADAPTERS: list[type[JobSourceAdapter]] = [
     JSearchAdapter,  # type: ignore[list-item]
     GreenhouseAdapter,  # type: ignore[list-item]
     AshbyAdapter,  # type: ignore[list-item]
+    LeverAdapter,  # type: ignore[list-item]
 ]
 
 _DEFAULT_ACTIVE_SOURCES: list[str] = ["jobs-api14"]

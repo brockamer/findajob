@@ -1,7 +1,6 @@
 """Job fetching from Greenhouse, RapidAPI (LinkedIn/Indeed), and Gmail."""
 
 import os
-import re
 import subprocess
 import sys
 import time
@@ -11,7 +10,6 @@ from findajob.audit import log_event
 from findajob.classification import JD_MAX_CHARS, strip_jd_boilerplate
 from findajob.cleaning import clean_company, clean_title, extract_linkedin_job_id
 from findajob.fetchers.adapters._keys import resolve_rapidapi_key
-from findajob.fetchers.adapters._slugs import _parse_feed_slugs
 from findajob.paths import BASE, PANDOC
 
 # Per-call throttle to keep morning triage from bursting past the RapidAPI
@@ -179,51 +177,12 @@ def fetch_ashby_jobs(feed_urls_path):
 
 
 def fetch_lever_jobs(feed_urls_path):
-    """Fetch jobs via Lever public postings API.
+    """Thin wrapper around `LeverAdapter` retained for `triage.orchestrator`
+    backward compatibility until #410.5 cuts the orchestrator over to pure
+    registry iteration. New code should use `LeverAdapter()` directly."""
+    from findajob.fetchers.adapters.lever import LeverAdapter
 
-    Parses slugs from lever.co URLs in feed_urls.txt. Supports inline
-    `# Display Name` comments for company-name override.
-    API: https://api.lever.co/v0/postings/{slug}
-    """
-    import requests as req
-
-    jobs: list[dict[str, str]] = []
-    slug_re = re.compile(r"lever\.co/([A-Za-z0-9_.-]+)")
-    feeds = _parse_feed_slugs(feed_urls_path, slug_re)
-    if not feeds:
-        return jobs
-
-    headers = {"User-Agent": "findajob-pipeline/1.0 (personal job search tool)"}
-
-    for slug, display_name in feeds:
-        api_url = f"https://api.lever.co/v0/postings/{slug}"
-        try:
-            resp = req.get(api_url, headers=headers, timeout=15)
-            if resp.status_code != 200:
-                log_event("lever_fetch_skip", slug=slug, status=resp.status_code)
-                continue
-            lever_jobs = resp.json()
-            if not isinstance(lever_jobs, list):
-                log_event("lever_fetch_skip", slug=slug, status="unexpected_format")
-                continue
-            for j in lever_jobs:
-                cats = j.get("categories", {})
-                jobs.append(
-                    {
-                        "title": clean_title(j.get("text", "")),
-                        "company": clean_company(display_name),
-                        "url": j.get("hostedUrl", ""),
-                        "location": cats.get("location", ""),
-                        "source": "lever_json",
-                        "description": j.get("descriptionPlain", "") or j.get("description", ""),
-                    }
-                )
-            log_event("lever_fetch", slug=slug, count=len(lever_jobs))
-        except Exception as e:
-            log_event("lever_fetch_error", slug=slug, error=str(e))
-        time.sleep(0.3)
-
-    return jobs
+    return LeverAdapter(feed_urls_path=feed_urls_path).fetch([])
 
 
 _NEW_INSTALL_DAYS = 30
