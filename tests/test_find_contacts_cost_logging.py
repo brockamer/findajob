@@ -1,4 +1,4 @@
-"""Cost-logging tests for generate_outreach() in scripts/find_contacts.py.
+"""Cost-logging tests for generate_outreach() in findajob.find_contacts.
 
 HTTP-mocked tests for the wrapper-driven generate_outreach() helper after the Phase 2 port.
 Each call to generate_outreach() writes a cost_log row with API-authoritative cost_usd
@@ -84,7 +84,7 @@ def test_generate_outreach_writes_cost_log_with_api_cost(tmp_path) -> None:
     conn.row_factory = sqlite3.Row
     conn.executescript(COST_LOG_SCHEMA)
 
-    from scripts.find_contacts import generate_outreach
+    from findajob.find_contacts import generate_outreach
 
     outdir = str(tmp_path / "outreach")
     with (
@@ -120,7 +120,7 @@ def test_generate_outreach_writes_cost_log_with_api_cost(tmp_path) -> None:
 
 def test_generate_outreach_without_conn_works_normally(tmp_path) -> None:
     """generate_outreach with no conn still writes the outreach file."""
-    from scripts.find_contacts import generate_outreach
+    from findajob.find_contacts import generate_outreach
 
     outdir = str(tmp_path / "out")
     with (
@@ -162,9 +162,9 @@ def test_generate_outreach_passes_cached_prefix() -> None:
             generation_id="g",
         )
 
-    from scripts.find_contacts import generate_outreach
+    from findajob.find_contacts import generate_outreach
 
-    with patch("scripts.find_contacts.complete", _fake_complete):
+    with patch("findajob.find_contacts.complete", _fake_complete):
         generate_outreach(
             _CONTACT,
             "Acme",
@@ -191,7 +191,7 @@ def test_generate_outreach_does_not_write_on_openrouter_error(tmp_path) -> None:
     conn.row_factory = sqlite3.Row
     conn.executescript(COST_LOG_SCHEMA)
 
-    from scripts.find_contacts import generate_outreach
+    from findajob.find_contacts import generate_outreach
 
     outdir = str(tmp_path / "outreach-err")
     with (

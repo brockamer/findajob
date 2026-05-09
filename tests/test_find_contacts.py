@@ -1,7 +1,10 @@
-"""Regression tests for scripts.find_contacts — #184 / #164.
+"""Regression tests for findajob.find_contacts — #184 / #164.
 
 Missing connections.csv must degrade silently (no find_contacts_error event).
 True parse/IO errors must still log.
+
+Module path moved from ``scripts.find_contacts`` to ``findajob.find_contacts``
+in #557 (M3+ extraction).
 """
 
 from __future__ import annotations
@@ -12,7 +15,7 @@ import pytest
 @pytest.fixture
 def fc(monkeypatch, tmp_path):
     """Import find_contacts module with CONNECTIONS redirected to a tmp path."""
-    from scripts import find_contacts as mod
+    from findajob import find_contacts as mod
 
     csv_path = tmp_path / "connections.csv"
     monkeypatch.setattr(mod, "CONNECTIONS", str(csv_path))
