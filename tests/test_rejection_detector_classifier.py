@@ -110,3 +110,87 @@ def test_layer1_extracted_company_and_role() -> None:
     assert suggestion is not None
     assert suggestion.extracted_company is not None
     assert "ExampleCo" in suggestion.extracted_company
+
+
+# ─── #585: classifier extraction-bug regression fixtures ─────────────────────
+# Four real rejection-email shapes from operator's May-09 first-run backlog
+# that the original `_INTEREST_RE` / `_POSITION_RE` regexes misextracted.
+# Each fixture asserts BOTH confidence='high' AND that the extraction
+# returned a usable value — guards against silent extraction failure that
+# the older confidence-only tests would have missed.
+
+
+def test_thanks_subject_extracts_company_not_role_token() -> None:
+    """Subject 'Thanks for your interest in X, Name' must extract X.
+
+    Regression: the original `_INTEREST_RE` required literal 'thank you' so
+    the subject missed entirely. Body extraction then over-captured a role
+    token ('the Program Manager') from 'interest in the Program Manager...
+    role with COMPANY' — exactly the Zoox-shape failure in operator's queue.
+    """
+    raw = (FIXTURES / "lever" / "thanks_subject_role_in_body.eml").read_bytes()
+    suggestion = classify_email(raw)
+    assert suggestion is not None
+    assert suggestion.confidence == "high"
+    assert suggestion.extracted_company is not None
+    assert "NimbusCo" in suggestion.extracted_company
+    # The role token 'the Program Manager' MUST NOT leak into the company field.
+    assert "Program Manager" not in suggestion.extracted_company
+
+
+def test_so_much_adverb_interjection_still_extracts() -> None:
+    """Body 'Thank you so much for your interest in X' must still extract X.
+
+    Regression: the original regex required `for` to immediately follow
+    `you`; 'so much' between them broke the match — Anthropic-shape
+    failure where extracted_company stayed None on operator's queue.
+    """
+    raw = (FIXTURES / "greenhouse" / "so_much_interjection.eml").read_bytes()
+    suggestion = classify_email(raw)
+    assert suggestion is not None
+    assert suggestion.confidence == "high"
+    assert suggestion.extracted_company is not None
+    assert "AcmeAI" in suggestion.extracted_company
+    # The continuation 'AcmeAI and for the time' must NOT leak into the
+    # captured company value — the ' and ' alternation in the terminator
+    # class is the load-bearing piece.
+    assert "and for the time" not in suggestion.extracted_company
+
+
+def test_as_the_next_step_continuation_terminates_company() -> None:
+    """'interest in X as the next step in your career' must extract X, not the tail.
+
+    Regression: lazy `.+?` over-captured up to the period at end of
+    sentence because there was no comma/period between the company and the
+    role-context continuation — Cobot-shape failure on operator's queue
+    that surfaced as `extracted_company='Cobot as the next step in your career'`.
+    """
+    raw = (FIXTURES / "ashby" / "as_the_next_step.eml").read_bytes()
+    suggestion = classify_email(raw)
+    assert suggestion is not None
+    assert suggestion.confidence == "high"
+    assert suggestion.extracted_company is not None
+    assert "AcmeRoboCo" in suggestion.extracted_company
+    assert "as the next step" not in suggestion.extracted_company
+
+
+def test_for_our_role_extracts_role() -> None:
+    """Body 'for our [ROLE]' must extract the role.
+
+    Regression: the original `_POSITION_RE` only accepted 'for the
+    position' / 'application for' shapes — 'for our [ROLE]' produced
+    None for `extracted_role`, leaving the matcher with only a company
+    to disambiguate by, which collapses to 'ambiguous' when the company
+    has multiple active applications. Crusoe-shape failure on operator's
+    queue.
+    """
+    raw = (FIXTURES / "ashby" / "for_our_role.eml").read_bytes()
+    suggestion = classify_email(raw)
+    assert suggestion is not None
+    assert suggestion.confidence == "high"
+    assert suggestion.extracted_company is not None
+    assert "AcmeCloudCo" in suggestion.extracted_company
+    assert suggestion.extracted_role is not None
+    # Either 'Infrastructure Engineer' or 'Lab Manager' is acceptable —
+    # both are role tokens the matcher can use for disambiguation.
+    assert "Infrastructure Engineer" in suggestion.extracted_role or "Lab Manager" in suggestion.extracted_role

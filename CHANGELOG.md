@@ -10,6 +10,9 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Fixed
+- **#585 fix(rejection_detector): `_INTEREST_RE` + `_POSITION_RE` miss three real rejection-email shapes.** Discovered post-#362 first-run backlog scan against operator's actual Gmail on 2026-05-09: 4 of 5 surfaced suggestions had wrong or missing extracted company. Three classifier-extraction defects + one role-extraction defect were the cause (the fourth issue is corroboration-coupling, tracked separately as #586). `_INTEREST_RE` now accepts (a) the "Thanks" subject shorthand alongside "Thank you" via `(?:thanks?\s+you|thanks)`; (b) up to 3 adverb words between "Thank you" and "for" via `(?:\s+\w+){0,3}` so "Thank you **so much** for your interest in COMPANY" stops being silently rejected; (c) ` as `, ` and `, ` for our/the ` in the terminator alternation so lazy `.+?` capture terminates at the company boundary instead of running to end-of-sentence on shapes like "interest in COMPANY as the next step in your career". `_POSITION_RE` adds `for our` alongside `for the position` / `application for` so role extraction works on bodies like "for our Infrastructure Engineer, Lab Manager role" — previously these emitted None for `extracted_role` and forced the matcher into ambiguous when the company had multiple active applications. Four new redacted `.eml` fixtures landed under `tests/fixtures/rejection_emails/` (lever/thanks_subject_role_in_body.eml, greenhouse/so_much_interjection.eml, ashby/as_the_next_step.eml, ashby/for_our_role.eml), each with a paired regression test that asserts BOTH `confidence='high'` AND that the extraction returned a usable, non-leaking value — the older confidence-only tests passed silently while extraction returned junk like `'Cobot as the next step in your career'`. All 24 classifier tests + 97 rejection-detector + adjacent tests pass.
+
 ## [0.22.0] — 2026-05-09
 
 ### Migration required

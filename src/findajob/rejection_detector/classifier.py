@@ -94,13 +94,39 @@ def _suggest_reason(body_lower: str) -> str:
     return "Company passed"
 
 
+# Three real-corpus shapes drove the v0.22.1 relaxations (#585):
+#   • Subject "Thanks for your interest in COMPANY" — the literal "thank you"
+#     prefix missed the "Thanks" shorthand, so subject extraction fell through
+#     to a body that often began "Thank you for your interest in <ROLE> with
+#     <COMPANY>" and over-captured the role token. The Thanks?(?:\s+you)?
+#     alternation accepts both shapes.
+#   • Body "Thank you so much for your interest in COMPANY" — adverb
+#     interjections between "you" and "for" broke the original literal match.
+#     The (?:\s+\w+){0,3} optional-adverb run matches "so much", "very much",
+#     "very very much" without losing the anchor on "for your".
+#   • Body "interest in COMPANY as the next step in your career" — no comma
+#     or period between the company and the role-context continuation, so the
+#     lazy .+? captured the whole sentence. The new terminator alternation
+#     adds " as ", " and ", " for our/the " so the capture stops at the
+#     company boundary.
+# `_POSITION_RE` separately gained "for our" alongside "for the position" /
+# "application for" so role extraction works on bodies like "for our
+# Infrastructure Engineer, Lab Manager role" — previously these emitted
+# None for extracted_role and forced the matcher into ambiguous when the
+# company had multiple active applications.
 _INTEREST_RE = re.compile(
-    r"(?:thank you for your (?:interest|application) in|"
-    r"update on your application (?:for the position )?(?:at|to))\s+(.+?)(?:[.,!?\n]|$)",
+    r"(?:"
+    r"(?:thanks?\s+you|thanks)(?:\s+\w+){0,3}\s+for\s+your\s+(?:interest|application)\s+in"
+    r"|"
+    r"update\s+on\s+your\s+application(?:\s+for\s+the\s+position)?\s+(?:at|to)"
+    r")"
+    r"\s+(.+?)"
+    r"(?:[.,!?\n]|\s+as\s+|\s+and\s+|\s+for\s+(?:our|the)\s+|$)",
     re.IGNORECASE,
 )
 _POSITION_RE = re.compile(
-    r"(?:for the position(?: of)?|application for(?: the)?(?: position(?: of)?)?)\s+(.+?)(?:\s+at\s+|[.,!?\n]|$)",
+    r"(?:for the position(?: of)?|for our|application for(?: the)?(?: position(?: of)?)?)"
+    r"\s+(.+?)(?:\s+at\s+|[.,!?\n]|$)",
     re.IGNORECASE,
 )
 
