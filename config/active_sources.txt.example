@@ -6,5 +6,7 @@
 # src/findajob/fetchers/adapters/registry.py — currently:
 #   - jobs-api14   # Jobs API (RapidAPI)
 #   - jsearch      # JSearch (RapidAPI)
+#   - greenhouse   # Greenhouse boards (public API; needs feed_urls.txt slugs)
 
 jobs-api14
+greenhouse

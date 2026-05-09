@@ -9,6 +9,7 @@ from findajob.audit import log_event
 from findajob.paths import BASE
 
 from .base import JobSourceAdapter
+from .greenhouse import GreenhouseAdapter
 from .jobs_api14 import JobsApi14Adapter
 from .jobs_api14_indeed import JobsApi14IndeedAdapter
 from .jsearch import JSearchAdapter
@@ -17,6 +18,7 @@ REGISTERED_ADAPTERS: list[type[JobSourceAdapter]] = [
     JobsApi14Adapter,  # type: ignore[list-item]
     JobsApi14IndeedAdapter,  # type: ignore[list-item]
     JSearchAdapter,  # type: ignore[list-item]
+    GreenhouseAdapter,  # type: ignore[list-item]
 ]
 
 _DEFAULT_ACTIVE_SOURCES: list[str] = ["jobs-api14"]

@@ -1,6 +1,5 @@
 """Job fetching from Greenhouse, RapidAPI (LinkedIn/Indeed), and Gmail."""
 
-import html
 import os
 import re
 import subprocess
@@ -161,68 +160,12 @@ def fetch_jd(job):
 
 # ── Job Source Fetching ──
 def fetch_greenhouse_jobs(feed_urls_path):
-    """
-    Fetch jobs via Greenhouse public JSON API.
-    Replaces fetch_rss_jobs() — Greenhouse deprecated all RSS feeds.
-    Parses slugs from existing greenhouse URL entries in feed_urls.txt.
-    JD content is included inline; pandoc conversion deferred to fetch_jd()
-    so it only runs for jobs that pass dedup (not all jobs fetched).
-    """
-    import requests as req
+    """Thin wrapper around `GreenhouseAdapter` retained for `triage.orchestrator`
+    backward compatibility until #410.5 cuts the orchestrator over to pure
+    registry iteration. New code should use `GreenhouseAdapter()` directly."""
+    from findajob.fetchers.adapters.greenhouse import GreenhouseAdapter
 
-    jobs: list[dict[str, str]] = []
-    try:
-        with open(feed_urls_path) as f:
-            urls = [line.strip() for line in f if line.strip() and not line.startswith("#")]
-    except FileNotFoundError:
-        return jobs
-
-    slug_re = re.compile(r"(?:job-)?boards(?:\.eu)?\.greenhouse\.io/([A-Za-z0-9_.-]+)")
-    seen_slugs: set[str] = set()
-    slugs = []
-    for url in urls:
-        m = slug_re.search(url)
-        if m:
-            slug = m.group(1)
-            is_eu = ".eu." in url
-            if slug not in seen_slugs:
-                seen_slugs.add(slug)
-                slugs.append((slug, is_eu))
-
-    gh_headers = {"User-Agent": "findajob-pipeline/1.0 (personal job search tool)"}
-
-    for slug, _is_eu in slugs:
-        # Greenhouse API host is always boards-api.greenhouse.io regardless of
-        # board subdomain (boards.eu.greenhouse.io is the web board only).
-        api_url = f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true"
-        try:
-            resp = req.get(api_url, headers=gh_headers, timeout=15)
-            if resp.status_code == 429:
-                wait = min(int(resp.headers.get("Retry-After", "10")), 60)
-                log_event("greenhouse_rate_limit", slug=slug, wait=wait)
-                time.sleep(wait)
-                resp = req.get(api_url, headers=gh_headers, timeout=15)
-            if resp.status_code != 200:
-                log_event("greenhouse_fetch_skip", slug=slug, status=resp.status_code)
-                continue
-            gh_jobs = resp.json().get("jobs", [])
-            for j in gh_jobs:
-                jobs.append(
-                    {
-                        "title": clean_title(j.get("title", "")),
-                        "company": clean_company(j.get("company_name", "") or slug),
-                        "url": j.get("absolute_url", ""),
-                        "location": (j.get("location") or {}).get("name", ""),
-                        "source": "greenhouse_json",
-                        "description": html.unescape(j.get("content", "") or ""),
-                    }
-                )
-            log_event("greenhouse_fetch", slug=slug, count=len(gh_jobs))
-        except Exception as e:
-            log_event("greenhouse_fetch_error", slug=slug, error=str(e))
-        time.sleep(0.3)
-
-    return jobs
+    return GreenhouseAdapter(feed_urls_path=feed_urls_path).fetch([])
 
 
 def _parse_feed_slugs(feed_urls_path, slug_regex):
