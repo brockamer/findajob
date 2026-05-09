@@ -9,8 +9,10 @@
 #   - greenhouse   # Greenhouse boards (public API; needs feed_urls.txt slugs)
 #   - ashby        # Ashby boards (public API; needs feed_urls.txt slugs)
 #   - lever        # Lever boards (public API; needs feed_urls.txt slugs)
+#   - gmail        # Gmail job-alert digests (IMAP; needs config/gmail.json)
 
 jobs-api14
 greenhouse
 ashby
 lever
+gmail

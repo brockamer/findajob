@@ -10,6 +10,7 @@ from findajob.paths import BASE
 
 from .ashby import AshbyAdapter
 from .base import JobSourceAdapter
+from .gmail import GmailLinkedInAdapter
 from .greenhouse import GreenhouseAdapter
 from .jobs_api14 import JobsApi14Adapter
 from .jobs_api14_indeed import JobsApi14IndeedAdapter
@@ -23,6 +24,7 @@ REGISTERED_ADAPTERS: list[type[JobSourceAdapter]] = [
     GreenhouseAdapter,  # type: ignore[list-item]
     AshbyAdapter,  # type: ignore[list-item]
     LeverAdapter,  # type: ignore[list-item]
+    GmailLinkedInAdapter,  # type: ignore[list-item]
 ]
 
 _DEFAULT_ACTIVE_SOURCES: list[str] = ["jobs-api14"]

@@ -521,75 +521,13 @@ def parse_jobs_from_email_imap(message) -> list[dict]:
 
 
 def fetch_gmail_jobs(since_days: int | None = None):
-    """Fetch new job-alert messages via IMAP+app-password and parse to job rows.
-
-    Off state (no config/gmail.json) returns [] silently. Auth failures
-    increment a streak; on the 2→3 transition we ntfy the user. Transient
-    errors (timeouts / SSL) do NOT increment the streak.
-
-    ``since_days`` triggers a SINCE-N-days search instead of the normal
-    incremental UID fetch — for diagnostic/backfill runs only.
+    """Thin wrapper around `GmailLinkedInAdapter` retained for `triage.orchestrator`
+    backward compatibility until #410.5 cuts the orchestrator over to pure
+    registry iteration. New code should use `GmailLinkedInAdapter()` directly.
 
     See docs/superpowers/specs/2026-04-30-330-design.md §6 for the full
-    contract.
+    contract (off state, auth-failure streak, since_days backfill semantics).
     """
-    import email as email_lib
-    from dataclasses import replace
-    from datetime import UTC, datetime
+    from findajob.fetchers.adapters.gmail import GmailLinkedInAdapter
 
-    from findajob import gmail_imap
-
-    config = gmail_imap.load_config()
-    if config is None:
-        log_event("gmail_skipped", reason="not_configured")
-        return []
-
-    state = gmail_imap.load_state()
-    outcome = gmail_imap.fetch_new_messages(config, state, since_days=since_days)
-
-    if outcome.result == gmail_imap.TestResult.AUTH_FAILED:
-        new_streak = state.auth_failure_streak + 1
-        gmail_imap.save_state(replace(state, auth_failure_streak=new_streak, last_error="auth_failed"))
-        log_event("gmail_auth_failed", streak=new_streak)
-        if new_streak == 3:
-            try:
-                notify_send_raw("🔐 Gmail login failed — refresh app password at /config/gmail/")
-            except Exception as e:
-                log_event("gmail_ntfy_send_failed", error=str(e))
-        return []
-
-    if outcome.result == gmail_imap.TestResult.CONNECTION_ERROR:
-        log_event("gmail_connection_error")
-        return []
-
-    # SUCCESS — fetch_new_messages always populates new_uid/new_uidvalidity on
-    # success (gmail_imap.py:306-310); narrow for mypy.
-    assert outcome.new_uid is not None and outcome.new_uidvalidity is not None
-    now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
-    gmail_imap.save_state(
-        replace(
-            state,
-            last_uid=outcome.new_uid,
-            last_uidvalidity=outcome.new_uidvalidity,
-            auth_failure_streak=0,
-            last_fetched_at=now,
-            last_login_at=now,
-            last_error=None,
-        )
-    )
-
-    sender_counts: dict[str, int] = {}
-    for sender, _ in outcome.messages:
-        sender_counts[sender] = sender_counts.get(sender, 0) + 1
-    log_event("gmail_messages_found", count=len(outcome.messages), by_sender=sender_counts)
-
-    jobs = []
-    for sender, raw_bytes in outcome.messages:
-        try:
-            msg = email_lib.message_from_bytes(raw_bytes)
-            for job in parse_jobs_from_email_imap(msg):
-                job["source"] = _normalize_sender_to_source(sender, job.get("url", ""))
-                jobs.append(job)
-        except Exception as e:
-            log_event("gmail_parse_error", error=str(e))
-    return jobs
+    return GmailLinkedInAdapter(since_days=since_days).fetch([])
