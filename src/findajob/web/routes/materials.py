@@ -232,6 +232,40 @@ def materials_index(request: Request, db: sqlite3.Connection = Depends(get_db)) 
     )
 
 
+def _resolve_folder_with_speculative_fallback(fingerprint: str, db: sqlite3.Connection, root: Path) -> Path | None:
+    """resolve_folder + synthetic-row fallback to speculative_briefing_folder.
+
+    Synthetic rows have no prep_folder_path until flag-for-prep, but the
+    speculative briefing folder exists on disk from approve-time. Both the
+    folder index and the per-file route need to reach into it; keeping the
+    fallback in one place avoids the drift that produced #589 (folder index
+    rendered the speculative briefing row, single-file route 404'd).
+
+    Returns None when the row has no usable folder. Callers decide UX:
+    folder_view redirects synthetic-no-folder rows to /jd, file_serve 404s.
+    """
+    folder = resolve_folder(fingerprint, db, root)
+    if folder is not None:
+        return folder
+    synth_row = db.execute(
+        "SELECT synthetic, speculative_briefing_folder FROM jobs WHERE fingerprint = ?",
+        (fingerprint,),
+    ).fetchone()
+    if synth_row is None or not synth_row["synthetic"]:
+        return None
+    spec_folder_name = synth_row["speculative_briefing_folder"]
+    if not spec_folder_name:
+        return None
+    spec_folder = (root / spec_folder_name).resolve()
+    try:
+        spec_folder.relative_to(root.resolve())
+    except ValueError:
+        return None  # path-traversal guard on the stored folder name
+    if not spec_folder.is_dir():
+        return None
+    return spec_folder
+
+
 @router.get("/materials/{fingerprint}", response_class=HTMLResponse, response_model=None)
 def folder_view(
     fingerprint: str,
@@ -241,30 +275,17 @@ def folder_view(
     from findajob.cost_rollups import per_job_breakdown
 
     root: Path = request.app.state.companies_root
-    folder = resolve_folder(fingerprint, db, root)
+    folder = _resolve_folder_with_speculative_fallback(fingerprint, db, root)
     if folder is None:
-        # Synthetic rows have no prep folder until flag-for-prep. If the
-        # speculative briefing folder exists on disk, surface its contents
-        # (briefing.md is classified as "Briefing (speculative)" by
-        # _classify_file). Otherwise fall back to the role-card description.
+        # Synthetic rows with no usable briefing folder land on the role-card
+        # description page; non-synthetic missing-folder is a 404.
         synth_row = db.execute(
-            "SELECT synthetic, speculative_briefing_folder FROM jobs WHERE fingerprint = ?",
+            "SELECT synthetic FROM jobs WHERE fingerprint = ?",
             (fingerprint,),
         ).fetchone()
         if synth_row is not None and synth_row["synthetic"]:
-            spec_folder_name = synth_row["speculative_briefing_folder"]
-            if spec_folder_name:
-                spec_folder = (root / spec_folder_name).resolve()
-                try:
-                    spec_folder.relative_to(root.resolve())
-                except ValueError:
-                    spec_folder = None  # path-traversal guard
-                if spec_folder is not None and spec_folder.is_dir():
-                    folder = spec_folder
-            if folder is None:
-                return RedirectResponse(url=f"/jobs/{fingerprint}/jd", status_code=303)
-        else:
-            raise HTTPException(status_code=404, detail="folder not found")
+            return RedirectResponse(url=f"/jobs/{fingerprint}/jd", status_code=303)
+        raise HTTPException(status_code=404, detail="folder not found")
     row = db.execute("SELECT id, title, company, stage FROM jobs WHERE fingerprint = ?", (fingerprint,)).fetchone()
     title = row["title"] if row else ""
     company = row["company"] if row else ""
@@ -332,7 +353,7 @@ def file_serve(
     raw: int = 0,
 ):
     root: Path = request.app.state.companies_root
-    folder = resolve_folder(fingerprint, db, root)
+    folder = _resolve_folder_with_speculative_fallback(fingerprint, db, root)
     if folder is None:
         raise HTTPException(status_code=404, detail="folder not found")
     candidate = (folder / filename).resolve()

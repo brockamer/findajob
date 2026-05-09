@@ -262,6 +262,126 @@ def test_file_serve_markdown_escapes_raw_html(client: TestClient, companies_root
     assert "<script>" not in r.text
 
 
+def test_file_serve_speculative_briefing_renders_for_synthetic_row(
+    client: TestClient, companies_root: Path, db_path: Path
+) -> None:
+    """Synthetic rows have no prep_folder_path until flag-for-prep, but the
+    speculative briefing folder exists on disk. file_serve must mirror the
+    folder_view fallback (#485) and serve briefing.md from
+    speculative_briefing_folder. Regression for #589."""
+    spec_folder_name = "Locus_Robotics_SPECULATIVE_2026-05-09_084936"
+    spec_folder = companies_root / spec_folder_name
+    spec_folder.mkdir()
+    (spec_folder / "briefing.md").write_text("# Locus Robotics Brief\n\nDeep research follows.\n")
+
+    conn = sqlite3.connect(db_path)
+    _insert_job(
+        conn,
+        "fp-spec-render",
+        synthetic=1,
+        speculative_briefing_folder=spec_folder_name,
+        stage="speculative_review",
+        title="[SPEC] Locus Robotics",
+        company="Locus Robotics",
+        source="web_speculative",
+    )
+    conn.commit()
+    conn.close()
+
+    r = client.get("/materials/fp-spec-render/briefing.md")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/html")
+    assert "<h1>Locus Robotics Brief</h1>" in r.text
+
+
+def test_file_serve_speculative_briefing_raw_returns_source(
+    client: TestClient, companies_root: Path, db_path: Path
+) -> None:
+    """?raw=1 must work for the speculative-fallback path so the Copy MD
+    button on the speculative briefing folder page returns byte-identical
+    source. Regression for #589."""
+    spec_folder_name = "Acme_SPECULATIVE_2026-05-09_120000"
+    spec_folder = companies_root / spec_folder_name
+    spec_folder.mkdir()
+    source = "# Acme\n\n- bullet **bold**\n\nResearch summary.\n"
+    (spec_folder / "briefing.md").write_text(source, encoding="utf-8")
+
+    conn = sqlite3.connect(db_path)
+    _insert_job(
+        conn,
+        "fp-spec-raw",
+        synthetic=1,
+        speculative_briefing_folder=spec_folder_name,
+        stage="speculative_review",
+        title="[SPEC] Acme",
+        company="Acme",
+        source="web_speculative",
+    )
+    conn.commit()
+    conn.close()
+
+    r = client.get("/materials/fp-spec-raw/briefing.md?raw=1")
+    assert r.status_code == 200
+    assert r.text == source
+    assert r.headers["content-type"].startswith("text/plain")
+
+
+def test_file_serve_speculative_traversal_still_rejected(
+    client: TestClient, companies_root: Path, db_path: Path
+) -> None:
+    """Path-traversal guard must remain effective once the speculative
+    fallback activates — `../escape` resolves outside the briefing folder
+    and must 404, not leak adjacent files. Regression for #589."""
+    spec_folder_name = "Acme_SPECULATIVE_2026-05-09_130000"
+    spec_folder = companies_root / spec_folder_name
+    spec_folder.mkdir()
+    (spec_folder / "briefing.md").write_text("# Inside\n")
+    # A sibling file that traversal might try to reach.
+    (companies_root / "secret.md").write_text("# Outside\n")
+
+    conn = sqlite3.connect(db_path)
+    _insert_job(
+        conn,
+        "fp-spec-trav",
+        synthetic=1,
+        speculative_briefing_folder=spec_folder_name,
+        stage="speculative_review",
+        title="[SPEC] Acme",
+        company="Acme",
+        source="web_speculative",
+    )
+    conn.commit()
+    conn.close()
+
+    r = client.get("/materials/fp-spec-trav/..%2Fsecret.md")
+    assert r.status_code == 404
+
+
+def test_file_serve_speculative_404_when_briefing_folder_missing(
+    client: TestClient, companies_root: Path, db_path: Path
+) -> None:
+    """Synthetic row with speculative_briefing_folder pointing to a
+    non-existent dir on disk must 404 — the helper returns None and
+    file_serve has no folder to serve from. (folder_view redirects to /jd
+    in this case; file_serve does not — different UX contract.)"""
+    conn = sqlite3.connect(db_path)
+    _insert_job(
+        conn,
+        "fp-spec-missing",
+        synthetic=1,
+        speculative_briefing_folder="Never_Created_2026-05-09",
+        stage="speculative_review",
+        title="[SPEC] Ghost",
+        company="Ghost",
+        source="web_speculative",
+    )
+    conn.commit()
+    conn.close()
+
+    r = client.get("/materials/fp-spec-missing/briefing.md")
+    assert r.status_code == 404
+
+
 def test_index_groups_jobs_by_stage(client: TestClient, companies_root: Path, db_path: Path) -> None:
     for folder_name in ("M1", "_applied/M2", "_waitlisted/M3", "_rejected/M4"):
         (companies_root / folder_name).mkdir(parents=True)
