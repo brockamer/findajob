@@ -287,7 +287,10 @@ echo "  index renders with expected sections"
 
 # /docs/ must be reachable — regression guard for #224: docs/ was not baked
 # into the image in v0.3.1, so the slug routes 404'd post-deploy.
-for slug in "" usage troubleshooting setup setup/install-docker; do
+# Slug list mirrors a representative subset of findajob.web.routes.docs._PAGES;
+# `setup/*` was renamed to `getting-started/*` in the May-8 docs cleanup
+# (#499–#503) and this list followed in v0.22.
+for slug in "" usage troubleshooting getting-started getting-started/install-docker; do
     HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:${VIEWER_PORT}/docs/${slug}" || echo "FAIL")
     if [ "$HTTP_CODE" != "200" ]; then
         echo "ERROR: /docs/${slug} returned $HTTP_CODE (expected 200)" >&2
