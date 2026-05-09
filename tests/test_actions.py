@@ -265,6 +265,30 @@ class TestHandleNotSelected:
         stage_audit = next(a for a in audits if a["field_changed"] == "stage")
         assert stage_audit["new_value"] == "not_selected"
 
+    def test_changed_by_propagates_to_audit_log(self, db):
+        """changed_by keyword passes through to both audit rows for #362 §4.5.2 traceability."""
+        job = insert_job(db, stage="applied")
+        actions.handle_not_selected(db, job, "Company Passed", changed_by="gmail_rejection_detector")
+
+        audits = db.execute(
+            "SELECT field_changed, changed_by FROM audit_log WHERE job_id=? ORDER BY id",
+            (job["id"],),
+        ).fetchall()
+        assert len(audits) == 2
+        assert all(a["changed_by"] == "gmail_rejection_detector" for a in audits)
+
+    def test_changed_by_default_preserves_manual_flow(self, db):
+        """Omitting changed_by leaves the audit row at the table default 'system'."""
+        job = insert_job(db, stage="applied")
+        actions.handle_not_selected(db, job, "Company Passed")
+
+        audits = db.execute(
+            "SELECT changed_by FROM audit_log WHERE job_id=? ORDER BY id",
+            (job["id"],),
+        ).fetchall()
+        assert len(audits) == 2
+        assert all(a["changed_by"] == "system" for a in audits)
+
 
 # ── handle_waitlist ─────────────────────────────────────────────────────────
 

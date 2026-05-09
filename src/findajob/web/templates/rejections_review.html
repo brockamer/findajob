@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}Rejections review — findajob{% endblock %}
+{% block main_classes %}max-w-5xl mx-auto px-4 py-6{% endblock %}
+{% block content %}
+<div class="mb-6">
+  <h1 class="text-2xl font-semibold text-slate-900">Rejection review queue</h1>
+  <p class="mt-1 text-sm text-slate-600">
+    Gmail-detected company rejection emails. Confirm to mark the matched job as
+    <code class="text-xs">not_selected</code>; dismiss if it's not actually a rejection;
+    reattribute if it should apply to a different job. Nothing flips automatically.
+  </p>
+  <p class="mt-2 text-xs text-slate-500">
+    {{ pending_count }} pending. Confirmed and dismissed rows are kept as a dedup log
+    (queryable in <code class="text-xs">rejection_suggestions</code>) but don't appear here.
+  </p>
+</div>
+
+{% if pending_count == 0 %}
+  <div class="rounded-md border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600">
+    No pending suggestions. The detector runs every 30 minutes against your Gmail
+    rejection allowlist.
+  </div>
+{% else %}
+  <ul class="space-y-4">
+    {% for item in items %}
+      <li id="suggestion-{{ item.id }}"
+          class="rounded-md border {% if item.confidence == 'high' %}border-amber-300 bg-amber-50{% else %}border-slate-200 bg-white{% endif %} p-4 shadow-sm">
+        <div class="flex items-start justify-between gap-4">
+          <div class="min-w-0 flex-1">
+            <div class="flex flex-wrap items-center gap-2 text-xs">
+              <span class="rounded-full px-2 py-0.5 font-medium
+                           {% if item.confidence == 'high' %}bg-amber-200 text-amber-900{% else %}bg-slate-200 text-slate-700{% endif %}">
+                {{ item.confidence }}
+              </span>
+              <span class="rounded-full bg-slate-100 px-2 py-0.5 text-slate-700">{{ item.suggested_reason }}</span>
+              <span class="text-slate-500">{{ item.sender_domain }}</span>
+              <span class="text-slate-400">received {{ item.received_at }}</span>
+            </div>
+            <h2 class="mt-1 text-base font-medium text-slate-900 break-words">{{ item.subject }}</h2>
+            <p class="mt-2 text-sm text-slate-600 break-words">{{ item.body_excerpt }}</p>
+            {% if item.extracted_company or item.extracted_role %}
+              <p class="mt-2 text-xs text-slate-500">
+                Extracted:
+                {% if item.extracted_company %}<span class="font-medium">{{ item.extracted_company }}</span>{% endif %}
+                {% if item.extracted_company and item.extracted_role %} · {% endif %}
+                {% if item.extracted_role %}<span>{{ item.extracted_role }}</span>{% endif %}
+              </p>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="mt-3 rounded border border-slate-200 bg-white p-3 text-sm">
+          {% if item.matched_job_id %}
+            <div class="text-slate-700">
+              <span class="text-xs uppercase tracking-wide text-slate-500">Matched job</span><br>
+              <span class="font-medium">{{ item.matched_title }}</span> at
+              <span class="font-medium">{{ item.matched_company }}</span>
+              <span class="ml-1 text-xs text-slate-500">({{ item.matched_stage }})</span>
+            </div>
+          {% else %}
+            <div class="text-slate-600">
+              <span class="text-xs uppercase tracking-wide text-slate-500">Match status</span><br>
+              <span class="italic">{{ item.match_status }}</span> — pick a job below or dismiss.
+            </div>
+          {% endif %}
+        </div>
+
+        <div class="mt-3 flex flex-wrap items-center gap-2">
+          {% if item.matched_job_id %}
+            <button type="button"
+                    class="rounded bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-800"
+                    hx-post="/board/rejections-review/{{ item.id }}/confirm"
+                    hx-target="#suggestion-{{ item.id }}"
+                    hx-swap="outerHTML">
+              Confirm
+            </button>
+          {% endif %}
+          <button type="button"
+                  class="rounded border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100"
+                  hx-post="/board/rejections-review/{{ item.id }}/dismiss"
+                  hx-target="#suggestion-{{ item.id }}"
+                  hx-swap="outerHTML">
+            Dismiss
+          </button>
+          <details class="ml-auto text-sm">
+            <summary class="cursor-pointer rounded border border-slate-300 bg-white px-3 py-1.5 font-medium text-slate-700 hover:bg-slate-100">
+              Reattribute
+            </summary>
+            <form class="mt-2 flex flex-wrap items-center gap-2"
+                  hx-post="/board/rejections-review/{{ item.id }}/reattribute"
+                  hx-target="#suggestion-{{ item.id }}"
+                  hx-swap="outerHTML">
+              <label class="text-xs text-slate-600">
+                Job ID
+                <input type="text" name="job_id" required
+                       class="ml-1 w-72 rounded border border-slate-300 px-2 py-1 text-sm font-mono"
+                       placeholder="paste jobs.id from /board/...">
+              </label>
+              <button type="submit"
+                      class="rounded bg-slate-700 px-3 py-1 text-sm font-medium text-white hover:bg-slate-800">
+                Apply
+              </button>
+            </form>
+          </details>
+        </div>
+      </li>
+    {% endfor %}
+  </ul>
+{% endif %}
+{% endblock %}

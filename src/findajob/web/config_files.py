@@ -27,6 +27,10 @@ EDITABLE_CATEGORIES: dict[str, list[str] | str] = {
         "config/in_domain_patterns.yaml",
         "config/jsearch_queries.txt",
         "config/feed_urls.txt",
+        # #362 — operator-curated company-name aliases for the rejection-detection
+        # matcher. Edited live via /config/; hot-reloaded on the next detection
+        # cycle (matcher reads the file on every match_job call).
+        "config/company_aliases.yaml",
     ],
     "Role prompts": "config/roles/*.md",
 }

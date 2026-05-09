@@ -67,10 +67,26 @@ def handle_rejection(conn: sqlite3.Connection, job: Any, reason: str) -> bool:
     return folder_moved
 
 
-def handle_not_selected(conn: sqlite3.Connection, job: Any, reason: str) -> bool:
+def handle_not_selected(
+    conn: sqlite3.Connection,
+    job: Any,
+    reason: str,
+    *,
+    changed_by: str | None = None,
+) -> bool:
     """Company rejected the application. Sets stage=not_selected, drops a marker file.
+
     Does NOT write to feedback_log — company rejections should not feed the scorer.
-    Folder stays in _applied/ (no move). Returns False (no folder moved)."""
+    Folder stays in _applied/ (no move). Returns False (no folder moved).
+
+    Args:
+        changed_by: audit_log changed_by tag. ``None`` preserves the existing
+            manual-flow behavior (audit row inserted without the column,
+            falling through to the table default ``'system'``). Pass
+            ``'gmail_rejection_detector'`` from the rejections-review confirm
+            endpoint per spec §4.5.2 so the audit trail distinguishes
+            operator-confirmed Gmail-detected rejections from manual flips.
+    """
     now = datetime.now(UTC).isoformat()
     old_stage = job["stage"]
     conn.execute(
@@ -88,8 +104,8 @@ def handle_not_selected(conn: sqlite3.Connection, job: Any, reason: str) -> bool
         log_event("marker_added_not_selected", job_id=job["id"], folder=os.path.basename(folder), reason=reason)
 
     conn.commit()
-    write_audit(conn, job["id"], "stage", old_stage, "not_selected")
-    write_audit(conn, job["id"], "reject_reason", "", reason)
+    write_audit(conn, job["id"], "stage", old_stage, "not_selected", changed_by=changed_by)
+    write_audit(conn, job["id"], "reject_reason", "", reason, changed_by=changed_by)
     log_event("job_not_selected", job_id=job["id"], company=job["company"], title=job["title"], reason=reason)
     return False
 

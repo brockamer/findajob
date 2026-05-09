@@ -1,0 +1,34 @@
+# company_aliases.yaml — operator-curated company-name aliases for the
+# rejection-detection matcher (#362). Copy this file to company_aliases.yaml
+# and edit. The runtime path is gitignored.
+#
+# Why this exists:
+#   When a recruiter / ATS sends a rejection email, the "From" display name
+#   and the email body's company reference often diverge from the canonical
+#   name stored in the DB's `jobs.company` column. Example: Collaborative
+#   Robotics markets the product as "Cobot"; their Ashby `From:` header is
+#   "Cobot Hiring Team" and the body opens "Thank you for your interest in
+#   Cobot..." but the operator applied to "Collaborative Robotics".
+#
+#   Without an alias, the rejection-detection matcher's token-set fuzzy
+#   match returns zero overlap and the email surfaces as `unmatched`. The
+#   operator then has to reattribute manually every time the same alias
+#   recurs.
+#
+# SHAPE:
+#   <alias-or-display-name>: <canonical-DB-company>
+#
+# Both keys and values are case-insensitive at match time. Multi-word values
+# are fine. Values must match the company string the operator typed when
+# applying (or whatever ingest stored).
+#
+# The matcher hot-reloads this file on every classify-and-match cycle, so
+# editing via /config/ takes effect on the next /detect-rejections cron tick.
+#
+# Missing file → no aliases (matcher uses pure token-set on the email's
+# extracted company against jobs.company).
+
+# Example seed — uncomment if it applies to your search:
+# cobot: collaborative robotics
+
+# Add discovered aliases below as your operator confirmation queue surfaces them.

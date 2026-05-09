@@ -98,6 +98,7 @@ def dashboard(
     materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
     visible = _resolve_visible(specs, parsed)
     discoveries = load_discoveries_summary(request.app.state.base_root)
+    rejections_pending = _rejections_pending_count(db)
     templates = request.app.state.templates
     return templates.TemplateResponse(
         request=request,
@@ -112,8 +113,21 @@ def dashboard(
             "tab": "dashboard",
             "materials_base_url": materials_base_url,
             "discoveries": discoveries,
+            "rejections_pending": rejections_pending,
         },
     )
+
+
+def _rejections_pending_count(db: sqlite3.Connection) -> int:
+    """Pending rejection-review queue count for the dashboard widget (#362).
+
+    Tolerates pre-#362 stacks where ``rejection_suggestions`` doesn't exist
+    yet by returning 0 — same shape as the analogous notifications guard.
+    """
+    try:
+        return int(db.execute("SELECT COUNT(*) FROM rejection_suggestions WHERE user_action = 'pending'").fetchone()[0])
+    except sqlite3.OperationalError:
+        return 0
 
 
 _APPLIED_DEFAULT_SORT = "applied_date"

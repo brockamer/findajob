@@ -1,0 +1,14 @@
+{# Rejection-review widget — #362 Task 5.
+   Renders a one-line info bar when rejection_suggestions has pending rows;
+   nothing when zero (so the dashboard stays uncluttered on quiet days).
+
+   Reads ``rejections_pending`` from the dashboard context (board.py) and
+   from the standalone /board/rejections-review/widget HTMX endpoint. #}
+{% if rejections_pending and rejections_pending > 0 %}
+<div class="mb-3 px-3 py-2 rounded-sm bg-amber-50 border border-amber-200 text-sm text-amber-900 flex flex-wrap items-center gap-x-2">
+  <span aria-hidden="true">📨</span>
+  <span class="font-medium">Rejection emails detected:</span>
+  <span>{{ rejections_pending }} pending review</span>
+  <a href="/board/rejections-review/" class="ml-auto text-amber-800 hover:underline font-medium">review →</a>
+</div>
+{% endif %}

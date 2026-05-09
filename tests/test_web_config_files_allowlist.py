@@ -25,6 +25,7 @@ from findajob.web.config_files import (
         "config/in_domain_patterns.yaml",
         "config/jsearch_queries.txt",
         "config/feed_urls.txt",
+        "config/company_aliases.yaml",
         "config/roles/job_scorer.md",
         "config/roles/cover_letter_writer.md",
         "config/roles/onboarding_interviewer.md",
