@@ -41,26 +41,27 @@ def test_orchestrator_loads_without_env_read(monkeypatch):
     assert calls == [], f"importing findajob.prep.orchestrator called load_env() {len(calls)} time(s); expected 0"
 
 
-def test_orchestrator_exposes_main_and_abbrev_title():
-    """`main` and `abbrev_title` are the deliberate public symbols.
+def test_orchestrator_exposes_main():
+    """`main` is the deliberate public symbol of the orchestrator.
 
-    `notify` was removed in the M3 cleanup PR — callers now import
+    `abbrev_title` was consolidated to `findajob.prep_naming` in #556 —
+    callers (this module + `scripts/rename_folders.py`) now import from
+    there. `notify` was removed in the M3 cleanup PR — callers now import
     `quick_notify` from `findajob.notifications.ntfy`.
     """
-    from findajob.prep.orchestrator import abbrev_title, main
+    from findajob.prep.orchestrator import main
 
     assert callable(main)
-    assert callable(abbrev_title)
 
 
 def test_abbrev_title_behavior():
-    """Behavior preserved from scripts/prep_application.py.
+    """Behavior preserved across the M3+ consolidation (#556).
 
-    Folder convention: `{Company}_{AbbrevTitle}_{YYYY-MM-DD}_{HHMMSS}` —
-    title abbreviated to first 3 words, underscored. CLAUDE.md "Output
-    Folder Format" rule.
+    Canonical home is `findajob.prep_naming` — co-located with
+    `safe_filename_part`. Folder convention from CLAUDE.md:
+    `{Company}_{AbbrevTitle}_{YYYY-MM-DD}_{HHMMSS}`.
     """
-    from findajob.prep.orchestrator import abbrev_title
+    from findajob.prep_naming import abbrev_title
 
     assert abbrev_title("Senior Software Engineer") == "Senior_Software_Engineer"
     assert abbrev_title("Senior Software Engineer III") == "Senior_Software_Engineer"

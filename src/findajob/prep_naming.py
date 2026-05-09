@@ -14,6 +14,14 @@ import re
 _UNSAFE_FNAME_CHARS: re.Pattern[str] = re.compile(r"[^\w\s\-&.,]")
 
 
+def abbrev_title(title: str, max_words: int = 3) -> str:
+    """Return a folder-safe abbreviated title: first N significant words joined with underscores."""
+    title = re.sub(r"\s*\(.*?\)", "", title)  # strip parentheticals
+    title = re.sub(r"[^\w\s-]", "", title)  # remove punctuation
+    words = [w for w in title.split() if w][:max_words]
+    return "_".join(words) if words else "Job"
+
+
 def safe_filename_part(s: str | None, max_len: int = 80) -> str:
     """Sanitize a string for use as a filename component.
 

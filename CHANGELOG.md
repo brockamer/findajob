@@ -10,6 +10,9 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Refactor
+- **#556 refactor(prep_naming): consolidate `abbrev_title()` duplication (M3+).** First M3+ punch-list item from the closed M3 epic (#537). `abbrev_title()` was duplicated between `findajob.prep.orchestrator` (typed) and `scripts/rename_folders.py` (untyped); both copies kept in sync by code review rather than code structure. Consolidated to `findajob.prep_naming` (the natural home — same domain as `safe_filename_part`, both build folder-safe filename components). Both call sites import from there. `tests/test_prep_import_safety.py::test_orchestrator_exposes_main_and_abbrev_title` renamed to `test_orchestrator_exposes_main` (orchestrator's deliberate public symbol is `main`; `abbrev_title` is now an import); `test_abbrev_title_behavior` updated to import from the canonical location, mirroring the no-re-export-theater discipline established by the M3 cleanup PR (#544).
+
 ## [0.21.0] — 2026-05-08
 
 Minor bump shipping the structural-refactor close-out arc and governance scaffolding for open-source launch readiness. The five-milestone refactor track from `5-refactor-roadmap.md` is now complete: M1 (docs cleanup, #499–#508 series), M3 (script→package extractions for triage, notify, prep, interview — #537 series), M4 (centralized `findajob.db.connect` helper + `utils.py` split — #546 / #548 / #550), M5 (versioned migration runner — #552), M6 (`background_tasks` observability table replacing filesystem sentinels — #554), M7 (strict mypy gate for `findajob.*` — #563). Plus standard OSS scaffolding: `CONTRIBUTING.md` (#505), `SECURITY.md` (#506), `.github/ISSUE_TEMPLATE/` + `PULL_REQUEST_TEMPLATE.md` (#507).

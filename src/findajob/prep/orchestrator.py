@@ -6,10 +6,8 @@ file read at import time).
 
 `run_role()` was consolidated to `findajob.llm.role_runner` and
 `notify()` to `findajob.notifications.ntfy.quick_notify` in M3's cleanup
-PR; this module imports both rather than redefining them.
-
-`abbrev_title()` is still duplicated with `scripts/rename_folders.py` —
-M3+ cleanup target.
+PR; this module imports both rather than redefining them. `abbrev_title()`
+was consolidated to `findajob.prep_naming` in #556.
 """
 
 import json
@@ -31,20 +29,12 @@ from findajob.notifications.ntfy import quick_notify
 from findajob.paths import BASE, PANDOC, load_env
 from findajob.prep.docx_postprocess import _add_cover_letter_spacing, _linkify_contact_info
 from findajob.prep.quarantine import quarantine_stale_prep_folders
-from findajob.prep_naming import build_prep_filenames
+from findajob.prep_naming import abbrev_title, build_prep_filenames
 from findajob.profile import load_voice_samples, read_file_prefix
 
 DB_PATH = f"{BASE}/data/pipeline.db"
 PROFILE_PATH = f"{BASE}/candidate_context/profile.md"
 MASTER_RESUME_PATH = f"{BASE}/candidate_context/master_resume.md"
-
-
-def abbrev_title(title: str, max_words: int = 3) -> str:
-    """Return a folder-safe abbreviated title: first N significant words joined with underscores."""
-    title = re.sub(r"\s*\(.*?\)", "", title)  # strip parentheticals
-    title = re.sub(r"[^\w\s-]", "", title)  # remove punctuation
-    words = [w for w in title.split() if w][:max_words]
-    return "_".join(words) if words else "Job"
 
 
 def main() -> None:

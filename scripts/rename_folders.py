@@ -16,18 +16,12 @@ import sqlite3
 
 from findajob.db import connect
 from findajob.paths import BASE
+from findajob.prep_naming import abbrev_title
 
 DB_PATH = f"{BASE}/data/pipeline.db"
 COMPANIES = f"{BASE}/companies"
 
 DATETIME_PAT = re.compile(r"^(.+)_(\d{4}-\d{2}-\d{2})_(\d{6})$")
-
-
-def abbrev_title(title, max_words=3):
-    title = re.sub(r"\s*\(.*?\)", "", title)
-    title = re.sub(r"[^\w\s-]", "", title)
-    words = [w for w in title.split() if w][:max_words]
-    return "_".join(words) if words else "Job"
 
 
 def main():
