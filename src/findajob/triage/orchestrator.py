@@ -28,15 +28,12 @@ from findajob.cleaning import fingerprint, is_coarse_location, loose_fingerprint
 from findajob.cost_tracking import log_call, role_model
 from findajob.db import connect
 from findajob.fetchers import (
-    fetch_ashby_jobs,
-    fetch_gmail_jobs,
-    fetch_greenhouse_jobs,
     fetch_jd,
-    fetch_lever_jobs,
     get_linkedin_rate_limit_stats,
     reset_linkedin_rate_limit_stats,
 )
 from findajob.fetchers.adapters import iter_configured_adapters
+from findajob.fetchers.adapters.gmail import GmailLinkedInAdapter
 from findajob.notifications.ntfy import quick_notify
 from findajob.onboarding import is_complete as _onboarding_is_complete
 from findajob.paths import BASE, load_env
@@ -98,13 +95,11 @@ def main(gmail_since_days: int | None = None):
     FETCH_RETRY_DELAY = 120  # seconds
 
     for attempt in range(1, MAX_FETCH_ATTEMPTS + 1):
-        feed_urls = f"{BASE}/config/feed_urls.txt"
-        greenhouse_jobs = fetch_greenhouse_jobs(feed_urls)
-        ashby_jobs = fetch_ashby_jobs(feed_urls)
-        lever_jobs = fetch_lever_jobs(feed_urls)
-        gmail_jobs = fetch_gmail_jobs(since_days=gmail_since_days)
-
-        # Adapter-driven RapidAPI ingestion (#408)
+        # Single fetch path: registry iteration only (#410.5). Every adapter
+        # gets the same `queries` list — board-feed adapters ignore it via
+        # `del queries`, RapidAPI ones consume it. Per-adapter constructor
+        # args (e.g. gmail since_days) are handled by swapping the instance
+        # inline, NOT by leaking kwargs into iter_configured_adapters().
         queries_path = Path(f"{BASE}/config/jsearch_queries.txt")
         queries = (
             [
@@ -115,22 +110,24 @@ def main(gmail_since_days: int | None = None):
             if queries_path.exists()
             else []
         )
-        adapter_jobs: list[dict] = []
+        raw_jobs: list[dict] = []
         adapter_counts: dict[str, int] = {}
         for adapter in iter_configured_adapters():
+            if adapter.name == "gmail" and gmail_since_days is not None:
+                # Diagnostic / backfill run — swap to a since_days-aware instance.
+                # The default-constructed gmail from iter_configured_adapters()
+                # uses incremental UID fetch; this path is only triggered by
+                # the --gmail-since-days CLI flag. type: ignore mirrors the
+                # same Protocol-vs-ClassVar shim used in REGISTERED_ADAPTERS.
+                adapter = GmailLinkedInAdapter(since_days=gmail_since_days)  # type: ignore[assignment]
             rows = adapter.fetch(queries)
-            adapter_jobs.extend(rows)
+            raw_jobs.extend(rows)
             adapter_counts[adapter.name] = len(rows)
 
-        raw_jobs = greenhouse_jobs + ashby_jobs + lever_jobs + adapter_jobs + gmail_jobs
         log_event(
             "jobs_fetched",
             count=len(raw_jobs),
-            greenhouse=len(greenhouse_jobs),
-            ashby=len(ashby_jobs),
-            lever=len(lever_jobs),
             adapters=adapter_counts,
-            gmail=len(gmail_jobs),
             attempt=attempt,
         )
 

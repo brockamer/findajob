@@ -27,7 +27,24 @@ REGISTERED_ADAPTERS: list[type[JobSourceAdapter]] = [
     GmailLinkedInAdapter,  # type: ignore[list-item]
 ]
 
-_DEFAULT_ACTIVE_SOURCES: list[str] = ["jobs-api14"]
+# Default when config/active_sources.txt is missing or empty: every registered
+# adapter is enabled. Pre-#410.5 the orchestrator fired the four
+# fetch_*_jobs wrappers (greenhouse / ashby / lever / gmail) unconditionally
+# and only the RapidAPI adapters were registry-gated, so the *effective*
+# default surface was "every adapter that is_configured()". Keeping the
+# pre-#408 ["jobs-api14"]-only default after #410.5 would silently drop four
+# sources for any stack without an explicit file. is_configured() remains the
+# correct gate for "can this adapter run on this stack" — active_sources.txt
+# is for "operator opted some out", not "operator forgot to opt in".
+_DEFAULT_ACTIVE_SOURCES: list[str] = [
+    "jobs-api14",
+    "jobs-api14-indeed",
+    "jsearch",
+    "greenhouse",
+    "ashby",
+    "lever",
+    "gmail",
+]
 
 
 def _active_sources_path() -> Path:

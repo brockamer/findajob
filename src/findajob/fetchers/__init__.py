@@ -1,10 +1,8 @@
 """Job fetching from Greenhouse, RapidAPI (LinkedIn/Indeed), and Gmail."""
 
-import os
 import subprocess
 import sys
 import time
-from typing import Any
 
 from findajob.audit import log_event
 from findajob.classification import JD_MAX_CHARS, strip_jd_boilerplate
@@ -155,169 +153,6 @@ def fetch_jd(job):
         return fetch_jd_curl(url)
 
     return "[No URL available]"
-
-
-# ── Job Source Fetching ──
-def fetch_greenhouse_jobs(feed_urls_path):
-    """Thin wrapper around `GreenhouseAdapter` retained for `triage.orchestrator`
-    backward compatibility until #410.5 cuts the orchestrator over to pure
-    registry iteration. New code should use `GreenhouseAdapter()` directly."""
-    from findajob.fetchers.adapters.greenhouse import GreenhouseAdapter
-
-    return GreenhouseAdapter(feed_urls_path=feed_urls_path).fetch([])
-
-
-def fetch_ashby_jobs(feed_urls_path):
-    """Thin wrapper around `AshbyAdapter` retained for `triage.orchestrator`
-    backward compatibility until #410.5 cuts the orchestrator over to pure
-    registry iteration. New code should use `AshbyAdapter()` directly."""
-    from findajob.fetchers.adapters.ashby import AshbyAdapter
-
-    return AshbyAdapter(feed_urls_path=feed_urls_path).fetch([])
-
-
-def fetch_lever_jobs(feed_urls_path):
-    """Thin wrapper around `LeverAdapter` retained for `triage.orchestrator`
-    backward compatibility until #410.5 cuts the orchestrator over to pure
-    registry iteration. New code should use `LeverAdapter()` directly."""
-    from findajob.fetchers.adapters.lever import LeverAdapter
-
-    return LeverAdapter(feed_urls_path=feed_urls_path).fetch([])
-
-
-_NEW_INSTALL_DAYS = 30
-
-
-def _date_posted_for_install() -> str:
-    """LinkedIn `datePosted` value for this install.
-
-    During the first 30 days after onboarding completion, widen from `day` to
-    `month` so a brand-new tester has enough volume to populate the board. The
-    jobs-api14 LinkedIn endpoint accepts only `any|day|week|month` — there is
-    no `2weeks` value, so `month` is the closest over-recall option (the
-    scorer correctly filters the additional volume).
-
-    Anchor: mtime of `data/.onboarding-complete` sentinel. Falls back to `day`
-    if the sentinel is missing (pre-onboarding stacks shouldn't be triaging).
-    """
-    try:
-        age_days = (time.time() - os.path.getmtime(f"{BASE}/data/.onboarding-complete")) / 86400
-    except OSError:
-        return "day"
-    return "month" if age_days < _NEW_INSTALL_DAYS else "day"
-
-
-def fetch_jobsapi_jobs(queries_path):
-    """
-    Fetch jobs via Jobs API (jobs-api14, RapidAPI).
-    LinkedIn: stores api_id for /v2/linkedin/get JD fetch.
-    Indeed: stores inline description from search response.
-    """
-    import requests as req
-
-    api_key = resolve_rapidapi_key("RAPIDAPI_KEY", "JOBS_API14_KEY")
-    if not api_key:
-        log_event("jobsapi_error", error="No RAPIDAPI_KEY or JOBS_API14_KEY set in .env")
-        return []
-
-    try:
-        with open(queries_path) as f:
-            queries = [line.strip() for line in f if line.strip() and not line.startswith("#")]
-    except FileNotFoundError:
-        log_event("jobsapi_error", error=f"queries file not found: {queries_path}")
-        return []
-
-    headers = {
-        "x-rapidapi-host": "jobs-api14.p.rapidapi.com",
-        "x-rapidapi-key": api_key,
-        "Content-Type": "application/json",
-    }
-
-    date_posted = _date_posted_for_install()
-    log_event("jobsapi_date_posted", value=date_posted)
-
-    # Heterogeneous dict — string fields, a lambda, etc. ``Any`` keeps
-    # the existing intent without forcing every consumer to narrow.
-    sources: list[dict[str, Any]] = [
-        {
-            "name": "linkedin",
-            "url": "https://jobs-api14.p.rapidapi.com/v2/linkedin/search",
-            "params": lambda q: {
-                "query": q,
-                "location": "United States",
-                "datePosted": date_posted,
-                "employmentTypes": "fulltime",
-                "experienceLevels": "midSenior;director",
-            },
-            "url_field": "linkedinUrl",
-        },
-        # No Indeed slot: jobs-api14's Indeed endpoint accepts no recency,
-        # level, or employment-type filter, so its keyword matching returns
-        # ~89% off-target rows. Indeed coverage continues via gmail_indeed.
-    ]
-
-    jobs = []
-    for query in queries:
-        for source in sources:
-            try:
-                response = req.get(
-                    source["url"],
-                    headers=headers,
-                    params=source["params"](query),
-                    timeout=30,
-                )
-                if response.status_code == 429:
-                    wait = min(int(response.headers.get("Retry-After", "10")), 60)
-                    log_event("rapidapi_rate_limit", source=source["name"], query=query, wait=wait)
-                    time.sleep(wait)
-                    response = req.get(
-                        source["url"],
-                        headers=headers,
-                        params=source["params"](query),
-                        timeout=30,
-                    )
-                response.raise_for_status()
-                data = response.json()
-
-                if data.get("hasError"):
-                    log_event("jobsapi_error", source=source["name"], query=query, errors=data.get("errors"))
-                    continue
-
-                count = 0
-                for job in data.get("data", []):
-                    raw_title = job.get("title", "")
-                    title = clean_title(raw_title)
-                    url = job.get(source["url_field"], "") or job.get("linkedinUrl", "")
-                    company = clean_company(job.get("companyName", "") or job.get("company", {}).get("name", ""))
-                    loc = job.get("location", "")
-                    location = loc.get("location", "") if isinstance(loc, dict) else loc
-
-                    if not title or not url:
-                        continue
-
-                    job_dict = {
-                        "title": title,
-                        "company": company,
-                        "url": url,
-                        "location": location,
-                        "source": f"jobsapi_{source['name']}",
-                    }
-
-                    if source["name"] == "linkedin":
-                        job_dict["api_id"] = str(job.get("id", ""))
-                    elif source["name"] == "indeed":
-                        job_dict["description"] = job.get("description", "")
-
-                    jobs.append(job_dict)
-                    count += 1
-
-                log_event("jobsapi_fetched", source=source["name"], query=query, count=count)
-                time.sleep(0.6)
-
-            except Exception as e:
-                log_event("jobsapi_error", source=source["name"], query=query, error=str(e))
-
-    return jobs
 
 
 # ── Gmail Ingestion ──
@@ -518,16 +353,3 @@ def parse_jobs_from_email_imap(message) -> list[dict]:
                     html_parts.append(payload.decode("utf-8", errors="ignore"))
 
     return _extract_jobs_from_html("".join(html_parts))
-
-
-def fetch_gmail_jobs(since_days: int | None = None):
-    """Thin wrapper around `GmailLinkedInAdapter` retained for `triage.orchestrator`
-    backward compatibility until #410.5 cuts the orchestrator over to pure
-    registry iteration. New code should use `GmailLinkedInAdapter()` directly.
-
-    See docs/superpowers/specs/2026-04-30-330-design.md §6 for the full
-    contract (off state, auth-failure streak, since_days backfill semantics).
-    """
-    from findajob.fetchers.adapters.gmail import GmailLinkedInAdapter
-
-    return GmailLinkedInAdapter(since_days=since_days).fetch([])

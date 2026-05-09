@@ -49,11 +49,19 @@ def test_iter_configured_adapters_skips_unknown(tmp_path: Path, monkeypatch: pyt
 
 
 def test_iter_configured_adapters_default_when_file_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """After #410.5 the default expanded to all 7 registered adapters. Only those
+    that pass `is_configured()` get yielded — with just `JOBS_API14_KEY` set
+    and no feed_urls.txt / gmail.json on disk, only the two adapters that
+    accept that key are yielded (`jobs-api14` and `jobs-api14-indeed` per
+    #414's RAPIDAPI_KEY consolidation; `jsearch` needs its own key).
+    """
     monkeypatch.setenv("JOBS_API14_KEY", "k")
+    monkeypatch.delenv("RAPIDAPI_KEY", raising=False)
+    monkeypatch.delenv("JSEARCH_API_KEY", raising=False)
     nonexistent = tmp_path / "missing.txt"
     with patch("findajob.fetchers.adapters.registry._active_sources_path", return_value=nonexistent):
         names = [a.name for a in iter_configured_adapters()]
-    assert names == ["jobs-api14"]
+    assert set(names) == {"jobs-api14", "jobs-api14-indeed"}
 
 
 def test_jobs_api14_indeed_adapter_is_registered() -> None:
