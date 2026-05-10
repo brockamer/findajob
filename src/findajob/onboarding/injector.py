@@ -95,11 +95,12 @@ class InjectionDecision:
     """Gate decision produced by :func:`inject`.
 
     The sentinel is **never** written by :func:`inject` itself — every onboarding
-    flow now ends at the Gmail-config gate (``/onboarding/gmail-config/{sid}/``),
-    which writes the sentinel on its ``/finish`` endpoint after the user either
-    saves+verifies an IMAP credential pair or explicitly skips. This guarantees
-    "IMAP connection test before sentinel success" (#407 acceptance) regardless
-    of whether feed-config also gated.
+    flow now ends at the connections gate (``/onboarding/connections/{sid}/``,
+    #571), which writes the sentinel after the user either uploads a LinkedIn
+    Connections.csv or explicitly skips. The Gmail-config gate (#407) sits just
+    upstream and preserves the "IMAP connection test before handoff" guarantee
+    — its ``/finish`` endpoint still blocks until a successful IMAP test, but
+    no longer writes the sentinel itself.
 
     When ``gate_to_feed_config`` is True the caller redirects the user to
     ``/onboarding/feed-config/{sid}/`` first; that route's ``/finish`` redirects

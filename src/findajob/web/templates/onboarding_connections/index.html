@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}Upload LinkedIn connections — findajob onboarding{% endblock %}
+
+{% block content %}
+<section class="max-w-2xl mx-auto py-10 px-6 space-y-6">
+
+  {% if validation_error %}
+    <p class="rounded bg-rose-50 border border-rose-200 p-3 text-sm text-rose-800">
+      {{ validation_error }}
+    </p>
+  {% endif %}
+
+  <div class="space-y-2">
+    <p class="text-xs uppercase tracking-wide text-slate-500">Onboarding · last step</p>
+    <h1 class="text-2xl font-semibold">Upload your LinkedIn connections export</h1>
+    <p class="text-slate-700">
+      findajob can draft outreach to anyone in your network who works at the company a
+      job was posted by. The match happens locally — your connections file stays on
+      this stack, never gets uploaded anywhere, and is never sent to LinkedIn or any
+      third party. This step is optional; skipping just means no outreach drafts get
+      generated until you come back.
+    </p>
+  </div>
+
+  <details class="rounded-md border border-slate-200 bg-slate-50 p-4 text-sm" open>
+    <summary class="cursor-pointer font-medium">How to request your connections export from LinkedIn</summary>
+    <ol class="mt-2 space-y-2 list-decimal pl-6 text-slate-700">
+      <li>
+        Sign into LinkedIn → <strong>Settings &amp; Privacy</strong> → <strong>Data Privacy</strong> →
+        <a class="text-blue-700 underline" target="_blank" rel="noopener"
+           href="https://www.linkedin.com/mypreferences/d/download-my-data">Get a copy of your data</a>.
+      </li>
+      <li>
+        Choose <em>Want something in particular?</em>, tick <strong>Connections</strong>, and
+        click <em>Request archive</em>. The Connections-only export is normally ready in
+        about 10 minutes; LinkedIn emails you a download link.
+      </li>
+      <li>
+        Open the email, download the ZIP, and unzip it. Inside you'll find
+        <code>Connections.csv</code>.
+      </li>
+      <li>
+        Upload that <code>Connections.csv</code> below.
+      </li>
+    </ol>
+    <p class="mt-3 text-slate-600">
+      <strong>Heads-up:</strong> LinkedIn sometimes adds a <em>Notes:</em> preamble at the
+      top of the CSV (a few lines, then a blank line). If you see that, delete those
+      lines first — the column headers (<code>First Name, Last Name, Company, ...</code>)
+      must be on row&nbsp;1.
+    </p>
+  </details>
+
+  <form method="post" action="/onboarding/connections/{{ session_id }}/upload"
+        enctype="multipart/form-data"
+        class="rounded-lg border border-slate-200 bg-white p-4 space-y-3">
+    <label class="block text-sm font-medium text-slate-800">
+      Connections.csv
+      <input type="file" name="connections_csv" accept=".csv,text/csv" required
+             class="mt-2 block w-full text-sm text-slate-700
+                    file:mr-3 file:rounded-md file:border-0
+                    file:bg-slate-900 file:px-3 file:py-1.5
+                    file:text-sm file:font-medium file:text-white
+                    hover:file:bg-slate-700" />
+    </label>
+    <div class="flex flex-wrap gap-2 pt-2">
+      <button type="submit"
+              class="inline-flex items-center px-4 py-2 rounded-md bg-slate-900 text-white hover:bg-slate-700">
+        Upload &amp; continue &rarr;
+      </button>
+      <span class="text-xs text-slate-500 self-center">
+        Validated locally before save; nothing leaves this stack.
+      </span>
+    </div>
+  </form>
+
+  <form method="post" action="/onboarding/connections/{{ session_id }}/skip"
+        class="rounded-lg border border-slate-200 bg-slate-50 p-4">
+    <p class="text-sm text-slate-700 mb-2">
+      Don't have the file handy, or don't want to enable outreach drafting? Skip this
+      step — you can re-open it via <code>/onboarding/?mode=rerun</code>.
+    </p>
+    <button type="submit"
+            class="inline-flex items-center px-4 py-2 rounded-md bg-slate-100 text-slate-700 hover:bg-slate-200">
+      Skip for now
+    </button>
+  </form>
+
+</section>
+{% endblock %}

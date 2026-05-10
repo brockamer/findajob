@@ -1,8 +1,10 @@
 """Tests for /onboarding/gmail-config/{session_id}/* (#407).
 
-The gmail-config gate is the universal terminal step in the onboarding flow.
-Every path through finalize_interview ends here; the sentinel is written
-exactly once, on either /finish (verified IMAP creds) or /skip.
+The gmail-config gate sits between feed-config (optional, upstream) and the
+connections gate (#571, terminal, downstream). /finish preserves the #407
+invariant that an IMAP test must have passed before the gate releases; on
+success it hands off to the connections gate which writes the sentinel.
+The sentinel is no longer written from this route.
 """
 
 from __future__ import annotations
@@ -94,14 +96,15 @@ def test_get_renders_onboarding_wrapper_around_existing_card(client: TestClient)
     assert f"/onboarding/gmail-config/{SID}/finish" in body
 
 
-def test_post_skip_writes_sentinel_and_redirects(client: TestClient, base_root: Path) -> None:
-    """Skip is always allowed — it writes the sentinel and redirects to the
-    dashboard regardless of Gmail config state."""
+def test_post_skip_redirects_to_connections_gate_without_writing_sentinel(client: TestClient, base_root: Path) -> None:
+    """Skip is always allowed — it hands off to the connections gate, which
+    is responsible for writing the sentinel. Skipping here must not write the
+    sentinel itself."""
     assert not (base_root / "data" / ".onboarding-complete").exists()
     response = client.post(f"/onboarding/gmail-config/{SID}/skip")
     assert response.status_code == 303
-    assert response.headers["location"] == "/board/dashboard"
-    assert (base_root / "data" / ".onboarding-complete").is_file()
+    assert response.headers["location"] == f"/onboarding/connections/{SID}/"
+    assert not (base_root / "data" / ".onboarding-complete").exists()
 
 
 def test_post_finish_blocked_when_no_config(client: TestClient, base_root: Path) -> None:
@@ -147,9 +150,10 @@ def test_post_finish_blocked_when_test_failed(client: TestClient, base_root: Pat
     assert not (base_root / "data" / ".onboarding-complete").exists()
 
 
-def test_post_finish_writes_sentinel_when_test_passed(client: TestClient, base_root: Path) -> None:
-    """Saved config + state.last_login_at set + no error → /finish writes the
-    sentinel and redirects to the dashboard."""
+def test_post_finish_advances_to_connections_gate_when_test_passed(client: TestClient, base_root: Path) -> None:
+    """Saved config + state.last_login_at set + no error → /finish redirects
+    to the connections gate. The sentinel is not written here — that
+    responsibility moved to the connections gate (#571)."""
     cfg = gmail_imap.GmailConfig(
         address="someone@example.com",
         app_password="abcdefghijklmnop",
@@ -162,5 +166,5 @@ def test_post_finish_writes_sentinel_when_test_passed(client: TestClient, base_r
 
     response = client.post(f"/onboarding/gmail-config/{SID}/finish")
     assert response.status_code == 303
-    assert response.headers["location"] == "/board/dashboard"
-    assert (base_root / "data" / ".onboarding-complete").is_file()
+    assert response.headers["location"] == f"/onboarding/connections/{SID}/"
+    assert not (base_root / "data" / ".onboarding-complete").exists()

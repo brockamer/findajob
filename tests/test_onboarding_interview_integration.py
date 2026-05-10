@@ -244,13 +244,21 @@ def test_full_interview_flow_writes_all_files_and_sentinel(
     for f in expected_files:
         assert f.is_file(), f"expected file missing: {f}"
     assert not (base_root / "data" / ".onboarding-complete").exists(), (
-        "sentinel must be deferred to the Gmail-config gate's /finish (#407)"
+        "sentinel must be deferred to the connections gate (#571), downstream of gmail-config (#407)"
     )
 
-    # Hitting gmail-config /skip closes the loop and writes the sentinel.
-    resp_skip = client.post(f"/onboarding/gmail-config/{sid}/skip")
-    assert resp_skip.status_code == 303, resp_skip.text
-    assert resp_skip.headers["location"] == "/board/dashboard"
+    # Gmail-config /skip hands off to the connections gate without writing
+    # the sentinel — that responsibility moved to the connections gate (#571).
+    resp_gmail_skip = client.post(f"/onboarding/gmail-config/{sid}/skip")
+    assert resp_gmail_skip.status_code == 303, resp_gmail_skip.text
+    assert resp_gmail_skip.headers["location"] == f"/onboarding/connections/{sid}/"
+    assert not (base_root / "data" / ".onboarding-complete").exists()
+
+    # Connections gate /skip is the terminal step — writes the sentinel and
+    # redirects to the dashboard.
+    resp_conn_skip = client.post(f"/onboarding/connections/{sid}/skip")
+    assert resp_conn_skip.status_code == 303, resp_conn_skip.text
+    assert resp_conn_skip.headers["location"] == "/board/dashboard"
     assert (base_root / "data" / ".onboarding-complete").is_file()
 
     # Session is marked complete

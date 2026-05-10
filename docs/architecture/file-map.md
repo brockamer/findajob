@@ -30,7 +30,8 @@ When this map drifts from the actual code (renamed file, new route module, retir
 <repo>/src/findajob/web/routes/onboarding.py # GET /onboarding/, POST /onboarding/keys (Step 1 keys collection)
 <repo>/src/findajob/web/routes/onboarding_interview.py # In-app interview routes: /onboarding/interview/start | /turn | /{sid} | /{sid}/finalize. _resolved_chat_key reads tester's OpenRouter key from session credentials; 503 if no key. Step 1 keys mandatory before /start.
 <repo>/src/findajob/web/routes/onboarding_feed_config.py # GET/POST /onboarding/feed-config/{sid} — per-adapter signup walkthrough (#408)
-<repo>/src/findajob/web/routes/onboarding_gmail_config.py # GET/POST /onboarding/gmail-config/{sid}/{,skip,finish} — universal terminal gate; writes the sentinel after IMAP verify or explicit skip (#407)
+<repo>/src/findajob/web/routes/onboarding_gmail_config.py # GET/POST /onboarding/gmail-config/{sid}/{,skip,finish} — Gmail IMAP gate; /finish blocks until IMAP verify (#407 invariant) then hands off to the connections gate (#571); no longer writes the sentinel
+<repo>/src/findajob/web/routes/onboarding_connections.py # GET/POST /onboarding/connections/{sid}/{,upload,skip} — terminal gate; validates LinkedIn Connections.csv header + atomic-writes to data/connections.csv, OR explicit skip; writes the sentinel on either path (#571)
 <repo>/src/findajob/web/routes/feedback.py    # POST /feedback/ — in-app feedback widget; files GitHub issues. Env: GITHUB_FEEDBACK_PAT, FEEDBACK_STACK_LABEL, FEEDBACK_REPO (#227)
 <repo>/src/findajob/web/routes/notifications.py # GET /notifications/, POST /notifications/{id}/read, POST /notifications/mark-all-read, GET /notifications/badge — in-app notification dashboard (#440)
 <repo>/src/findajob/onboarding/parser.py    # parse interview emission into files to inject

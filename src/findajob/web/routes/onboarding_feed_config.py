@@ -163,8 +163,9 @@ def post_finish(session_id: str, request: Request) -> Response:
     """Hand off to the Gmail-config gate (#407).
 
     The sentinel is no longer written here — every onboarding flow now ends at
-    ``/onboarding/gmail-config/{session_id}/``, which writes the sentinel on
-    its own ``/finish`` after the user saves+verifies a Gmail IMAP credential
-    pair or explicitly skips.
+    ``/onboarding/connections/{session_id}/`` (#571), which writes the sentinel
+    after the user uploads a LinkedIn Connections.csv or explicitly skips. This
+    route hops onward via the Gmail-config gate (#407), which preserves its
+    own IMAP-test-before-handoff guarantee.
     """
     return RedirectResponse(f"/onboarding/gmail-config/{session_id}/", status_code=303)

@@ -166,9 +166,10 @@ def test_post_auth_failure_does_not_write_key(
 
 
 def test_post_finish_redirects_to_gmail_config_gate(client: TestClient, base_root: Path) -> None:
-    """Per #407, feed-config /finish hands off to the universal Gmail-config
-    gate instead of writing the sentinel itself.  Sentinel must NOT be written
-    here — gmail-config /finish (or /skip) is the single sentinel-write site."""
+    """Per #407, feed-config /finish hands off to the Gmail-config gate
+    instead of writing the sentinel itself. Sentinel must NOT be written
+    here — the connections gate (#571), downstream of gmail-config, is the
+    single sentinel-write site."""
     response = client.post("/onboarding/feed-config/test-session-id/finish")
     assert response.status_code == 303
     assert response.headers["location"] == "/onboarding/gmail-config/test-session-id/"

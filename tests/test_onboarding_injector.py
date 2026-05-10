@@ -177,10 +177,11 @@ def test_inject_writes_required_files_and_sentinel_and_derivation(tmp_path: Path
     # ntfy_topic.txt merges into data/.env, not a standalone file
     env_content = (tmp_path / "data" / ".env").read_text()
     assert "NTFY_TOPIC=tester-jobsearch-2026-17" in env_content
-    # Sentinel: per #407, inject() never writes the sentinel directly — every
-    # onboarding flow now ends at the Gmail-config gate's /finish endpoint,
-    # which writes the sentinel after the user verifies+saves an IMAP
-    # credential pair (or explicitly skips).
+    # Sentinel: per #407, inject() never writes the sentinel directly. Every
+    # onboarding flow now ends at the connections gate (#571), which writes
+    # the sentinel after the user either uploads a LinkedIn Connections.csv
+    # or explicitly skips. The Gmail-config gate (#407) sits upstream and
+    # preserves its IMAP-test-before-handoff guarantee.
     sentinel = tmp_path / "data" / ".onboarding-complete"
     assert not sentinel.exists()
 

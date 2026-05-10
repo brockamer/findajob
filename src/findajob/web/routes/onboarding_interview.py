@@ -522,12 +522,13 @@ def finalize_interview(
 
     # When the chosen adapter's env var is missing, gate to the feed-config
     # step where the user can enter the key and run a live test. From there
-    # the user proceeds to the Gmail-config gate (#407), which is the
-    # universal terminal step that writes the sentinel.
+    # the user proceeds to the Gmail-config gate (#407), then to the
+    # connections gate (#571), which is the terminal step that writes the
+    # sentinel.
     if inject_result.decision.gate_to_feed_config:
         return RedirectResponse(f"/onboarding/feed-config/{session_id}", status_code=303)
 
     # No feed-config gate — redirect straight to the Gmail-config gate (#407).
-    # The sentinel is not yet written; gmail-config /finish writes it after
-    # the user saves+verifies an IMAP credential pair or explicitly skips.
+    # The sentinel is not yet written; gmail-config hands off to the
+    # connections gate (#571), which writes it after upload or explicit skip.
     return RedirectResponse(f"/onboarding/gmail-config/{session_id}/", status_code=303)
