@@ -25,12 +25,31 @@ DEFAULT_FIXTURE = Path(__file__).parent / "persona_fixture"
 DEFAULT_TARGET = Path(BASE)
 
 
+def _wipe_contents(d: Path) -> None:
+    """Wipe contents of ``d`` but leave ``d`` itself intact.
+
+    Bind-mount safe: ``shutil.rmtree`` on a bind-mount root fails inside the
+    container with ``PermissionError`` because you can't remove the mount
+    point. This helper iterates children and removes each, leaving the
+    directory entry alone (#610).
+    """
+    for child in d.iterdir():
+        if child.is_dir():
+            shutil.rmtree(child)
+        else:
+            child.unlink()
+
+
 def reset_to_persona(fixture: Path, target: Path) -> None:
-    """Wipe target/data/ and copy fixture/* into target/.
+    """Wipe target/data/ contents and copy fixture/* into target/.
 
     Subdirs other than data/ are replaced only when the fixture supplies them
-    (rmtree dst → copytree src). Pre-existing target subdirs not present in
-    the fixture survive. Callers must ensure the fixture is complete.
+    (wipe contents → re-copy from fixture). Pre-existing target subdirs not
+    present in the fixture survive. Callers must ensure the fixture is complete.
+
+    Bind-mount safety (#610): wipes ``data/`` (and other subdirs the fixture
+    supplies) by removing CONTENTS, not the directory itself — so this works
+    when target subdirectories are Docker bind mounts.
 
     Raises FileNotFoundError if fixture missing,
     NotADirectoryError if target exists but is not a directory.
@@ -43,14 +62,21 @@ def reset_to_persona(fixture: Path, target: Path) -> None:
 
     target_data = target / "data"
     if target_data.exists():
-        shutil.rmtree(target_data)
+        _wipe_contents(target_data)
 
     for entry in fixture.iterdir():
         dst = target / entry.name
         if entry.is_dir():
             if dst.exists():
-                shutil.rmtree(dst)
-            shutil.copytree(entry, dst)
+                _wipe_contents(dst)
+            else:
+                dst.mkdir(parents=True)
+            for inner in entry.iterdir():
+                inner_dst = dst / inner.name
+                if inner.is_dir():
+                    shutil.copytree(inner, inner_dst)
+                else:
+                    shutil.copy2(inner, inner_dst)
         else:
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(entry, dst)

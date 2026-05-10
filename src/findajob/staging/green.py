@@ -1,13 +1,17 @@
 """Staging green-check (#565).
 
 Exits 0 iff all four predicates hold:
-  1. triage_completed event present in last 26h
-  2. zero ERROR-level events between the most recent triage_started and triage_completed
+  1. pipeline_complete event present in last 26h
+  2. zero ERROR-level events between the most recent pipeline_started and pipeline_complete
   3. findajob.web.verify_auth exits 0 (delegated to subprocess)
   4. clicker sentinel last invocation exited 0
 
 Designed to be invoked from inside the staging container by operator
 during the pre-tag checklist.
+
+Event names match what `scripts/triage.py` emits via `findajob.audit.log_event`
+(``pipeline_started`` / ``pipeline_complete``). The earlier draft of this module
+named them ``triage_*`` which never appeared in pipeline.jsonl — fixed in #611.
 """
 
 from __future__ import annotations
@@ -49,7 +53,7 @@ def _parse_ts(s: str) -> dt.datetime:
 def _predicate_triage_recent(log: Path, max_age_hours: int) -> bool:
     cutoff = dt.datetime.now(dt.UTC) - dt.timedelta(hours=max_age_hours)
     for ev in reversed(_read_events(log)):
-        if ev.get("event") == "triage_completed":
+        if ev.get("event") == "pipeline_complete":
             try:
                 ts = _parse_ts(ev["ts"])
             except (KeyError, ValueError):
@@ -64,9 +68,9 @@ def _predicate_no_errors_during_last_triage(log: Path) -> bool:
     last_completed: int | None = None
     for i, ev in enumerate(events):
         name = ev.get("event")
-        if name == "triage_started":
+        if name == "pipeline_started":
             last_started = i
-        elif name == "triage_completed":
+        elif name == "pipeline_complete":
             last_completed = i
     if last_started is None or last_completed is None or last_completed < last_started:
         return False
