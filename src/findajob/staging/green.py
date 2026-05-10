@@ -23,9 +23,13 @@ import subprocess
 import sys
 from pathlib import Path
 
+from findajob.audit import LOG_PATH as _AUDIT_LOG_PATH
 from findajob.paths import BASE
 
-DEFAULT_LOG = Path(BASE) / "data" / "pipeline.jsonl"
+# Derive from audit.LOG_PATH so green-check reads the same file triage writes.
+# Hardcoding the path here drifted in #565's first deploy — pipeline events
+# live at logs/pipeline.jsonl, not data/pipeline.jsonl.
+DEFAULT_LOG = Path(_AUDIT_LOG_PATH)
 DEFAULT_SENTINEL = Path(BASE) / "data" / ".staging_clicker_last_status"
 DEFAULT_TRIAGE_MAX_AGE_HOURS = 26
 

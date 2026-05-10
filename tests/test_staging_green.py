@@ -100,6 +100,18 @@ def test_main_any_fail_returns_nonzero(tmp_path: Path, monkeypatch: pytest.Monke
     assert rc != 0
 
 
+def test_default_log_matches_audit_log_path() -> None:
+    """Regression — `green.DEFAULT_LOG` must point at the file `audit.log_event`
+    actually writes, not at a sibling path that drifts. Hardcoding the path in
+    green.py drifted in #565's first deploy (used `data/pipeline.jsonl` while
+    audit writes to `logs/pipeline.jsonl`). Locking the relationship here so a
+    future refactor of audit's path doesn't silently break green-check.
+    """
+    from findajob import audit
+
+    assert str(green.DEFAULT_LOG) == audit.LOG_PATH
+
+
 def test_predicates_match_real_audit_log_event_output(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Regression for #611 — predicates must match what `findajob.audit.log_event`
     actually emits (`pipeline_started` / `pipeline_complete`), not synthetic event
