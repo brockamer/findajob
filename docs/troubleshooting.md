@@ -24,7 +24,7 @@ One JSON object per line at `state/logs/pipeline.jsonl`. Every major pipeline ac
 jq -r '.event' state/logs/pipeline.jsonl | sort -u
 ```
 
-Lists every event type ever emitted. Common ones: `pipeline_complete`, `pipeline_started`, `jobs_fetched`, `scoring_complete`, `manual_job_ingested`, `prep_started`, `prep_complete`, `prep_failed`, `watchdog_run`.
+Lists every event type ever emitted. Common ones: `pipeline_complete`, `pipeline_started`, `jobs_fetched`, `scoring_complete`, `manual_job_ingested`, `prep_started`, `prep_complete`, `prep_failed`, `prep_subprocess_failed`, `prep_validation_failed`, `prep_failed_reset`, `watchdog_run`.
 
 To find events of one type, last 25 hours:
 
@@ -84,13 +84,13 @@ Prep normally finishes in 3–5 minutes. If a job stays in `prep_in_progress` be
 jq -c 'select(.event == "watchdog_run")' state/logs/pipeline.jsonl | tail -5
 ```
 
-**Cause of the stuck prep** is usually in `pipeline.jsonl` — look for a `prep_failed` or `prep_validation_failed` event near the `prep_started` entry:
+**Cause of the stuck prep** is usually in `pipeline.jsonl` — look for a `prep_failed`, `prep_validation_failed`, or `prep_subprocess_failed` event near the `prep_started` entry:
 
 ```bash
 jq -c 'select(.event | test("prep"))' state/logs/pipeline.jsonl | tail -10
 ```
 
-Common causes: Anthropic API rate limit, Perplexity rate limit, pandoc conversion failure on the `.docx` step.
+Common causes: Anthropic API rate limit, Perplexity rate limit, pandoc conversion failure on the `.docx` step. Pandoc / `find_contacts.py` subprocess failures roll the stage back to `scored` immediately and emit `prep_subprocess_failed` (#495); the prep folder is preserved with a `.failed_subprocess` sentinel containing the cmd, returncode, and stderr tail for inspection.
 
 ### "The `/ingest/` web form isn't saving jobs"
 

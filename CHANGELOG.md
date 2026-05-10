@@ -10,6 +10,9 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Fixed
+- **#495 fix(prep): surface silent `prep_application.py` subprocess failures.** The 4 must-succeed subprocesses inside `findajob.prep.orchestrator._run_prep` (3× pandoc `.md→.docx`, 1× `scripts/find_contacts.py`) ran with `check=False`, so a non-zero exit produced a partial materials folder while stage advanced to `materials_drafted` and the operator got a "Drafts ready" ntfy — silent application-rate suppression. All 4 sites now use `check=True, capture_output=True`; `_run_prep`'s body is wrapped in a `try/except subprocess.CalledProcessError` that calls a new `_handle_prep_subprocess_failure` helper. On failure the helper writes a `.failed_subprocess` sentinel into the prep folder (cmd / returncode / stderr tail), emits a `prep_subprocess_failed` event to `pipeline.jsonl`, calls `reset_prep_to_scored` (which writes `audit_log` and a `prep_failed_reset` event), sends a "PREP FAILED (subprocess)" ntfy, and re-raises as `SystemExit(1)`. The partial folder is preserved (not `rmtree`-ed like the existing validation-failure path) so the operator can inspect what got produced before it died. Advisory subprocesses (curl/pandoc JD-fetch fallback at L141-149, `validate_resume.py` informational quality check) intentionally stay on `check=False` because their failures are not pipeline-blocking. New `tests/test_prep_subprocess_failure.py` (7 tests) covers the handler's stage rollback, audit_log row, sentinel write, pipeline event, no-advance-to-materials_drafted, missing-outdir best-effort fallback, and a mechanical regex-guard that the 4 must-succeed sites carry `check=True`. **No `migration-required`** — failure-path-only behavior change; existing successful preps unaffected. Closes #495.
+
 ## [0.23.0] — 2026-05-09
 
 ### Migration required

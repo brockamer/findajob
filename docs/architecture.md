@@ -115,6 +115,12 @@ prep_application.py (detached subprocess, start_new_session=True)
 
 scripts/watchdog.py (runs every 10 min): resets any job stuck in
   prep_in_progress > 60 min back to scored so the operator can re-flag.
+
+If a pandoc or find_contacts subprocess fails (non-zero exit), the
+orchestrator immediately rolls stage back to scored, writes a
+.failed_subprocess sentinel into the prep folder (cmd / returncode /
+stderr tail) and emits prep_subprocess_failed — no waiting for the
+60-min watchdog (#495).
 ```
 
 ---
