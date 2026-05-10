@@ -40,9 +40,9 @@ def company_match(search: str, contact_company: str) -> bool:
     and matches with word-boundary regex in either direction. Word
     boundaries reject prefix/substring collisions: "Apple" no longer
     matches "GreenApple", "AI" no longer matches "AIRBUS" (#497). Per
-    CLAUDE.md §"company_match() Blank String Guard", blank inputs return
-    False — `'' in 'anything'` is True in Python and would cause every
-    blank-company row in connections.csv to false-match.
+    CLAUDE.md §"company_match() Discipline", blank inputs return False
+    — `'' in 'anything'` is True in Python and would cause every blank-
+    company row in connections.csv to false-match.
     """
 
     def normalize_co(s: str) -> str:
