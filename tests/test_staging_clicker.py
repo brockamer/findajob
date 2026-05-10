@@ -1,4 +1,5 @@
 """Staging clicker picker + sentinel-writeback unit tests (#565)."""
+
 from __future__ import annotations
 
 import json
