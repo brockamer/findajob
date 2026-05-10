@@ -7,7 +7,9 @@ Operator stops + restarts the container around this call:
   docker exec -u 1000 findajob-staging python -m findajob.staging.reset
   docker compose start findajob-staging
 
-Stop/start are operator-side; this module only does the file work.
+Stop/start are operator-side; this module only does the file work. Skipping
+the stop risks rmtree hitting EBUSY on open SQLite WAL/shm sidecars held
+by the running uvicorn/supercronic processes — half-wiped data/ + traceback.
 """
 
 from __future__ import annotations
@@ -25,6 +27,10 @@ DEFAULT_TARGET = Path(BASE)
 
 def reset_to_persona(fixture: Path, target: Path) -> None:
     """Wipe target/data/ and copy fixture/* into target/.
+
+    Subdirs other than data/ are replaced only when the fixture supplies them
+    (rmtree dst → copytree src). Pre-existing target subdirs not present in
+    the fixture survive. Callers must ensure the fixture is complete.
 
     Raises FileNotFoundError if fixture missing,
     NotADirectoryError if target exists but is not a directory.
