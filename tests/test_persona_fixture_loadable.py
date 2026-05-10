@@ -7,11 +7,9 @@ active_sources.txt and the canonical adapter registry.
 from __future__ import annotations
 
 import base64
-from pathlib import Path
 
 from findajob.fetchers.adapters.registry import REGISTERED_ADAPTERS
-
-FIXTURE = Path(__file__).resolve().parent / "fixtures" / "staging_persona"
+from findajob.staging.reset import DEFAULT_FIXTURE as FIXTURE
 
 
 def test_fixture_root_exists() -> None:

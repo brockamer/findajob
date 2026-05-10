@@ -21,7 +21,7 @@ from pathlib import Path
 
 from findajob.paths import BASE
 
-DEFAULT_FIXTURE = Path(BASE) / "tests" / "fixtures" / "staging_persona"
+DEFAULT_FIXTURE = Path(__file__).parent / "persona_fixture"
 DEFAULT_TARGET = Path(BASE)
 
 
