@@ -1,0 +1,24 @@
+# Generic public-board slugs for staging soak persona (Jordan Riley).
+# Cross-industry, well-known companies with public ATS endpoints.
+# Greenhouse:
+https://boards.greenhouse.io/stripe
+https://boards.greenhouse.io/cloudflare
+https://boards.greenhouse.io/datadog
+https://boards.greenhouse.io/figma
+https://boards.greenhouse.io/airtable
+https://boards.greenhouse.io/asana
+https://boards.greenhouse.io/dropbox
+# Ashby:
+https://jobs.ashbyhq.com/notion
+https://jobs.ashbyhq.com/linear
+https://jobs.ashbyhq.com/posthog
+https://jobs.ashbyhq.com/vercel
+https://jobs.ashbyhq.com/clerk
+# Lever:
+https://jobs.lever.co/buffer
+https://jobs.lever.co/zapier
+https://jobs.lever.co/hashicorp
+https://jobs.lever.co/godaddy
+https://jobs.lever.co/automattic
+https://jobs.lever.co/figma
+https://jobs.lever.co/scribd

@@ -1,0 +1,12 @@
+# Generic company names for staging clicker --mode speculative.
+# Drawn from the same public-board universe as feed_urls.txt for consistency.
+Stripe
+Cloudflare
+Notion
+DataDog
+Linear
+PostHog
+Vercel
+HashiCorp
+Buffer
+Zapier

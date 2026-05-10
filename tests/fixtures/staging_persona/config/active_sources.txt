@@ -1,0 +1,5 @@
+# Managed by /settings/active-sources/. Edit there to keep this file in sync.
+jobs-api14
+greenhouse
+ashby
+lever
