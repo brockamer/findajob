@@ -3,6 +3,7 @@
 Catches accidental fixture damage and drift between the persona's
 active_sources.txt and the canonical adapter registry.
 """
+
 from __future__ import annotations
 
 import base64
