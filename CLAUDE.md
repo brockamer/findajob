@@ -139,9 +139,11 @@ Internally-branded teams, programs, or org names with ambiguous abbreviations mu
 ### JD at Prep Time
 `prep_application.py` reads JD from the database. Never re-curls the URL at prep time.
 
-### company_match() Blank String Guard
-`connections.csv` may have blank-company rows. `'' in 'anything'` is True in Python.
-Every `company_match()` function must guard: `if not s or not c: return False`
+### company_match() Discipline
+Two regression-prone rules every `company_match()` implementation must observe:
+
+1. **Blank-string guard.** `connections.csv` may have blank-company rows. `'' in 'anything'` is True in Python — without the guard, every blank-company row false-matches. Required: `if not s or not c: return False`.
+2. **Word-boundary matching, not substring containment** (#497). Use `re.search(rf"\b{re.escape(needle)}\b", haystack)` (bidirectional), not `needle in haystack`. Substring `in` matches "Apple" inside "GreenApple" and "AI" inside "AIRBUS"; word boundaries don't.
 
 ### Title/Company Cleaning
 API title and company fields contain appended metadata (location, salary, recency flags).

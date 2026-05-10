@@ -37,7 +37,9 @@ def company_match(search: str, contact_company: str) -> bool:
     """Match a search-string company against a connection's company string.
 
     Strips common corporate suffixes (Inc, LLC, Ltd, Corp, Co, .com, .io)
-    and compares via substring containment in either direction. Per
+    and matches with word-boundary regex in either direction. Word
+    boundaries reject prefix/substring collisions: "Apple" no longer
+    matches "GreenApple", "AI" no longer matches "AIRBUS" (#497). Per
     CLAUDE.md §"company_match() Blank String Guard", blank inputs return
     False — `'' in 'anything'` is True in Python and would cause every
     blank-company row in connections.csv to false-match.
@@ -53,7 +55,7 @@ def company_match(search: str, contact_company: str) -> bool:
     # Guard: blank company matches nothing. '' in 'anything' is True in Python.
     if not s or not c:
         return False
-    return s in c or c in s
+    return bool(re.search(rf"\b{re.escape(s)}\b", c)) or bool(re.search(rf"\b{re.escape(c)}\b", s))
 
 
 def find_contacts(company: str) -> list[dict[str, str]]:
