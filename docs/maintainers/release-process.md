@@ -60,6 +60,27 @@ The recommended user pin is `:vMAJOR.MINOR` (e.g. `:v0.1`). It gets bugfixes
 automatically on `docker compose pull` and only moves to a potentially breaking
 version when Claude explicitly cuts a new minor.
 
+## Three-gate dev pipeline (#565)
+
+Three application tiers exist, each with a single clear purpose:
+
+| Tier | Purpose | Pin | Reset trigger |
+|---|---|---|---|
+| `findajob-clean` | Factory-fresh / NUX walkthrough / structural-migration gate | `:latest` | Per-NUX or per-onboarding-touching release |
+| `findajob-staging` | Populated soak under realistic activity, pre-cohort gate | `:latest` | Minor cut + persona-fixture edit |
+| `<operator-stack>` | Production | `:latest` | n/a |
+
+Plus the 5 tester stacks pinned to `:vMAJOR.MINOR` (unchanged).
+
+The pre-tag checklist becomes:
+
+| Gate | Tier | Validates |
+|---|---|---|
+| Pre-tag throwaway smoke (`scripts/test_container_integration.sh`) | ephemeral | Single full triage cycle on empty mounts; image boots cleanly |
+| Pre-tag `findajob-clean` structural pre-flight | persistent factory-fresh | Migration correctness, onboarding gate, app-boot |
+| Pre-tag `findajob-staging` behavioral soak | persistent populated | Triage / scoring / notify / M6-launcher behavior on populated DB |
+| Cohort wave per-stack verification | tester + operator | Migration on real populated data, `verify_auth` |
+
 ## Pre-release checklist
 
 Before proposing the cut, Claude runs through this list and reports results to the user.
@@ -95,6 +116,14 @@ reference the new tag, the file is inconsistent — fix before cutting.
 - For PRs touching `src/findajob/gmail_imap.py` or `src/findajob/fetchers/__init__.py:fetch_gmail_jobs`: re-run `uv run pytest tests/test_transparency_invariants.py -v` and link the green run in the PR description.
 
 - For releases that include any `migration-required` PR touching schema, onboarding, mounts, or the entrypoint: confirm a recent (≤ 1 release cycle) restore exercise has passed against a backup tarball produced by the current image. The procedure is documented in [`operations/restore.md`](operations/restore.md). If no recent exercise is on file, run one before tagging — a backup that has not been restored is not a backup, and a release that breaks restore must not ship.
+
+- [ ] **Staging soak.** Ensure `findajob-staging` has been on `:latest` for at least one completed daily triage cycle. Run the green-check from `<deployment-host>`:
+
+      ```
+      ssh <deployment-host> 'docker exec -u 1000 findajob-staging-scheduler-1 python -m findajob.staging.green'
+      ```
+
+      Must exit 0 before tagging. On non-zero, investigate using the failure summary printed to stderr; either fix and re-run, or document the override justification in the release CHANGELOG entry.
 
 ## Pre-tag smoke check
 
