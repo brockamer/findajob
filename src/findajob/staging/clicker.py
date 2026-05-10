@@ -53,7 +53,7 @@ def _pick_for_interview(db: Path) -> str | None:
 
 
 def _pick_for_advance(db: Path, threshold_hours: int) -> str | None:
-    cutoff = (dt.datetime.now(dt.UTC) - dt.timedelta(hours=threshold_hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    cutoff = (dt.datetime.now(dt.UTC) - dt.timedelta(hours=threshold_hours)).isoformat()
     conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     rows = conn.execute(
         "SELECT fingerprint FROM jobs "
@@ -77,6 +77,8 @@ def _pick_speculative_target(target_file: Path) -> str | None:
 def _post(url: str, data: bytes | None = None) -> int:
     """POST with optional HTTP Basic Auth from env. Returns HTTP status."""
     req = urllib.request.Request(url, data=data or b"", method="POST")
+    if data:
+        req.add_header("Content-Type", "application/x-www-form-urlencoded")
     auth_user = os.environ.get("FINDAJOB_AUTH_USER")
     auth_pass = os.environ.get("FINDAJOB_AUTH_PASS")
     if auth_user and auth_pass:
@@ -121,7 +123,7 @@ def _run_speculative(base_url: str, target_file: Path) -> int:
     target = _pick_speculative_target(target_file)
     if target is None:
         return 0
-    body = f"company_name={urllib.parse.quote(target)}".encode()
+    body = f"company={urllib.parse.quote(target)}".encode()
     status = _post(f"{base_url}/ingest/speculative", data=body)
     return 0 if 200 <= status < 400 else 1
 
@@ -144,16 +146,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--advance-threshold-hours", type=int, default=DEFAULT_ADVANCE_THRESHOLD_HOURS)
     args = parser.parse_args(argv)
 
-    if args.mode == "prep":
-        rc = _run_prep(args.base_url, args.db)
-    elif args.mode == "interview":
-        rc = _run_interview(args.base_url, args.db)
-    elif args.mode == "speculative":
-        rc = _run_speculative(args.base_url, args.speculative_targets)
-    else:  # advance
-        rc = _run_advance(args.base_url, args.db, args.advance_threshold_hours)
-
-    _write_sentinel(args.sentinel, exit_code=rc, mode=args.mode)
+    rc = 1
+    try:
+        if args.mode == "prep":
+            rc = _run_prep(args.base_url, args.db)
+        elif args.mode == "interview":
+            rc = _run_interview(args.base_url, args.db)
+        elif args.mode == "speculative":
+            rc = _run_speculative(args.base_url, args.speculative_targets)
+        else:  # advance
+            rc = _run_advance(args.base_url, args.db, args.advance_threshold_hours)
+    finally:
+        _write_sentinel(args.sentinel, exit_code=rc, mode=args.mode)
     return rc
 
 

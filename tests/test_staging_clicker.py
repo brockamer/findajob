@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import urllib.request
 from pathlib import Path
 
 import pytest
@@ -31,7 +32,7 @@ def staging_db(tmp_path: Path) -> Path:
     rows = [
         (1, "fp_scored_a", "Project Coordinator", "Stripe", "scored", 7, "2026-05-09T10:00:00Z", None),
         (2, "fp_scored_b", "Operations Manager", "Notion", "scored", 8, "2026-05-09T11:00:00Z", None),
-        (3, "fp_prep_done", "Operations Lead", "DataDog", "materials_drafted", 7, "2026-05-09T12:00:00Z", None),
+        (3, "fp_prep_done", "Operations Lead", "DataDog", "materials_drafted", 7, "2026-05-09T12:00:00+00:00", None),
         (4, "fp_applied", "Customer Ops", "Cloudflare", "applied", 6, "2026-05-09T13:00:00Z", "2026-05-09T13:00:00Z"),
         (5, "fp_rejected", "Coordinator", "Figma", "rejected", 4, "2026-05-09T14:00:00Z", None),
     ]
@@ -96,3 +97,34 @@ def test_sentinel_writes_payload(tmp_path: Path) -> None:
     assert payload["exit_code"] == 0
     assert payload["mode"] == "prep"
     assert "timestamp" in payload
+
+
+def test_run_speculative_posts_correct_form(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """_run_speculative must POST company=<urlencoded> with correct Content-Type."""
+    target_file = tmp_path / "speculative_targets.txt"
+    target_file.write_text("Stripe\n")
+
+    captured: dict = {}
+
+    class _FakeResp:
+        status = 200
+
+        def __enter__(self) -> _FakeResp:
+            return self
+
+        def __exit__(self, *a: object) -> bool:
+            return False
+
+    def fake_urlopen(req: urllib.request.Request, timeout: int | None = None) -> _FakeResp:
+        captured["url"] = req.full_url
+        captured["body"] = req.data
+        captured["content_type"] = req.get_header("Content-type")
+        return _FakeResp()
+
+    monkeypatch.setattr(clicker.urllib.request, "urlopen", fake_urlopen)
+    rc = clicker._run_speculative("http://localhost", target_file)
+
+    assert rc == 0
+    assert captured["url"].endswith("/ingest/speculative")
+    assert captured["body"] == b"company=Stripe"
+    assert captured["content_type"] == "application/x-www-form-urlencoded"
