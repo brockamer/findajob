@@ -10,6 +10,8 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+## [0.23.0] — 2026-05-09
+
 ### Migration required
 - **#410.5: stacks with an explicit `config/active_sources.txt` must add the four formerly-unconditional adapter names.** Pre-#410.5 the orchestrator fired `fetch_greenhouse_jobs` / `fetch_ashby_jobs` / `fetch_lever_jobs` / `fetch_gmail_jobs` *unconditionally* alongside the registry loop — so `active_sources.txt` only ever gated the RapidAPI adapters (`jobs-api14`, `jobs-api14-indeed`, `jsearch`). After #410.5 every adapter is registry-gated. Stacks whose existing `active_sources.txt` looks like `jobs-api14\njsearch` (the operator's stack and the early NUX wave testers' stacks) need to add `greenhouse`, `ashby`, `lever`, `gmail` (whichever apply) before deploying or those sources go silent. **Stacks with no `active_sources.txt`** at all are unaffected — the `_DEFAULT_ACTIVE_SOURCES` constant expanded from `["jobs-api14"]` to all 7 registered adapter names, preserving the pre-cutover effective default surface (every adapter that `is_configured()` returns True for). **Verification** post-deploy on each stack: `sqlite3 state/data/pipeline.db "SELECT source, COUNT(*) FROM jobs WHERE created_at > datetime('now', '-7 days') GROUP BY source"` pre-deploy and ~24h post-deploy; same source labels in same proportions = behavior preserved (AC #5 of #410). If a source disappears post-deploy, add it to that stack's `active_sources.txt` and re-trigger triage.
 
@@ -1016,7 +1018,8 @@ from GHCR and deployed via Docker Compose on a shared Docker host.
 - Documentation cleanup — removing `sigoden/aichat` references in favor of
   `blob42/aichat-ng` — is tracked in #70
 
-[Unreleased]: https://github.com/brockamer/findajob/compare/v0.22.0...HEAD
+[Unreleased]: https://github.com/brockamer/findajob/compare/v0.23.0...HEAD
+[0.23.0]: https://github.com/brockamer/findajob/releases/tag/v0.23.0
 [0.22.0]: https://github.com/brockamer/findajob/releases/tag/v0.22.0
 [0.21.0]: https://github.com/brockamer/findajob/releases/tag/v0.21.0
 [0.20.3]: https://github.com/brockamer/findajob/releases/tag/v0.20.3
