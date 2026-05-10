@@ -79,3 +79,27 @@ jobs:
     command: "timeout ${FINDAJOB_DETECT_REJECTIONS_TIMEOUT:-600} python3 /app/scripts/detect_rejections.py"
     description: "Scan Gmail for company rejection emails matching active applications; surface as suggestions (#362)."
     enabled: true
+
+  staging-prep:
+    schedule: "0 */6 * * *"
+    command: "python3 -m findajob.staging.clicker --mode prep"
+    description: "Staging only (#565): every 6h, exercise prep launcher on a random scored job. Disabled by default; FINDAJOB_STAGING_PREP_ENABLED=true on findajob-staging."
+    enabled: false
+
+  staging-interview:
+    schedule: "0 14 * * 2"
+    command: "python3 -m findajob.staging.clicker --mode interview"
+    description: "Staging only (#565): Tue 14:00 PT, exercise interview launcher. Disabled by default."
+    enabled: false
+
+  staging-speculative:
+    schedule: "0 15 * * 4"
+    command: "python3 -m findajob.staging.clicker --mode speculative"
+    description: "Staging only (#565): Thu 15:00 PT, exercise speculative ingest. Disabled by default."
+    enabled: false
+
+  staging-advance:
+    schedule: "30 9 * * *"
+    command: "python3 -m findajob.staging.clicker --mode advance"
+    description: "Staging only (#565): daily 09:30 PT, age materials_drafted → applied so interview cron has candidates. Disabled by default."
+    enabled: false
