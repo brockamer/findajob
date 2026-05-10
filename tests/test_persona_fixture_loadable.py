@@ -8,8 +8,6 @@ from __future__ import annotations
 import base64
 from pathlib import Path
 
-import pytest
-
 from findajob.fetchers.adapters.registry import REGISTERED_ADAPTERS
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "staging_persona"
