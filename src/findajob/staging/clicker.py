@@ -22,13 +22,13 @@ import datetime as dt
 import json
 import os
 import random
-import sqlite3
 import sys
 import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
 
+from findajob.db import connect
 from findajob.paths import BASE
 
 DEFAULT_DB = Path(BASE) / "data" / "pipeline.db"
@@ -39,14 +39,14 @@ DEFAULT_BASE_URL = os.environ.get("FINDAJOB_STAGING_BASE_URL", "http://127.0.0.1
 
 
 def _pick_for_prep(db: Path) -> str | None:
-    conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    conn = connect(db, ro=True)
     rows = conn.execute("SELECT fingerprint FROM jobs WHERE stage = 'scored' ORDER BY RANDOM() LIMIT 1").fetchall()
     conn.close()
     return rows[0][0] if rows else None
 
 
 def _pick_for_interview(db: Path) -> str | None:
-    conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    conn = connect(db, ro=True)
     rows = conn.execute("SELECT fingerprint FROM jobs WHERE stage = 'applied' ORDER BY RANDOM() LIMIT 1").fetchall()
     conn.close()
     return rows[0][0] if rows else None
@@ -54,7 +54,7 @@ def _pick_for_interview(db: Path) -> str | None:
 
 def _pick_for_advance(db: Path, threshold_hours: int) -> str | None:
     cutoff = (dt.datetime.now(dt.UTC) - dt.timedelta(hours=threshold_hours)).isoformat()
-    conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    conn = connect(db, ro=True)
     rows = conn.execute(
         "SELECT fingerprint FROM jobs "
         "WHERE stage = 'materials_drafted' AND stage_updated < ? "
