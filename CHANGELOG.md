@@ -10,6 +10,13 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Added
+- **add(ops): Fly.io as a cloud deployment target.** Adds `ops/fly.toml.example` (tracked template, region `iad`, image pinned to `ghcr.io/brockamer/findajob:v0.23.3`, six `[[mounts]]` mirroring the compose `state/{data,config,candidate_context,companies,logs,.backups}` layout, `[http_service]` on 8090 with a `/healthz` check, `[env]` matching compose.yaml.example's non-secret block) and `ops/fly-deploy.sh`, an idempotent wrapper that creates the Fly app + six volumes if missing, prompts only for missing secrets (`OPENROUTER_API_KEY`, `RAPIDAPI_KEY`, `NTFY_TOPIC`, `FINDAJOB_AUTH_USER`, `FINDAJOB_AUTH_PASS`, `FINDAJOB_WEB_URL` — defaults to `https://<app>.fly.dev`), runs `fly deploy`, and verifies the basic-auth gate from inside the running machine via `fly ssh console --command "python -m findajob.web.verify_auth"` (CLAUDE.md "Auth Gate Must Be Verified Post-Deploy"). End-state for the operator: edit one line in `ops/fly.toml` (the app name), run `bash ops/fly-deploy.sh`, log in with basic auth. Image runs unchanged — Fly executes the same `ENTRYPOINT` as the compose stack, supercronic stays PID 1, uvicorn is a child, SQLite lives on a Fly Volume (POSIX block device, not network filesystem). Single-tenant first (one Fly app per tenant); arg-driven multi-tenant wrapping is a deliberate follow-up. Real `ops/fly.toml` is gitignored alongside the per-stack rapidapi/active-sources config because it carries the chosen Fly app name (operator topology). Runbook with threat model, docker-compose→fly translation table, cost guide (~$3–5/mo per tenant on the defaults), backup/rollback/teardown sections at `docs/operations/fly-deploy.md`; one-line pointer added to `docs/operations/README.md`.
+
+### Migration required
+
+None. Pure addition of a new deployment surface. No schema, env, crontab, mount, compose, or runtime-code change touches existing self-hosted stacks; the host Docker Compose path remains the supported default. Operators who don't want a Fly deploy can ignore the new files entirely.
+
 ## [0.23.3] — 2026-05-11
 
 ### Fixed

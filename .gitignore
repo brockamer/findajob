@@ -59,6 +59,9 @@ config/gmail_state.json
 config/rapidapi_feeds.yaml
 config/active_sources.txt
 
+# Real Fly.io deploy config — gitignored, .example tracked; carries operator topology (chosen Fly app name)
+ops/fly.toml
+
 # ── Leak prevention (#430) — categorical safety nets ───────────────────────
 # Specific named files appear above; these patterns catch broader categories
 # to keep operator-private / topology content out of public commits.

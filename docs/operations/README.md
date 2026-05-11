@@ -4,6 +4,8 @@
 
 Day-to-day operation of the pipeline. The `ghcr.io/brockamer/findajob` image runs supercronic + uvicorn co-process inside one container. Setup: [`../getting-started/install-docker.md`](../getting-started/install-docker.md). All pipeline commands below are shown in their Docker form (`docker compose exec scheduler …`).
 
+For cloud deployment on Fly.io as an alternative to the host compose stack — one Fly app per tenant, image runs unchanged — see [`fly-deploy.md`](fly-deploy.md).
+
 ---
 
 ## Daily Workflow
