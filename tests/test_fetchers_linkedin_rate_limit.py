@@ -114,7 +114,7 @@ def test_429_twice_returns_no_description(monkeypatch):
 
     result = fetch_linkedin_job_data("abc123")
 
-    assert result == {"description": None, "company": None}
+    assert result == {"description": None, "company": None, "title": None}
     stats = get_linkedin_rate_limit_stats()
     # First 429 incremented the counter; second one bubbles into except.
     assert stats["count"] == 1

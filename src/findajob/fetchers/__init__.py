@@ -42,7 +42,7 @@ def fetch_jd_curl(url):
 def fetch_linkedin_job_data(job_id):
     """
     Fetch full job data via LinkedIn get endpoint.
-    Returns {'description': str|None, 'company': str|None}.
+    Returns {'description': str|None, 'company': str|None, 'title': str|None}.
     LinkedIn job URLs require auth — curling them always returns "Job not found".
     The API get endpoint is the only reliable path.
     """
@@ -50,7 +50,7 @@ def fetch_linkedin_job_data(job_id):
 
     api_key = resolve_rapidapi_key("RAPIDAPI_KEY", "JOBS_API14_KEY")
     if not api_key or not job_id:
-        return {"description": None, "company": None}
+        return {"description": None, "company": None, "title": None}
     time.sleep(_LINKEDIN_GET_THROTTLE_SEC)
     url = "https://jobs-api14.p.rapidapi.com/v2/linkedin/get"
     headers = {
@@ -70,7 +70,7 @@ def fetch_linkedin_job_data(job_id):
         data = response.json()
         if data.get("hasError"):
             log_event("linkedin_get_error", job_id=job_id, errors=data.get("errors"))
-            return {"description": None, "company": None}
+            return {"description": None, "company": None, "title": None}
         payload = data.get("data", {})
         description = payload.get("description", "") or ""
         # Company name field varies across API versions — try all known keys
@@ -81,13 +81,15 @@ def fetch_linkedin_job_data(job_id):
             or (payload.get("hiringOrganization") or {}).get("name")
             or ""
         )
+        title = payload.get("title", "") or ""
         return {
             "description": strip_jd_boilerplate(description)[:JD_MAX_CHARS] if description else None,
             "company": clean_company(company) if company else None,
+            "title": clean_title(title) if title else None,
         }
     except Exception as e:
         log_event("linkedin_get_error", job_id=job_id, error=str(e))
-        return {"description": None, "company": None}
+        return {"description": None, "company": None, "title": None}
 
 
 def fetch_jd(job):
@@ -139,10 +141,15 @@ def fetch_jd(job):
         api_id = job.get("api_id", "")
         if api_id:
             result = fetch_linkedin_job_data(api_id)
-            # Cache resolved company in job dict so the main loop can use it
-            # without a second API call (only relevant for gmail_linkedin blank-company case).
-            if source == "gmail_linkedin" and result.get("company"):
-                job["_linkedin_company"] = result["company"]
+            # Cache resolved company/title in job dict so the main loop can use them
+            # without a second API call. Company cache covers the blank-company case;
+            # title cache covers the degenerate-title case (#656 — Android share-flow
+            # leaves the bare URL as anchor text).
+            if source == "gmail_linkedin":
+                if result.get("company"):
+                    job["_linkedin_company"] = result["company"]
+                if result.get("title"):
+                    job["_linkedin_title"] = result["title"]
             if result["description"]:
                 return result["description"]
         log_event("linkedin_jd_missing", title=job.get("title"), api_id=api_id)

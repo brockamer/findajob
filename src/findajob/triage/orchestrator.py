@@ -24,7 +24,13 @@ from pathlib import Path
 
 from findajob.audit import log_event, write_audit
 from findajob.classification import is_aggregator_company, is_ingest_noise_title
-from findajob.cleaning import fingerprint, is_coarse_location, loose_fingerprint, normalize
+from findajob.cleaning import (
+    fingerprint,
+    is_coarse_location,
+    is_degenerate_title,
+    loose_fingerprint,
+    normalize,
+)
 from findajob.cost_tracking import log_call, role_model
 from findajob.db import connect
 from findajob.fetchers import (
@@ -57,6 +63,72 @@ SCORE_WORKERS = 6  # concurrent LLM scoring threads
 def _on_sigterm(signum, frame):
     log_event("pipeline_terminated", signal="SIGTERM", note="Received SIGTERM — likely systemd timeout or manual stop.")
     sys.exit(143)  # 128 + SIGTERM(15)
+
+
+def _resolve_degenerate_linkedin_title(conn: sqlite3.Connection, job: dict, job_id: str, now: str) -> bool:
+    """Swap in `_linkedin_title` when the stored gmail_linkedin title is degenerate (#656).
+
+    The Android share-flow leaves the bare URL as email-anchor text; the iOS
+    variant can leave the company name. `fetch_jd` cached the real title
+    from the LinkedIn API response — apply it when degeneracy is detected,
+    recompute fingerprint/loose_fingerprint, and re-check for collisions
+    against rows that already carry the real title.
+
+    Returns True iff this row was marked as a duplicate (caller should
+    `continue` to the next job). Returns False when the row was left as-is
+    (no degeneracy, no cached title, no source mismatch) OR when the title
+    was successfully autofixed without colliding with an existing row.
+    """
+    if job.get("source") != "gmail_linkedin":
+        return False
+    cached_title = job.get("_linkedin_title")
+    if not cached_title:
+        return False
+    if not is_degenerate_title(job["title"], job.get("company", ""), job.get("url", "")):
+        return False
+
+    old_title = job["title"]
+    job["title"] = cached_title
+    new_fp = fingerprint(job["title"], job.get("company", ""), job.get("location", ""))
+    new_lfp = loose_fingerprint(job["title"], job.get("company", ""))
+    existing = conn.execute("SELECT id FROM jobs WHERE fingerprint = ? AND id != ?", (new_fp, job_id)).fetchone()
+    if not existing:
+        incoming_coarse = is_coarse_location(job.get("location", ""))
+        loose_matches = conn.execute(
+            "SELECT id, location FROM jobs WHERE loose_fingerprint = ? AND id != ?",
+            (new_lfp, job_id),
+        ).fetchall()
+        for row in loose_matches:
+            if incoming_coarse or is_coarse_location(row["location"] or ""):
+                existing = row
+                break
+    if existing:
+        conn.execute(
+            "UPDATE jobs SET dupe_of=?, stage=?, stage_updated=?, updated_at=? WHERE id=?",
+            (existing["id"], "rejected", now, now, job_id),
+        )
+        conn.commit()
+        write_audit(conn, job_id, "stage", "discovered", "rejected")
+        log_event(
+            "dupe_after_title_resolution",
+            job_id=job_id,
+            title=job["title"],
+            old_title=old_title,
+            dupe_of=existing["id"],
+        )
+        return True
+    conn.execute(
+        "UPDATE jobs SET title=?, fingerprint=?, loose_fingerprint=? WHERE id=?",
+        (job["title"], new_fp, new_lfp, job_id),
+    )
+    conn.commit()
+    log_event(
+        "linkedin_title_autofix",
+        job_id=job_id,
+        old_title=old_title,
+        new_title=job["title"],
+    )
+    return False
 
 
 # ── Main Pipeline ──
@@ -323,6 +395,11 @@ def main(gmail_since_days: int | None = None):
                 write_audit(conn, job_id, "stage", "discovered", "rejected")
                 log_event("blank_company_rejected", job_id=job_id, title=job["title"], source="gmail_linkedin")
                 continue
+
+        # Title-degeneracy resolution for gmail_linkedin (#656).
+        if _resolve_degenerate_linkedin_title(conn, job, job_id, now):
+            dupe_count += 1
+            continue
 
         contacts = find_contacts(job.get("company", ""))
         network_depth = min(len(contacts), 2)

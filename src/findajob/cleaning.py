@@ -161,3 +161,38 @@ def extract_linkedin_job_id(url: str | None) -> str | None:
     """Extract numeric job ID from a LinkedIn job URL. Returns str or None."""
     m = _LINKEDIN_JOB_ID_RE.search(url or "")
     return m.group(1) if m else None
+
+
+# Bare-numeric job ID — used to detect anchor-text leakage where the parser
+# stored "1234567890" as the job title (#656).
+_JOB_ID_ONLY_RE: re.Pattern[str] = re.compile(r"^\d{5,}$")
+
+
+def is_degenerate_title(title: str, company: str = "", url: str = "") -> bool:
+    """Return True iff `title` looks like anchor-text leakage, not a real role.
+
+    Used by triage to decide whether to swap in `_linkedin_title` (cached from
+    the LinkedIn API response) over an incoming title from email-anchor
+    parsing. Degeneracy markers (any one is enough):
+
+      - empty / whitespace-only
+      - fewer than 6 characters
+      - starts with http:// or https://
+      - equals the source URL (whole-string match)
+      - equals the company string (whole-string match)
+      - matches the bare-numeric job-ID pattern (5+ digits, no other chars)
+    """
+    if not title:
+        return True
+    t = title.strip()
+    if not t or len(t) < 6:
+        return True
+    if t.lower().startswith(("http://", "https://")):
+        return True
+    if url and t == url.strip():
+        return True
+    if company and t == company.strip():
+        return True
+    if _JOB_ID_ONLY_RE.match(t):
+        return True
+    return False
