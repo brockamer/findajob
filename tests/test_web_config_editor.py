@@ -74,6 +74,7 @@ def test_index_lists_files_by_category(client: TestClient) -> None:
     assert "Candidate context" in html
     assert "Search config" in html
     assert "Role prompts" in html
+    assert "Tool prompts" in html
     assert "candidate_context/profile.md" in html
     assert "candidate_context/master_resume.md" in html
     assert "config/jsearch_queries.txt" in html

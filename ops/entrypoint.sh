@@ -16,10 +16,10 @@
 #      them).
 #   3. Seed bundled tracked config from /opt/findajob/bundled-config/ into
 #      $JSP_BASE/config/. This overwrites tracked files (roles/,
-#      scoring_schema.json, model_pricing.yaml, reference.docx,
-#      strip-bookmarks.lua) on every start so image updates propagate.
-#      Operator-personal files (OAuth creds, sheet_id, prefilter rules,
-#      etc.) are left alone because they don't exist in bundled-config.
+#      tool_prompts/, scoring_schema.json, model_pricing.yaml,
+#      reference.docx, strip-bookmarks.lua) on every start so image updates
+#      propagate. Operator-personal files (OAuth creds, sheet_id, prefilter
+#      rules, etc.) are left alone because they don't exist in bundled-config.
 #   4. Chown writable dirs to PUID:PGID if any content doesn't match.
 #   5. Drop privileges and exec the CMD (default: supercronic /app/crontab).
 #

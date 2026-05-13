@@ -29,6 +29,10 @@ from findajob.web.config_files import (
         "config/roles/job_scorer.md",
         "config/roles/cover_letter_writer.md",
         "config/roles/onboarding_interviewer.md",
+        # #150 — tool prompts powering /tools/ tiles.
+        "config/tool_prompts/profile_refresh.md",
+        "config/tool_prompts/exclusion_tuning.md",
+        "config/tool_prompts/cover_letter_voice.md",
     ],
 )
 def test_is_editable_allows_whitelisted(relpath: str) -> None:
@@ -46,8 +50,13 @@ def test_is_editable_allows_whitelisted(relpath: str) -> None:
         "config/roles/",
         "config/roles/anything.txt",  # wrong extension under roles/
         "config/roles/nested/file.md",  # no subdir recursion
+        "config/tool_prompts",  # bare dir, no file
+        "config/tool_prompts/",
+        "config/tool_prompts/anything.txt",  # wrong extension under tool_prompts/
+        "config/tool_prompts/nested/file.md",  # no subdir recursion
         "config/other.yaml",  # not in flat allowlist
         "config/roles.md",  # not under roles/
+        "config/tool_prompts.md",  # not under tool_prompts/
         "candidate_context/voice_samples/a.md",  # voice_samples not editable
         "data/pipeline.db",
         "secrets.env",
@@ -124,11 +133,14 @@ def test_list_editable_groups_by_category(tmp_path: Path) -> None:
     (tmp_path / "config" / "roles").mkdir()
     (tmp_path / "config" / "roles" / "job_scorer.md").write_text("x")
     (tmp_path / "config" / "roles" / "cover_letter_writer.md").write_text("x")
+    (tmp_path / "config" / "tool_prompts").mkdir()
+    (tmp_path / "config" / "tool_prompts" / "profile_refresh.md").write_text("x")
+    (tmp_path / "config" / "tool_prompts" / "exclusion_tuning.md").write_text("x")
 
     groups = list_editable(tmp_path)
 
     names = [g["name"] for g in groups]
-    assert names == ["Candidate context", "Search config", "Role prompts"]
+    assert names == ["Candidate context", "Search config", "Role prompts", "Tool prompts"]
 
     candidate = next(g for g in groups if g["name"] == "Candidate context")
     candidate_paths = [f["relpath"] for f in candidate["files"]]
@@ -142,6 +154,13 @@ def test_list_editable_groups_by_category(tmp_path: Path) -> None:
         "config/roles/job_scorer.md",
     ]
 
+    tools = next(g for g in groups if g["name"] == "Tool prompts")
+    tool_paths = sorted(f["relpath"] for f in tools["files"])
+    assert tool_paths == [
+        "config/tool_prompts/exclusion_tuning.md",
+        "config/tool_prompts/profile_refresh.md",
+    ]
+
 
 def test_list_editable_flags_missing_files(tmp_path: Path) -> None:
     # An allowlisted file that doesn't exist on disk shows up with exists=False.
@@ -153,10 +172,16 @@ def test_list_editable_flags_missing_files(tmp_path: Path) -> None:
 
 
 def test_editable_categories_constant_shape() -> None:
-    assert set(EDITABLE_CATEGORIES.keys()) == {"Candidate context", "Search config", "Role prompts"}
+    assert set(EDITABLE_CATEGORIES.keys()) == {
+        "Candidate context",
+        "Search config",
+        "Role prompts",
+        "Tool prompts",
+    }
     assert "candidate_context/profile.md" in EDITABLE_CATEGORIES["Candidate context"]
     assert "config/jsearch_queries.txt" in EDITABLE_CATEGORIES["Search config"]
     assert EDITABLE_CATEGORIES["Role prompts"] == "config/roles/*.md"
+    assert EDITABLE_CATEGORIES["Tool prompts"] == "config/tool_prompts/*.md"
 
 
 def test_discovered_companies_md_is_editable() -> None:
