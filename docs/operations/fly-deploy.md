@@ -7,9 +7,9 @@ A cloud alternative to running the compose stack on a host you own. One Fly app 
 - One Fly app per tenant — strict per-tenant isolation matches the per-stack key isolation invariant (#339).
 - Always-on `findajob-<handle>.fly.dev` URL, HTTPS terminated by Fly.
 - HTTP Basic Auth via the same `FINDAJOB_AUTH_USER` / `FINDAJOB_AUTH_PASS` env vars as the compose stack.
-- Six Fly Volumes mirroring the host bind-mount layout (`data`, `logs`, `companies`, `config`, `candidate_context`, `.backups`).
+- One Fly Volume mounted at `/app/state/` holds all six state subdirs (`data/`, `logs/`, `companies/`, `config/`, `candidate_context/`, `.backups/`). The image's entrypoint materializes the subdirs on first boot; `JSP_BASE=/app/state` routes all pipeline I/O underneath. Fly Machines support exactly one volume per machine, so the compose-stack six-bind-mount layout is folded into a single mount here.
 - Image upgrades are one-line edits to `ops/fly.toml` + `fly deploy`.
-- Roughly $3–5/month per tenant on the default `shared-cpu-1x` 1GB machine + 8GB of volumes (see [Cost guide](#cost-guide) below).
+- Roughly $3–5/month per tenant on the default `shared-cpu-1x` 1GB machine + 8GB of volume (see [Cost guide](#cost-guide) below).
 
 ## Threat model
 
@@ -19,6 +19,7 @@ Same as compose: shared-secret HTTP Basic Auth is *not* identity. It defends aga
 
 - [flyctl](https://fly.io/docs/flyctl/install/) installed and on `PATH`.
 - `fly auth login` completed against your Fly account.
+- **Billing enabled on your Fly organization.** Trial orgs reject `fly deploy` with HTTP 422 "This functionality is disabled for trial organizations" until a credit card is on file. Add one at `https://fly.io/dashboard/<your-org-slug>/billing` before running the deploy script.
 - This repo checked out locally (you'll edit `ops/fly.toml`).
 - Credentials in hand before you start: OpenRouter API key, RapidAPI key, ntfy topic, and a basic-auth username + password you'll generate (≥24 chars; `openssl rand -base64 32`).
 
@@ -33,9 +34,9 @@ Three commands from the repo root:
 The script is idempotent: re-runs detect existing apps, volumes, and secrets and skip them. On a clean run it:
 
 1. Creates the Fly app if it doesn't exist.
-2. Creates the six volumes if they don't exist (`findajob_data`, `findajob_logs`, `findajob_companies`, `findajob_config`, `findajob_context`, `findajob_backups`).
+2. Creates the single `findajob_state` volume (8 GB default) if it doesn't exist.
 3. Prompts only for secrets not already set (`OPENROUTER_API_KEY`, `RAPIDAPI_KEY`, `NTFY_TOPIC`, `FINDAJOB_AUTH_USER`, `FINDAJOB_AUTH_PASS`, `FINDAJOB_WEB_URL` — defaults to `https://<app>.fly.dev`).
-4. Runs `fly deploy --config ops/fly.toml`.
+4. Runs `fly deploy --config ops/fly.toml`. On first boot inside the machine, `ops/entrypoint.sh` materializes the six state subdirs under `/app/state/` and `init_db.py` creates `pipeline.db`.
 5. Verifies the auth gate by running `python -m findajob.web.verify_auth` inside the running machine via `fly ssh console --command`. Non-zero exit means the deploy is up but unverified — the script prints `fly logs / status / ssh console` debug commands and exits.
 
 Verify in a browser: `https://findajob-<handle>.fly.dev/` should prompt for basic auth. After login the dashboard renders.
@@ -81,14 +82,14 @@ Translation from the compose forms used elsewhere in this directory:
 
 Get the machine ID with `fly machines list --app findajob-<handle>`.
 
-## Resizing volumes
+## Resizing the volume
 
-Volumes start at 1 GB (3 GB for `findajob_companies`). Extend a single volume:
+The `findajob_state` volume starts at 8 GB. Extend it in place:
 
     fly volumes list --app findajob-<handle>
-    fly volumes extend <volume-id> --size 5      # new size in GB, must be larger
+    fly volumes extend <volume-id> --size 16     # new size in GB, must be larger
 
-The volume stays attached; no downtime. Shrinking is not supported — Fly's path for that is "snapshot, destroy, recreate smaller, restore."
+The volume stays attached; no downtime. Shrinking is not supported — Fly's path for that is "snapshot, destroy, recreate smaller, restore." Companies/prep artifacts (`companies/_inbox/`, `companies/_applied/`, etc.) are the directory most likely to grow over time; if you're approaching the cap, this is the knob.
 
 ## Cost guide
 
@@ -97,7 +98,7 @@ Rough monthly cost per tenant on the defaults in `fly.toml.example`:
 | Item                                  | Rate (approx.)         | Default sizing            | Monthly |
 |---------------------------------------|------------------------|---------------------------|---------|
 | `shared-cpu-1x` 1 GB machine, always-on | ~$3.19/mo at full month | 1 machine                 | ~$3.19  |
-| Volumes                               | $0.15/GB-month         | 8 GB total                | ~$1.20  |
+| Volume                                | $0.15/GB-month         | 8 GB                      | ~$1.20  |
 | Bandwidth                             | Free tier covers low-egress traffic | Operator + tester only | ~$0 |
 | **Total**                             |                        |                           | **~$3–5** |
 
@@ -105,12 +106,13 @@ Fly's current pricing is at <https://fly.io/docs/about/pricing/> — verify befo
 
 ## Backup
 
-SQLite + role artifacts under `companies/` are the data layer. Snapshot the volumes that matter:
+SQLite + role artifacts under `companies/` are the data layer. Because all state lives on a single volume, one snapshot captures the full tenant:
 
-    fly volumes snapshots create <volume-id>           # one snapshot per volume
+    fly volumes list --app findajob-<handle>
+    fly volumes snapshots create <volume-id>
     fly volumes snapshots list   <volume-id>
 
-Snapshots are durable, off-machine, and restorable to a new volume with `fly volumes create --snapshot-id <snap>`. For a full tenant backup, snapshot all six volumes; in practice `findajob_data`, `findajob_companies`, and `findajob_config` are the ones whose loss can't be replayed from a fresh interview + `docker compose pull`. See [`../maintainers/data-ownership.md`](../maintainers/data-ownership.md) for the per-path classification.
+Snapshots are durable, off-machine, and restorable to a new volume with `fly volumes create --snapshot-id <snap>`. See [`../maintainers/data-ownership.md`](../maintainers/data-ownership.md) for the per-path classification of what's rebuildable vs. backup-critical inside that single volume.
 
 ## Rollback
 

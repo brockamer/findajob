@@ -23,12 +23,16 @@ primary_region = "iad"
 [build]
   image = "ghcr.io/brockamer/findajob:v0.23.3"
 
-# Non-secret env. Mirrors compose.yaml.example's environment block.
+# Non-secret env. Mirrors compose.yaml.example's environment block, with
+# one critical difference: JSP_BASE points at /app/state, not /app. Fly
+# machines support exactly one volume per machine, so the six state subdirs
+# (data/, logs/, companies/, config/, candidate_context/, .backups/) live
+# under a single volume root. The entrypoint materializes them on first boot.
 # Secrets (OPENROUTER_API_KEY, RAPIDAPI_KEY, NTFY_TOPIC, FINDAJOB_AUTH_USER,
 # FINDAJOB_AUTH_PASS, FINDAJOB_WEB_URL) are set via `fly secrets set` —
 # the deploy script prompts for any that are missing.
 [env]
-  JSP_BASE = "/app"
+  JSP_BASE = "/app/state"
   PUID = "1000"
   PGID = "1000"
   TZ = "America/New_York"
@@ -57,36 +61,12 @@ primary_region = "iad"
   size = "shared-cpu-1x"
   memory = "1gb"
 
-# Six volumes — one per bind-mount directory in compose.yaml.example's
-# state/ tree. Volumes are POSIX block devices (ext4), so SQLite at
-# /app/data/pipeline.db works the same as on the host. Initial sizes
-# are starting points; extend later with `fly volumes extend <id>`.
+# One volume, sized for all six state subdirs combined. POSIX block device
+# (ext4), so SQLite at $JSP_BASE/data/pipeline.db works the same as on the
+# host. The entrypoint mkdir -p's the subdirs on first boot. 8 GB is the
+# starting point (sum of the six compose-side defaults: 1+1+3+1+1+1); extend
+# later with `fly volumes extend <id>` if companies/ grows.
 [[mounts]]
-  source = "findajob_data"
-  destination = "/app/data"
-  initial_size = "1gb"
-
-[[mounts]]
-  source = "findajob_logs"
-  destination = "/app/logs"
-  initial_size = "1gb"
-
-[[mounts]]
-  source = "findajob_companies"
-  destination = "/app/companies"
-  initial_size = "3gb"
-
-[[mounts]]
-  source = "findajob_config"
-  destination = "/app/config"
-  initial_size = "1gb"
-
-[[mounts]]
-  source = "findajob_context"
-  destination = "/app/candidate_context"
-  initial_size = "1gb"
-
-[[mounts]]
-  source = "findajob_backups"
-  destination = "/app/.backups"
-  initial_size = "1gb"
+  source = "findajob_state"
+  destination = "/app/state"
+  initial_size = "8gb"

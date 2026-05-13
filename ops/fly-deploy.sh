@@ -72,20 +72,33 @@ create_volume_if_missing() {
     fly volumes create "$name" --app "$APP" --region "$REGION" --size "$size_gb" --yes >/dev/null
 }
 
-echo "==> Provisioning volumes..."
-create_volume_if_missing findajob_data       1
-create_volume_if_missing findajob_logs       1
-create_volume_if_missing findajob_companies  3
-create_volume_if_missing findajob_config     1
-create_volume_if_missing findajob_context    1
-create_volume_if_missing findajob_backups    1
+echo "==> Provisioning volume..."
+# Fly machines support exactly one volume per machine. The findajob image
+# materializes the six state subdirs (data/logs/companies/config/
+# candidate_context/.backups) under $JSP_BASE inside this single volume on
+# first boot — see ops/entrypoint.sh and docs/operations/fly-deploy.md.
+# 8 GB = sum of the per-subdir defaults in the compose layout (1+1+3+1+1+1).
+create_volume_if_missing findajob_state 8
 
 # --- 3. Secrets (skip already-set; --stage applies on next deploy) --------
 
 existing_secrets="$(fly secrets list --app "$APP" 2>/dev/null || true)"
 
+# fly secrets list output has a header row plus one row per secret:
+#
+#     NAME                 │ DIGEST           │ STATUS
+#   * FINDAJOB_AUTH_PASS   │ 1c8f32f25a63db4a │ Staged
+#     SOMETHING_DEPLOYED   │ abcd1234         │ Set
+#
+# The leading `*` marks staged-but-not-deployed secrets. The sed strips
+# leading whitespace + the optional `* ` marker so awk's first column is
+# always the name. tail skips the header without depending on awk's NR.
 has_secret() {
-    printf '%s\n' "$existing_secrets" | awk 'NR>1 {print $1}' | grep -qxF "$1"
+    printf '%s\n' "$existing_secrets" \
+        | tail -n +2 \
+        | sed -E 's/^[[:space:]]*\*?[[:space:]]+//' \
+        | awk '{print $1}' \
+        | grep -qxF "$1"
 }
 
 # prompt_secret <NAME> <prompt-label> [default] [sensitive=1|0]

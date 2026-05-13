@@ -152,10 +152,13 @@ def create_app(
 def default_app() -> FastAPI:
     """Factory used by uvicorn at container start.
 
-    Reads COMPANIES_ROOT and DB_PATH from env. Defaults match the
-    in-container layout.
+    Reads COMPANIES_ROOT and DB_PATH from env. Defaults are derived from
+    JSP_BASE so single-volume deploys (Fly, k8s) with JSP_BASE=/app/state
+    resolve to /app/state/companies and /app/state/data/pipeline.db
+    without needing per-stack env overrides.
     """
-    companies_root = Path(os.environ.get("COMPANIES_ROOT", "/app/companies"))
-    db_path = Path(os.environ.get("DB_PATH", "/app/data/pipeline.db"))
-    base_root = Path(os.environ.get("JSP_BASE", "/app"))
+    jsp_base = os.environ.get("JSP_BASE", "/app")
+    companies_root = Path(os.environ.get("COMPANIES_ROOT", f"{jsp_base}/companies"))
+    db_path = Path(os.environ.get("DB_PATH", f"{jsp_base}/data/pipeline.db"))
+    base_root = Path(jsp_base)
     return create_app(companies_root=companies_root, db_path=db_path, base_root=base_root)
