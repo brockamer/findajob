@@ -23,7 +23,9 @@ When this map drifts from the actual code (renamed file, new route module, retir
 <repo>/src/findajob/web/routes/ingest.py     # GET /ingest/ form + POST /ingest/manual handler
 <repo>/src/findajob/web/routes/config.py     # GET /config/, GET/POST /config/files/{path} — in-browser config editor
 <repo>/src/findajob/web/routes/gmail_config.py # GET/POST /config/gmail/ — IMAP/app-password integration setup (#330)
-<repo>/src/findajob/web/routes/tools.py      # GET /tools/ — stub linking to /config/
+<repo>/src/findajob/web/routes/tools.py      # GET /tools/ — guided LLM prompts + config/onboarding links (#150)
+<repo>/src/findajob/web/tools_registry.py   # tile data, prompt loader, claude.ai/new?q= URL builder (#150)
+<repo>/config/tool_prompts/*.md             # prompt source files loaded by the tools registry (#150)
 <repo>/src/findajob/web/routes/docs.py       # GET /docs/ index + GET /docs/{slug} — user docs viewer
 <repo>/src/findajob/web/markdown.py          # render_markdown() — shared MD→HTML helper for materials + docs viewers
 <repo>/src/findajob/web/config_files.py      # allowlist + resolve_editable() for /config/ editor

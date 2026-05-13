@@ -77,6 +77,28 @@ briefing again. Existing source-config files (`jsearch_queries.txt`,
 `feed_urls.txt`, `linkedin-alerts.md`) are backed up under
 `.backups/{UTC-stamp}/` before being overwritten.
 
+### Tuning your config without re-onboarding
+Visit `/tools/` for guided LLM prompts that produce config edits
+without re-running the full interview. Three prompt tiles ship by
+default:
+
+- **Refresh your profile** — conversational walkthrough of target
+  role, target companies, what to avoid. Output edits land in
+  `candidate_context/profile.md` sections.
+- **Tune what gets rejected** — articulate new hard-reject categories.
+  Steers output into `## Excluded Categories` / `## Title Calibration
+  Notes` in your profile, or into `config/prefilter_rules.yaml` for
+  title-only signals.
+- **Calibrate cover-letter voice** — extract voice patterns from a
+  sample letter into `candidate_context/voice_samples/`.
+
+Each tile offers a **Copy prompt** button and an **Open in Claude**
+anchor (the latter pre-fills the prompt in a new claude.ai chat;
+omitted if the prompt is too long for a URL). You have the
+conversation in your chat LLM, then paste the result into `/config/`
+to save it. Prompt source files live in `config/tool_prompts/` and
+are editable through `/config/` like any other config file.
+
 ---
 
 ## The Dashboard (`/board/dashboard`)

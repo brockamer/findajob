@@ -10,6 +10,13 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Added
+- **#150 feat(web): `/tools/` page — guided LLM prompts for profile updates and config tuning.** Promotes the placeholder `/tools/` route (previously a two-tile stub linking to `/onboarding/?mode=rerun` and `/config/`) to a real data-driven tile registry at `src/findajob/web/tools_registry.py`. Three prompt tiles ship in this PR: **Refresh your profile** (conversational walkthrough emitting edits for `candidate_context/profile.md` sections), **Tune what gets rejected** (enforces the title-only vs JD-content locus split as the first question — title-only signals route to `config/prefilter_rules.yaml` regex hard-rejects, JD-content signals route to `profile.md` `## Excluded Categories` or `## Title Calibration Notes` — and refuses to enumerate company names or invent industry vocabulary), and **Calibrate cover-letter voice** (extracts voice patterns from a sample letter into a markdown file suitable for `candidate_context/voice_samples/`). Each prompt tile renders a **Copy prompt** button (Alpine.js + `navigator.clipboard.writeText` with graceful `.catch()` for non-secure contexts) and an **Open in Claude** anchor pointing at `https://claude.ai/new?q=<urlencoded prompt>`. The anchor is omitted when the URL-encoded prompt exceeds 6 KB (current prompts all encode to ~3.8–4.7 KB, comfortably under the cap). Prompts live as `config/tool_prompts/{slug}.md` and seed onto each stack via the existing `bundled-config/` → `$JSP_BASE/config/` flow in `ops/entrypoint.sh` — operator-editable through the `/config/` editor like any other config file. Adding a new tool = append a tile to `TILES` in `tools_registry.py` + drop a markdown file in `config/tool_prompts/`; no schema, no migration, no env var. Phase 1 scope is intentionally narrow — the design constraints captured in the 2026-04-25 brainstorm comment on #150 (mandatory per-(source × score-band) rule preview, false-negative gate against applied jobs, "explain my score-X jobs" cluster sampler) describe a future interactive rule-editor surface and are filed as a successor issue.
+
+### Migration required
+
+None. `config/tool_prompts/` flows through the existing bundled-config seed in `ops/entrypoint.sh` on every container start; pure `docker compose pull` followed by `docker compose up -d` is sufficient. The `/tools/` route, its template, and the nav link were already present (stub), so no nav config changes either.
+
 ## [0.24.0] — 2026-05-13
 
 ### Added

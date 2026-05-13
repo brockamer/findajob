@@ -84,7 +84,7 @@ def test_tools_page_links_to_onboarding_rerun(client: TestClient) -> None:
     assert resp.status_code == 200
     body = resp.text
     assert "/onboarding/?mode=rerun" in body
-    assert "Run onboarding interview" in body
+    assert "Run a full onboarding interview" in body
 
 
 @pytest.fixture()

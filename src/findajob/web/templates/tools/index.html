@@ -4,23 +4,79 @@
 
 {% block content %}
 <div class="max-w-4xl mx-auto p-6">
-  <h1 class="text-2xl font-semibold mb-4">Tools</h1>
-  <ul class="divide-y border rounded bg-white">
-    <li class="px-4 py-3">
-      <a href="/onboarding/?mode=rerun" class="text-blue-600 hover:underline font-medium">Run onboarding interview</a>
-      <p class="text-sm text-gray-600">
-        Initial setup or full re-run after a major role pivot. Backs up
-        existing config before overwriting. For partial updates, use
-        "Edit config files" below.
-      </p>
-    </li>
-    <li class="px-4 py-3">
-      <a href="/config/" class="text-blue-600 hover:underline font-medium">Edit config files</a>
-      <p class="text-sm text-gray-600">Profile, master resume, search config, role prompts.</p>
-    </li>
-  </ul>
-  <p class="text-xs text-gray-500 mt-4">
-    More tools (doctor, scoreboard, feedback inspector) land here as they ship.
+  <h1 class="text-2xl font-semibold mb-2">Tools</h1>
+  <p class="text-sm text-slate-600 mb-6">
+    Guided prompts and direct-edit links for tuning your findajob setup.
+    Prompts open in your preferred chat LLM where you have a conversation
+    that produces config edits — then paste the result into the
+    <a href="/config/" class="text-blue-700 hover:underline">config editor</a>.
+  </p>
+
+  <div class="space-y-4">
+  {% for tile in tiles %}
+    {% if tile.kind == "link" %}
+      <div class="border rounded bg-white p-4">
+        <a href="{{ tile.href }}" class="text-blue-700 hover:underline font-medium">{{ tile.title }}</a>
+        <p class="text-sm text-slate-600 mt-1">{{ tile.description }}</p>
+      </div>
+    {% else %}
+      {# Prompt body is loaded into Alpine state via a <script type="application/json">
+         block — avoids the double-quote-in-x-data escaping trap (see settings/reject_reasons.html). #}
+      <script id="prompt-body-{{ tile.slug }}" type="application/json">{{ tile.body | tojson }}</script>
+      <div class="border rounded bg-white p-4"
+           x-data="{
+             body: JSON.parse(document.getElementById('prompt-body-{{ tile.slug }}').textContent),
+             copied: false,
+             copyFailed: false,
+             copy() {
+               if (!navigator.clipboard) {
+                 this.copyFailed = true;
+                 setTimeout(() => { this.copyFailed = false; }, 3000);
+                 return;
+               }
+               navigator.clipboard.writeText(this.body).then(() => {
+                 this.copied = true;
+                 setTimeout(() => { this.copied = false; }, 1500);
+               }).catch(() => {
+                 this.copyFailed = true;
+                 setTimeout(() => { this.copyFailed = false; }, 3000);
+               });
+             }
+           }">
+        <div class="font-medium">{{ tile.title }}</div>
+        <p class="text-sm text-slate-600 mt-1 mb-3">{{ tile.description }}</p>
+        <div class="flex flex-wrap items-center gap-2">
+          <button type="button"
+                  data-action="copy-prompt"
+                  data-slug="{{ tile.slug }}"
+                  @click="copy()"
+                  class="px-3 py-1.5 text-sm rounded border border-slate-300 bg-white hover:bg-slate-50">
+            <span x-show="!copied && !copyFailed">Copy prompt</span>
+            <span x-show="copied">Copied ✓</span>
+            <span x-show="copyFailed" class="text-red-700">Copy failed — use Open in Claude</span>
+          </button>
+          {% if tile.claude_url %}
+            <a href="{{ tile.claude_url }}"
+               target="_blank"
+               rel="noopener noreferrer"
+               class="px-3 py-1.5 text-sm rounded border border-slate-300 bg-white hover:bg-slate-50">
+              Open in Claude ↗
+            </a>
+          {% else %}
+            <span class="text-xs text-slate-500">
+              prompt too long for URL transfer — use Copy instead
+            </span>
+          {% endif %}
+        </div>
+      </div>
+    {% endif %}
+  {% endfor %}
+  </div>
+
+  <p class="text-xs text-slate-500 mt-6">
+    Prompt source lives in <code>config/tool_prompts/</code>. Edit a prompt via
+    the <a href="/config/" class="text-blue-700 hover:underline">/config/</a>
+    editor or directly on disk to refine it for your situation.
   </p>
 </div>
 {% endblock %}
