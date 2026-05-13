@@ -17,10 +17,51 @@ import sqlite3
 import subprocess
 import sys
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from findajob.audit import log_event, write_audit
 from findajob.paths import BASE
+
+_APPLIED_SNAPSHOT_RE = re.compile(r"\.applied-\d{4}-\d{2}-\d{2}\.md$")
+
+
+def snapshot_applied_md_files(
+    folder_path: str | os.PathLike[str],
+    date: str | None = None,
+) -> list[str]:
+    """Copy every ``*.md`` in ``folder_path`` to ``{name}.applied-{date}.md`` siblings.
+
+    Captures the as-sent state of generated materials at the moment of the
+    apply transition (#210). The ``.applied-...`` siblings live alongside the
+    original ``.md`` so later in-browser edits don't overwrite the snapshot.
+
+    Args:
+        folder_path: The materials folder (typically the moved-to-``_applied``
+            destination). Returns ``[]`` if the path is not a directory.
+        date: ``YYYY-MM-DD``. Defaults to today (UTC).
+
+    Returns:
+        List of created snapshot paths (absolute). Idempotent — existing
+        ``*.applied-*.md`` files are never re-snapshotted, and existing
+        snapshot targets for the given date are never overwritten.
+    """
+    folder = Path(folder_path)
+    if not folder.is_dir():
+        return []
+    if date is None:
+        date = datetime.now(UTC).strftime("%Y-%m-%d")
+
+    created: list[str] = []
+    for md in sorted(folder.glob("*.md")):
+        if _APPLIED_SNAPSHOT_RE.search(md.name):
+            continue
+        snap = md.with_name(f"{md.stem}.applied-{date}.md")
+        if snap.exists():
+            continue
+        shutil.copy2(md, snap)
+        created.append(str(snap))
+    return created
 
 
 def handle_rejection(conn: sqlite3.Connection, job: Any, reason: str) -> bool:

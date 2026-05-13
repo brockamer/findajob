@@ -174,15 +174,16 @@ def test_handler_sentinel_best_effort_when_outdir_missing(db, tmp_path, isolate_
 
 
 def test_subprocess_check_true_at_must_succeed_sites():
-    # Mechanical guard: the four must-succeed subprocess.run sites
-    # (3× pandoc, 1× find_contacts) must use check=True. Without this,
-    # silent failures re-emerge — the regression #495 was filed against.
-    src = (Path(os.path.dirname(__file__)).parent / "src/findajob/prep/orchestrator.py").read_text()
-    # The advisory curl/pandoc-fallback subprocess at L141-149 + the
-    # validate_resume.py informational call are excluded by their
-    # surrounding try/except (they don't go through this code path).
+    # Mechanical guard: the must-succeed subprocess.run sites use check=True.
+    # After #210 extracted the 3 pandoc invocations into findajob.prep.docx_render
+    # (one helper, three call sites), the count across the prep package is 2:
+    #   - 1× find_contacts in orchestrator.py
+    #   - 1× pandoc in docx_render.py (called 3× from orchestrator)
+    # The advisory curl/pandoc-fallback at L141-149 and the validate_resume.py
+    # informational call are excluded by their surrounding try/except.
     import re
 
+    prep_dir = Path(os.path.dirname(__file__)).parent / "src/findajob/prep"
     pattern = re.compile(r"check=True,\s*\n\s*capture_output=True,")
-    matches = pattern.findall(src)
-    assert len(matches) == 4, f"expected 4 must-succeed sites with check=True, found {len(matches)}"
+    total = sum(len(pattern.findall((prep_dir / fname).read_text())) for fname in ("orchestrator.py", "docx_render.py"))
+    assert total == 2, f"expected 2 must-succeed sites with check=True, found {total}"

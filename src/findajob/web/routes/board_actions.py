@@ -27,6 +27,7 @@ from findajob.actions import (
     handle_waitlist,
     notify_waitlist_resurface,
     promote_to_scored,
+    snapshot_applied_md_files,
     un_reject_job,
 )
 from findajob.audit import log_event, write_audit
@@ -221,7 +222,10 @@ def _transition_stage(
 
 
 def _move_folder_to_applied(db: sqlite3.Connection, job: sqlite3.Row) -> bool:
-    """Move a prep folder from companies/ to companies/_applied/.
+    """Move a prep folder from companies/ to companies/_applied/ + snapshot *.md.
+
+    Snapshots every ``*.md`` in the moved folder to ``{name}.applied-{date}.md``
+    siblings (#210) so later in-browser edits don't overwrite the as-sent state.
 
     Returns True if a folder was actually moved.
     """
@@ -235,6 +239,7 @@ def _move_folder_to_applied(db: sqlite3.Connection, job: sqlite3.Row) -> bool:
     shutil.move(folder, dest)
     db.execute("UPDATE jobs SET prep_folder_path=? WHERE id=?", (dest, job["id"]))
     db.commit()
+    snapshot_applied_md_files(dest)
     log_event("folder_moved_to_applied", job_id=job["id"], folder=os.path.basename(folder))
     return True
 

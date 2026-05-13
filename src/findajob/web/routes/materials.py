@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
+import os
 import re
+import shutil
 import sqlite3
+import subprocess
+import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse
 
+from findajob.prep.docx_postprocess import _linkify_contact_info
+from findajob.prep.docx_render import render_md_to_docx
 from findajob.web.folder_resolver import resolve_folder
 from findajob.web.markdown import render_markdown
 
@@ -44,6 +50,29 @@ _GROUP_RULES: list[tuple[str, str, int]] = [
 _OTHER_LABEL = "Other"
 _OTHER_ORDER = 99
 _OUTREACH_RECIPIENT_RE = re.compile(r" Outreach to ([^-]+?) - ")
+# Hide audit-snapshot (.applied-YYYY-MM-DD.md, written on apply transition #210)
+# and edit-backup (.bak, written on first edit via /materials/{fp}/files/{name})
+# files from the per-folder view — they exist for audit/recovery, not day-to-day display.
+_HIDE_FROM_VIEW_RE = re.compile(r"\.applied-\d{4}-\d{2}-\d{2}\.md$|\.bak$")
+_APPLIED_DATE_RE = re.compile(r"\.applied-(\d{4}-\d{2}-\d{2})\.md$")
+
+# Stages where the materials have already been sent — banner reminds the
+# operator that edits don't change what the employer received.
+POST_APPLIED_STAGES = frozenset({"applied", "interview", "offer", "not_selected", "withdrawn"})
+
+
+def _latest_applied_date(folder: Path) -> str | None:
+    """Return the most recent date (YYYY-MM-DD) seen in *.applied-DATE.md
+    snapshot filenames, or None if no snapshots exist."""
+    dates = []
+    for p in folder.iterdir():
+        if not p.is_file():
+            continue
+        m = _APPLIED_DATE_RE.search(p.name)
+        if m:
+            dates.append(m.group(1))
+    return max(dates) if dates else None
+
 
 # Plain-language explanation per group: what it is + when to use it. Templates
 # interpolate {title}, {company}, {recipient} where applicable. Goal is to be
@@ -144,6 +173,8 @@ def _group_files(folder: Path, title: str = "", company: str = "") -> list[dict]
     by_label: dict[str, dict] = {}
     for p in sorted(folder.iterdir()):
         if not p.is_file():
+            continue
+        if _HIDE_FROM_VIEW_RE.search(p.name):
             continue
         label, order = _classify_file(p.name)
         ext = p.suffix.lower().lstrip(".")
@@ -310,6 +341,10 @@ def folder_view(
             # Test fixtures may lack cost_log.
             breakdown = []
 
+    stage = row["stage"] if row else ""
+    is_post_applied = stage in POST_APPLIED_STAGES
+    applied_date = _latest_applied_date(folder) if is_post_applied else None
+
     templates = request.app.state.templates
     return templates.TemplateResponse(
         request=request,
@@ -319,11 +354,13 @@ def folder_view(
             "folder_name": folder.name,
             "title": title,
             "company": company,
-            "stage": row["stage"] if row else "",
+            "stage": stage,
             "last_generated_iso": row["stage_updated"] if row else None,
             "groups": groups,
             "breakdown": breakdown,
             "breakdown_total": breakdown_total,
+            "is_post_applied": is_post_applied,
+            "applied_date": applied_date,
         },
     )
 
@@ -431,4 +468,115 @@ def file_serve(
         filename=candidate.name,
         media_type="application/octet-stream",
         headers={"content-disposition": f'attachment; filename="{candidate.name}"'},
+    )
+
+
+@router.post("/materials/{fingerprint}/files/{filename}", response_class=HTMLResponse)
+def edit_save(
+    fingerprint: str,
+    filename: str,
+    request: Request,
+    content: str = Form(...),
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> HTMLResponse:
+    """Save an edited markdown file and refresh the .docx sibling (#210).
+
+    Validation gates:
+      - Folder resolves via folder_resolver (404 otherwise)
+      - Filename ends in .md (400 otherwise)
+      - Filename does NOT match the snapshot/backup pattern (403 — those are
+        read-only audit artifacts written by snapshot_applied_md_files / .bak)
+      - Filename classifies to a recognized _GROUP_RULES label (403 otherwise)
+      - Path-traversal guard (404 on escape)
+      - Stage != 'prep_in_progress' (409 — the prep subprocess may rmtree
+        the folder out from under the save)
+
+    Mutations:
+      - One-shot {file}.bak captures the pre-edit content if not already present
+      - Resume-class files run _linkify_contact_info on submitted content
+      - Atomic write via tempfile.mkstemp + os.replace
+      - .docx sibling regenerated via render_md_to_docx; has_yaml_frontmatter
+        is True only for standard "Briefing" classification (not speculative).
+        Pandoc failures surface in the result partial; the .md is still saved.
+    """
+    root: Path = request.app.state.companies_root
+    folder = resolve_folder(fingerprint, db, root)
+    if folder is None:
+        raise HTTPException(status_code=404, detail="folder not found")
+
+    if not filename.endswith(".md"):
+        raise HTTPException(status_code=400, detail="only .md files are editable")
+    if _HIDE_FROM_VIEW_RE.search(filename):
+        raise HTTPException(status_code=403, detail="snapshots and backups are read-only")
+    label, _order = _classify_file(filename)
+    if label == _OTHER_LABEL:
+        raise HTTPException(status_code=403, detail="this file is not editable")
+
+    target = (folder / filename).resolve()
+    try:
+        target.relative_to(folder.resolve())
+    except ValueError:
+        raise HTTPException(status_code=404, detail="invalid filename") from None
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail="file not found")
+
+    stage_row = db.execute("SELECT stage FROM jobs WHERE fingerprint = ?", (fingerprint,)).fetchone()
+    if stage_row is not None and stage_row["stage"] == "prep_in_progress":
+        raise HTTPException(
+            status_code=409,
+            detail="prep is regenerating this folder; try again in a few minutes",
+        )
+
+    bak = target.with_suffix(target.suffix + ".bak")
+    if not bak.exists():
+        shutil.copy2(target, bak)
+
+    if label == "Resume":
+        content = _linkify_contact_info(content)
+
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=target.name + ".",
+        suffix=".tmp",
+        dir=str(target.parent),
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
+            fh.write(content)
+        os.replace(tmp_name, target)
+    except Exception:
+        if os.path.exists(tmp_name):
+            os.unlink(tmp_name)
+        raise
+
+    docx_path = target.with_suffix(".docx")
+    pandoc_error: str | None = None
+    if docx_path.is_file():
+        try:
+            render_md_to_docx(target, docx_path, has_yaml_frontmatter=(label == "Briefing"))
+        except subprocess.CalledProcessError as exc:
+            stderr = (exc.stderr or b"").decode("utf-8", errors="replace").strip()
+            pandoc_error = stderr.splitlines()[-1] if stderr else f"pandoc exited {exc.returncode}"
+        except FileNotFoundError as exc:
+            # pandoc binary missing (PANDOC misconfigured or not installed).
+            # The .md write already succeeded; surface the infra error in the partial.
+            pandoc_error = f"pandoc binary not found ({exc.filename or 'unknown path'})"
+        except OSError as exc:
+            # Catch-all for other subprocess infra failures (permission denied, etc).
+            pandoc_error = f"pandoc invocation failed: {exc.strerror or type(exc).__name__}"
+
+    saved_at = datetime.now(UTC).strftime("%H:%M UTC")
+    if pandoc_error:
+        outcome = "error"
+        message = (
+            f".md saved at {saved_at} but .docx regen failed: {pandoc_error}. The .docx is stale; save again to retry."
+        )
+    else:
+        outcome = "success"
+        message = f"Saved {filename} at {saved_at}."
+
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request=request,
+        name="config/_save_result.html",
+        context={"outcome": outcome, "message": message},
     )

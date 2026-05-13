@@ -28,6 +28,7 @@ from findajob.llm.role_runner import run_role
 from findajob.notifications.ntfy import quick_notify
 from findajob.paths import BASE, PANDOC, load_env
 from findajob.prep.docx_postprocess import _add_cover_letter_spacing, _linkify_contact_info
+from findajob.prep.docx_render import render_md_to_docx
 from findajob.prep.quarantine import quarantine_stale_prep_folders
 from findajob.prep_naming import abbrev_title, build_prep_filenames
 from findajob.profile import load_voice_samples, read_file_prefix
@@ -366,22 +367,7 @@ def _run_prep() -> None:
 
         with open(out["briefing_md"], "w") as f:
             f.write(full_briefing)
-        subprocess.run(
-            [
-                PANDOC,
-                "-f",
-                "markdown-yaml_metadata_block",
-                out["briefing_md"],
-                "--lua-filter",
-                f"{BASE}/config/strip-bookmarks.lua",
-                "--reference-doc",
-                f"{BASE}/config/reference.docx",
-                "-o",
-                out["briefing_docx"],
-            ],
-            check=True,
-            capture_output=True,
-        )
+        render_md_to_docx(out["briefing_md"], out["briefing_docx"], has_yaml_frontmatter=True)
 
         # ── Step 3: Resume — briefing + fit analysis context now available ──
         briefing_context = full_briefing if full_briefing else ""
@@ -425,20 +411,7 @@ def _run_prep() -> None:
         except Exception:
             pass  # quality check is informational only — never block prep
 
-        subprocess.run(
-            [
-                PANDOC,
-                out["resume_md"],
-                "--lua-filter",
-                f"{BASE}/config/strip-bookmarks.lua",
-                "--reference-doc",
-                f"{BASE}/config/reference.docx",
-                "-o",
-                out["resume_docx"],
-            ],
-            check=True,
-            capture_output=True,
-        )
+        render_md_to_docx(out["resume_md"], out["resume_docx"])
 
         # Generate change log
         # Stage 5 — resume_change_reviewer (Gemini, no caching)
@@ -470,20 +443,7 @@ def _run_prep() -> None:
         cover_md_text = re.sub(r"\n---\n", "\n\n", cover_md_text)
         with open(out["cover_md"], "w") as f:
             f.write(cover_md_text)
-        subprocess.run(
-            [
-                PANDOC,
-                out["cover_md"],
-                "--lua-filter",
-                f"{BASE}/config/strip-bookmarks.lua",
-                "--reference-doc",
-                f"{BASE}/config/reference.docx",
-                "-o",
-                out["cover_docx"],
-            ],
-            check=True,
-            capture_output=True,
-        )
+        render_md_to_docx(out["cover_md"], out["cover_docx"])
         _add_cover_letter_spacing(out["cover_docx"])
 
         # ── Step 4.5: Recruiter critique — skeptical outside read of resume + cover ──

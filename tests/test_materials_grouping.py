@@ -220,3 +220,30 @@ def test_group_files_default_args_still_work(tmp_path: Path):
     desc = next(g["description"] for g in groups if g["label"] == "Resume")
     assert desc  # non-empty
     assert "{title}" not in desc and "{company}" not in desc
+
+
+def test_group_files_hides_applied_snapshots_and_bak(tmp_path: Path):
+    """*.applied-YYYY-MM-DD.md (audit snapshots from #210) and *.bak (edit
+    backups) must not surface in the per-folder UI — they exist for
+    audit/recovery, not day-to-day display."""
+    # Live materials — these must surface.
+    (tmp_path / "Candidate Resume - Acme - Sr Eng - 20260429-101515.md").write_text("x")
+    (tmp_path / "Candidate Cover - Acme - Sr Eng - 20260429-101515.md").write_text("x")
+    # Hidden — apply-time snapshots.
+    (tmp_path / "Candidate Resume - Acme - Sr Eng - 20260429-101515.applied-2026-05-13.md").write_text("x")
+    (tmp_path / "Candidate Cover - Acme - Sr Eng - 20260429-101515.applied-2026-05-13.md").write_text("x")
+    # Hidden — edit backups.
+    (tmp_path / "Candidate Resume - Acme - Sr Eng - 20260429-101515.md.bak").write_text("x")
+
+    groups = _group_files(tmp_path)
+    names_by_group = {g["label"]: [f["name"] for f in g["files"]] for g in groups}
+
+    # Resume group has the live .md only — not the snapshot, not the .bak.
+    assert "Resume" in names_by_group
+    resume_names = names_by_group["Resume"]
+    assert any(n.endswith(".md") and ".applied-" not in n and not n.endswith(".bak") for n in resume_names)
+    assert not any(".applied-" in n for n in resume_names)
+    assert not any(n.endswith(".bak") for n in resume_names)
+    # Same for Cover.
+    cover_names = names_by_group["Cover Letter"]
+    assert not any(".applied-" in n for n in cover_names)
