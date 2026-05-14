@@ -65,19 +65,17 @@ def _make_fake_imap_client(*, uidvalidity, search_results, messages):
     return client
 
 
-def test_default_rejection_allowlist_matches_spec_3_1() -> None:
-    """The DEFAULT_REJECTION_ALLOWLIST tracks the ATS senders enumerated in
-    spec §3.1 that issue distinct rejection emails (Greenhouse, Ashby, Lever).
-    Workday-style ``talent.{company}.com`` is matched at the rejection_detector
-    layer via suffix and intentionally not enumerated here.
+def test_default_rejection_allowlist_matches_classifier_fingerprints() -> None:
+    """IMAP allowlist must be in parity with the classifier's SENDER_FINGERPRINTS.
+
+    Any mismatch means the IMAP layer silently drops rejections from a platform
+    the classifier could otherwise handle (#658 — pre-fix gap surfaced via #642).
+    Entries are bare domains so RFC 3501 substring match on FROM works regardless
+    of the local-part variation (cyrusone@myworkday.com, careers@oracle.com, etc.).
     """
-    expected = {
-        "no-reply@us.greenhouse-mail.io",
-        "no-reply@eu.greenhouse-mail.io",
-        "no-reply@ashbyhq.com",
-        "no-reply@hire.lever.co",
-    }
-    assert set(gmail_imap.DEFAULT_REJECTION_ALLOWLIST) == expected
+    from findajob.rejection_detector.patterns import SENDER_FINGERPRINTS
+
+    assert set(gmail_imap.DEFAULT_REJECTION_ALLOWLIST) == set(SENDER_FINGERPRINTS.keys())
 
 
 def test_load_config_backwards_compatible_without_rejection_field(cfg_path) -> None:
@@ -98,7 +96,41 @@ def test_load_config_backwards_compatible_without_rejection_field(cfg_path) -> N
     assert list(cfg.rejection_sender_allowlist) == list(gmail_imap.DEFAULT_REJECTION_ALLOWLIST)
 
 
+def test_load_config_unions_persisted_with_defaults(cfg_path) -> None:
+    """DEFAULT_REJECTION_ALLOWLIST acts as a floor — persisted ∪ DEFAULT (#658).
+
+    Existing tester stacks have rejection_sender_allowlist persisted from the
+    pre-#658 4-entry full-address list. After #658 the in-memory list must
+    include every new default plus any persisted-only customizations, so
+    cohort stacks pick up new ATS senders without a schema migration.
+    """
+    persisted_cfg = gmail_imap.GmailConfig(
+        address="user@gmail.com",
+        app_password="abcdefghijklmnop",
+        sender_allowlist=["jobalerts-noreply@linkedin.com"],
+        configured_at="2026-04-30T00:00:00Z",
+        rejection_sender_allowlist=[
+            "no-reply@us.greenhouse-mail.io",
+            "no-reply@ashbyhq.com",
+            "no-reply@custom.com",
+        ],
+    )
+    gmail_imap.save_config(persisted_cfg)
+    cfg = gmail_imap.load_config()
+    assert cfg is not None
+    # Every DEFAULT entry must be present.
+    for default_entry in gmail_imap.DEFAULT_REJECTION_ALLOWLIST:
+        assert default_entry in cfg.rejection_sender_allowlist
+    # The operator-customized entry survives.
+    assert "no-reply@custom.com" in cfg.rejection_sender_allowlist
+    # Defaults come first (deterministic SEARCH order).
+    assert cfg.rejection_sender_allowlist[: len(gmail_imap.DEFAULT_REJECTION_ALLOWLIST)] == list(
+        gmail_imap.DEFAULT_REJECTION_ALLOWLIST
+    )
+
+
 def test_load_config_with_rejection_field(cfg_path) -> None:
+    """Operator-only customizations survive the union (defaults + extras)."""
     cfg_path.write_text(
         json.dumps(
             {
@@ -113,7 +145,9 @@ def test_load_config_with_rejection_field(cfg_path) -> None:
     )
     cfg = gmail_imap.load_config()
     assert cfg is not None
-    assert cfg.rejection_sender_allowlist == ["no-reply@custom.com"]
+    assert "no-reply@custom.com" in cfg.rejection_sender_allowlist
+    # All defaults still present (union behavior).
+    assert set(gmail_imap.DEFAULT_REJECTION_ALLOWLIST).issubset(set(cfg.rejection_sender_allowlist))
 
 
 def test_load_config_rejects_invalid_rejection_field(cfg_path) -> None:
@@ -266,6 +300,50 @@ def test_rejection_scan_logout_called_on_exception(fake_config) -> None:
         outcome = gmail_imap.fetch_new_messages_for_rejection_scan(fake_config, gmail_imap.GmailState())
     fake_client.logout.assert_called_once()
     assert outcome.result == gmail_imap.TestResult.CONNECTION_ERROR
+
+
+def test_workday_rejection_round_trip_through_fetcher_to_classifier(fake_config) -> None:
+    """Real-codepath regression for #658: a Workday-shape rejection that the
+    pre-#658 IMAP allowlist excluded must reach the classifier under the new
+    bare-domain allowlist.
+
+    The pre-fix bug surfaced via #642: the cron silently logged `count: 0` for
+    any non-greenhouse/ashby/lever sender because the IMAP filter excluded
+    Workday-shape FROM headers before the classifier ever ran. This test
+    drives the actual fetcher with a config whose allowlist contains
+    `myworkday.com` (the bare-domain DEFAULT) and a fixture mailbox holding
+    the workday/rejection.eml message, then asserts the classifier outputs a
+    high-confidence rejection — i.e. the IMAP layer no longer drops it.
+    """
+    from pathlib import Path
+
+    from findajob.rejection_detector.classifier import classify_email
+
+    raw = (Path(__file__).parent / "fixtures" / "rejection_emails" / "workday" / "rejection.eml").read_bytes()
+    cfg = gmail_imap.GmailConfig(
+        address=fake_config.address,
+        app_password=fake_config.app_password,
+        sender_allowlist=fake_config.sender_allowlist,
+        configured_at=fake_config.configured_at,
+        rejection_sender_allowlist=["myworkday.com"],
+    )
+    state = gmail_imap.GmailState(rejection_last_uid=0)
+    fake_client = _make_fake_imap_client(
+        uidvalidity=99,
+        search_results={"myworkday.com": [42]},
+        messages={42: raw},
+    )
+    with patch("findajob.gmail_imap.imaplib.IMAP4_SSL", return_value=fake_client):
+        outcome = gmail_imap.fetch_new_messages_for_rejection_scan(cfg, state)
+
+    assert outcome.result == gmail_imap.TestResult.SUCCESS
+    assert len(outcome.messages) == 1
+    fetched_sender, fetched_raw = outcome.messages[0]
+    assert fetched_sender == "myworkday.com"
+
+    suggestion = classify_email(fetched_raw)
+    assert suggestion is not None, "classifier dropped a Workday rejection that reached it"
+    assert suggestion.confidence == "high", f"expected high, got {suggestion.confidence}"
 
 
 def test_rejection_scan_emits_pipeline_events(fake_config) -> None:

@@ -29,13 +29,30 @@ _SCHEMA_VERSION = 1
 
 # Default ATS sender allowlist for rejection-detection scanning (#362).
 # Spec: docs/superpowers/specs/2026-05-01-362-rejection-detection-design.md §3.1.
-# Workday-style talent.{company}.com / {company}@myworkday.com senders are
-# matched at the rejection_detector layer via suffix; can't be enumerated here.
+#
+# Entries are bare domains; IMAP SEARCH FROM uses RFC 3501 substring match,
+# so "myworkday.com" matches "cyrusone@myworkday.com" without enumerating
+# per-tenant local-parts. The set is kept in parity with SENDER_FINGERPRINTS
+# in findajob.rejection_detector.patterns — IMAP and classifier must agree on
+# coverage, else the IMAP layer silently drops rejections before classification.
+#
+# Treated as a floor at load_config(): persisted ∪ DEFAULT, so existing tester
+# stacks pick up new senders when this tuple grows without a schema migration
+# (#658). Hand-removing a default from a persisted config will be re-added on
+# next load — acceptable today because no UI exposes per-sender removal.
+#
+# Workday tenants with custom mail domains (talent.{company}.com instead of
+# myworkday.com) still slip through this filter — tracked separately at #659
+# (Option B/C broad-pattern proposal from #658's body).
 DEFAULT_REJECTION_ALLOWLIST: tuple[str, ...] = (
-    "no-reply@us.greenhouse-mail.io",
-    "no-reply@eu.greenhouse-mail.io",
-    "no-reply@ashbyhq.com",
-    "no-reply@hire.lever.co",
+    "us.greenhouse-mail.io",
+    "eu.greenhouse-mail.io",
+    "ashbyhq.com",
+    "hire.lever.co",
+    "myworkday.com",
+    "smartrecruiters.com",
+    "email.careers.microsoft.com",
+    "oracle.com",
 )
 
 
@@ -69,7 +86,10 @@ def _validate_config_payload(payload: dict) -> bool:
     if rej_senders is not None:
         if not isinstance(rej_senders, list) or len(rej_senders) > 50:
             return False
-        if not all(isinstance(s, str) and "@" in s for s in rej_senders):
+        # Accept bare domains ("myworkday.com") and full addresses
+        # ("no-reply@hire.lever.co"). Both are valid IMAP FROM substring inputs;
+        # the codebase migrated from full-address to bare-domain in #658.
+        if not all(isinstance(s, str) and s and " " not in s and "." in s for s in rej_senders):
             return False
     return True
 
@@ -92,12 +112,17 @@ def load_config() -> GmailConfig | None:
     if not _validate_config_payload(payload):
         log_event("gmail_config_invalid", reason="schema_or_validation")
         return None
+    persisted_rej = payload.get("rejection_sender_allowlist", [])
+    # Treat DEFAULT_REJECTION_ALLOWLIST as a floor: persisted ∪ DEFAULT, defaults
+    # first for deterministic SEARCH order. Lets existing stacks pick up new
+    # ATS senders when the tuple grows without a schema migration (#658).
+    merged_rej = list(DEFAULT_REJECTION_ALLOWLIST) + [s for s in persisted_rej if s not in DEFAULT_REJECTION_ALLOWLIST]
     return GmailConfig(
         address=payload["address"],
         app_password=payload["app_password"].replace(" ", ""),
         sender_allowlist=list(payload["sender_allowlist"]),
         configured_at=payload["configured_at"],
-        rejection_sender_allowlist=list(payload.get("rejection_sender_allowlist", DEFAULT_REJECTION_ALLOWLIST)),
+        rejection_sender_allowlist=merged_rej,
     )
 
 

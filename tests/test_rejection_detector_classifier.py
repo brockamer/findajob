@@ -19,6 +19,9 @@ FIXTURES = Path(__file__).parent / "fixtures" / "rejection_emails"
         FIXTURES / "ashby" / "will_not_proceed.eml",
         FIXTURES / "lever" / "rejection.eml",
         FIXTURES / "workday" / "rejection.eml",
+        FIXTURES / "smartrecruiters" / "rejection.eml",
+        FIXTURES / "microsoft" / "rejection.eml",
+        FIXTURES / "oracle" / "rejection.eml",
     ],
 )
 def test_layer1_high_confidence_rejection(fixture: Path) -> None:
