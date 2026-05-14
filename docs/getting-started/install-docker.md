@@ -10,6 +10,14 @@ This is the install + operations guide for external users running findajob from 
 - You have [Dockge](https://github.com/louislam/dockge) installed (or docker compose CLI access).
 - You want to run findajob from the prebuilt image at `ghcr.io/brockamer/findajob` rather than building from source.
 
+## Supported platforms
+
+findajob is supported on **Linux Docker hosts** (any distro running native Docker Engine on a native filesystem — ext4, xfs, btrfs, zfs, overlay, tmpfs). The pipeline is a long-running batch process that writes to SQLite in WAL mode; this requires the bind-mount layer to honor POSIX file-locking semantics correctly.
+
+**Docker Desktop on macOS and Windows is not supported.** Both ship bind mounts through gRPC-FUSE / VirtioFS / 9p, which have known incompatibilities with SQLite WAL mode and can corrupt `pipeline.db` mid-write (#625). The container's entrypoint emits a stderr warning at startup when it detects a non-native filesystem under `state/data/`, but it will still try to run — corruption is observed in practice but does not always reproduce immediately.
+
+If you want to run findajob on a Mac or Windows machine, host it inside a **Linux VM** (any hypervisor) and install Docker Engine inside the VM. The bind mount then sits on the VM's native ext4 (or equivalent) and works correctly.
+
 ## Prerequisites on the Docker host
 
 - Docker Engine 24+ and Docker Compose v2
@@ -25,8 +33,9 @@ See [configure.md](configure.md). API keys and personal config end up in `state/
 Pick any directory for your stack — Docker Compose's bind mounts are relative to wherever `compose.yaml` lives, so the location is your choice:
 
 - Linux server: `/opt/stacks/findajob-<you>/` is the conventional system-path layout (will need `sudo`).
-- macOS: `~/docker/findajob-<you>/` or any path under your home directory works fine.
-- Anywhere else under your home directory works too — pick what fits your other Docker stacks.
+- Anywhere under your home directory works too — pick what fits your other Docker stacks.
+
+> If you're on macOS or Windows, your Docker host needs to be a Linux VM, not Docker Desktop — see [Supported platforms](#supported-platforms) above. Then choose a stack directory *inside the VM*.
 
 ```bash
 # Replace <stack-dir> with your chosen path, e.g. /opt/stacks/findajob-<you> or ~/docker/findajob-<you>

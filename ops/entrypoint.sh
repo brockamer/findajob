@@ -57,6 +57,27 @@ mkdir -p \
     "$JSP_BASE/candidate_context" \
     "$JSP_BASE/.backups"
 
+# --- 2.5. Warn if the data dir lives on a non-native filesystem (#625) ----
+# Docker Desktop (macOS / Windows) bind-mounts host paths via gRPC-FUSE,
+# VirtioFS, or 9p, which have known SQLite-WAL incompatibilities that can
+# corrupt pipeline.db mid-write. Native Linux mounts (ext4 / xfs / btrfs /
+# zfs / overlay / tmpfs) are the supported configuration. Warn but do not
+# abort — a malformed-DB at runtime is recoverable; refusing to start is not.
+if FS_TYPE="$(stat -f -c %T "$JSP_BASE/data" 2>/dev/null)"; then
+    case "$FS_TYPE" in
+        fuseblk|fuse.*|virtiofs|9p|drvfs)
+            cat >&2 <<EOF
+WARNING (#625): $JSP_BASE/data is on filesystem type '$FS_TYPE'.
+This usually means Docker Desktop on macOS or Windows, which is NOT a
+supported platform for findajob. SQLite WAL mode interacts badly with
+Docker Desktop's bind-mount layer and can corrupt pipeline.db mid-write.
+See docs/getting-started/install-docker.md (Supported platforms).
+Run findajob on a Linux Docker host.
+EOF
+            ;;
+    esac
+fi
+
 # --- 3. Seed bundled tracked config into $JSP_BASE/config -----------------
 # Copy contents (not the directory) so tracked files land alongside any
 # operator-personal files that already exist.
