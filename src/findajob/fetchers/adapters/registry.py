@@ -63,21 +63,48 @@ def _active_sources_path() -> Path:
     return Path(BASE) / "config" / "active_sources.txt"
 
 
-def _read_active_sources(path: Path | None = None) -> list[str]:
+def _onboarding_complete_path() -> Path:
+    return Path(BASE) / "data" / ".onboarding-complete"
+
+
+def _read_active_sources(
+    path: Path | None = None,
+    onboarding_complete_path: Path | None = None,
+) -> list[str]:
     """Return the list of adapter names active for this stack.
 
-    Backwards-compat: if the file is missing or empty, returns ['jobs-api14'].
+    Five-cell semantic (#681):
+
+    | `.onboarding-complete` | `active_sources.txt`     | Result                    |
+    |------------------------|--------------------------|---------------------------|
+    | absent                 | absent                   | `_DEFAULT_ACTIVE_SOURCES` |
+    | absent                 | present                  | parse file                |
+    | present                | absent                   | `[]`                      |
+    | present                | header-only / empty      | `_DEFAULT_ACTIVE_SOURCES` |
+    | present                | with names               | parse file                |
+
+    The "present + absent → []" cell is the bug fix: post-onboarding, file
+    absent now means "user explicitly picked none in Phase-3g source-selection"
+    rather than "fall back to default". The "absent + absent → default" cell
+    preserves legacy-stack behavior (stacks pre-dating `/settings/active-sources/`
+    in #603 that have never written the file). The "present + header-only →
+    default" cell preserves the `/settings/` "uncheck-everything → revert to
+    default" UX documented at `_write_active_sources` below.
     """
     target = path or _active_sources_path()
-    if not target.exists():
-        return list(_DEFAULT_ACTIVE_SOURCES)
-    names: list[str] = []
-    for raw in target.read_text().splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#"):
-            continue
-        names.append(line)
-    return names if names else list(_DEFAULT_ACTIVE_SOURCES)
+    if target.exists():
+        names: list[str] = []
+        for raw in target.read_text().splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            names.append(line)
+        return names if names else list(_DEFAULT_ACTIVE_SOURCES)
+
+    sentinel = onboarding_complete_path or _onboarding_complete_path()
+    if sentinel.exists():
+        return []
+    return list(_DEFAULT_ACTIVE_SOURCES)
 
 
 def iter_configured_adapters() -> Iterator[JobSourceAdapter]:

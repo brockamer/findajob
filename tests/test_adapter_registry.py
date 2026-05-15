@@ -54,14 +54,43 @@ def test_iter_configured_adapters_default_when_file_missing(tmp_path: Path, monk
     and no feed_urls.txt / gmail.json on disk, only the two adapters that
     accept that key are yielded (`jobs-api14` and `jobs-api14-indeed` per
     #414's RAPIDAPI_KEY consolidation; `jsearch` needs its own key).
+
+    Sentinel is also patched to a nonexistent path so the #681 logic
+    resolves to "legacy absent" (default) rather than "onboarded-none" ([]).
     """
     monkeypatch.setenv("JOBS_API14_KEY", "k")
     monkeypatch.delenv("RAPIDAPI_KEY", raising=False)
     monkeypatch.delenv("JSEARCH_API_KEY", raising=False)
     nonexistent = tmp_path / "missing.txt"
-    with patch("findajob.fetchers.adapters.registry._active_sources_path", return_value=nonexistent):
+    no_sentinel = tmp_path / "no-sentinel"
+    with (
+        patch("findajob.fetchers.adapters.registry._active_sources_path", return_value=nonexistent),
+        patch("findajob.fetchers.adapters.registry._onboarding_complete_path", return_value=no_sentinel),
+    ):
         names = [a.name for a in iter_configured_adapters()]
     assert set(names) == {"jobs-api14", "jobs-api14-indeed"}
+
+
+def test_iter_configured_adapters_empty_when_onboarded_none(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """#681 fix: post-onboarding with no `active_sources.txt` → zero adapters.
+
+    Sentinel present + active_sources.txt absent means the user explicitly
+    picked "none — Manual only" in onboarding Phase-3g. The orchestrator
+    must yield zero adapters so no fetcher fires and no RapidAPI quota is
+    consumed.
+    """
+    monkeypatch.setenv("JOBS_API14_KEY", "k")
+    monkeypatch.setenv("RAPIDAPI_KEY", "k")
+    monkeypatch.setenv("JSEARCH_API_KEY", "k")
+    nonexistent = tmp_path / "missing.txt"
+    sentinel = tmp_path / "onboarding-complete"
+    sentinel.write_text("ok")
+    with (
+        patch("findajob.fetchers.adapters.registry._active_sources_path", return_value=nonexistent),
+        patch("findajob.fetchers.adapters.registry._onboarding_complete_path", return_value=sentinel),
+    ):
+        names = [a.name for a in iter_configured_adapters()]
+    assert names == []
 
 
 def test_jobs_api14_indeed_adapter_is_registered() -> None:
