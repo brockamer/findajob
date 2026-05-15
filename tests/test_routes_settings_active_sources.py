@@ -40,6 +40,12 @@ def client(tmp_path: Path, active_sources_path: Path, monkeypatch: pytest.Monkey
 
     # Point registry._active_sources_path() at our tmp file.
     monkeypatch.setattr(registry, "_active_sources_path", lambda: active_sources_path)
+    # Point _onboarding_complete_path() at a nonexistent tmp path too (#681) — without
+    # this, tests run in the "active_sources.txt absent + sentinel present" cell on
+    # any environment where BASE/data/.onboarding-complete exists, which would flip
+    # several banner/render expectations. The dedicated mark_complete() call below
+    # writes its own sentinel under tmp_path/data/.onboarding-complete.
+    monkeypatch.setattr(registry, "_onboarding_complete_path", lambda: tmp_path / "data" / ".onboarding-complete")
 
     # Minimal pipeline.db schema for the dashboard route.
     db = tmp_path / "pipeline.db"
