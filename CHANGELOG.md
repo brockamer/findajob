@@ -10,6 +10,8 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+## [0.26.0] — 2026-05-16
+
 ### Added
 - **#671 feat(spend-ceiling): configurable monthly LLM spend ceiling with per-call + launch-time gates, settings UI, onboarding step, and dashboard nudge.**
   Adds a configurable monthly cap on LLM spending stored in `config/spend_ceiling.txt`.
@@ -34,8 +36,6 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 - **#680 fix(onboarding): derive multi-adapter `config/active_sources.txt` from source-selection emission, not just the RapidAPI branch.** Pre-#680 the injector mapped `rapidapi_feed.txt` → `config/active_sources.txt` 1:1, so a candidate who answered "a, b, c" in the Phase-3g source-selection question got an `active_sources.txt` containing only the RapidAPI adapter — the company-feed (`feed-urls.txt`) and Gmail-alerts (`linkedin-alerts.md`) branches captured their own data files but never enabled their adapters, leaving `greenhouse`, `ashby`, `lever`, and `gmail_linkedin` dormant on every fresh stack until the operator manually edited `/settings/active-sources/`. Three coordinated changes in `findajob.onboarding.injector`. (1) New `_derive_active_sources(found)` helper consumes the three emission files and returns the ordered adapter list: the RapidAPI entry from `rapidapi_feed.txt` (first non-comment line), `greenhouse, ashby, lever` when `feed-urls.txt` has at least one real URL, and `gmail_linkedin` when `linkedin-alerts.md` is non-empty. (2) The 1:1 entry `"rapidapi_feed.txt": "config/active_sources.txt"` is removed from `_OPTIONAL_DESTINATIONS`; the derived content is staged as its own tempfile inside the existing transactional `os.replace` loop, preserving the all-or-nothing commit guarantee from #631. (3) The post-write gate-decision loop that routes to `/onboarding/feed-config/` now skips adapters with empty `required_env_vars` — feed-config exists to onboard API keys; `gmail_linkedin` (handled by the downstream Gmail-config gate) and the public-API adapters (`greenhouse`/`ashby`/`lever`) check their configuration differently and would otherwise mis-route to feed-config after the multi-adapter derivation. `_backup_relpaths()` lists `config/active_sources.txt` explicitly so re-finalize recoverability survives the dict-entry removal. Eight unit tests on the helper plus five inject-level integration tests cover all five 3g combinations (a-only / b-only / c-only / a+b+c / "none") and verify both the file content AND its presence/absence — the latter is what `/settings/active-sources/`'s banner-state check at `findajob.web.routes.board._active_sources_banner_state` actually keys on. **No `migration-required`** — onboarding behavior fix, no schema/env/cron changes. Closes #680.
 
 ### Migration required
-
-- **#671** — new optional config file `config/spend_ceiling.txt`. Operators who already completed onboarding will see a nudge banner on `/board/dashboard` pointing at `/settings/spend-ceiling/`; no re-onboarding is triggered and the pipeline is fully functional without the file. The new onboarding step (`/onboarding/spend-ceiling/`) only fires for fresh installs that run through finalize — existing stacks with `data/.onboarding-complete` already set are not re-routed.
 
 - **#681** — the fix reinterprets `data/.onboarding-complete` present + `config/active_sources.txt` absent as "user picked none in onboarding" (returns `[]`) instead of "fall back to the 7-adapter default". Before bumping to the version containing this fix, audit each stack for this exact cell and, where present, write the default list to `active_sources.txt` so triage continues to fire its previously-implicit adapters. One-liner per stack: `sudo -u <stack-user> bash -c 'if [ -f <stack-state-dir>/data/.onboarding-complete ] && [ ! -f <stack-state-dir>/config/active_sources.txt ]; then printf "# Managed by /settings/active-sources/. Edit there to keep this file in sync.\njobs-api14\njobs-api14-indeed\njsearch\ngreenhouse\nashby\nlever\ngmail\n" > <stack-state-dir>/config/active_sources.txt; fi'`. As of the verification done on 2026-05-15 only **alice** is in this cell (sentinel from Apr 24 under legacy onboarding, never wrote the file); operator's own stack, papa, judy, clean, and staging already have an explicit `active_sources.txt`; dave and tango have neither sentinel nor file so they take the default path unchanged. Stacks that have completed onboarding *after* this fix lands and intentionally picked "none" must NOT receive this seed.
 
@@ -1128,7 +1128,9 @@ from GHCR and deployed via Docker Compose on a shared Docker host.
 - Documentation cleanup — removing `sigoden/aichat` references in favor of
   `blob42/aichat-ng` — is tracked in #70
 
-[Unreleased]: https://github.com/brockamer/findajob/compare/v0.25.0...HEAD
+[Unreleased]: https://github.com/brockamer/findajob/compare/v0.26.0...HEAD
+[0.26.0]: https://github.com/brockamer/findajob/releases/tag/v0.26.0
+[0.25.1]: https://github.com/brockamer/findajob/releases/tag/v0.25.1
 [0.25.0]: https://github.com/brockamer/findajob/releases/tag/v0.25.0
 [0.24.0]: https://github.com/brockamer/findajob/releases/tag/v0.24.0
 [0.23.3]: https://github.com/brockamer/findajob/releases/tag/v0.23.3
