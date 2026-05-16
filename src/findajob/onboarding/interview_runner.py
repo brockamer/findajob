@@ -11,7 +11,7 @@ directly. Callers (``routes/onboarding_interview.py``) must drop that argument.
 
 from __future__ import annotations
 
-from findajob.llm.openrouter import OpenRouterError, complete
+from findajob.llm.openrouter import LLMSpendCeilingExceeded, OpenRouterError, complete
 
 # Model pin retained as module-level constants so existing imports in
 # test_onboarding_interview_runner.py continue to resolve.
@@ -48,14 +48,22 @@ class InterviewRunnerError(Exception):
         self.status_code = status_code
 
 
-def _translate(e: OpenRouterError) -> InterviewRunnerError:
-    """Map OpenRouterError to an InterviewRunnerError with a user-facing message.
+def _translate(e: OpenRouterError | LLMSpendCeilingExceeded) -> InterviewRunnerError:
+    """Map OpenRouterError or LLMSpendCeilingExceeded to an InterviewRunnerError.
 
     Strings are byte-identical to the messages that the Phase 1 inline HTTP
     client produced. Dynamic data (status_code, reason, body snippet) is
     reconstructed from the wrapper's kind/status_code/message fields so the
     chat UI banner renders the same text it always has.
     """
+    if isinstance(e, LLMSpendCeilingExceeded):
+        msg = (
+            f"Monthly LLM spend ceiling reached (${e.current_sum_usd:.2f} / "
+            f"${e.ceiling_usd:.2f}). Raise or disable the ceiling in "
+            f"/settings/ to continue the interview."
+        )
+        return InterviewRunnerError(msg, kind="spend_ceiling_exceeded")
+
     kind = e.kind
     code = e.status_code
     raw = str(e)  # the wrapper's internal message — used for dynamic strings
@@ -183,6 +191,8 @@ def run_turn(
             history=history,
             api_key=api_key,
         )
+    except LLMSpendCeilingExceeded as e:
+        raise _translate(e) from e
     except OpenRouterError as e:
         raise _translate(e) from e
 
