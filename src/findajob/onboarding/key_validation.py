@@ -38,8 +38,10 @@ def validate_rapidapi_format(key: str) -> tuple[bool, str]:
     characters AND must contain no whitespace.  This catches the dominant
     typo class — accidentally pasting a full curl header line such as
     ``X-RapidAPI-Key: abc123`` (contains a space) or a key with an embedded
-    newline from copy/paste.  No length range or prefix is enforced because
-    RapidAPI key format has varied across the platform's history.
+    newline from copy/paste.  No positive length range or prefix is
+    enforced because RapidAPI key format has varied across the platform's
+    history; we only reject the one known-wrong shape (``sk-or-v1-``,
+    which is an OpenRouter key pasted into the wrong field).
     """
     stripped = key.strip()
     if not stripped:
@@ -58,6 +60,18 @@ def validate_rapidapi_format(key: str) -> tuple[bool, str]:
         return (
             False,
             "RapidAPI key contains non-printable characters. Re-copy it directly from the RapidAPI dashboard.",
+        )
+
+    # Reject the dominant cross-paste shape — an OpenRouter key landing in
+    # the RapidAPI field. The OpenRouter format check (above this function)
+    # already enforces the same prefix as required; mirroring the reject
+    # here catches the swap before it reaches the network smoke check.
+    if stripped.startswith("sk-or-v1-"):
+        return (
+            False,
+            'This looks like an OpenRouter key ("sk-or-v1-..."), not a RapidAPI key. '
+            "Paste the RapidAPI key from https://rapidapi.com/developer/security here, "
+            "and the OpenRouter key in the OpenRouter field above.",
         )
 
     return True, ""

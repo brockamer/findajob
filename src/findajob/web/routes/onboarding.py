@@ -27,6 +27,7 @@ from findajob.onboarding.key_validation import (
     validate_rapidapi_format,
 )
 from findajob.onboarding.openrouter_smoke import verify_openrouter_key
+from findajob.onboarding.rapidapi_smoke import verify_rapidapi_key
 from findajob.onboarding.session_store import (
     Credentials,
     Session,
@@ -290,6 +291,22 @@ def onboarding_keys(
                 rapidapi_input=rapidapi_key,
             )
 
+        # RapidAPI is an optional field — smoke only when a value was supplied.
+        # Step 1 runs before the candidate's target_locations.txt exists, so
+        # the adapter's live_test path isn't usable here; the smoke module
+        # makes a stdlib auth probe instead (#689).
+        if rapidapi_key.strip():
+            rapid_ok, rapid_err = verify_rapidapi_key(rapidapi_key.strip())
+            if not rapid_ok:
+                return _render_keys_error(
+                    request,
+                    error=(
+                        "RapidAPI rejected the key when we tried to verify it. "
+                        f"{rapid_err or ''} Fix the key and click Save again."
+                    ).strip(),
+                    rapidapi_input=rapidapi_key,
+                )
+
         # All validations passed — UPDATE existing credentials session, or
         # INSERT a fresh one. This prevents orphan-row accumulation when a
         # user paste-typos several times before getting it right.
@@ -298,6 +315,12 @@ def onboarding_keys(
             session_id = existing.id
         else:
             session_id = create_session(conn)
+        # Invariant (#689 AC #4): set_credentials is the *only* write path
+        # that mutates tester_rapidapi_key after this point. The interview's
+        # opt-out path must NOT call set_credentials() with a blank
+        # rapidapi_key — Step-1 keys are preserved through opt-out so the
+        # finalize injector can decide whether to emit them based on the
+        # interview's source-selection, not on whether the column is NULL.
         set_credentials(
             conn,
             session_id,

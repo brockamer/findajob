@@ -118,3 +118,15 @@ class TestValidateRapidapiFormat:
         ok, msg = validate_rapidapi_format("abc-123_XYZ-fake-key")
         assert ok is True
         assert msg == ""
+
+    def test_fail_openrouter_key_pasted_in_rapidapi_field(self) -> None:
+        # Dominant cross-paste shape — OpenRouter key in the RapidAPI field (#689).
+        ok, msg = validate_rapidapi_format("sk-or-v1-fake-tester-key-abc123")
+        assert ok is False
+        assert "OpenRouter" in msg
+
+    def test_fail_openrouter_key_pasted_with_surrounding_whitespace(self) -> None:
+        # Strip-then-check semantic should still catch the cross-paste.
+        ok, msg = validate_rapidapi_format("  sk-or-v1-fake-tester-key-abc123  ")
+        assert ok is False
+        assert "OpenRouter" in msg

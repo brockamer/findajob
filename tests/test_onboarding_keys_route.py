@@ -44,13 +44,18 @@ def base_root(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def client(base_root: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    # Stub the live OpenRouter smoke check — tests must not make real network calls.
+    # Stub the live OpenRouter + RapidAPI smoke checks — tests must not make real network calls.
     import findajob.web.routes.onboarding as ob_routes
 
     monkeypatch.setattr(
         ob_routes,
         "verify_openrouter_key",
         lambda key: (True, None) if "tester" in key or "valid" in key else (False, "key invalid"),
+    )
+    monkeypatch.setattr(
+        ob_routes,
+        "verify_rapidapi_key",
+        lambda key: (True, None) if "fakeRapid" in key or "tester" in key else (False, "RapidAPI key invalid"),
     )
     app = create_app(
         companies_root=base_root / "companies",
@@ -205,6 +210,62 @@ def test_post_invalid_rapidapi_does_not_write_db(client: TestClient, base_root: 
     )
     assert r.status_code == 400
     assert _row_count(base_root) == 0
+
+
+def test_post_openrouter_key_in_rapidapi_field_rejected_at_format(client: TestClient, base_root: Path) -> None:
+    """#689: pasting an sk-or-v1- key in the RapidAPI field must fail format
+    validation BEFORE any smoke call — caught by the validator's cross-paste check."""
+    r = client.post(
+        "/onboarding/keys",
+        data={
+            "openrouter_api_key": _VALID_OR,
+            "rapidapi_key": "sk-or-v1-cross-paste-mistake",
+        },
+    )
+    assert r.status_code == 400
+    assert "OpenRouter" in r.text  # error message identifies the mistake
+    assert _row_count(base_root) == 0
+
+
+def test_post_rapidapi_smoke_failure_does_not_write_db(client: TestClient, base_root: Path) -> None:
+    """#689: a syntactically valid RapidAPI key that fails the live smoke
+    check must NOT be persisted; route returns 400 with the smoke error."""
+    r = client.post(
+        "/onboarding/keys",
+        data={
+            "openrouter_api_key": _VALID_OR,
+            # passes format (printable, no whitespace, not sk-or-v1-) but fails the
+            # fixture's smoke stub (no "fakeRapid"/"tester" substring)
+            "rapidapi_key": "syntactically-valid-but-not-live",
+        },
+    )
+    assert r.status_code == 400
+    assert "RapidAPI" in r.text or "rejected" in r.text.lower()
+    assert _row_count(base_root) == 0
+
+
+def test_post_blank_rapidapi_skips_smoke_and_persists(
+    client: TestClient, base_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#689: when RapidAPI field is blank, the smoke check must NOT run —
+    RapidAPI is optional at Step 1 and blank is a valid choice."""
+    import findajob.web.routes.onboarding as ob_routes
+
+    smoke_calls: list[str] = []
+
+    def _tripwire(key: str) -> tuple[bool, str | None]:
+        smoke_calls.append(key)
+        return (True, None)
+
+    monkeypatch.setattr(ob_routes, "verify_rapidapi_key", _tripwire)
+
+    r = client.post(
+        "/onboarding/keys",
+        data={"openrouter_api_key": _VALID_OR, "rapidapi_key": ""},
+    )
+    assert r.status_code == 303
+    assert smoke_calls == []  # blank value skipped the live check
+    assert _stored_credentials(base_root) == (_VALID_OR, None)
 
 
 def test_post_preserves_rapidapi_on_failure(client: TestClient, base_root: Path) -> None:
