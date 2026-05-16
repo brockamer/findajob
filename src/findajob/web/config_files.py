@@ -32,6 +32,9 @@ EDITABLE_CATEGORIES: dict[str, list[str] | str] = {
         # matcher. Edited live via /config/; hot-reloaded on the next detection
         # cycle (matcher reads the file on every match_job call).
         "config/company_aliases.yaml",
+        # #671 — monthly LLM spend ceiling; prefer /settings/spend-ceiling/ for
+        # structured edits, but raw /config/ access allows emergency overrides.
+        "config/spend_ceiling.txt",
     ],
     "Role prompts": "config/roles/*.md",
     # #150 — operator-editable prompts powering /tools/ tiles. Same
