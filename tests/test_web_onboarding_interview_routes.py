@@ -521,10 +521,11 @@ def test_finalize_calls_inject_and_marks_complete(
 
     resp = client_with_key.post(f"/onboarding/interview/{sid}/finalize")
 
-    # Per #407 finalize redirects to the universal gmail-config gate. The
-    # sentinel is written by gmail-config /finish (or /skip), not here.
+    # Per #671 finalize now redirects to the spend-ceiling step first. That
+    # step's /finish then makes the feed-config vs gmail-config decision.
+    # The sentinel is still written by the connections gate at the end.
     assert resp.status_code == 303
-    assert resp.headers["location"] == f"/onboarding/gmail-config/{sid}/"
+    assert resp.headers["location"] == f"/onboarding/spend-ceiling/{sid}/"
 
     # inject was called with the captured blocks + the user's key (from creds)
     assert len(inject_calls) == 1
