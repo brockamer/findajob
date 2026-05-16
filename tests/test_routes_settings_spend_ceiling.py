@@ -21,11 +21,10 @@ from findajob import config_loader
 from findajob.onboarding import mark_complete
 from findajob.web.app import create_app
 from findajob.web.routes.settings_spend_ceiling import (
-    SCORING_FLOOR_USD,
-    PER_PREP_USD,
-    _recommended_ceiling,
     _APPLIES_PER_WEEK_OPTIONS,
-    _DEFAULT_APPLIES_PER_WEEK,
+    PER_PREP_USD,
+    SCORING_FLOOR_USD,
+    _recommended_ceiling,
 )
 
 
@@ -162,8 +161,9 @@ def test_post_disable_writes_disabled_sentinel(client: TestClient, tmp_path: Pat
     f = _ceiling_file(tmp_path)
     assert f.exists()
     # load_spend_ceiling must interpret this as None
-    from findajob.config_loader import load_spend_ceiling, _SPEND_CEILING_PATH
     import findajob.config_loader as cl
+    from findajob.config_loader import load_spend_ceiling
+
     original = cl._SPEND_CEILING_PATH
     cl._SPEND_CEILING_PATH = f
     try:
@@ -175,9 +175,7 @@ def test_post_disable_writes_disabled_sentinel(client: TestClient, tmp_path: Pat
 # ── Atomic write ──────────────────────────────────────────────────────────────
 
 
-def test_post_uses_atomic_write(
-    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_post_uses_atomic_write(client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Write goes through tmp + os.replace (not direct open)."""
     import os
 

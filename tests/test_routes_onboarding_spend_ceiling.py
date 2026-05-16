@@ -20,9 +20,9 @@ from fastapi.testclient import TestClient
 
 from findajob.web.app import create_app
 from findajob.web.routes.settings_spend_ceiling import (
-    _recommended_ceiling,
-    _DEFAULT_APPLIES_PER_WEEK,
     _APPLIES_PER_WEEK_OPTIONS,
+    _DEFAULT_APPLIES_PER_WEEK,
+    _recommended_ceiling,
 )
 
 SID = "test-onboarding-sid"
@@ -98,9 +98,7 @@ def test_get_renders_all_applies_options(client: TestClient) -> None:
 # ── POST with recommendation ──────────────────────────────────────────────────
 
 
-def test_post_recommendation_writes_file_and_redirects_to_finish(
-    client: TestClient, base_root: Path
-) -> None:
+def test_post_recommendation_writes_file_and_redirects_to_finish(client: TestClient, base_root: Path) -> None:
     """POST with applies_per_week=3 + no override writes recommendation + redirects to /finish."""
     resp = client.post(
         f"/onboarding/spend-ceiling/{SID}/",
@@ -149,9 +147,7 @@ def test_post_skip_does_not_write_file_and_redirects(client: TestClient, base_ro
 # ── /finish redirect logic ────────────────────────────────────────────────────
 
 
-def test_finish_redirects_to_gmail_when_no_active_sources_file(
-    client: TestClient, base_root: Path
-) -> None:
+def test_finish_redirects_to_gmail_when_no_active_sources_file(client: TestClient, base_root: Path) -> None:
     """/finish redirects to gmail-config when active_sources.txt absent (no feed-config gate)."""
     # No active_sources.txt — decide_post_interview_redirect returns False
     assert not (base_root / "config" / "active_sources.txt").exists()
@@ -164,7 +160,6 @@ def test_finish_redirects_to_feed_config_when_adapter_unconfigured(
     client: TestClient, base_root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """/finish redirects to feed-config when active adapter has unconfigured env var."""
-    from findajob.fetchers.adapters import registry
 
     # Write active_sources.txt with the real jobs-api14 adapter (env var will be absent)
     (base_root / "config" / "active_sources.txt").write_text("jobs-api14\n")
