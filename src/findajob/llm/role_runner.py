@@ -19,7 +19,7 @@ import time
 
 from findajob.audit import log_event
 from findajob.cost_tracking import log_call, role_model
-from findajob.llm.openrouter import OpenRouterError, complete
+from findajob.llm.openrouter import LLMSpendCeilingExceeded, OpenRouterError, complete
 
 
 def run_role(
@@ -49,6 +49,8 @@ def run_role(
             pin_provider=pin_provider,
             timeout_s=timeout,
         )
+    except LLMSpendCeilingExceeded:
+        raise
     except OpenRouterError as e:
         log_event("openrouter_failure", role=role, kind=e.kind, status_code=e.status_code, message=str(e)[:300])
         return ""
