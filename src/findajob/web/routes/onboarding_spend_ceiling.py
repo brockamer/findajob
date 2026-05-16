@@ -21,11 +21,11 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from findajob.onboarding.injector import decide_post_interview_redirect
 from findajob.web.routes.settings_spend_ceiling import (
-    SCORING_FLOOR_USD,
-    PER_PREP_USD,
-    _recommended_ceiling,
     _APPLIES_PER_WEEK_OPTIONS,
     _DEFAULT_APPLIES_PER_WEEK,
+    PER_PREP_USD,
+    SCORING_FLOOR_USD,
+    _recommended_ceiling,
 )
 
 router = APIRouter(prefix="/onboarding/spend-ceiling", tags=["onboarding"])

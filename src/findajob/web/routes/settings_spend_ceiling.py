@@ -13,7 +13,7 @@ import tempfile
 from pathlib import Path
 
 from fastapi import APIRouter, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, Response
 
 from findajob.config_loader import load_spend_ceiling
 
@@ -70,9 +70,7 @@ def _write_ceiling(path: Path, content: str) -> None:
 def get_spend_ceiling(request: Request) -> HTMLResponse:
     """Render the spend-ceiling settings page with current value + recommendation."""
     current_ceiling = load_spend_ceiling()
-    recommendations = {
-        n: _recommended_ceiling(n) for n in _APPLIES_PER_WEEK_OPTIONS
-    }
+    recommendations = {n: _recommended_ceiling(n) for n in _APPLIES_PER_WEEK_OPTIONS}
     templates = request.app.state.templates
     return templates.TemplateResponse(
         request=request,

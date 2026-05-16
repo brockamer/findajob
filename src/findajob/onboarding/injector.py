@@ -592,9 +592,7 @@ def decide_post_interview_redirect(base_root: Path) -> InjectionDecision:
 
     from findajob.fetchers.adapters.registry import REGISTERED_ADAPTERS  # noqa: PLC0415
 
-    active_names = [
-        n.strip() for n in active_path.read_text().splitlines() if n.strip() and not n.startswith("#")
-    ]
+    active_names = [n.strip() for n in active_path.read_text().splitlines() if n.strip() and not n.startswith("#")]
     classes_by_name = {cls.name: cls for cls in REGISTERED_ADAPTERS}
     for name in active_names:
         if name not in classes_by_name:
