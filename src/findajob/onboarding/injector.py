@@ -574,3 +574,35 @@ def inject(
         decision=decision,
         voice_samples_redact_failed=voice_samples_redact_failed,
     )
+
+
+def decide_post_interview_redirect(base_root: Path) -> InjectionDecision:
+    """Re-derive the feed-config vs gmail-config gate decision from disk state.
+
+    Called by ``/onboarding/spend-ceiling/{session_id}/finish`` (#671) so that
+    the same branching logic isn't duplicated in two route handlers.  Reads
+    ``config/active_sources.txt`` from ``base_root`` — the same file that
+    ``inject()`` gates on — and applies the same env-var-bearing-adapter check.
+    Returns an :class:`InjectionDecision` with ``gate_to_feed_config`` True
+    iff any active RapidAPI adapter is unconfigured.
+    """
+    active_path = base_root / "config" / "active_sources.txt"
+    if not active_path.exists():
+        return InjectionDecision(gate_to_feed_config=False, pending_adapter=None)
+
+    from findajob.fetchers.adapters.registry import REGISTERED_ADAPTERS  # noqa: PLC0415
+
+    active_names = [
+        n.strip() for n in active_path.read_text().splitlines() if n.strip() and not n.startswith("#")
+    ]
+    classes_by_name = {cls.name: cls for cls in REGISTERED_ADAPTERS}
+    for name in active_names:
+        if name not in classes_by_name:
+            continue
+        instance = classes_by_name[name]()
+        if not instance.required_env_vars:
+            continue
+        if not instance.is_configured():
+            return InjectionDecision(gate_to_feed_config=True, pending_adapter=name)
+
+    return InjectionDecision(gate_to_feed_config=False, pending_adapter=None)

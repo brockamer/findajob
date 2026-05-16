@@ -550,11 +550,9 @@ def finalize_interview(
     # and gmail-config GET handlers accept the param and render an amber warning
     # banner; the param is not propagated through /finish hops — one-shot
     # display on the page the user lands on immediately after Finalize.
+    # Redirect to the spend-ceiling step (#671), which then makes the
+    # feed-config vs gmail-config decision and redirects accordingly.
+    # voice_redact_failed is propagated so spend-ceiling's /finish can
+    # pass it to the immediate next page.
     redact_param = "?voice_redact_failed=1" if inject_result.voice_samples_redact_failed else ""
-    if inject_result.decision.gate_to_feed_config:
-        return RedirectResponse(f"/onboarding/feed-config/{session_id}{redact_param}", status_code=303)
-
-    # No feed-config gate — redirect straight to the Gmail-config gate (#407).
-    # The sentinel is not yet written; gmail-config hands off to the
-    # connections gate (#571), which writes it after upload or explicit skip.
-    return RedirectResponse(f"/onboarding/gmail-config/{session_id}/{redact_param}", status_code=303)
+    return RedirectResponse(f"/onboarding/spend-ceiling/{session_id}/{redact_param}", status_code=303)
