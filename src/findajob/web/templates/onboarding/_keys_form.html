@@ -1,14 +1,26 @@
 {# Step 1 — API keys collection form (#339).
 
-Inputs: form posts to /onboarding/keys. On validation/smoke failure the
-index handler re-renders this partial with `keys_error` set + the typed
-values preserved (excluding the OpenRouter key — never preserved across
-a failed-verify boundary, since users mostly want to re-paste from the
-provider page anyway).
+Three render branches:
 
-When `keys_collected=True`, render a masked summary instead of the form,
-with a "Change keys" link that posts back to /onboarding/keys with a
-`reset=1` flag to clear the credentials row.
+1. `keys_collected=True` — SQLite credentials-only session row has been
+   saved. Renders the masked summary with a "Change keys" link that POSTs
+   /onboarding/keys with `reset=1` (clears the row + redirects to
+   /onboarding/?manual=1 so the user lands on the empty form, not the
+   detected UI from env vars they implicitly opted out of).
+
+2. `env_keys_available=True` (#676) — OPENROUTER_API_KEY / RAPIDAPI_KEY are
+   present in `os.environ` (Fly secrets, compose env_file, or any other
+   delivery path that reaches the container's environment) AND no SQLite
+   credentials row exists yet. Renders masked tails + a "Use detected
+   keys" button (POST /onboarding/keys/use-detected — re-reads env vars
+   server-side, no secrets in hidden inputs) and an "Enter keys manually"
+   link (?manual=1 query param suppresses detection for that render only).
+
+3. Otherwise — render the empty form (manual key entry). On
+   validation/smoke failure the index handler re-renders this partial
+   with `keys_error` set + the typed RapidAPI value preserved (OpenRouter
+   never preserved across a failed-verify boundary; users mostly want to
+   re-paste from the provider page anyway).
 #}
 <section class="bg-white border-2 border-blue-300 rounded p-4 space-y-3">
   <h2 class="font-semibold text-blue-900">Step 1 — API keys</h2>
@@ -32,6 +44,32 @@ with a "Change keys" link that posts back to /onboarding/keys with a
         Change keys
       </button>
     </form>
+  </div>
+  {% elif env_keys_available %}
+  <div class="space-y-3 text-sm">
+    <p class="text-slate-700">
+      Detected API keys already set in this container's environment (e.g. Fly secrets,
+      <code>compose env_file</code>). Use these to skip re-entering them:
+    </p>
+    <ul class="list-disc list-inside text-slate-700">
+      <li>OpenRouter — <code>***{{ env_openrouter_last4 }}</code></li>
+      {% if env_rapidapi_last4 %}
+      <li>RapidAPI — <code>***{{ env_rapidapi_last4 }}</code></li>
+      {% else %}
+      <li>RapidAPI — <span class="text-slate-500">not set in env (LinkedIn / Indeed search inactive unless you enter one below)</span></li>
+      {% endif %}
+    </ul>
+    <div class="flex items-center gap-3">
+      <form method="post" action="/onboarding/keys/use-detected" class="inline">
+        <button type="submit"
+                class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+          Use detected keys
+        </button>
+      </form>
+      <a href="/onboarding/?manual=1" class="text-xs underline text-slate-600 hover:text-slate-900">
+        Enter keys manually instead
+      </a>
+    </div>
   </div>
   {% else %}
   {% if keys_error %}

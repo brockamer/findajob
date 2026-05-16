@@ -14,6 +14,7 @@ emission back here) was removed 2026-05-02 — see CHANGELOG.
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
@@ -163,8 +164,35 @@ def _last4(value: str | None) -> str:
     return value[-4:]
 
 
+def _env_var_keys() -> tuple[str | None, str | None]:
+    """Read OPENROUTER_API_KEY / RAPIDAPI_KEY from the process environment.
+
+    Returns ``(openrouter, rapidapi)``. Empty / whitespace-only values are
+    normalized to ``None`` so the caller can boolean-check.
+
+    Covers both delivery paths transparently:
+    - **Fly.io**: ``fly secrets set`` materializes secrets into ``os.environ``.
+    - **Docker Compose**: ``env_file: ./state/data/.env`` (see
+      ``ops/compose.yaml.example``) loads data/.env values into ``os.environ``
+      at container startup. (Caveat: ``docker compose restart`` does NOT
+      re-read env_file — only ``up -d`` does — but that's an existing
+      operational fact, not in scope for env-var detection.)
+
+    The literal AC #1 reading ("os.environ AND in data/.env") is satisfied by
+    reading os.environ alone, since data/.env's contents become env vars at
+    container startup on every supported deploy.
+    """
+    openrouter = (os.environ.get("OPENROUTER_API_KEY") or "").strip()
+    rapidapi = (os.environ.get("RAPIDAPI_KEY") or "").strip()
+    return (openrouter or None, rapidapi or None)
+
+
 @router.get("/onboarding/", response_class=HTMLResponse)
-def onboarding_index(request: Request, mode: str = "") -> HTMLResponse:
+def onboarding_index(
+    request: Request,
+    mode: str = "",
+    manual: str = "",
+) -> HTMLResponse:
     """Landing page. ``mode=rerun`` flips on the backup warning.
 
     When the stack is already onboarded (sentinel file present) AND no
@@ -172,11 +200,21 @@ def onboarding_index(request: Request, mode: str = "") -> HTMLResponse:
     rerun mode, surface a brief "you've already onboarded" hint so an
     already-configured tester who lands here from a stale link or out
     of curiosity doesn't think findajob has forgotten them.
+
+    ``manual=1`` suppresses env-var detection for that render. Used by
+    the Override affordance on the "detected keys" UI and by the reset
+    path's redirect so an operator who clicks "Change keys" lands on
+    the empty form rather than the detected UI they just opted out of.
+    The choice is per-render only — closing the tab forgets it. This
+    mirrors how every other form behaves and avoids new schema state.
     """
     templates = request.app.state.templates
     active = _active_session_for_index(request)
     creds = _credentials_for_index(request)
     keys_collected = creds is not None and (creds.openrouter_api_key is not None)
+
+    env_openrouter, env_rapidapi = (None, None) if manual == "1" else _env_var_keys()
+    env_keys_available = env_openrouter is not None and not keys_collected
 
     base_root: Path = request.app.state.base_root
     is_already_onboarded = (base_root / "data" / ".onboarding-complete").is_file()
@@ -195,6 +233,9 @@ def onboarding_index(request: Request, mode: str = "") -> HTMLResponse:
             "keys_error": None,
             "rapidapi_input": "",
             "show_already_onboarded_hint": show_already_onboarded_hint,
+            "env_keys_available": env_keys_available,
+            "env_openrouter_last4": _last4(env_openrouter),
+            "env_rapidapi_last4": _last4(env_rapidapi),
         },
     )
 
@@ -227,6 +268,12 @@ def _render_keys_error(
             "keys_error": error,
             "rapidapi_input": rapidapi_input,
             "show_already_onboarded_hint": False,
+            # The error path is showing the manual form by definition, so
+            # suppress env-var detection here regardless. Otherwise a failed
+            # smoke check would flip the user back to the detected UI mid-flow.
+            "env_keys_available": False,
+            "env_openrouter_last4": "",
+            "env_rapidapi_last4": "",
         },
         status_code=400,
     )
@@ -263,7 +310,10 @@ def onboarding_keys(
                     openrouter_api_key="",
                     rapidapi_key="",
                 )
-            return RedirectResponse(url="/onboarding/", status_code=303)
+            # Redirect with ?manual=1 so the operator who clicked "Change
+            # keys" lands on the empty form, not the detected-keys UI from
+            # env vars they implicitly opted out of by clicking reset.
+            return RedirectResponse(url="/onboarding/?manual=1", status_code=303)
 
         ok, err = validate_openrouter_format(openrouter_api_key)
         if not ok:
@@ -326,6 +376,94 @@ def onboarding_keys(
             session_id,
             openrouter_api_key=openrouter_api_key.strip(),
             rapidapi_key=rapidapi_key.strip(),
+        )
+        return RedirectResponse(url="/onboarding/", status_code=303)
+    finally:
+        conn.close()
+
+
+@router.post("/onboarding/keys/use-detected", response_model=None)
+def onboarding_keys_use_detected(request: Request) -> HTMLResponse | RedirectResponse:
+    """Step 1, alternative entry: persist keys already in the container env.
+
+    Reads ``OPENROUTER_API_KEY`` and ``RAPIDAPI_KEY`` from ``os.environ``
+    server-side — the browser never sees the values, so no hidden inputs
+    carry secrets across the wire. Runs the same format + smoke +
+    persistence chain as :func:`onboarding_keys`, with error messages
+    tailored to the container-env source so a stale Fly secret or a
+    typo'd compose ``env_file`` value tells the user where to look.
+
+    If no OpenRouter key is present in the env (race against Fly secret
+    propagation, or the operator hit the route directly without env vars
+    set), redirect to ``/onboarding/?manual=1`` so the user lands on the
+    empty form rather than a confusing error page.
+    """
+    env_openrouter, env_rapidapi = _env_var_keys()
+
+    if env_openrouter is None:
+        return RedirectResponse(url="/onboarding/?manual=1", status_code=303)
+
+    rapidapi_value = env_rapidapi or ""
+
+    ok, err = validate_openrouter_format(env_openrouter)
+    if not ok:
+        return _render_keys_error(
+            request,
+            error=(
+                f"The OpenRouter key in this container's environment failed format "
+                f"validation: {err} Check the value of OPENROUTER_API_KEY "
+                "(Fly secret or data/.env) and re-deploy, or enter a key manually below."
+            ),
+        )
+    ok, err = validate_rapidapi_format(rapidapi_value)
+    if not ok:
+        return _render_keys_error(
+            request,
+            error=(
+                f"The RapidAPI key in this container's environment failed format "
+                f"validation: {err} Check the value of RAPIDAPI_KEY (Fly secret "
+                "or data/.env) and re-deploy, or enter keys manually below."
+            ),
+        )
+
+    smoke_ok, smoke_err = verify_openrouter_key(env_openrouter)
+    if not smoke_ok:
+        return _render_keys_error(
+            request,
+            error=(
+                "OpenRouter rejected the key from this container's environment. "
+                f"{smoke_err or ''} The OPENROUTER_API_KEY may be stale or revoked. "
+                "Rotate it (Fly secret or data/.env) and re-deploy, or enter a "
+                "fresh key manually below."
+            ).strip(),
+        )
+
+    if rapidapi_value:
+        rapid_ok, rapid_err = verify_rapidapi_key(rapidapi_value)
+        if not rapid_ok:
+            return _render_keys_error(
+                request,
+                error=(
+                    "RapidAPI rejected the key from this container's environment. "
+                    f"{rapid_err or ''} The RAPIDAPI_KEY may be stale or revoked. "
+                    "Rotate it (Fly secret or data/.env) and re-deploy, or enter "
+                    "keys manually below."
+                ).strip(),
+            )
+
+    db_path: Path = request.app.state.db_path
+    conn = connect(db_path, timeout=5)
+    try:
+        existing = find_credentials_only(conn)
+        if existing is not None:
+            session_id = existing.id
+        else:
+            session_id = create_session(conn)
+        set_credentials(
+            conn,
+            session_id,
+            openrouter_api_key=env_openrouter,
+            rapidapi_key=rapidapi_value,
         )
         return RedirectResponse(url="/onboarding/", status_code=303)
     finally:

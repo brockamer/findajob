@@ -101,7 +101,7 @@ Open the URL. Your browser asks for the basic-auth credential you just set — u
 
 The onboarding flow is a structured 60–90 minute LLM conversation that writes your `profile.md`, role prompts, and other config files based on your career history. Plan to sit through it in one session, or use the "resume" affordance to come back later.
 
-**Step 1 — API keys.** Your first onboarding screen confirms (or re-collects) the API keys you set during the deploy. You can edit them here if you mistyped one.
+**Step 1 — API keys.** Your first onboarding screen detects the `OPENROUTER_API_KEY` and `RAPIDAPI_KEY` you set during the deploy (read from the container's environment — Fly secrets surface there). It shows the last 4 characters of each as confirmation and a **Use detected keys** button. Click it to advance to Step 2 without re-typing. To enter different keys (e.g., you mistyped one or want to rotate), click **Enter keys manually instead** for the empty form.
 
 **Step 2 — Run the interview.** Click "Start interview." A chat surface opens. The interviewer asks structured questions about your work history, target companies, skills, and preferences, emitting config blocks as you go. You can close the tab anytime — the session is server-side persistent, and the index page surfaces a "Resume your interview" button:
 
