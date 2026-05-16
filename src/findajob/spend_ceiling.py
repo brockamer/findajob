@@ -43,26 +43,17 @@ def check_call_gate() -> None:
 
     Called inside ``openrouter.complete()`` before any HTTP work. Opens its
     own DB connection and closes it immediately so it doesn't interfere with
-    callers that manage their own connections. Silently returns when:
-
-    - Ceiling is disabled (``load_spend_ceiling()`` returns ``None``).
-    - ``pipeline.db`` doesn't exist (fresh install, unit-test environment).
-    - Any DB error — spending data is best-effort; don't block LLM calls on
-      a transient DB failure.
+    callers that manage their own connections. No-op when the ceiling is
+    not configured (``load_spend_ceiling()`` returns ``None``). DB errors
+    propagate — the gate is a safety mechanism, not best-effort.
     """
     ceiling = load_spend_ceiling()
     if ceiling is None:
         return
 
-    try:
-        conn = connect(_DB_PATH)
-    except Exception:  # noqa: BLE001
-        return
-
+    conn = connect(_DB_PATH)
     try:
         current = spend_this_month(conn)
-    except Exception:  # noqa: BLE001
-        return
     finally:
         conn.close()
 
