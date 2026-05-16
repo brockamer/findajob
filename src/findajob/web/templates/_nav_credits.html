@@ -1,11 +1,24 @@
-{# Nav-bar spend chip — current calendar-month LLM spend in USD.
-   Sourced from `cost_log.cost_usd` (OpenRouter `response.usage.cost`). #}
-{% if spend_this_month_for_template is defined %}
-  {% set spent = spend_this_month_for_template() %}
+{# Nav-bar spend chip — current calendar-month LLM spend in USD (#671).
+   Sourced from `cost_log.cost_usd` (OpenRouter `response.usage.cost`).
+   3-state palette: normal (slate) / warn ≥90% (amber) / crossed ≥100% (rose).
+   When no ceiling is configured, renders identically to the old single-state chip. #}
+{% if spend_chip_context_for_template is defined %}
+  {% set ctx = spend_chip_context_for_template() %}
+  {% set state_cls = {
+       "normal":     "bg-slate-700/40 border-slate-500/40 text-slate-100",
+       "warn":       "bg-amber-600/40 border-amber-400/40 text-amber-100",
+       "crossed":    "bg-rose-700/40 border-rose-400/40 text-rose-100",
+       "no_ceiling": "bg-slate-700/40 border-slate-500/40 text-slate-100",
+  }[ctx.state] %}
+  {% if ctx.ceiling is not none %}
+    {% set chip_title = "$%.2f / $%.2f monthly ceiling" | format(ctx.spent, ctx.ceiling) %}
+  {% else %}
+    {% set chip_title = "LLM spend this calendar month — sum of cost_log.cost_usd from response.usage.cost (UTC month boundary)." %}
+  {% endif %}
   <li id="nav-credits" class="ml-auto">
-    <span class="text-xs px-2 py-1 rounded border bg-slate-700/40 border-slate-500/40 text-slate-100 font-mono"
-          title="LLM spend this calendar month — sum of cost_log.cost_usd from response.usage.cost (UTC month boundary).">
-      ${{ '%.2f' | format(spent) }} this month
+    <span class="text-xs px-2 py-1 rounded border font-mono {{ state_cls }}"
+          title="{{ chip_title }}">
+      ${{ '%.2f' | format(ctx.spent) }} this month
     </span>
   </li>
 {% endif %}

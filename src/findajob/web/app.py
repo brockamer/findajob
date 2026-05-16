@@ -54,24 +54,40 @@ def create_app(
 
     templates.env.globals["reject_reason_options"] = _reject_reason_options
 
-    # Nav chip — current calendar-month spend. Wrapped in a function so each
-    # request re-queries; cost_log rows arrive whenever the wrapper writes one.
-    def _spend_this_month_for_template() -> float:
+    # Nav chip — current calendar-month spend with ceiling-awareness (#671).
+    # Returns a dict so the template can render 3 states: normal / warn / crossed.
+    # When ceiling is None ("no_ceiling") the chip renders identically to the old
+    # single-state slate chip — no visible change for operators who haven't set one.
+    def spend_chip_context_for_template() -> dict:
         try:
             conn = connect(db_path, timeout=5)
             conn.row_factory = sqlite3.Row
         except sqlite3.Error:
-            return 0.0
+            return {"spent": 0.0, "ceiling": None, "ratio": 0.0, "state": "no_ceiling"}
         try:
+            from findajob.config_loader import load_spend_ceiling
             from findajob.cost_rollups import spend_this_month
 
-            return spend_this_month(conn)
+            spent = spend_this_month(conn)
+            ceiling = load_spend_ceiling()
         except sqlite3.Error:
-            return 0.0
+            return {"spent": 0.0, "ceiling": None, "ratio": 0.0, "state": "no_ceiling"}
         finally:
             conn.close()
 
-    templates.env.globals["spend_this_month_for_template"] = _spend_this_month_for_template
+        if ceiling is None:
+            return {"spent": spent, "ceiling": None, "ratio": 0.0, "state": "no_ceiling"}
+
+        ratio = spent / ceiling if ceiling > 0 else 0.0
+        if ratio >= 1.0:
+            state = "crossed"
+        elif ratio >= 0.9:
+            state = "warn"
+        else:
+            state = "normal"
+        return {"spent": spent, "ceiling": ceiling, "ratio": ratio, "state": state}
+
+    templates.env.globals["spend_chip_context_for_template"] = spend_chip_context_for_template
     templates.env.globals["onboarding_complete"] = onboarding_complete
 
     static_dir = Path(__file__).parent / "static"
