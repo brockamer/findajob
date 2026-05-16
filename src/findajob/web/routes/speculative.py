@@ -27,6 +27,7 @@ from findajob.db import connect
 from findajob.paths import BASE
 from findajob.speculative.approver import approve_request
 from findajob.speculative.parser import parse_role_cards
+from findajob.spend_ceiling import check_launch_gate
 from findajob.web.markdown import render_markdown
 
 router = APIRouter()
@@ -110,6 +111,15 @@ def post_speculative(
         raise HTTPException(status_code=400, detail="company is required")
     conn = _conn()
     try:
+        refusal = check_launch_gate(conn)
+        if refusal is not None:
+            raise HTTPException(
+                status_code=402,
+                detail=(
+                    f"Monthly LLM spend ceiling reached: ${refusal.current_sum_usd:.2f} / "
+                    f"${refusal.ceiling_usd:.2f}. Raise or disable the ceiling in /settings/."
+                ),
+            )
         cur = conn.execute(
             """INSERT INTO speculative_requests (company, hint, personal_notes, status)
                VALUES (?, ?, ?, 'researching')""",
@@ -203,6 +213,16 @@ def post_approve(request_id: int, keep: Annotated[list[int] | None, Form()] = No
 def post_regenerate(request_id: int) -> RedirectResponse:
     conn = _conn()
     try:
+        refusal = check_launch_gate(conn)
+        if refusal is not None:
+            raise HTTPException(
+                status_code=402,
+                detail=(
+                    f"Monthly LLM spend ceiling reached: ${refusal.current_sum_usd:.2f} / "
+                    f"${refusal.ceiling_usd:.2f}. Raise or disable the ceiling in /settings/."
+                ),
+            )
+
         row = conn.execute("SELECT status FROM speculative_requests WHERE id=?", (request_id,)).fetchone()
         if row is None:
             raise HTTPException(status_code=404)

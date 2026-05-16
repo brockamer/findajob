@@ -34,6 +34,7 @@ from findajob.audit import log_event, write_audit
 from findajob.background_tasks import TASK_ID_ENV_VAR, record_failed, record_start
 from findajob.classification import is_synthetic_job
 from findajob.paths import BASE
+from findajob.spend_ceiling import check_launch_gate
 from findajob.web.company_history import build_history_by_fp, fetch_company_history
 from findajob.web.filters import registry as filter_registry
 from findajob.web.routes.materials import get_db
@@ -257,6 +258,16 @@ def prep(
     request: Request,
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
 ) -> HTMLResponse:
+    refusal = check_launch_gate(db)
+    if refusal is not None:
+        raise HTTPException(
+            status_code=402,
+            detail=(
+                f"Monthly LLM spend ceiling reached: ${refusal.current_sum_usd:.2f} / "
+                f"${refusal.ceiling_usd:.2f}. Raise or disable the ceiling in /settings/."
+            ),
+        )
+
     row = _fetch_dashboard_row(db, fingerprint)
     if row is None:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -301,6 +312,16 @@ def regenerate(
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
 ) -> HTMLResponse:
     """Delete the existing prep folder and re-run prep from scratch."""
+    refusal = check_launch_gate(db)
+    if refusal is not None:
+        raise HTTPException(
+            status_code=402,
+            detail=(
+                f"Monthly LLM spend ceiling reached: ${refusal.current_sum_usd:.2f} / "
+                f"${refusal.ceiling_usd:.2f}. Raise or disable the ceiling in /settings/."
+            ),
+        )
+
     row = _fetch_dashboard_row(db, fingerprint)
     if row is None:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -380,6 +401,16 @@ def interview(
     request: Request,
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
 ) -> HTMLResponse:
+    refusal = check_launch_gate(db)
+    if refusal is not None:
+        raise HTTPException(
+            status_code=402,
+            detail=(
+                f"Monthly LLM spend ceiling reached: ${refusal.current_sum_usd:.2f} / "
+                f"${refusal.ceiling_usd:.2f}. Raise or disable the ceiling in /settings/."
+            ),
+        )
+
     job = _fetch_job(db, fingerprint)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
