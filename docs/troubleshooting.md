@@ -58,7 +58,7 @@ jq -c 'select(.event == "pipeline_complete")' state/logs/pipeline.jsonl | tail -
 
 **Events present but no new jobs?** A source is silent. The health check's "silent feed failure" alert tells you which one. Causes by source:
 
-- **RapidAPI (`jobsapi`)**: key missing, quota exhausted, or `config/jsearch_queries.txt` empty/malformed.
+- **RapidAPI (`jobsapi`)**: key missing, quota exhausted, `config/jsearch_queries.txt` empty/malformed, or the key's account isn't subscribed to the API. A `jobsapi_403` event with `body_excerpt` containing `"not subscribed"` means the RapidAPI account that owns the key has no active subscription on the API listing. Fix: log into <https://rapidapi.com>, open the API listing (e.g. <https://rapidapi.com/Pat92/api/jobs-api14>), click **Subscribe to Test** → **BASIC** (free).
 - **Gmail**: OAuth token expired → re-authenticate inside the container: `docker compose exec scheduler /app/scripts/gmail_auth.py`. OAuth client must be "Desktop app" type, not TV/limited-input.
 - **Greenhouse**: `config/feed_urls.txt` slug 404s when the company removes a careers page — prune dead slugs.
 

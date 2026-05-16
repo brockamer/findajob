@@ -10,6 +10,9 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Fixed
+- **#679 fix(jobs_api14): distinct `jobsapi_403` log event with response body excerpt + RapidAPI headers.** Pre-#679 the `_call_with_retry` path treated 403 the same as every other non-OK status — `raise_for_status()` raised `HTTPError`, the generic `except requests.RequestException` caught it, and `log_event("jobsapi_error", ..., error=str(e))` logged only the URL+status string from `requests.HTTPError`. The actual 403 response body (which carries the RapidAPI failure mode — `"You are not subscribed to this API."`, `"You have exceeded the quota for this API."`, etc.) was discarded before reaching the log. Surfaced during the #648 Fly deploy: 128/128 fetch attempts 403'd with no diagnostic signal beyond "Forbidden for url:". This fix adds a 403-specific branch in `_call_with_retry` that logs `jobsapi_403` carrying `status`, `body_excerpt` (first 500 chars of `response.text`), and four RapidAPI headers (`x-ratelimit-requests-remaining`, `x-ratelimit-requests-limit`, `retry-after`, `x-rapidapi-region`). The generic `jobsapi_error` path is unchanged for non-403 errors. `docs/troubleshooting.md` gains a sentence under "No new jobs appearing on the Dashboard" explaining the `"not subscribed"` body case and pointing operators at <https://rapidapi.com> to subscribe the API on the key's account. `live_test` (onboarding spot-check) is intentionally not modified — its 401/403 path already returns an `auth` bucket; the fetch-time signal is what was missing. **No `migration-required`** — purely additive observability + docs. Closes #679.
+
 ## [0.25.1] — 2026-05-15
 
 ### Fixed

@@ -221,6 +221,19 @@ class JobsApi14Adapter:
                 log_event("rapidapi_rate_limit", source=self.name, query=query, wait=wait)
                 time.sleep(wait)
                 response = requests.get(self._ENDPOINT, headers=headers, params=params, timeout=30)
+            if response.status_code == 403:
+                log_event(
+                    "jobsapi_403",
+                    source="linkedin",
+                    query=query,
+                    status=403,
+                    body_excerpt=response.text[:500],
+                    x_ratelimit_requests_remaining=response.headers.get("x-ratelimit-requests-remaining"),
+                    x_ratelimit_requests_limit=response.headers.get("x-ratelimit-requests-limit"),
+                    retry_after=response.headers.get("retry-after"),
+                    x_rapidapi_region=response.headers.get("x-rapidapi-region"),
+                )
+                return None
             response.raise_for_status()
             data = response.json()
             if data.get("hasError"):

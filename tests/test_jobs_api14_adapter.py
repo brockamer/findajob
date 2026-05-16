@@ -448,6 +448,39 @@ def test_fetch_logs_pages_counter(monkeypatch: pytest.MonkeyPatch) -> None:
     assert kwargs["count"] == 2
 
 
+def test_call_with_retry_logs_jobsapi_403_with_body_excerpt_and_headers(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("JOBS_API14_KEY", "test-key")
+    fake_403 = MagicMock(status_code=403)
+    fake_403.text = '{"message":"You are not subscribed to this API."}'
+    fake_403.headers = {
+        "x-ratelimit-requests-remaining": "0",
+        "x-ratelimit-requests-limit": "500",
+        "x-rapidapi-region": "AWS - us-east-1",
+    }
+
+    adapter = JobsApi14Adapter()
+    with (
+        patch("findajob.fetchers.adapters.jobs_api14.requests.get", return_value=fake_403),
+        patch("findajob.fetchers.adapters.jobs_api14.log_event") as mock_log,
+    ):
+        result = adapter._call_with_retry(
+            headers={"x-rapidapi-key": "test-key", "x-rapidapi-host": "jobs-api14.p.rapidapi.com"},
+            params={"query": "engineer"},
+            query="engineer",
+        )
+
+    assert result is None
+    log_calls = {c.args[0]: c for c in mock_log.call_args_list}
+    assert "jobsapi_403" in log_calls, f"expected jobsapi_403 event, got: {list(log_calls)}"
+    assert "jobsapi_error" not in log_calls
+    kwargs = log_calls["jobsapi_403"].kwargs
+    assert kwargs["status"] == 403
+    assert "not subscribed" in kwargs["body_excerpt"]
+    assert kwargs["x_ratelimit_requests_remaining"] == "0"
+    assert kwargs["x_ratelimit_requests_limit"] == "500"
+    assert kwargs["x_rapidapi_region"] == "AWS - us-east-1"
+
+
 def test_live_test_does_not_paginate(monkeypatch: pytest.MonkeyPatch) -> None:
     """live_test stays single-page even when JOBS_API14_MAX_PAGES is raised.
 
