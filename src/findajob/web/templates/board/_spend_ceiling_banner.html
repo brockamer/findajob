@@ -1,0 +1,23 @@
+{# #671: shown only when config/spend_ceiling.txt is absent AND the
+   `spend_ceiling_banner_dismissed` cookie is unset. Once the operator
+   sets a ceiling at /settings/spend-ceiling/ (writes the file) or clicks
+   "Don't show again" (sets the cookie), the banner stops appearing. #}
+{% if spend_ceiling_banner %}
+<div class="bg-amber-50 border border-amber-200 rounded p-3 mb-4 flex items-start gap-3">
+  <div class="flex-1 text-sm text-amber-900">
+    <strong>No monthly LLM spend ceiling set.</strong>
+    LLM calls are uncapped. Visit
+    <a href="/settings/spend-ceiling/" class="underline font-medium hover:text-amber-700">
+      /settings/spend-ceiling/
+    </a>
+    to set one.
+  </div>
+  <a
+    href="?dismiss_spend_ceiling_banner=1"
+    class="text-xs text-amber-700 hover:text-amber-900 whitespace-nowrap"
+    title="Stop showing this banner. You can still configure a ceiling at /settings/spend-ceiling/."
+  >
+    Don't show again
+  </a>
+</div>
+{% endif %}

@@ -8,6 +8,7 @@ import sqlite3
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from findajob.config_loader import load_spend_ceiling
 from findajob.fetchers.adapters import registry as _adapter_registry
 from findajob.web.company_history import build_history_by_fp, fetch_company_history
 from findajob.web.discoveries import load_discoveries_summary
@@ -90,6 +91,7 @@ def dashboard(
     request: Request,
     density: str = Query(default=_DEFAULT_DENSITY),
     dismiss_active_sources_banner: int = Query(default=0),
+    dismiss_spend_ceiling_banner: int = Query(default=0),
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
 ) -> HTMLResponse:
     # #603: ?dismiss_active_sources_banner=1 sets a 1-year cookie and
@@ -99,6 +101,19 @@ def dashboard(
         redirect = RedirectResponse(url="/board/dashboard", status_code=303)
         redirect.set_cookie(
             "active_sources_banner_dismissed",
+            "1",
+            max_age=31536000,  # 1 year
+            httponly=False,
+            samesite="lax",
+        )
+        return redirect  # type: ignore[return-value]
+
+    # #671: ?dismiss_spend_ceiling_banner=1 sets a 1-year cookie so the
+    # operator can silence the banner without setting a ceiling.
+    if dismiss_spend_ceiling_banner:
+        redirect = RedirectResponse(url="/board/dashboard", status_code=303)
+        redirect.set_cookie(
+            "spend_ceiling_banner_dismissed",
             "1",
             max_age=31536000,  # 1 year
             httponly=False,
@@ -116,6 +131,7 @@ def dashboard(
     discoveries = load_discoveries_summary(request.app.state.base_root)
     rejections_pending = _rejections_pending_count(db)
     show_banner, default_count = _active_sources_banner_state(request)
+    show_ceiling_banner = _spend_ceiling_banner_state(request)
     templates = request.app.state.templates
     return templates.TemplateResponse(
         request=request,
@@ -133,6 +149,7 @@ def dashboard(
             "rejections_pending": rejections_pending,
             "active_sources_banner": show_banner,
             "active_sources_default_count": default_count,
+            "spend_ceiling_banner": show_ceiling_banner,
         },
     )
 
@@ -163,6 +180,18 @@ def _active_sources_banner_state(request: Request) -> tuple[bool, int]:
         except Exception:
             pass
     return True, count
+
+
+def _spend_ceiling_banner_state(request: Request) -> bool:
+    """Show the spend-ceiling nudge banner iff no ceiling is configured (#671).
+
+    Banner is suppressed when:
+    - ``load_spend_ceiling()`` returns a value (ceiling is set), or
+    - The ``spend_ceiling_banner_dismissed`` cookie is "1".
+    """
+    if request.cookies.get("spend_ceiling_banner_dismissed") == "1":
+        return False
+    return load_spend_ceiling() is None
 
 
 def _rejections_pending_count(db: sqlite3.Connection) -> int:
