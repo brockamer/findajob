@@ -22,6 +22,7 @@ from findajob.web.routes import (
     rejections_review,
     settings_active_sources,
     settings_reject_reasons,
+    settings_spend_ceiling,
     speculative,
     stats,
     tools,
@@ -45,6 +46,7 @@ router.include_router(board_actions.router, dependencies=_guard)
 router.include_router(ingest.router)
 router.include_router(settings_reject_reasons.router, dependencies=_guard)
 router.include_router(settings_active_sources.router, dependencies=_guard)
+router.include_router(settings_spend_ceiling.router, dependencies=_guard)
 router.include_router(rejections_review.router, dependencies=_guard)
 router.include_router(speculative.router, dependencies=_guard)
 router.include_router(stats.router, dependencies=_guard)

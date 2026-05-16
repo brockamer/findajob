@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}Spend ceiling — Settings{% endblock %}
+{% block content %}
+<div class="max-w-2xl">
+  <h1 class="text-2xl font-semibold mb-1">Monthly LLM spend ceiling</h1>
+  <p class="text-sm text-slate-600 mb-2">
+    Set a monthly cap on LLM spending. Once the ceiling is reached, new prep
+    runs, interview prep, and speculative ingest are blocked until the next
+    calendar month (UTC). Scoring and triage are unaffected.
+  </p>
+  <p class="text-sm text-slate-600 mb-6">
+    {% if current_ceiling is not none %}
+      Current ceiling: <strong>${{ "%.2f" | format(current_ceiling) }}/month</strong>.
+    {% else %}
+      <span class="text-amber-700"><strong>No ceiling set.</strong></span>
+      LLM calls are uncapped.
+    {% endif %}
+  </p>
+
+  <div class="space-y-8">
+
+    {# ── Recommendation calculator ── #}
+    <div class="rounded-lg border border-slate-200 bg-white p-5 space-y-4">
+      <h2 class="text-base font-semibold">Recommended ceiling</h2>
+      <p class="text-sm text-slate-600">
+        Estimate based on how many applications you plan to submit per week.
+        Formula: ${{ "%.2f" | format(scoring_floor_usd) }} scoring floor +
+        (applications/week × 4.3 weeks × ${{ "%.2f" | format(per_prep_usd) }}/prep).
+      </p>
+
+      <form
+        hx-post="/settings/spend-ceiling/"
+        hx-target="#save-result"
+        hx-swap="innerHTML"
+        class="space-y-3"
+      >
+        <input type="hidden" name="action" value="save" />
+        <input type="hidden" name="ceiling_override" value="" />
+
+        <div class="flex items-center gap-3">
+          <label for="applies_per_week" class="text-sm font-medium text-slate-700 whitespace-nowrap">
+            Applications per week:
+          </label>
+          <select
+            id="applies_per_week"
+            name="applies_per_week"
+            class="rounded border-slate-300 text-sm focus:border-slate-500 focus:ring-slate-500"
+          >
+            {% for n in applies_options %}
+            <option value="{{ n }}" {% if n == default_applies %}selected{% endif %}>{{ n }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        {# Recommendation preview — one row per option, shown/hidden by JS #}
+        <div class="text-sm text-slate-700">
+          Estimated ceiling:
+          {% for n in applies_options %}
+          <span class="recommendation-preview" data-applies="{{ n }}"
+                style="display:{% if n == default_applies %}inline{% else %}none{% endif %}">
+            <strong>${{ "%.2f" | format(recommendations[n]) }}/month</strong>
+          </span>
+          {% endfor %}
+        </div>
+        <script>
+          (function() {
+            var sel = document.getElementById('applies_per_week');
+            function update() {
+              document.querySelectorAll('.recommendation-preview').forEach(function(el) {
+                el.style.display = el.dataset.applies === sel.value ? 'inline' : 'none';
+              });
+            }
+            sel.addEventListener('change', update);
+          })();
+        </script>
+
+        <button
+          type="submit"
+          class="bg-slate-800 text-white text-sm font-medium rounded px-4 py-1.5 hover:bg-slate-700"
+        >
+          Use recommendation
+        </button>
+        <span class="text-xs text-slate-500 htmx-indicator">Saving…</span>
+      </form>
+    </div>
+
+    {# ── Override ── #}
+    <div class="rounded-lg border border-slate-200 bg-white p-5 space-y-4">
+      <h2 class="text-base font-semibold">Override</h2>
+      <p class="text-sm text-slate-600">
+        Enter any positive dollar amount to override the recommendation.
+      </p>
+
+      <form
+        hx-post="/settings/spend-ceiling/"
+        hx-target="#save-result"
+        hx-swap="innerHTML"
+        class="flex items-center gap-3"
+      >
+        <input type="hidden" name="action" value="save" />
+        <input type="hidden" name="applies_per_week" value="{{ default_applies }}" />
+        <span class="text-sm text-slate-700">$</span>
+        <input
+          type="number"
+          name="ceiling_override"
+          min="0.01"
+          step="0.01"
+          placeholder="e.g. 50.00"
+          class="w-32 rounded border-slate-300 text-sm focus:border-slate-500 focus:ring-slate-500"
+        />
+        <span class="text-sm text-slate-700">/month</span>
+        <button
+          type="submit"
+          class="bg-slate-800 text-white text-sm font-medium rounded px-4 py-1.5 hover:bg-slate-700"
+        >
+          Set ceiling
+        </button>
+        <span class="text-xs text-slate-500 htmx-indicator">Saving…</span>
+      </form>
+    </div>
+
+    {# ── Disable ── #}
+    {% if current_ceiling is not none %}
+    <div class="rounded-lg border border-slate-200 bg-white p-5 space-y-4">
+      <h2 class="text-base font-semibold">Disable ceiling</h2>
+      <p class="text-sm text-slate-600">
+        Removes the cap. LLM calls will be uncapped until you set a new ceiling.
+      </p>
+      <form
+        hx-post="/settings/spend-ceiling/"
+        hx-target="#save-result"
+        hx-swap="innerHTML"
+      >
+        <input type="hidden" name="action" value="disable" />
+        <button
+          type="submit"
+          class="bg-rose-700 text-white text-sm font-medium rounded px-4 py-1.5 hover:bg-rose-600"
+        >
+          Disable ceiling
+        </button>
+        <span class="text-xs text-slate-500 htmx-indicator">Saving…</span>
+      </form>
+    </div>
+    {% endif %}
+
+  </div>
+
+  <div id="save-result" class="mt-6"></div>
+</div>
+{% endblock %}
