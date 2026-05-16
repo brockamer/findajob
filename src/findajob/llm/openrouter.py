@@ -33,6 +33,20 @@ from pathlib import Path
 
 from findajob.paths import BASE
 
+
+# Deferred import to break the import cycle:
+# spend_ceiling → cost_rollups → (no LLM dep)
+# spend_ceiling → config_loader → (no LLM dep)
+# spend_ceiling → openrouter (this module, for LLMSpendCeilingExceeded)
+# Importing spend_ceiling at module-load time would work because
+# LLMSpendCeilingExceeded is defined before the import, but a function-
+# level import is cleaner and avoids any future ordering fragility.
+def _check_call_gate() -> None:
+    from findajob.spend_ceiling import check_call_gate  # noqa: PLC0415
+
+    check_call_gate()
+
+
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 DEFAULT_TIMEOUT_S = 120
 DEFAULT_MAX_TOKENS = 4096
@@ -83,6 +97,20 @@ class OpenRouterError(Exception):
         super().__init__(message)
         self.kind = kind
         self.status_code = status_code
+
+
+class LLMSpendCeilingExceeded(Exception):
+    """Raised by :func:`complete` when the monthly LLM spend ceiling is exceeded.
+
+    Intentionally NOT a subclass of :class:`OpenRouterError` — callers that
+    catch ``OpenRouterError`` and return ``""`` (e.g. ``role_runner.run_role``)
+    must NOT swallow this; it signals an operator-configured hard stop.
+    """
+
+    def __init__(self, *, ceiling_usd: float, current_sum_usd: float) -> None:
+        super().__init__(f"Monthly LLM spend ceiling exceeded: ${current_sum_usd:.2f} / ${ceiling_usd:.2f}")
+        self.ceiling_usd = ceiling_usd
+        self.current_sum_usd = current_sum_usd
 
 
 def complete(
@@ -149,6 +177,10 @@ def complete(
             "OPENROUTER_API_KEY not set. Add a key in /onboarding/ Step 1 or in data/.env.",
             kind="config",
         )
+
+    # Raises LLMSpendCeilingExceeded if monthly ceiling is met. No-op when
+    # ceiling is disabled or pipeline.db is unavailable.
+    _check_call_gate()
 
     base_dir = roles_dir if roles_dir is not None else _DEFAULT_ROLES_DIR
     front, system_prompt = _read_role_file(base_dir / f"{role}.md")

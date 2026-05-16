@@ -25,6 +25,7 @@ _IN_DOMAIN_PATH = Path(BASE) / "config" / "in_domain_patterns.yaml"
 _TARGET_COMPANIES_PATH = Path(BASE) / "config" / "target_companies.md"
 _EXCLUDED_EMPLOYERS_PATH = Path(BASE) / "config" / "excluded_employers.yaml"
 _REJECT_REASONS_PATH = Path(BASE) / "config" / "reject_reasons.yaml"
+_SPEND_CEILING_PATH = Path(BASE) / "config" / "spend_ceiling.txt"
 
 # Field-agnostic fallback used when `config/reject_reasons.yaml` is missing or
 # `reasons:` is empty. Operator stacks override via the file (interview-emitted
@@ -358,6 +359,43 @@ def load_reject_reasons() -> tuple[tuple[str, ...], frozenset[str]]:
             raise ConfigError(f"reject_reasons.yaml: title_signal_reasons entry is not a string: {t!r}")
 
     return (tuple(raw_reasons), frozenset(raw_title))
+
+
+_SPEND_CEILING_DISABLED = frozenset({"disabled", "none", "off", "0"})
+
+
+def load_spend_ceiling() -> float | None:
+    """Monthly LLM spend ceiling in USD from ``config/spend_ceiling.txt``.
+
+    Returns ``None`` (gate is a no-op) when the file is absent, empty, or
+    contains a disabled sentinel (``disabled``, ``none``, ``off``, ``0`` —
+    case-insensitive). Returns a positive float when a valid ceiling is set.
+    Returns ``None`` and logs a warning on malformed content.
+
+    No cache — parse-per-call so saves take effect on the next request
+    without a process restart (mirrors ``load_reject_reasons`` pattern).
+    """
+    try:
+        raw = _SPEND_CEILING_PATH.read_text(encoding="utf-8").strip()
+    except FileNotFoundError:
+        return None
+
+    if not raw:
+        return None
+
+    if raw.lower() in _SPEND_CEILING_DISABLED:
+        return None
+
+    try:
+        value = float(raw)
+    except ValueError:
+        _warn_once(f"config/spend_ceiling.txt: unrecognised value {raw!r} — ceiling disabled")
+        return None
+
+    if value <= 0:
+        return None
+
+    return value
 
 
 def save_reject_reasons(

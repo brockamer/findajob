@@ -22,6 +22,7 @@ def _use_fixture_configs(monkeypatch):
     monkeypatch.setattr(config_loader, "_IN_DOMAIN_PATH", FIXTURES / "in_domain_patterns.yaml")
     monkeypatch.setattr(config_loader, "_TARGET_COMPANIES_PATH", FIXTURES / "target_companies.md")
     monkeypatch.setattr(config_loader, "_EXCLUDED_EMPLOYERS_PATH", FIXTURES / "excluded_employers.yaml")
+    monkeypatch.setattr(config_loader, "_SPEND_CEILING_PATH", FIXTURES / "spend_ceiling.txt")
     config_loader._reset_cache()
     yield
     config_loader._reset_cache()
