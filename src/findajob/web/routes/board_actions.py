@@ -405,9 +405,13 @@ def regenerate_confirm(
             detail="Regenerate is only valid for prep_in_progress or materials_drafted",
         )
 
+    # Pin on old_value='prep_in_progress' — handle_reactivate also writes a
+    # ('waitlisted' → 'materials_drafted') audit row; without the old_value
+    # filter, a reactivation timestamp would surface as "Last generated".
     last_prep_utc = db.execute(
         "SELECT MAX(changed_at) FROM audit_log "
-        "WHERE job_id=? AND field_changed='stage' AND new_value='materials_drafted'",
+        "WHERE job_id=? AND field_changed='stage' "
+        "AND old_value='prep_in_progress' AND new_value='materials_drafted'",
         (row["id"],),
     ).fetchone()[0]
 

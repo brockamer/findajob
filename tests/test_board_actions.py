@@ -2265,6 +2265,33 @@ class TestRegenerateConfirm:
         response = client.get("/board/jobs/fp_nonexistent/regenerate/confirm")
         assert response.status_code == 404
 
+    def test_reactivate_audit_row_is_not_treated_as_prep_completion(self, client: TestClient):
+        """Regression: handle_reactivate writes ('waitlisted' → 'materials_drafted')
+        to audit_log when a waitlisted job is reactivated with its folder intact
+        (actions.py:215). The modal's 'Last generated' line must not surface that
+        timestamp — only prep_in_progress → materials_drafted transitions count.
+        """
+        # Seed the real prep completion (older)
+        _seed_last_prep_completion_audit(client, "fp_drafted", "2026-05-10 10:00:00")
+        # Seed a later reactivation row that should NOT be picked up
+        conn = sqlite3.connect(client._db_path)
+        job_id = conn.execute("SELECT id FROM jobs WHERE fingerprint='fp_drafted'").fetchone()[0]
+        conn.execute(
+            "INSERT INTO audit_log (job_id, field_changed, old_value, new_value, changed_at, changed_by) "
+            "VALUES (?, 'stage', 'waitlisted', 'materials_drafted', '2026-05-16 18:00:00', 'user')",
+            (job_id,),
+        )
+        conn.commit()
+        conn.close()
+
+        response = client.get("/board/jobs/fp_drafted/regenerate/confirm")
+        assert response.status_code == 200
+        text = response.text
+        # Surfaces the genuine prep completion (2026-05-10 PT)
+        assert "2026-05-10" in text
+        # Does NOT surface the reactivation date
+        assert "2026-05-16" not in text
+
 
 class TestRegenerateCell:
     def test_returns_status_cell_for_materials_drafted(self, client: TestClient):
