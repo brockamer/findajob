@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Not Selected — findajob{% endblock %}
+{% block main_classes %}w-full px-4 py-6{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-semibold mb-4">Not Selected</h1>
+{% include "board/_tabs.html" %}
+<p class="mb-3 text-xs text-slate-600">
+  Applications where the company passed (stage <code>not_selected</code>).
+  Folder stays in <code>_applied/</code> with a <code>NOT_SELECTED_</code> marker file
+  alongside the rest of the materials. Un-not-selecting restores the prior stage
+  (typically <code>applied</code>) and deletes the marker. Sibling tab
+  <a class="underline" href="/board/rejected">Rejected</a> handles
+  operator-passed jobs (stage <code>rejected</code>).
+</p>
+{% include "_filters.html" %}
+<table class="min-w-full bg-white shadow-sm rounded-sm density-{{ density | default('compact') }}">
+  {% set leading_cols = [('', ''), ('Reason', '')] %}
+  {% include "_table_header.html" %}
+  <tbody id="rows">
+    {% include "_job_rows_fragment.html" %}
+  </tbody>
+</table>
+{% endblock %}

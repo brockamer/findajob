@@ -10,6 +10,7 @@ commits itself. Functions return a `bool` indicating whether a folder was
 moved (or, for `reset_prep_to_scored`, whether the reset actually happened).
 """
 
+import glob
 import os
 import re
 import shutil
@@ -324,6 +325,59 @@ def un_reject_job(conn: sqlite3.Connection, job: Any, overwrite_fields: dict[str
     write_audit(conn, job["id"], "stage", "rejected", "scored")
     write_audit(conn, job["id"], "reject_reason", job["reject_reason"] or "", "")
     log_event("job_un_rejected", job_id=job["id"], company=job["company"], title=job["title"])
+
+
+def un_not_selected_job(conn: sqlite3.Connection, job: Any) -> str:
+    """Reverse a company-not-selected stage: restore the prior stage from
+    audit_log, clear the reject_reason, delete all NOT_SELECTED_*.txt marker
+    files from the job's folder.
+
+    Returns the restored stage (for the caller to surface in audit/log
+    events). Fallback to 'applied' if no audit_log row found — the audit
+    write inside handle_not_selected guarantees coverage for all in-system
+    transitions, so the fallback is belt-and-suspenders.
+
+    Unlike un_reject_job, there is no feedback_log row to delete (company
+    rejections never wrote one) and no folder move (handle_not_selected
+    keeps the folder in companies/_applied/).
+    """
+    now = datetime.now(UTC).isoformat()
+
+    prior = conn.execute(
+        "SELECT old_value FROM audit_log "
+        "WHERE job_id=? AND field_changed='stage' AND new_value='not_selected' "
+        "ORDER BY changed_at DESC LIMIT 1",
+        (job["id"],),
+    ).fetchone()
+    restored_stage = prior[0] if prior and prior[0] else "applied"
+
+    conn.execute(
+        "UPDATE jobs SET stage=?, reject_reason='', updated_at=? WHERE id=?",
+        (restored_stage, now, job["id"]),
+    )
+
+    folder = job["prep_folder_path"] if job["prep_folder_path"] else None
+    if folder and os.path.isdir(folder):
+        for marker_path in glob.glob(os.path.join(folder, "NOT_SELECTED_*.txt")):
+            os.remove(marker_path)
+            log_event(
+                "marker_removed_not_selected",
+                job_id=job["id"],
+                folder=os.path.basename(folder),
+                marker=os.path.basename(marker_path),
+            )
+
+    conn.commit()
+    write_audit(conn, job["id"], "stage", "not_selected", restored_stage, changed_by="user")
+    write_audit(conn, job["id"], "reject_reason", job["reject_reason"] or "", "", changed_by="user")
+    log_event(
+        "job_un_not_selected",
+        job_id=job["id"],
+        company=job["company"],
+        title=job["title"],
+        restored_stage=restored_stage,
+    )
+    return restored_stage
 
 
 def reactivate_from_ingest(conn: sqlite3.Connection, job: Any, overwrite_fields: dict[str, str]) -> None:

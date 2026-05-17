@@ -24,6 +24,9 @@
   {% elif tab == 'rejected' %}
     {% include "board/_unreject_cell.html" %}
     {% include "board/_change_reject_reason_cell.html" %}
+  {% elif tab == 'not_selected' %}
+    {% include "board/_un_not_selected_cell.html" %}
+    {% include "board/_change_not_selected_reason_cell.html" %}
   {% elif tab == 'archive' %}
     {% include "board/_archive_promote_cell.html" %}
   {% endif %}

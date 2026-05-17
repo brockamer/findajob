@@ -1,0 +1,24 @@
+{#
+  Un-not-selected button cell for the Not Selected tab. Click POSTs to
+  /un-not-selected; on success the row is removed via closest-tr swap.
+
+  Inputs:
+    row — sqlite3.Row with .fingerprint, .stage
+
+  Unlike un-reject, there is no destructive side effect to warn about
+  (no feedback_log row exists for not_selected). One-click is fine; no
+  confirm modal needed per the audit's Tier-1 classification.
+#}
+<td class="px-3 py-1 align-top text-sm whitespace-nowrap">
+  {% if row.stage == 'not_selected' %}
+  <button type="button"
+          hx-post="/board/jobs/{{ row.fingerprint }}/un-not-selected"
+          hx-target="closest tr"
+          hx-swap="outerHTML"
+          class="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-xs">
+    Un-not-selected
+  </button>
+  {% else %}
+  <span class="text-xs text-slate-400">—</span>
+  {% endif %}
+</td>

@@ -1,4 +1,4 @@
-"""Board tabs: /board/dashboard, /applied, /review, /waitlist, /rejected, /archive."""
+"""Board tabs: /board/dashboard, /applied, /review, /waitlist, /rejected, /not-selected, /archive."""
 
 from __future__ import annotations
 
@@ -466,6 +466,99 @@ def rejected_rows(
             "visible": visible,
             "rows": rows,
             "tab": "rejected",
+            "materials_base_url": materials_base_url,
+        },
+    )
+
+
+_NOT_SELECTED_BASE_WHERE = "j.stage = 'not_selected'"
+_NOT_SELECTED_DEFAULT_SORT = "not_selected_date"
+
+
+def _not_selected_source() -> str:
+    """LEFT JOIN audit_log for the most recent →not_selected transition date.
+
+    Mirrors _rejected_source() but filters to a single stage so the column
+    name not_selected_date stays semantically precise.
+    """
+    return (
+        "FROM jobs j "
+        "LEFT JOIN ( "
+        "  SELECT job_id, MAX(changed_at) AS not_selected_date "
+        "  FROM audit_log "
+        "  WHERE field_changed = 'stage' AND new_value = 'not_selected' "
+        "  GROUP BY job_id"
+        ") al ON al.job_id = j.id"
+    )
+
+
+def _not_selected_query(parsed: ParsedFilters) -> tuple[str, list[object]]:
+    specs = filter_registry.NOT_SELECTED_COLUMNS
+    clauses, params = build_filter_clauses(specs, parsed)
+    sort = parsed.sort or _NOT_SELECTED_DEFAULT_SORT
+    sort_spec = next((s for s in specs if s.name == sort), None)
+    sort_ref = sort_spec.sql_ref if sort_spec else "al.not_selected_date"
+    order = "DESC" if parsed.desc else "ASC"
+    sql = (
+        "SELECT j.id, j.fingerprint, j.title, j.company, j.url, j.stage, "
+        "       j.reject_reason, j.relevance_score, j.location, j.remote_status, "
+        "       j.ai_notes, j.user_notes, j.synthetic, j.stage_updated, "
+        "       al.not_selected_date "
+        f"{_not_selected_source()} "
+        f"WHERE ({_NOT_SELECTED_BASE_WHERE}){clauses} "
+        f"ORDER BY {sort_ref} {order}"
+    )
+    return sql, params
+
+
+@router.get("/board/not-selected", response_class=HTMLResponse)
+def not_selected(
+    request: Request,
+    density: str = Query(default=_DEFAULT_DENSITY),
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> HTMLResponse:
+    specs = filter_registry.NOT_SELECTED_COLUMNS
+    parsed = parse_filter_params(specs, request.query_params)
+    sql, params = _not_selected_query(parsed)
+    rows = db.execute(sql, params).fetchall()
+    materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
+    visible = _resolve_visible(specs, parsed)
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request=request,
+        name="board/not_selected.html",
+        context={
+            "specs": specs,
+            "visible": visible,
+            "parsed": parsed,
+            "rows": rows,
+            "density": _normalize_density(density),
+            "tab": "not_selected",
+            "materials_base_url": materials_base_url,
+        },
+    )
+
+
+@router.get("/board/not-selected/rows", response_class=HTMLResponse)
+def not_selected_rows(
+    request: Request,
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> HTMLResponse:
+    specs = filter_registry.NOT_SELECTED_COLUMNS
+    parsed = parse_filter_params(specs, request.query_params)
+    sql, params = _not_selected_query(parsed)
+    rows = db.execute(sql, params).fetchall()
+    materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
+    visible = _resolve_visible(specs, parsed)
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request=request,
+        name="_job_rows_fragment.html",
+        context={
+            "specs": specs,
+            "visible": visible,
+            "rows": rows,
+            "tab": "not_selected",
             "materials_base_url": materials_base_url,
         },
     )

@@ -29,6 +29,7 @@ from findajob.actions import (
     notify_waitlist_resurface,
     promote_to_scored,
     snapshot_applied_md_files,
+    un_not_selected_job,
     un_reject_job,
 )
 from findajob.audit import log_event, write_audit
@@ -732,6 +733,78 @@ def not_selected(
         prior_stage=job["stage"],
     )
     return HTMLResponse("")
+
+
+def _fetch_not_selected_row(db: sqlite3.Connection, fingerprint: str) -> sqlite3.Row | None:
+    """Row shape needed by un_not_selected_job — id, stage, folder, reason."""
+    return db.execute(
+        "SELECT id, fingerprint, title, company, url, stage, prep_folder_path, reject_reason "
+        "FROM jobs WHERE fingerprint=?",
+        (fingerprint,),
+    ).fetchone()
+
+
+@router.post("/board/jobs/{fingerprint}/un-not-selected", response_class=HTMLResponse)
+def un_not_selected(
+    fingerprint: str,
+    request: Request,  # noqa: ARG001
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> HTMLResponse:
+    """Reverse a company-not-selected stage. Restores the prior stage from
+    audit_log (fallback 'applied'), deletes NOT_SELECTED_*.txt markers from
+    the job's _applied/ folder. Returns empty — row drops off Not Selected tab.
+    """
+    job = _fetch_not_selected_row(db, fingerprint)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job["stage"] != "not_selected":
+        raise HTTPException(status_code=409, detail="Only not_selected jobs can be un-not-selected")
+    un_not_selected_job(db, job)
+    return HTMLResponse("")
+
+
+@router.post("/board/jobs/{fingerprint}/change-not-selected-reason", response_class=HTMLResponse)
+def change_not_selected_reason(
+    fingerprint: str,
+    request: Request,
+    reason: str = Form(""),
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> HTMLResponse:
+    """Update jobs.reject_reason for a not_selected row. Mirrors
+    change-reject-reason from #697: no validation, blank defaults to 'Other',
+    writes audit_log with changed_by='user'."""
+    row = db.execute(
+        "SELECT id, fingerprint, stage, reject_reason FROM jobs WHERE fingerprint=?",
+        (fingerprint,),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if row["stage"] != "not_selected":
+        raise HTTPException(
+            status_code=409, detail="Only not_selected jobs can have their reason changed via this route"
+        )
+
+    new_reason = (reason or "").strip() or "Other"
+    old_reason = row["reject_reason"] or ""
+
+    if new_reason != old_reason:
+        db.execute(
+            "UPDATE jobs SET reject_reason=?, updated_at=datetime('now') WHERE id=?",
+            (new_reason, row["id"]),
+        )
+        write_audit(db, row["id"], "reject_reason", old_reason, new_reason, changed_by="user")
+        db.commit()
+
+    updated = db.execute(
+        "SELECT fingerprint, stage, reject_reason FROM jobs WHERE fingerprint=?",
+        (fingerprint,),
+    ).fetchone()
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request=request,
+        name="board/_change_not_selected_reason_cell.html",
+        context={"row": updated},
+    )
 
 
 @router.post("/board/jobs/{fingerprint}/notes", response_class=HTMLResponse)

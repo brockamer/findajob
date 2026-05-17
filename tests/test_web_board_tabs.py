@@ -1,7 +1,7 @@
 """Secondary tab bar on every /board/* view (issue #191).
 
-Each board page includes board/_tabs.html which renders six tabs
-(Dashboard, Applied, Waitlist, Review, Rejected, Archive). The active tab
+Each board page includes board/_tabs.html which renders seven tabs
+(Dashboard, Applied, Waitlist, Review, Rejected, Not Selected, Archive). The active tab
 is visually distinct via aria-current="page".
 """
 
@@ -20,6 +20,7 @@ TAB_LINKS = [
     "/board/waitlist",
     "/board/review",
     "/board/rejected",
+    "/board/not-selected",
     "/board/archive",
 ]
 

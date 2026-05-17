@@ -290,6 +290,131 @@ class TestHandleNotSelected:
         assert all(a["changed_by"] == "system" for a in audits)
 
 
+# ── un_not_selected_job ─────────────────────────────────────────────────────
+
+
+class TestUnNotSelectedJob:
+    def test_restores_prior_stage_from_audit_log(self, db):
+        """Prior stage from audit_log is restored; reject_reason cleared."""
+        job = insert_job(db, stage="not_selected")
+        # Seed an audit_log row showing the prior stage was 'applied'
+        db.execute(
+            "INSERT INTO audit_log (job_id, field_changed, old_value, new_value, changed_at) "
+            "VALUES (?, 'stage', 'applied', 'not_selected', datetime('now'))",
+            (job["id"],),
+        )
+        db.execute("UPDATE jobs SET reject_reason='Company passed' WHERE id=?", (job["id"],))
+        db.commit()
+        job = db.execute("SELECT * FROM jobs WHERE id=?", (job["id"],)).fetchone()
+
+        restored = actions.un_not_selected_job(db, job)
+
+        assert restored == "applied"
+        row = db.execute("SELECT stage, reject_reason FROM jobs WHERE id=?", (job["id"],)).fetchone()
+        assert row["stage"] == "applied"
+        assert row["reject_reason"] == ""
+
+    def test_fallback_to_applied_when_no_audit_row(self, db):
+        """Without a prior audit_log entry, fallback to 'applied'."""
+        job = insert_job(db, stage="not_selected")
+        db.execute("UPDATE jobs SET reject_reason='Company passed' WHERE id=?", (job["id"],))
+        db.commit()
+        job = db.execute("SELECT * FROM jobs WHERE id=?", (job["id"],)).fetchone()
+
+        restored = actions.un_not_selected_job(db, job)
+
+        assert restored == "applied"
+        row = db.execute("SELECT stage FROM jobs WHERE id=?", (job["id"],)).fetchone()
+        assert row["stage"] == "applied"
+
+    def test_deletes_single_marker_file(self, db, tmp_path):
+        """NOT_SELECTED_*.txt markers in the folder are removed."""
+        folder = tmp_path / "companies" / "_applied" / "Acme_Ops_marker_test"
+        folder.mkdir(parents=True)
+        marker = folder / "NOT_SELECTED_Company_passed_2026-05-17.txt"
+        marker.touch()
+
+        job = insert_job(db, stage="not_selected", folder=str(folder))
+        db.execute("UPDATE jobs SET reject_reason='Company passed' WHERE id=?", (job["id"],))
+        db.commit()
+        job = db.execute("SELECT * FROM jobs WHERE id=?", (job["id"],)).fetchone()
+
+        actions.un_not_selected_job(db, job)
+
+        assert not marker.exists()
+
+    def test_deletes_multiple_marker_files(self, db, tmp_path):
+        """Multiple NOT_SELECTED_*.txt markers are all removed."""
+        folder = tmp_path / "companies" / "_applied" / "Acme_Ops_multi_marker"
+        folder.mkdir(parents=True)
+        m1 = folder / "NOT_SELECTED_Company_passed_2026-05-01.txt"
+        m2 = folder / "NOT_SELECTED_Company_passed_2026-05-17.txt"
+        m1.touch()
+        m2.touch()
+
+        job = insert_job(db, stage="not_selected", folder=str(folder))
+        db.execute("UPDATE jobs SET reject_reason='Company passed' WHERE id=?", (job["id"],))
+        db.commit()
+        job = db.execute("SELECT * FROM jobs WHERE id=?", (job["id"],)).fetchone()
+
+        actions.un_not_selected_job(db, job)
+
+        assert not m1.exists()
+        assert not m2.exists()
+
+    def test_reject_reason_cleared(self, db):
+        """reject_reason is set to '' after un_not_selected."""
+        job = insert_job(db, stage="not_selected")
+        db.execute("UPDATE jobs SET reject_reason='Too Senior' WHERE id=?", (job["id"],))
+        db.commit()
+        job = db.execute("SELECT * FROM jobs WHERE id=?", (job["id"],)).fetchone()
+
+        actions.un_not_selected_job(db, job)
+
+        row = db.execute("SELECT reject_reason FROM jobs WHERE id=?", (job["id"],)).fetchone()
+        assert row["reject_reason"] == ""
+
+    def test_writes_audit_rows_with_changed_by_user(self, db):
+        """Audit rows written with changed_by='user'."""
+        job = insert_job(db, stage="not_selected")
+        db.execute(
+            "INSERT INTO audit_log (job_id, field_changed, old_value, new_value, changed_at) "
+            "VALUES (?, 'stage', 'applied', 'not_selected', datetime('now'))",
+            (job["id"],),
+        )
+        db.execute("UPDATE jobs SET reject_reason='Company passed' WHERE id=?", (job["id"],))
+        db.commit()
+        job = db.execute("SELECT * FROM jobs WHERE id=?", (job["id"],)).fetchone()
+
+        actions.un_not_selected_job(db, job)
+
+        audits = db.execute(
+            "SELECT field_changed, old_value, new_value, changed_by FROM audit_log WHERE job_id=? ORDER BY id",
+            (job["id"],),
+        ).fetchall()
+        # The first row was seeded; the new rows are at the end
+        new_audits = [a for a in audits if a["changed_by"] == "user"]
+        assert len(new_audits) == 2
+        stage_audit = next(a for a in new_audits if a["field_changed"] == "stage")
+        assert stage_audit["old_value"] == "not_selected"
+        assert stage_audit["new_value"] == "applied"
+        reason_audit = next(a for a in new_audits if a["field_changed"] == "reject_reason")
+        assert reason_audit["new_value"] == ""
+
+    def test_no_folder_succeeds(self, db):
+        """Job without a prep_folder_path silently succeeds."""
+        job = insert_job(db, stage="not_selected", folder=None)
+        db.execute("UPDATE jobs SET reject_reason='Company passed' WHERE id=?", (job["id"],))
+        db.commit()
+        job = db.execute("SELECT * FROM jobs WHERE id=?", (job["id"],)).fetchone()
+
+        restored = actions.un_not_selected_job(db, job)
+
+        assert restored == "applied"
+        row = db.execute("SELECT stage FROM jobs WHERE id=?", (job["id"],)).fetchone()
+        assert row["stage"] == "applied"
+
+
 # ── handle_waitlist ─────────────────────────────────────────────────────────
 
 

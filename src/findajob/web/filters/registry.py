@@ -1,4 +1,4 @@
-"""Per-tab ColumnSpec lists for the 6 board tabs.
+"""Per-tab ColumnSpec lists for the 7 board tabs.
 
 Visibility defaults are tuned to what the operator needs to *decide* on each
 tab — see docs/superpowers/specs/2026-04-25-board-filter-framework-design.md
@@ -284,6 +284,54 @@ REJECTED_COLUMNS: tuple[ColumnSpec, ...] = (
 )
 validate_specs(REJECTED_COLUMNS)
 
+# ─── Not Selected ─────────────────────────────────────────────────────────────
+NOT_SELECTED_COLUMNS: tuple[ColumnSpec, ...] = (
+    ColumnSpec(name="title", label="Title", kind=Kind.TEXT, db_expr="j.title"),
+    ColumnSpec(name="company", label="Company", kind=Kind.TEXT, db_expr="j.company"),
+    ColumnSpec(
+        name="reject_reason",
+        label="Reason",
+        kind=Kind.ENUM,
+        enum_values=_reject_reason_values,
+        db_expr="j.reject_reason",
+    ),
+    ColumnSpec(
+        name="not_selected_date",
+        label="Not selected",
+        kind=Kind.DATE,
+        db_expr="al.not_selected_date",
+    ),
+    ColumnSpec(
+        name="relevance_score",
+        label="Rel",
+        kind=Kind.SCORE,
+        db_expr="j.relevance_score",
+    ),
+    ColumnSpec(name="location", label="Location", kind=Kind.TEXT, db_expr="j.location"),
+    ColumnSpec(
+        name="remote_status",
+        label="Remote",
+        kind=Kind.ENUM,
+        enum_values=_REMOTE_VALUES,
+        db_expr="j.remote_status",
+    ),
+    ColumnSpec(
+        name="ai_notes",
+        label="AI notes",
+        kind=Kind.TEXT,
+        db_expr="j.ai_notes",
+        default_visible=False,
+    ),
+    ColumnSpec(
+        name="user_notes",
+        label="Notes",
+        kind=Kind.TEXT,
+        db_expr="j.user_notes",
+        default_visible=False,
+    ),
+)
+validate_specs(NOT_SELECTED_COLUMNS)
+
 # ─── Archive ──────────────────────────────────────────────────────────────────
 ARCHIVE_COLUMNS: tuple[ColumnSpec, ...] = (
     ColumnSpec(name="relevance_score", label="Rel", kind=Kind.SCORE),
@@ -320,5 +368,6 @@ __all__ = [
     "REVIEW_COLUMNS",
     "WAITLIST_COLUMNS",
     "REJECTED_COLUMNS",
+    "NOT_SELECTED_COLUMNS",
     "ARCHIVE_COLUMNS",
 ]

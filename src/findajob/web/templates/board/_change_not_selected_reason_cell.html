@@ -1,0 +1,29 @@
+{#
+  Inline reason change for the Not Selected tab. POSTs to
+  /change-not-selected-reason; server updates jobs.reject_reason +
+  writes audit_log + returns this re-rendered cell.
+
+  Inputs:
+    row — sqlite3.Row with .fingerprint, .stage, .reject_reason
+#}
+<td class="px-3 py-1 align-top text-sm whitespace-nowrap">
+  {% if row.stage == 'not_selected' %}
+  <select
+    class="block rounded border-slate-300 bg-white px-2 py-1 text-xs"
+    data-fp="{{ row.fingerprint }}"
+    hx-post="/board/jobs/{{ row.fingerprint }}/change-not-selected-reason"
+    hx-trigger="change"
+    hx-target="closest td"
+    hx-swap="outerHTML"
+    name="reason">
+    {% for option in reject_reason_options() %}
+    <option value="{{ option }}" {% if option == row.reject_reason %}selected{% endif %}>{{ option }}</option>
+    {% endfor %}
+    {% if row.reject_reason and row.reject_reason not in reject_reason_options() %}
+    <option value="{{ row.reject_reason }}" selected>{{ row.reject_reason }} (legacy)</option>
+    {% endif %}
+  </select>
+  {% else %}
+  <span class="text-xs text-slate-500">{{ row.reject_reason or '—' }}</span>
+  {% endif %}
+</td>

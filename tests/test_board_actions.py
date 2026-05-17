@@ -1621,6 +1621,212 @@ class TestChangeRejectReason:
         assert response.status_code == 404
 
 
+def _seed_not_selected_with_audit(
+    client: TestClient,
+    fingerprint: str,
+    *,
+    prior_stage: str = "applied",
+    with_folder: bool = False,
+) -> Path | None:
+    """Seed a stage='not_selected' row with a preceding audit_log entry so
+    un_not_selected_job can restore the prior stage. Optionally creates a
+    NOT_SELECTED_*.txt marker file in a tmp folder under companies/_applied/.
+    """
+    conn = sqlite3.connect(client._db_path)
+    job_id = _insert_job(conn, fingerprint=fingerprint, stage="not_selected", score=7)
+    conn.execute("UPDATE jobs SET reject_reason='Company passed' WHERE id=?", (job_id,))
+    conn.execute(
+        "INSERT INTO audit_log (job_id, field_changed, old_value, new_value, changed_at, changed_by) "
+        "VALUES (?, 'stage', ?, 'not_selected', datetime('now'), 'user')",
+        (job_id, prior_stage),
+    )
+    folder_path: Path | None = None
+    if with_folder:
+        folder_path = client._tmp_path / "companies" / "_applied" / f"Acme_Ops_{fingerprint}"
+        folder_path.mkdir(parents=True, exist_ok=True)
+        (folder_path / "NOT_SELECTED_Company_passed_2026-05-17.txt").touch()
+        conn.execute(
+            "UPDATE jobs SET prep_folder_path=? WHERE id=?",
+            (str(folder_path), job_id),
+        )
+    conn.commit()
+    conn.close()
+    return folder_path
+
+
+# ── /un-not-selected handler ──────────────────────────────────────────────
+
+
+class TestUnNotSelected:
+    def test_happy_path_restores_applied_from_audit(self, client: TestClient):
+        """Prior stage 'applied' restored from audit_log; empty body returned."""
+        _seed_not_selected_with_audit(client, "fp_not_sel_ua")
+
+        response = client.post("/board/jobs/fp_not_sel_ua/un-not-selected")
+
+        assert response.status_code == 200
+        assert response.text == ""
+        assert _fetch_stage(client, "fp_not_sel_ua") == "applied"
+
+        audit = _fetch_audit(client, "fp_not_sel_ua")
+        assert any(a == ("stage", "not_selected", "applied") for a in audit)
+        # changed_by='user' for the new audit rows
+        conn = sqlite3.connect(client._db_path)
+        row = conn.execute(
+            "SELECT al.changed_by FROM audit_log al JOIN jobs j ON j.id = al.job_id "
+            "WHERE j.fingerprint=? AND al.field_changed='stage' AND al.new_value='applied'",
+            ("fp_not_sel_ua",),
+        ).fetchone()
+        conn.close()
+        assert row is not None
+        assert row[0] == "user"
+
+    def test_fallback_restores_applied_when_no_audit_row(self, client: TestClient):
+        """Without a prior audit entry, un-not-selected falls back to 'applied'."""
+        conn = sqlite3.connect(client._db_path)
+        job_id = _insert_job(conn, fingerprint="fp_not_sel_fb", stage="not_selected")
+        conn.execute("UPDATE jobs SET reject_reason='Company passed' WHERE id=?", (job_id,))
+        conn.commit()
+        conn.close()
+
+        response = client.post("/board/jobs/fp_not_sel_fb/un-not-selected")
+
+        assert response.status_code == 200
+        assert _fetch_stage(client, "fp_not_sel_fb") == "applied"
+
+    def test_marker_file_deleted(self, client: TestClient):
+        """NOT_SELECTED_*.txt file in _applied/ folder is removed."""
+        folder = _seed_not_selected_with_audit(client, "fp_not_sel_mf", with_folder=True)
+        assert folder is not None
+        marker = list(folder.glob("NOT_SELECTED_*.txt"))
+        assert len(marker) == 1
+
+        client.post("/board/jobs/fp_not_sel_mf/un-not-selected")
+
+        assert not marker[0].exists()
+
+    def test_409_on_wrong_stage_applied(self, client: TestClient):
+        """Only not_selected stage is eligible; applied → 409."""
+        response = client.post("/board/jobs/fp_applied/un-not-selected")
+        assert response.status_code == 409
+        assert _fetch_stage(client, "fp_applied") == "applied"
+
+    def test_409_on_wrong_stage_rejected(self, client: TestClient):
+        """stage='rejected' (user rejection) cannot use this route."""
+        conn = sqlite3.connect(client._db_path)
+        _insert_job(conn, fingerprint="fp_rej_ns", stage="rejected")
+        conn.commit()
+        conn.close()
+
+        response = client.post("/board/jobs/fp_rej_ns/un-not-selected")
+        assert response.status_code == 409
+
+    def test_404_on_unknown_fingerprint(self, client: TestClient):
+        response = client.post("/board/jobs/fp_nonexistent/un-not-selected")
+        assert response.status_code == 404
+
+
+# ── /change-not-selected-reason handler ───────────────────────────────────
+
+
+class TestChangeNotSelectedReason:
+    def test_updates_jobs_and_writes_audit(self, client: TestClient):
+        _seed_not_selected_with_audit(client, "fp_not_sel_cr")
+
+        response = client.post(
+            "/board/jobs/fp_not_sel_cr/change-not-selected-reason",
+            data={"reason": "Overqualified"},
+        )
+        assert response.status_code == 200
+
+        conn = sqlite3.connect(client._db_path)
+        new_reason = conn.execute("SELECT reject_reason FROM jobs WHERE fingerprint=?", ("fp_not_sel_cr",)).fetchone()[
+            0
+        ]
+        conn.close()
+        assert new_reason == "Overqualified"
+
+        audit = _fetch_audit(client, "fp_not_sel_cr")
+        assert ("reject_reason", "Company passed", "Overqualified") in audit
+
+    def test_audit_changed_by_is_user(self, client: TestClient):
+        """changed_by='user' for operator-initiated reason updates."""
+        _seed_not_selected_with_audit(client, "fp_not_sel_cbu")
+        client.post(
+            "/board/jobs/fp_not_sel_cbu/change-not-selected-reason",
+            data={"reason": "Compensation"},
+        )
+        conn = sqlite3.connect(client._db_path)
+        row = conn.execute(
+            "SELECT al.changed_by FROM audit_log al JOIN jobs j ON j.id = al.job_id "
+            "WHERE j.fingerprint=? AND al.field_changed='reject_reason'",
+            ("fp_not_sel_cbu",),
+        ).fetchone()
+        conn.close()
+        assert row is not None
+        assert row[0] == "user"
+
+    def test_blank_reason_defaults_to_other(self, client: TestClient):
+        """Blank reason form value defaults to 'Other'."""
+        _seed_not_selected_with_audit(client, "fp_not_sel_blank")
+        response = client.post(
+            "/board/jobs/fp_not_sel_blank/change-not-selected-reason",
+            data={"reason": ""},
+        )
+        assert response.status_code == 200
+        conn = sqlite3.connect(client._db_path)
+        new_reason = conn.execute(
+            "SELECT reject_reason FROM jobs WHERE fingerprint=?", ("fp_not_sel_blank",)
+        ).fetchone()[0]
+        conn.close()
+        assert new_reason == "Other"
+
+    def test_idempotent_when_reason_unchanged(self, client: TestClient):
+        """Posting the same reason twice writes one audit row, not two."""
+        _seed_not_selected_with_audit(client, "fp_not_sel_idem")
+        client.post(
+            "/board/jobs/fp_not_sel_idem/change-not-selected-reason",
+            data={"reason": "Compensation"},
+        )
+        client.post(
+            "/board/jobs/fp_not_sel_idem/change-not-selected-reason",
+            data={"reason": "Compensation"},
+        )
+        audit = [a for a in _fetch_audit(client, "fp_not_sel_idem") if a[0] == "reject_reason"]
+        assert len(audit) == 1, f"expected one reject_reason audit row, got {audit}"
+
+    def test_response_is_rerendered_cell(self, client: TestClient):
+        """Returns a <td> fragment with the new reason."""
+        _seed_not_selected_with_audit(client, "fp_not_sel_cell")
+        response = client.post(
+            "/board/jobs/fp_not_sel_cell/change-not-selected-reason",
+            data={"reason": "Overqualified"},
+        )
+        assert response.status_code == 200
+        assert response.text.strip().startswith("<td")
+        assert "Overqualified" in response.text
+
+    def test_409_for_rejected_stage(self, client: TestClient):
+        """stage='rejected' cannot use this route — wrong endpoint."""
+        conn = sqlite3.connect(client._db_path)
+        _insert_job(conn, fingerprint="fp_rej_cns", stage="rejected")
+        conn.execute("UPDATE jobs SET reject_reason='Wrong domain' WHERE fingerprint='fp_rej_cns'")
+        conn.commit()
+        conn.close()
+        response = client.post(
+            "/board/jobs/fp_rej_cns/change-not-selected-reason",
+            data={"reason": "Compensation"},
+        )
+        assert response.status_code == 409
+
+    def test_404_unknown_fingerprint(self, client: TestClient):
+        response = client.post(
+            "/board/jobs/fp_nonexistent/change-not-selected-reason",
+            data={"reason": "Compensation"},
+        )
+        assert response.status_code == 404
+
+
 class TestSyntheticUnReject:
     def test_synthetic_unreject_succeeds_without_feedback_log(self, client: TestClient):
         """Synthetic [SPEC] jobs never have feedback_log rows; un-reject must
