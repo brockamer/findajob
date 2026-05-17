@@ -2007,6 +2007,66 @@ class TestReattributeFromArchive:
         )
         assert response.status_code == 409
 
+    def test_handle_not_selected_failure_rolls_back_source_restore(self, client: TestClient, monkeypatch):
+        """#707 — both helpers run with commit=False inside a single
+        transaction; if handle_not_selected raises mid-call, db.rollback() in
+        the route's except branch undoes the source un-not-selected too. The
+        operator sees the error and can retry, rather than discovering a
+        half-applied reattribution with source restored and target unchanged.
+        """
+        from findajob.web.routes import board_actions
+
+        conn = sqlite3.connect(client._db_path)
+        src_id = _insert_job(conn, fingerprint="fp_src_rollback", stage="not_selected")
+        conn.execute("UPDATE jobs SET reject_reason='Company passed' WHERE id=?", (src_id,))
+        conn.execute(
+            "INSERT INTO audit_log (job_id, field_changed, old_value, new_value, changed_at, changed_by) "
+            "VALUES (?, 'stage', 'applied', 'not_selected', datetime('now'), 'user')",
+            (src_id,),
+        )
+        _insert_job(conn, fingerprint="fp_tgt_rollback", stage="applied")
+        conn.commit()
+        conn.close()
+
+        def _raise(*args, **kwargs):
+            raise RuntimeError("simulated handle_not_selected failure")
+
+        monkeypatch.setattr(board_actions, "handle_not_selected", _raise)
+
+        # TestClient with default raise_server_exceptions=True re-raises the
+        # unhandled RuntimeError from the route.
+        with pytest.raises(RuntimeError, match="simulated handle_not_selected failure"):
+            client.post(
+                "/board/jobs/fp_src_rollback/reattribute-from-archive",
+                data={"target_fingerprint": "fp_tgt_rollback", "reason": "Mis-matched"},
+            )
+
+        # Source unchanged: still not_selected with original reject_reason
+        conn = sqlite3.connect(client._db_path)
+        src_row = conn.execute("SELECT stage, reject_reason FROM jobs WHERE fingerprint='fp_src_rollback'").fetchone()
+        assert src_row[0] == "not_selected"
+        assert src_row[1] == "Company passed"
+
+        # Target unchanged: still applied
+        tgt_row = conn.execute("SELECT stage FROM jobs WHERE fingerprint='fp_tgt_rollback'").fetchone()
+        assert tgt_row[0] == "applied"
+
+        # Only the seed audit row exists on the source — no transition rows landed
+        src_audits = conn.execute(
+            "SELECT al.new_value FROM audit_log al JOIN jobs j ON j.id = al.job_id "
+            "WHERE j.fingerprint='fp_src_rollback' ORDER BY al.id"
+        ).fetchall()
+        # Seed row is the only entry; transition rows from the rolled-back call don't appear
+        assert src_audits == [("not_selected",)]
+
+        # No audit rows on the target either
+        tgt_audits = conn.execute(
+            "SELECT al.new_value FROM audit_log al JOIN jobs j ON j.id = al.job_id "
+            "WHERE j.fingerprint='fp_tgt_rollback'"
+        ).fetchall()
+        assert tgt_audits == []
+        conn.close()
+
 
 # ── /board/jobs/search handler ────────────────────────────────────────────
 

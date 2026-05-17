@@ -801,3 +801,103 @@ def test_handle_rejection_skips_feedback_log_for_synthetic(tmp_path, monkeypatch
     real_after = conn.execute("SELECT stage FROM jobs WHERE id=?", (real_id,)).fetchone()
     assert syn_after["stage"] == "rejected"
     assert real_after["stage"] == "rejected"
+
+
+# ── commit=False atomic-composition kwarg (#707) ────────────────────────────
+
+
+class TestActionsCommitFalse:
+    """Every helper that grew a ``commit=True`` kwarg in #707 must, when
+    called with ``commit=False``, leave its UPDATEs and audit INSERTs inside
+    an open transaction so the caller can compose multiple helpers and commit
+    (or rollback) atomically. The contract is verified by issuing
+    ``conn.rollback()`` after the call and asserting every write disappeared.
+    """
+
+    def test_un_reject_job_commit_false_is_rollback_safe(self, db, tmp_path):
+        folder = tmp_path / "companies" / "_rejected" / "Acme_Ops_commit_false"
+        folder.mkdir(parents=True)
+        job = insert_job(db, stage="rejected", folder=str(folder), score=2)
+        db.execute("UPDATE jobs SET reject_reason='Wrong Level' WHERE id=?", (job["id"],))
+        db.execute(
+            "INSERT INTO feedback_log (job_id, title, company, relevance_score, reject_reason, jd_excerpt) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (job["id"], job["title"], job["company"], 2, "Wrong Level", ""),
+        )
+        db.commit()
+        job = db.execute("SELECT * FROM jobs WHERE id=?", (job["id"],)).fetchone()
+
+        actions.un_reject_job(db, job, overwrite_fields={}, commit=False)
+        # Pre-rollback: caller sees the staged change
+        assert db.execute("SELECT stage FROM jobs WHERE id=?", (job["id"],)).fetchone()["stage"] == "scored"
+
+        db.rollback()
+
+        # Post-rollback: every write reversed — UPDATE, feedback_log DELETE, audit INSERTs
+        row = db.execute("SELECT stage, reject_reason FROM jobs WHERE id=?", (job["id"],)).fetchone()
+        assert row["stage"] == "rejected"
+        assert row["reject_reason"] == "Wrong Level"
+        fb_count = db.execute("SELECT COUNT(*) FROM feedback_log WHERE job_id=?", (job["id"],)).fetchone()[0]
+        assert fb_count == 1, "DELETE on feedback_log must roll back too"
+        audits = db.execute("SELECT * FROM audit_log WHERE job_id=?", (job["id"],)).fetchall()
+        assert len(audits) == 0
+
+    def test_un_not_selected_job_commit_false_is_rollback_safe(self, db):
+        job = insert_job(db, stage="not_selected")
+        db.execute(
+            "INSERT INTO audit_log (job_id, field_changed, old_value, new_value, changed_at, changed_by) "
+            "VALUES (?, 'stage', 'applied', 'not_selected', datetime('now'), 'user')",
+            (job["id"],),
+        )
+        db.execute("UPDATE jobs SET reject_reason='Company passed' WHERE id=?", (job["id"],))
+        db.commit()
+        job = db.execute("SELECT * FROM jobs WHERE id=?", (job["id"],)).fetchone()
+        seed_audit_count = db.execute("SELECT COUNT(*) FROM audit_log WHERE job_id=?", (job["id"],)).fetchone()[0]
+
+        actions.un_not_selected_job(db, job, commit=False)
+        assert db.execute("SELECT stage FROM jobs WHERE id=?", (job["id"],)).fetchone()["stage"] == "applied"
+
+        db.rollback()
+
+        row = db.execute("SELECT stage, reject_reason FROM jobs WHERE id=?", (job["id"],)).fetchone()
+        assert row["stage"] == "not_selected"
+        assert row["reject_reason"] == "Company passed"
+        # Only the seed audit row survives — no new audit rows from the rolled-back call
+        post_count = db.execute("SELECT COUNT(*) FROM audit_log WHERE job_id=?", (job["id"],)).fetchone()[0]
+        assert post_count == seed_audit_count
+
+    def test_un_withdraw_job_commit_false_is_rollback_safe(self, db):
+        job = insert_job(db, stage="withdrawn")
+        db.execute(
+            "INSERT INTO audit_log (job_id, field_changed, old_value, new_value, changed_at, changed_by) "
+            "VALUES (?, 'stage', 'applied', 'withdrawn', datetime('now'), 'user')",
+            (job["id"],),
+        )
+        db.commit()
+        job = db.execute("SELECT * FROM jobs WHERE id=?", (job["id"],)).fetchone()
+        seed_audit_count = db.execute("SELECT COUNT(*) FROM audit_log WHERE job_id=?", (job["id"],)).fetchone()[0]
+
+        actions.un_withdraw_job(db, job, commit=False)
+        assert db.execute("SELECT stage FROM jobs WHERE id=?", (job["id"],)).fetchone()["stage"] == "applied"
+
+        db.rollback()
+
+        assert db.execute("SELECT stage FROM jobs WHERE id=?", (job["id"],)).fetchone()["stage"] == "withdrawn"
+        post_count = db.execute("SELECT COUNT(*) FROM audit_log WHERE job_id=?", (job["id"],)).fetchone()[0]
+        assert post_count == seed_audit_count
+
+    def test_handle_not_selected_commit_false_is_rollback_safe(self, db, tmp_path):
+        folder = tmp_path / "companies" / "_applied" / "Acme_Ops_commit_false"
+        folder.mkdir(parents=True)
+        job = insert_job(db, stage="applied", folder=str(folder))
+
+        actions.handle_not_selected(db, job, "Too Senior", commit=False)
+        assert db.execute("SELECT stage FROM jobs WHERE id=?", (job["id"],)).fetchone()["stage"] == "not_selected"
+
+        db.rollback()
+
+        row = db.execute("SELECT stage, reject_reason FROM jobs WHERE id=?", (job["id"],)).fetchone()
+        assert row["stage"] == "applied"
+        assert row["reject_reason"] == ""
+        audits = db.execute("SELECT * FROM audit_log WHERE job_id=?", (job["id"],)).fetchall()
+        assert len(audits) == 0

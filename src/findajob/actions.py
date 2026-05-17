@@ -5,9 +5,13 @@ All state transitions that move a job between stages, move its prep folder,
 or drop marker files live here. Invoked from `scripts/watchdog.py` and from
 the web POST handlers in `findajob.web.routes.board_actions`.
 
-Every function takes an open `sqlite3.Connection` as its first argument and
-commits itself. Functions return a `bool` indicating whether a folder was
-moved (or, for `reset_prep_to_scored`, whether the reset actually happened).
+Every function takes an open `sqlite3.Connection` as its first argument and,
+by default, commits itself. The ``un_*`` helpers and ``handle_not_selected``
+accept a kwarg-only ``commit=False`` so callers can compose multiple writes
+into one transaction (used by ``reattribute_from_archive`` for atomic
+source-and-target updates). Functions return a `bool` indicating whether a
+folder was moved (or, for `reset_prep_to_scored`, whether the reset actually
+happened).
 """
 
 import glob
@@ -115,6 +119,7 @@ def handle_not_selected(
     reason: str,
     *,
     changed_by: str | None = None,
+    commit: bool = True,
 ) -> bool:
     """Company rejected the application. Sets stage=not_selected, drops a marker file.
 
@@ -128,6 +133,11 @@ def handle_not_selected(
             ``'gmail_rejection_detector'`` from the rejections-review confirm
             endpoint per spec §4.5.2 so the audit trail distinguishes
             operator-confirmed Gmail-detected rejections from manual flips.
+        commit: When False, skip the internal ``conn.commit()`` and propagate
+            ``commit=False`` to the inner ``write_audit`` calls so the caller
+            can compose this with another helper inside a single transaction
+            (used by ``reattribute_from_archive`` for atomic source-and-target
+            updates). Default True preserves existing single-call behavior.
     """
     now = datetime.now(UTC).isoformat()
     old_stage = job["stage"]
@@ -145,9 +155,10 @@ def handle_not_selected(
         open(os.path.join(folder, f"NOT_SELECTED_{safe_reason}_{date_str}.txt"), "w").close()
         log_event("marker_added_not_selected", job_id=job["id"], folder=os.path.basename(folder), reason=reason)
 
-    conn.commit()
-    write_audit(conn, job["id"], "stage", old_stage, "not_selected", changed_by=changed_by)
-    write_audit(conn, job["id"], "reject_reason", "", reason, changed_by=changed_by)
+    if commit:
+        conn.commit()
+    write_audit(conn, job["id"], "stage", old_stage, "not_selected", changed_by=changed_by, commit=commit)
+    write_audit(conn, job["id"], "reject_reason", "", reason, changed_by=changed_by, commit=commit)
     log_event("job_not_selected", job_id=job["id"], company=job["company"], title=job["title"], reason=reason)
     return False
 
@@ -297,12 +308,24 @@ def _apply_overwrite_fields(set_parts: list[str], params: list, overwrite_fields
             params.append(overwrite_fields[key])
 
 
-def un_reject_job(conn: sqlite3.Connection, job: Any, overwrite_fields: dict[str, str]) -> None:
+def un_reject_job(
+    conn: sqlite3.Connection,
+    job: Any,
+    overwrite_fields: dict[str, str],
+    *,
+    commit: bool = True,
+) -> None:
     """Reverse a user rejection: restore to scored, delete feedback_log rows.
 
     Clears reject_reason, sets relevance_score=8, overwrites non-blank
     submitted fields, moves prep folder from _rejected/ back to companies/.
     Deletes feedback_log rows so the scorer's feedback loop stays clean.
+
+    Args:
+        commit: When False, skip the internal ``conn.commit()`` and propagate
+            ``commit=False`` to the inner ``write_audit`` calls so the caller
+            can compose this with another helper inside a single transaction.
+            Default True preserves existing single-call behavior.
     """
     now = datetime.now(UTC).isoformat()
 
@@ -321,13 +344,14 @@ def un_reject_job(conn: sqlite3.Connection, job: Any, overwrite_fields: dict[str
         conn.execute("UPDATE jobs SET prep_folder_path=? WHERE id=?", (dest, job["id"]))
         log_event("folder_moved_from_rejected", job_id=job["id"], folder=os.path.basename(folder))
 
-    conn.commit()
-    write_audit(conn, job["id"], "stage", "rejected", "scored")
-    write_audit(conn, job["id"], "reject_reason", job["reject_reason"] or "", "")
+    if commit:
+        conn.commit()
+    write_audit(conn, job["id"], "stage", "rejected", "scored", commit=commit)
+    write_audit(conn, job["id"], "reject_reason", job["reject_reason"] or "", "", commit=commit)
     log_event("job_un_rejected", job_id=job["id"], company=job["company"], title=job["title"])
 
 
-def un_not_selected_job(conn: sqlite3.Connection, job: Any) -> str:
+def un_not_selected_job(conn: sqlite3.Connection, job: Any, *, commit: bool = True) -> str:
     """Reverse a company-not-selected stage: restore the prior stage from
     audit_log, clear the reject_reason, delete all NOT_SELECTED_*.txt marker
     files from the job's folder.
@@ -340,6 +364,13 @@ def un_not_selected_job(conn: sqlite3.Connection, job: Any) -> str:
     Unlike un_reject_job, there is no feedback_log row to delete (company
     rejections never wrote one) and no folder move (handle_not_selected
     keeps the folder in companies/_applied/).
+
+    Args:
+        commit: When False, skip the internal ``conn.commit()`` and propagate
+            ``commit=False`` to the inner ``write_audit`` calls so the caller
+            can compose this with another helper inside a single transaction
+            (used by ``reattribute_from_archive`` for atomic source-and-target
+            updates). Default True preserves existing single-call behavior.
     """
     now = datetime.now(UTC).isoformat()
 
@@ -367,9 +398,10 @@ def un_not_selected_job(conn: sqlite3.Connection, job: Any) -> str:
                 marker=os.path.basename(marker_path),
             )
 
-    conn.commit()
-    write_audit(conn, job["id"], "stage", "not_selected", restored_stage, changed_by="user")
-    write_audit(conn, job["id"], "reject_reason", job["reject_reason"] or "", "", changed_by="user")
+    if commit:
+        conn.commit()
+    write_audit(conn, job["id"], "stage", "not_selected", restored_stage, changed_by="user", commit=commit)
+    write_audit(conn, job["id"], "reject_reason", job["reject_reason"] or "", "", changed_by="user", commit=commit)
     log_event(
         "job_un_not_selected",
         job_id=job["id"],
@@ -380,7 +412,7 @@ def un_not_selected_job(conn: sqlite3.Connection, job: Any) -> str:
     return restored_stage
 
 
-def un_withdraw_job(conn: sqlite3.Connection, job: Any) -> str:
+def un_withdraw_job(conn: sqlite3.Connection, job: Any, *, commit: bool = True) -> str:
     """Reverse a withdraw: restore the prior stage from audit_log
     (typically applied/interview/offer).
 
@@ -393,6 +425,12 @@ def un_withdraw_job(conn: sqlite3.Connection, job: Any) -> str:
     never wrote one) and no folder to touch (withdraw doesn't move folders).
     Unlike un_reject_job, no feedback_log row exists (withdraw doesn't
     write to feedback_log). Pure stage restoration.
+
+    Args:
+        commit: When False, skip the internal ``conn.commit()`` and propagate
+            ``commit=False`` to the inner ``write_audit`` call so the caller
+            can compose this with another helper inside a single transaction.
+            Default True preserves existing single-call behavior.
     """
     now = datetime.now(UTC).isoformat()
 
@@ -408,8 +446,9 @@ def un_withdraw_job(conn: sqlite3.Connection, job: Any) -> str:
         "UPDATE jobs SET stage=?, updated_at=? WHERE id=?",
         (restored_stage, now, job["id"]),
     )
-    conn.commit()
-    write_audit(conn, job["id"], "stage", "withdrawn", restored_stage, changed_by="user")
+    if commit:
+        conn.commit()
+    write_audit(conn, job["id"], "stage", "withdrawn", restored_stage, changed_by="user", commit=commit)
     log_event(
         "job_un_withdrawn", job_id=job["id"], company=job["company"], title=job["title"], restored_stage=restored_stage
     )

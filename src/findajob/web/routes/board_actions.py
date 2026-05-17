@@ -1023,6 +1023,11 @@ def reattribute_from_archive(
     stage, deletes marker files), then handle_not_selected on target with
     changed_by='archive_reattribute'.
 
+    Both helpers run with ``commit=False`` and a single trailing
+    ``db.commit()`` so source-restore + target-mark land atomically — if
+    either raises mid-call, neither is persisted and the operator sees the
+    error rather than a half-applied reattribution.
+
     Atomic: 404 on unknown source or target; 409 if source stage !=
     'not_selected' or if target_fingerprint missing/blank.
     """
@@ -1048,7 +1053,12 @@ def reattribute_from_archive(
 
     final_reason = (reason or "").strip() or "Reattributed"
 
-    un_not_selected_job(db, source)
-    handle_not_selected(db, target, final_reason, changed_by="archive_reattribute")
+    try:
+        un_not_selected_job(db, source, commit=False)
+        handle_not_selected(db, target, final_reason, changed_by="archive_reattribute", commit=False)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
     return HTMLResponse("")
