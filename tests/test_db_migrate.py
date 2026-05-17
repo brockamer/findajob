@@ -323,3 +323,166 @@ def test_dead_columns_absent_from_tracked_code() -> None:
         + "\n".join(f"  {f}" for f in found)
         + "\nSee migrations/0001_initial.sql §'Intentionally-absent columns'."
     )
+
+
+# ── #691: briefing-first gate — new ``briefing_ready`` stage value ─────────
+#
+# The gate splits ``_run_prep`` into Phase A (briefing only) + Phase B
+# (continue-prep). The interstitial state is a new ``jobs.stage`` value
+# ``'briefing_ready'``. SQLite can't ALTER a CHECK constraint in place;
+# the runner adds a Python helper that does the rename-create-copy-drop
+# rebuild from the canonical 0001_initial.sql template. The helper runs
+# from ``apply_pending`` on every connect so existing stacks at
+# ``schema_version=1`` pick up the new constraint without a version bump.
+
+
+def _stage_check_accepts(conn: sqlite3.Connection, stage_value: str) -> bool:
+    """True iff an INSERT of a job row with ``stage=stage_value`` succeeds."""
+    try:
+        conn.execute(
+            "INSERT INTO jobs (id, fingerprint, url, title, company, source, stage) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                f"probe-{stage_value}",
+                f"fp-probe-{stage_value}",
+                "https://x.test/",
+                "Probe",
+                "Probe Co",
+                "test",
+                stage_value,
+            ),
+        )
+        conn.execute("DELETE FROM jobs WHERE id=?", (f"probe-{stage_value}",))
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        conn.rollback()
+        return False
+
+
+def test_fresh_db_accepts_briefing_ready_stage(tmp_path: Path) -> None:
+    """A fresh DB migrated through ``apply_pending`` accepts ``briefing_ready``
+    as a ``jobs.stage`` value — the 0001_initial.sql CHECK constraint
+    includes it.
+    """
+    db = tmp_path / "fresh_briefing.db"
+    conn = sqlite3.connect(str(db))
+    try:
+        apply_pending(conn)
+        assert _stage_check_accepts(conn, "briefing_ready"), (
+            "fresh DB must accept stage='briefing_ready' after apply_pending"
+        )
+    finally:
+        conn.close()
+
+
+def test_existing_v1_db_gains_briefing_ready_via_helper(tmp_path: Path) -> None:
+    """A stack already at schema_version=1 with the OLD CHECK constraint
+    (no ``briefing_ready``) gets the constraint updated when
+    ``apply_pending`` runs again. Existing rows are preserved.
+
+    This is the migration path for every shipped tester stack — they're
+    all at version 1 with the pre-#691 CHECK and need to absorb the new
+    constraint without losing data.
+    """
+    db = tmp_path / "existing_v1.db"
+
+    # First: bring the DB to current head (gives us a v1 jobs table with
+    # whatever CHECK is in 0001_initial.sql, which post-#691 includes
+    # briefing_ready).
+    conn = sqlite3.connect(str(db))
+    try:
+        apply_pending(conn)
+    finally:
+        conn.close()
+
+    # Now: simulate a pre-#691 stack by rewriting jobs with the OLD CHECK
+    # (without briefing_ready). The new helper must detect this and rebuild.
+    conn = sqlite3.connect(str(db))
+    try:
+        old_check_create = """
+        CREATE TABLE jobs_old_check (
+            id TEXT PRIMARY KEY,
+            fingerprint TEXT UNIQUE NOT NULL,
+            url TEXT NOT NULL,
+            title TEXT NOT NULL,
+            company TEXT NOT NULL,
+            source TEXT NOT NULL DEFAULT 'test',
+            stage TEXT DEFAULT 'discovered' CHECK(stage IN (
+                'discovered', 'enriched', 'scored', 'manual_review',
+                'prep_in_progress', 'materials_drafted', 'waitlisted', 'applied',
+                'response_received', 'interview', 'offer', 'rejected',
+                'not_selected', 'withdrawn'
+            ))
+        )
+        """
+        # Capture an existing-row sentinel to verify preservation
+        conn.execute(
+            "INSERT INTO jobs (id, fingerprint, url, title, company, source, stage) "
+            "VALUES ('preserve-1', 'fp-preserve-1', 'https://x', 'T', 'C', 'test', 'scored')"
+        )
+        conn.commit()
+        sentinel = conn.execute("SELECT id, stage FROM jobs WHERE id='preserve-1'").fetchone()
+        assert sentinel == ("preserve-1", "scored")
+
+        # Rebuild jobs with the OLD CHECK (no briefing_ready), preserving
+        # the sentinel row. This simulates the shipped v1 schema.
+        conn.execute("PRAGMA foreign_keys=OFF")
+        cols = [row[1] for row in conn.execute("PRAGMA table_info(jobs)").fetchall()]
+        # Filter to the subset present in old_check_create
+        keep_cols = ["id", "fingerprint", "url", "title", "company", "source", "stage"]
+        keep_cols_csv = ",".join(c for c in keep_cols if c in cols)
+        conn.execute("ALTER TABLE jobs RENAME TO _jobs_v1_oldcheck")
+        conn.executescript(old_check_create.replace("jobs_old_check", "jobs"))
+        conn.execute(f"INSERT INTO jobs ({keep_cols_csv}) SELECT {keep_cols_csv} FROM _jobs_v1_oldcheck")
+        conn.execute("DROP TABLE _jobs_v1_oldcheck")
+        conn.commit()
+        conn.execute("PRAGMA foreign_keys=ON")
+
+        # Sanity check the simulated old state
+        assert not _stage_check_accepts(conn, "briefing_ready"), (
+            "test setup is broken: simulated-old-state should reject briefing_ready"
+        )
+    finally:
+        conn.close()
+
+    # Re-run apply_pending; the new helper must add briefing_ready to the CHECK.
+    conn = sqlite3.connect(str(db))
+    try:
+        apply_pending(conn)
+        assert _stage_check_accepts(conn, "briefing_ready"), "after apply_pending, briefing_ready must be accepted"
+        # Existing row preserved
+        row = conn.execute("SELECT id, stage FROM jobs WHERE id='preserve-1'").fetchone()
+        assert row == ("preserve-1", "scored"), "existing row must survive the rebuild"
+    finally:
+        conn.close()
+
+
+def test_briefing_ready_helper_is_idempotent(tmp_path: Path) -> None:
+    """Running ``apply_pending`` twice on a DB that already has
+    ``briefing_ready`` in the CHECK constraint must not trigger a second
+    rebuild. The helper short-circuits.
+    """
+    db = tmp_path / "idempotent_briefing.db"
+    conn = sqlite3.connect(str(db))
+    try:
+        apply_pending(conn)
+        # Insert a row that depends on the table's identity surviving
+        conn.execute(
+            "INSERT INTO jobs (id, fingerprint, url, title, company, source, stage) "
+            "VALUES ('idem-1', 'fp-idem-1', 'https://x', 'T', 'C', 'test', 'briefing_ready')"
+        )
+        conn.commit()
+        rowid_before = conn.execute("SELECT rowid FROM jobs WHERE id='idem-1'").fetchone()[0]
+    finally:
+        conn.close()
+
+    conn = sqlite3.connect(str(db))
+    try:
+        apply_pending(conn)
+        # If the helper had rebuilt the table needlessly, the rowid may shift.
+        # (A rebuild via INSERT INTO ... SELECT does NOT preserve rowids; this
+        # is the cheapest probe that detects a non-no-op second run.)
+        rowid_after = conn.execute("SELECT rowid FROM jobs WHERE id='idem-1'").fetchone()[0]
+        assert rowid_after == rowid_before, "rebuild ran on second apply_pending — helper is not idempotent"
+    finally:
+        conn.close()

@@ -238,6 +238,45 @@ def _relax_jobs_stage_check_if_needed(conn: sqlite3.Connection) -> None:
         conn.execute("PRAGMA foreign_keys=ON")
 
 
+def _add_briefing_ready_stage_if_needed(conn: sqlite3.Connection) -> None:
+    """If the live ``jobs.stage`` CHECK lacks ``'briefing_ready'``,
+    rebuild the table from 0001_initial.sql to pick up the new value.
+    Idempotent: a no-op when the constraint already includes it.
+
+    Pattern mirrors :func:`_relax_jobs_stage_check_if_needed` — SQLite
+    has no ``ALTER TABLE ... ALTER CHECK``, so the only path is
+    rename-create-copy-drop. Hooked from :func:`apply_pending` so every
+    connect picks up the constraint update without bumping
+    ``_meta.schema_version`` (the change is a constraint relaxation, not
+    a new column or table — invisible to schema_version readers).
+    """
+    schema_row = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='jobs'").fetchone()
+    if schema_row is None:
+        return
+    current_sql = schema_row[0] or ""
+    if "'briefing_ready'" in current_sql:
+        return  # already at #691 shape
+
+    initial_sql = (MIGRATIONS_DIR / "0001_initial.sql").read_text(encoding="utf-8")
+    create_match = re.search(r"(CREATE TABLE IF NOT EXISTS jobs \(.*?\n\);)", initial_sql, re.DOTALL)
+    if create_match is None:  # pragma: no cover — 0001 always has this block
+        raise RuntimeError("Could not locate CREATE TABLE jobs in 0001_initial.sql")
+    new_create = create_match.group(1).replace("IF NOT EXISTS jobs", "jobs")
+
+    legacy_cols = [row[1] for row in conn.execute("PRAGMA table_info(jobs)").fetchall()]
+    cols_csv = ",".join(legacy_cols)
+
+    conn.execute("PRAGMA foreign_keys=OFF")
+    try:
+        conn.execute("ALTER TABLE jobs RENAME TO _jobs_pre_briefing_ready")
+        conn.executescript(new_create)
+        conn.execute(f"INSERT INTO jobs ({cols_csv}) SELECT {cols_csv} FROM _jobs_pre_briefing_ready")
+        conn.execute("DROP TABLE _jobs_pre_briefing_ready")
+        conn.commit()
+    finally:
+        conn.execute("PRAGMA foreign_keys=ON")
+
+
 def _infer_baseline_version(conn: sqlite3.Connection) -> int:
     """Infer the starting schema_version when no ``_meta`` row exists.
 
@@ -343,5 +382,12 @@ def apply_pending(conn: sqlite3.Connection, *, dry_run: bool = False) -> list[Ap
             raise
         applied.append(AppliedMigration(version=version, name=slug, path=path, skipped=False))
         current = version
+
+    # Constraint-only relaxations that can't bump schema_version (no new
+    # tables or columns to track). Each helper is idempotent — short-
+    # circuits on a no-op probe of the live schema. Hook order matters
+    # only when one helper depends on another; today they don't.
+    if not dry_run:
+        _add_briefing_ready_stage_if_needed(conn)
 
     return applied

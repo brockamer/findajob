@@ -65,7 +65,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     known_contacts TEXT DEFAULT '',
     stage TEXT DEFAULT 'discovered' CHECK(stage IN (
         'discovered', 'enriched', 'scored', 'manual_review',
-        'prep_in_progress', 'materials_drafted', 'waitlisted', 'applied',
+        'prep_in_progress', 'briefing_ready', 'materials_drafted', 'waitlisted', 'applied',
         'response_received', 'interview', 'offer', 'rejected',
         'not_selected', 'withdrawn'
     )),

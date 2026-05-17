@@ -18,6 +18,7 @@ import sqlite3
 import subprocess
 import sys
 from datetime import UTC, datetime
+from pathlib import Path
 
 from findajob.actions import reset_prep_to_scored
 from findajob.audit import log_event, write_audit
@@ -61,10 +62,27 @@ def _fit_analysis_is_complete(text: str | None) -> bool:
 
 
 def main() -> None:
+    import argparse
+
     # Module-load side effect deferred to here so import is safe.
     load_env()
+
+    parser = argparse.ArgumentParser(description="Prep application materials")
+    parser.add_argument("company")
+    parser.add_argument("title")
+    parser.add_argument("url")
+    parser.add_argument("job_id")
+    parser.add_argument("--phase", choices=["a", "b", "all"], default="all")
+    args = parser.parse_args()
+
     with writeback_subprocess(DB_PATH):
-        _run_prep()
+        if args.phase == "a":
+            _run_prep_phase_a(args.company, args.title, args.url, args.job_id)
+        elif args.phase == "b":
+            _run_prep_phase_b(args.company, args.title, args.url, args.job_id)
+        else:
+            _run_prep_phase_a(args.company, args.title, args.url, args.job_id)
+            _run_prep_phase_b(args.company, args.title, args.url, args.job_id)
 
 
 def _handle_prep_subprocess_failure(
@@ -110,7 +128,20 @@ def _handle_prep_subprocess_failure(
 
 
 def _run_prep() -> None:
+    """Legacy wrapper: run Phase A then Phase B in sequence (--phase=all default)."""
     company, title, url, job_id = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+    _run_prep_phase_a(company, title, url, job_id)
+    _run_prep_phase_b(company, title, url, job_id)
+
+
+def _run_prep_phase_a(company: str, title: str, url: str, job_id: str) -> None:
+    """Phase A: company_researcher → briefing_writer → fit_analyst.
+
+    Writes briefing.md + briefing.docx to the prep folder, stores fit_score
+    and probability_score in the DB, and transitions stage to ``briefing_ready``.
+    On any failure, resets stage to ``scored`` (same as the pre-split path).
+    """
+    rec_re = re.compile(r"^##[^\n]*Overall Recommendation\s*:", re.MULTILINE)
 
     # Guard: skip if prep already completed for this job
     conn_check = connect(DB_PATH, timeout=30)
@@ -142,7 +173,6 @@ def _run_prep() -> None:
 
     # Build per-file output paths using the candidate's file prefix (from profile.md).
     # Pattern: {Prefix} Resume - {Company} - {Title} - {YYYYMMDD-HHMMSS}.{ext}
-    # See scripts/utils.py:build_prep_filenames for the full pattern.
     file_prefix = read_file_prefix()
     timestamp_fn = f"{date.replace('-', '')}-{time_str}"
     fn = build_prep_filenames(company, title, timestamp_fn, file_prefix)
@@ -161,7 +191,6 @@ def _run_prep() -> None:
         ).fetchone()
         jd_text = (row["raw_jd_text"] or "").strip() if row else ""
         is_synthetic = bool(row["synthetic"]) if row and "synthetic" in row.keys() else False
-        mode_marker = "<<SPECULATIVE_MODE>>\n\n" if is_synthetic else ""
         speculative_briefing_folder = (
             row["speculative_briefing_folder"] if row and "speculative_briefing_folder" in row.keys() else None
         )
@@ -209,7 +238,6 @@ def _run_prep() -> None:
         # Cross-role caching within a single prep run is deferred to #478.
         voice_samples = load_voice_samples()
         log_event("voice_samples_loaded", caller="prep_shared_prefix", chars=len(voice_samples))
-        voice_section = f"VOICE SAMPLES:\n{voice_samples}\n\n" if voice_samples else ""
         shared_candidate_jd = (
             f"CANDIDATE PROFILE:\n{profile_text}\n\n"
             f"MASTER RESUME:\n{master_text}\n\n"
@@ -217,7 +245,6 @@ def _run_prep() -> None:
             f"JD:\n{jd_text}\n\n"
             f"---\n\n"
         )
-        shared_with_voice = f"{shared_candidate_jd}{voice_section}---\n\n"
 
         # ── Step 2: Company briefing FIRST — gives all downstream steps rich context ──
         # For synthetic rows (#131 speculative), the deep-research briefing was
@@ -225,7 +252,6 @@ def _run_prep() -> None:
         # review page. Reuse it instead of regenerating via briefing_writer (#320 —
         # spec drift fix). Falls back to the regular briefing_writer flow if the
         # column is unset, the folder is missing, or briefing.md is empty/absent.
-        rec_re = re.compile(r"^##[^\n]*Overall Recommendation\s*:", re.MULTILINE)
         briefing = ""
         if is_synthetic and speculative_briefing_folder:
             spec_briefing_path = os.path.join(BASE, "companies", speculative_briefing_folder, "briefing.md")
@@ -315,12 +341,6 @@ def _run_prep() -> None:
         fit_analysis = run_role("fit_analyst", fit_prompt, conn=conn, job_id=job_id)
 
         # Retry once when fit_analysis is empty or structurally incomplete.
-        # Perplexity sonar-reasoning-pro intermittently returns content=null
-        # (run_role surfaces as ""); a poorly-formatted reply that skips a
-        # required heading produces the same downstream symptom (scores parse
-        # to None, dashboard cells render blank). Mirror the briefing_writer
-        # retry pattern at line ~271. Step 7 catches the post-retry failure
-        # and fails prep cleanly rather than shipping an incomplete briefing.
         if not _fit_analysis_is_complete(fit_analysis):
             log_event("fit_analyst_retry", job_id=job_id, company=company, title=title, retry=1)
             fit_analysis = run_role("fit_analyst", fit_prompt, conn=conn, job_id=job_id)
@@ -369,9 +389,147 @@ def _run_prep() -> None:
             f.write(full_briefing)
         render_md_to_docx(out["briefing_md"], out["briefing_docx"], has_yaml_frontmatter=True)
 
-        # ── Step 3: Resume — briefing + fit analysis context now available ──
+        # ── Phase A validation ──
+        # Briefing must end with an Overall Recommendation verdict.
+        try:
+            with open(out["briefing_md"]) as f:
+                briefing_check = f.read()
+        except OSError:
+            briefing_check = ""
+        validation_failures = []
+        if not rec_re.search(briefing_check):
+            validation_failures.append("briefing: missing Overall Recommendation")
+        if fit_score_avg is None or prob_score_avg is None:
+            validation_failures.append(
+                f"briefing: missing fit analysis (fit_score={fit_score_avg}, prob_score={prob_score_avg})"
+            )
+        if validation_failures:
+            log_event(
+                "prep_validation_failed",
+                company=company,
+                title=title,
+                failures="; ".join(validation_failures),
+            )
+            shutil.rmtree(outdir, ignore_errors=True)
+            reset_prep_to_scored(conn, job_id, reason="validation_failed")
+            quick_notify(f"PREP FAILED (empty files): {company} — {title}\n{'; '.join(validation_failures)}")
+            return
+
+        # ── Phase A DB write: transition to briefing_ready with scores ──
+        now = datetime.now(UTC).isoformat()
+        old_stage = row["stage"] if row else "unknown"
+        conn.execute(
+            """
+            UPDATE jobs SET stage='briefing_ready', stage_updated=?, prep_folder_path=?,
+                   fit_score=?, probability_score=?, updated_at=?
+            WHERE id=?
+            """,
+            (now, outdir, fit_score_avg, prob_score_avg, now, job_id),
+        )
+        conn.commit()
+        write_audit(conn, job_id, "stage", old_stage, "briefing_ready")
+
+        log_event("prep_phase_a_complete", company=company, title=title, folder=outdir)
+        quick_notify(f"Briefing ready: {company} — {title}\n{outdir}")
+
+        conn.close()
+        print(f"PREP_PHASE_A_COMPLETE:{outdir}")
+
+    except subprocess.CalledProcessError as exc:
+        _handle_prep_subprocess_failure(conn, job_id, company, title, outdir, exc)
+        raise SystemExit(1) from exc
+
+
+def _run_prep_phase_b(company: str, title: str, url: str, job_id: str) -> None:
+    """Phase B: resume_tailor → resume_change_reviewer → cover_letter_writer →
+    recruiter_critic → find_contacts.
+
+    Re-reads briefing from disk and JD/scores from DB on entry (no in-memory
+    handoff). On subprocess failure, resets stage to ``briefing_ready`` (NOT
+    ``scored``) so the operator can retry without re-paying Phase A.
+    """
+    # ── Re-read state from DB ──
+    conn = connect(DB_PATH, timeout=30)
+    conn.row_factory = sqlite3.Row
+    try:
+        row = conn.execute(
+            "SELECT raw_jd_text, stage, synthetic, prep_folder_path, fit_score, probability_score, "
+            "speculative_briefing_folder FROM jobs WHERE id=?",
+            (job_id,),
+        ).fetchone()
+        jd_text = (row["raw_jd_text"] or "").strip() if row else ""
+        is_synthetic = bool(row["synthetic"]) if row and "synthetic" in row.keys() else False
+        mode_marker = "<<SPECULATIVE_MODE>>\n\n" if is_synthetic else ""
+        outdir = row["prep_folder_path"] if row and row["prep_folder_path"] else ""
+
+        if not outdir or not os.path.isdir(outdir):
+            log_event(
+                "prep_phase_b_missing_folder",
+                job_id=job_id,
+                company=company,
+                title=title,
+                outdir=outdir or "(empty)",
+            )
+            quick_notify(f"PHASE B ABORTED (missing prep folder): {company} — {title}")
+            raise SystemExit(1)
+
+        if not jd_text or len(jd_text) < 50:
+            # Fallback curl (same as Phase A)
+            try:
+                raw = subprocess.run(["curl", "-sL", "--max-time", "15", url], capture_output=True, text=True).stdout
+                jd_text = subprocess.run(
+                    [PANDOC, "-f", "html", "-t", "plain"], input=raw, capture_output=True, text=True
+                ).stdout[:JD_MAX_CHARS]
+            except Exception:
+                jd_text = "[ERROR: Could not fetch JD]"
+
+        # ── Re-read profile and master resume ──
+        try:
+            with open(PROFILE_PATH) as f:
+                profile_text = f.read()
+        except FileNotFoundError:
+            profile_text = ""
+
+        try:
+            with open(MASTER_RESUME_PATH) as f:
+                master_text = f.read()
+        except FileNotFoundError:
+            master_text = ""
+
+        # ── Re-load voice samples ──
+        voice_samples = load_voice_samples()
+        log_event("voice_samples_loaded", caller="prep_phase_b", chars=len(voice_samples))
+        voice_section = f"VOICE SAMPLES:\n{voice_samples}\n\n" if voice_samples else ""
+        shared_candidate_jd = (
+            f"CANDIDATE PROFILE:\n{profile_text}\n\n"
+            f"MASTER RESUME:\n{master_text}\n\n"
+            f"Company: {company}\nTitle: {title}\n\n"
+            f"JD:\n{jd_text}\n\n"
+            f"---\n\n"
+        )
+        shared_with_voice = f"{shared_candidate_jd}{voice_section}---\n\n"
+
+        # ── Re-read briefing from disk ──
+        # Handles both {Prefix} Briefing - ... .md (regular) and bare briefing.md (speculative).
+        briefing_files = list(Path(outdir).glob("*Briefing*.md")) + list(Path(outdir).glob("briefing.md"))
+        if briefing_files:
+            with open(briefing_files[0]) as f:
+                full_briefing = f.read()
+        else:
+            full_briefing = ""
+            log_event("prep_phase_b_no_briefing", job_id=job_id, company=company, title=title, outdir=outdir)
+
         briefing_context = full_briefing if full_briefing else ""
-        # Stage 4 — resume_tailor (Opus, cached_prefix=shared_candidate_jd)
+
+        # ── Build output paths using a fresh timestamp ──
+        file_prefix = read_file_prefix()
+        date = datetime.now().strftime("%Y-%m-%d")
+        time_str = datetime.now().strftime("%H%M%S")
+        timestamp_fn = f"{date.replace('-', '')}-{time_str}"
+        fn = build_prep_filenames(company, title, timestamp_fn, file_prefix)
+        out = {k: os.path.join(outdir, v) for k, v in fn.items()}
+
+        # ── Stage 4: resume_tailor ──
         resume_md = run_role(
             "resume_tailor",
             f"COMPANY BRIEFING AND FIT ANALYSIS:\n{briefing_context}",
@@ -389,7 +547,7 @@ def _run_prep() -> None:
         with open(out["resume_md"], "w") as f:
             f.write(resume_md)
 
-        # Quality check — log violation counts for trend tracking
+        # Quality check — informational only, never block prep
         try:
             qc = subprocess.run(
                 [sys.executable, f"{BASE}/scripts/diag/validate_resume.py", "--json", out["resume_md"]],
@@ -409,12 +567,11 @@ def _run_prep() -> None:
                     med=sum(1 for v in viols if v["severity"] == "MED"),
                 )
         except Exception:
-            pass  # quality check is informational only — never block prep
+            pass
 
         render_md_to_docx(out["resume_md"], out["resume_docx"])
 
-        # Generate change log
-        # Stage 5 — resume_change_reviewer (Gemini, no caching)
+        # ── Stage 5: resume_change_reviewer ──
         changes_prompt = (
             f"ORIGINAL MASTER RESUME:\n{master_text}\n\nTAILORED RESUME:\n{resume_md}\n\nTARGET JD:\n{jd_text}"
         )
@@ -422,9 +579,8 @@ def _run_prep() -> None:
         with open(out["changes_md"], "w") as f:
             f.write(changes_md)
 
-        # ── Step 4: Cover letter — briefing + fit analysis for company signals ──
+        # ── Stage 6: cover_letter_writer ──
         today_str = datetime.now().strftime("%B %d, %Y")
-        # Stage 6 — cover_letter_writer (Opus, cached_prefix=shared_with_voice)
         cover_prompt = (
             f"{mode_marker}Date: {today_str}\n\n"
             f"COMPANY BRIEFING AND FIT ANALYSIS:\n{briefing_context}\n\n"
@@ -438,19 +594,14 @@ def _run_prep() -> None:
             conn=conn,
             job_id=job_id,
         )
-        # Strip horizontal rules — the LLM inserts "---" between header and body,
-        # but it renders as an ugly line in the docx. Paragraph spacing handles separation.
+        # Strip horizontal rules — LLM inserts "---" between header and body.
         cover_md_text = re.sub(r"\n---\n", "\n\n", cover_md_text)
         with open(out["cover_md"], "w") as f:
             f.write(cover_md_text)
         render_md_to_docx(out["cover_md"], out["cover_docx"])
         _add_cover_letter_spacing(out["cover_docx"])
 
-        # ── Step 4.5: Recruiter critique — skeptical outside read of resume + cover ──
-        # Sees only what an actual recruiter sees: company, title, JD, resume, cover.
-        # No profile / briefing / fit analysis — the point is to simulate a reader who
-        # has NOT done background research on the candidate.
-        # Stage 7 — recruiter_critic (Opus, cached_prefix=jd-only)
+        # ── Stage 7: recruiter_critic ──
         critique_md = run_role(
             "recruiter_critic",
             f"Company: {company}\nTitle: {title}\n\nTAILORED RESUME:\n{resume_md}\n\nCOVER LETTER:\n{cover_md_text}",
@@ -464,7 +615,6 @@ def _run_prep() -> None:
                 f.write(critique_md)
 
         # ── Step 5: Network outreach ──
-        # Pass the file_prefix and timestamp so outreach files follow the same naming convention.
         subprocess.run(
             [
                 sys.executable,
@@ -504,10 +654,7 @@ def _run_prep() -> None:
     - `{file_prefix} Outreach to *.txt`    ← network outreach drafts
     """)
 
-        # ── Step 7: Validate output before marking complete ──
-        # Guard against silent LLM failures (e.g. missing max_tokens) that produce
-        # empty files.  On failure: delete the damaged folder, reset to scored so
-        # the job can be re-prepped, and abort.
+        # ── Step 7: Validate output ──
         MIN_BYTES = 500
         validation_failures = []
         for label, path in [("resume", out["resume_md"]), ("cover_letter", out["cover_md"])]:
@@ -517,25 +664,6 @@ def _run_prep() -> None:
                 sz = 0
             if sz < MIN_BYTES:
                 validation_failures.append(f"{label}: {sz}B (min {MIN_BYTES})")
-        # Briefing must end with an Overall Recommendation verdict — model drift
-        # sometimes drops it despite role prompt enforcement.
-        try:
-            with open(out["briefing_md"]) as f:
-                briefing_text = f.read()
-        except OSError:
-            briefing_text = ""
-        if not rec_re.search(briefing_text):
-            validation_failures.append("briefing: missing Overall Recommendation")
-        # Fit + probability scores must have parsed; otherwise the briefing is
-        # missing its Fit Analysis section and the dashboard cells render blank.
-        # The retry above absorbs transient Perplexity null-content; a failure
-        # here means the second attempt also returned empty/malformed — fail
-        # the prep cleanly so the operator can re-flag rather than ship a
-        # half-completed briefing (#636).
-        if fit_score_avg is None or prob_score_avg is None:
-            validation_failures.append(
-                f"briefing: missing fit analysis (fit_score={fit_score_avg}, prob_score={prob_score_avg})"
-            )
         if validation_failures:
             log_event(
                 "prep_validation_failed",
@@ -543,22 +671,20 @@ def _run_prep() -> None:
                 title=title,
                 failures="; ".join(validation_failures),
             )
-            shutil.rmtree(outdir, ignore_errors=True)
-            reset_prep_to_scored(conn, job_id, reason="validation_failed")
-            quick_notify(f"PREP FAILED (empty files): {company} — {title}\n{'; '.join(validation_failures)}")
+            # Phase B validation failure: reset to briefing_ready (NOT scored).
+            # Briefing + folder stay intact so operator can retry Phase B.
+            _handle_phase_b_failure(conn, job_id, company, title, "validation_failed")
             return
 
-        # ── Step 8: Update SQLite (stage + scores) ──
+        # ── Step 8: Update SQLite (stage = materials_drafted) ──
         now = datetime.now(UTC).isoformat()
         old_stage = row["stage"] if row else "unknown"
-
         conn.execute(
             """
-            UPDATE jobs SET stage='materials_drafted', stage_updated=?, prep_folder_path=?,
-                   fit_score=?, probability_score=?, updated_at=?
+            UPDATE jobs SET stage='materials_drafted', stage_updated=?, updated_at=?
             WHERE id=?
-        """,
-            (now, outdir, fit_score_avg, prob_score_avg, now, job_id),
+            """,
+            (now, now, job_id),
         )
         conn.commit()
         write_audit(conn, job_id, "stage", old_stage, "materials_drafted")
@@ -567,8 +693,47 @@ def _run_prep() -> None:
         quick_notify(f"Drafts ready: {company} — {title}\n{outdir}")
 
         conn.close()
-
         print(f"PREP_COMPLETE:{outdir}")
+
     except subprocess.CalledProcessError as exc:
-        _handle_prep_subprocess_failure(conn, job_id, company, title, outdir, exc)
+        # Phase B subprocess failure: reset to briefing_ready (NOT scored).
+        # Preserves the briefing folder so operator can retry without re-paying Phase A.
+        cmd_name = exc.cmd[0] if isinstance(exc.cmd, list) and exc.cmd else str(exc.cmd)
+        _handle_phase_b_failure(conn, job_id, company, title, f"subprocess_failed:{os.path.basename(cmd_name)}")
         raise SystemExit(1) from exc
+
+
+def _handle_phase_b_failure(
+    conn: sqlite3.Connection,
+    job_id: str,
+    company: str,
+    title: str,
+    reason: str,
+) -> None:
+    """Roll Phase B back to ``briefing_ready``.
+
+    Does NOT call ``_handle_prep_subprocess_failure`` (which resets to
+    ``scored`` and rmtrees the folder). Phase B preserves the briefing
+    folder so the operator can retry without re-paying Phase A.
+
+    The ``old_value`` in the audit row is read from the current row
+    rather than hard-coded — Phase B can be entered from either
+    ``briefing_ready`` (legacy ``--phase=all`` wrapper, Phase A just
+    finished) or ``prep_in_progress`` (the future ``/continue-prep``
+    route, which transitions stage before spawning the subprocess).
+    """
+    now = datetime.now(UTC).isoformat()
+    try:
+        existing = conn.execute("SELECT stage FROM jobs WHERE id=?", (job_id,)).fetchone()
+        old_stage = existing[0] if existing else "unknown"
+        conn.execute(
+            "UPDATE jobs SET stage='briefing_ready', stage_updated=?, updated_at=? WHERE id=?",
+            (now, now, job_id),
+        )
+        conn.commit()
+        write_audit(conn, job_id, "stage", old_stage, "briefing_ready")
+    except Exception:
+        pass  # best-effort; the subprocess error is already propagating
+    log_event("prep_phase_b_failed", company=company, title=title, job_id=job_id, reason=reason)
+    quick_notify(f"Phase B failed: {company} — {title}. Briefing intact; retry available.")
+    quick_notify(f"Phase B failed: {company} — {title}. Briefing intact; retry available.")
