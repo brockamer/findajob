@@ -18,7 +18,10 @@
       <select
         class="block rounded border-slate-300 bg-white px-2 py-1 text-xs"
         data-fp="{{ fp }}"
-        onchange="if(this.value){htmx.ajax('POST', `/board/jobs/{{ fp }}/${this.value}`, {target: this.closest('tr'), swap: 'outerHTML'});this.value='';}">
+        onchange="if(!this.value)return;
+          const v=this.value;this.value='';
+          if(v==='regenerate'){htmx.ajax('GET',`/board/jobs/{{ fp }}/regenerate/confirm`,{target:this.closest('td'),swap:'outerHTML'});}
+          else{htmx.ajax('POST',`/board/jobs/{{ fp }}/${v}`,{target:this.closest('tr'),swap:'outerHTML'});}">
         <option value="">— Change status —</option>
         {% if stage in ('scored', 'manual_review') %}
           <option value="prep">Flag for Prep</option>

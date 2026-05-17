@@ -379,6 +379,81 @@ def _execute_regenerate(db: sqlite3.Connection, job: sqlite3.Row, *, source_even
     _launch_prep_subprocess(db, job)
 
 
+@router.get("/board/jobs/{fingerprint}/regenerate/confirm", response_class=HTMLResponse)
+def regenerate_confirm(
+    fingerprint: str,
+    request: Request,
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> HTMLResponse:
+    """Render the regenerate confirm modal into the row's status cell.
+
+    Triggered by the Dashboard dropdown's Regenerate option (#700). Confirm
+    posts to /regenerate; Cancel restores the status cell via /regenerate/cell.
+    Returns 404 for unknown fingerprint, 409 for stages outside the dropdown's
+    Regenerate-visible set (matches _status_cell.html's `{% if stage in
+    ('prep_in_progress', 'materials_drafted') %}` gate).
+    """
+    row = db.execute(
+        "SELECT id, fingerprint, stage FROM jobs WHERE fingerprint=?",
+        (fingerprint,),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if row["stage"] not in ("materials_drafted", "prep_in_progress"):
+        raise HTTPException(
+            status_code=409,
+            detail="Regenerate is only valid for prep_in_progress or materials_drafted",
+        )
+
+    last_prep_utc = db.execute(
+        "SELECT MAX(changed_at) FROM audit_log "
+        "WHERE job_id=? AND field_changed='stage' AND new_value='materials_drafted'",
+        (row["id"],),
+    ).fetchone()[0]
+
+    context_lines: list[str] = []
+    if last_prep_utc:
+        pt = ZoneInfo("America/Los_Angeles")
+        utc = ZoneInfo("UTC")
+        dt = datetime.fromisoformat(last_prep_utc).replace(tzinfo=utc).astimezone(pt)
+        context_lines.append(f"Last generated: {dt.strftime('%Y-%m-%d %H:%M %Z')}")
+
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request=request,
+        name="board/_confirm_modal.html",
+        context={
+            "copy": (
+                "Regenerating will delete your tailored materials for this job "
+                "(resume, cover letter, recruiter critique, outreach drafts). Continue?"
+            ),
+            "context_lines": context_lines,
+            "confirm_url": f"/board/jobs/{fingerprint}/regenerate",
+            "confirm_target": "closest tr",
+            "cancel_url": f"/board/jobs/{fingerprint}/regenerate/cell",
+        },
+    )
+
+
+@router.get("/board/jobs/{fingerprint}/regenerate/cell", response_class=HTMLResponse)
+def regenerate_cell(
+    fingerprint: str,
+    request: Request,
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> HTMLResponse:
+    """Re-render the Dashboard status cell — Cancel-restoration endpoint for
+    the regenerate confirm modal (#700). Returns 404 for unknown fingerprint."""
+    row = _fetch_dashboard_row(db, fingerprint)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request=request,
+        name="board/_status_cell.html",
+        context={"row": row, "tab": "dashboard"},
+    )
+
+
 @router.post("/board/jobs/{fingerprint}/apply", response_class=HTMLResponse)
 def apply(
     fingerprint: str,
