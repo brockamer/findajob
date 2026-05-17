@@ -28,7 +28,7 @@
     {% include "board/_un_not_selected_cell.html" %}
     {% include "board/_change_not_selected_reason_cell.html" %}
   {% elif tab == 'archive' %}
-    {% include "board/_archive_promote_cell.html" %}
+    {% include "board/_archive_actions_cell.html" %}
   {% endif %}
   {% for s in specs if s.name in visible %}
     {% set field = s.name %}

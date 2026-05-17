@@ -1,0 +1,63 @@
+{#
+  Reattribute modal for not_selected rows on Archive. Operator marks the
+  rejection as belonging to a different job (typo, ambiguous company name,
+  or Gmail-detector mis-attribution surfacing after Confirm).
+
+  Wraps a search-as-you-type input that hits GET /board/jobs/search,
+  populates a hidden target_fingerprint when the operator clicks a
+  result, and POSTs the form to /reattribute-from-archive.
+
+  Inputs:
+    row — sqlite3.Row with .fingerprint, .title, .company
+#}
+<td class="px-3 py-1 align-top text-sm">
+  <div class="rounded border border-amber-300 bg-amber-50 p-2">
+    <p class="text-xs text-amber-900 mb-1">
+      Reattribute this rejection to a different job. The current row
+      (<span class="font-medium">{{ row.title }} @ {{ row.company }}</span>)
+      will be un-not-selected and the target will be marked not_selected
+      with the reason below.
+    </p>
+    <form hx-post="/board/jobs/{{ row.fingerprint }}/reattribute-from-archive"
+          hx-target="closest tr"
+          hx-swap="outerHTML"
+          class="space-y-1">
+      <label class="block">
+        <span class="text-[11px] text-amber-700">Search for the correct job:</span>
+        <input type="text"
+               name="search"
+               placeholder="title or company…"
+               class="block w-full rounded border-amber-300 bg-white px-2 py-1 text-xs"
+               hx-get="/board/jobs/search"
+               hx-trigger="keyup changed delay:200ms"
+               hx-target="next .reattribute-results"
+               hx-swap="innerHTML"
+               hx-include="this"
+               hx-vals='{"exclude": "{{ row.fingerprint }}"}'
+               hx-on:input="this.closest('form').querySelector('input[name=target_fingerprint]').value = ''">
+      </label>
+      <div class="reattribute-results text-xs"></div>
+      <input type="hidden" name="target_fingerprint" value="">
+      <label class="block">
+        <span class="text-[11px] text-amber-700">Reason (defaults to "Reattributed"):</span>
+        <input type="text"
+               name="reason"
+               placeholder="Reattributed"
+               class="block w-full rounded border-amber-300 bg-white px-2 py-1 text-xs">
+      </label>
+      <div class="flex gap-1">
+        <button type="submit"
+                class="px-2 py-0.5 bg-amber-600 hover:bg-amber-700 text-white rounded text-xs">
+          Reattribute
+        </button>
+        <button type="button"
+                hx-get="/board/jobs/{{ row.fingerprint }}/archive-actions-cell"
+                hx-target="closest td"
+                hx-swap="outerHTML"
+                class="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-xs">
+          Cancel
+        </button>
+      </div>
+    </form>
+  </div>
+</td>

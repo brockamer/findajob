@@ -358,6 +358,12 @@ ARCHIVE_COLUMNS: tuple[ColumnSpec, ...] = (
         enum_values=_SOURCE_VALUES,
     ),
     ColumnSpec(name="url", label="URL", kind=Kind.TEXT, default_visible=False),
+    ColumnSpec(
+        name="user_notes",
+        label="Notes",
+        kind=Kind.TEXT,
+        default_visible=False,
+    ),
 )
 validate_specs(ARCHIVE_COLUMNS)
 

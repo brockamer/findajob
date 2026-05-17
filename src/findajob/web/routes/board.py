@@ -579,7 +579,7 @@ def _archive_query(parsed: ParsedFilters, offset: int, page_size: int = _ARCHIVE
         where_sql = " WHERE " + clauses[len(" AND ") :]
     sql = (
         "SELECT fingerprint, title, company, stage, relevance_score, fit_score, "
-        "probability_score, location, remote_status, source, url, created_at, stage_updated "
+        "probability_score, location, remote_status, source, url, user_notes, created_at, stage_updated "
         f"FROM jobs{where_sql} ORDER BY {sort} {order} LIMIT ? OFFSET ?"
     )
     params: list[object] = [*filter_params, page_size, offset]

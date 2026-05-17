@@ -18,7 +18,7 @@ import sys
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 
 from findajob.actions import (
@@ -31,6 +31,7 @@ from findajob.actions import (
     snapshot_applied_md_files,
     un_not_selected_job,
     un_reject_job,
+    un_withdraw_job,
 )
 from findajob.audit import log_event, write_audit
 from findajob.background_tasks import TASK_ID_ENV_VAR, record_failed, record_start
@@ -892,3 +893,162 @@ def notes_history(
         name="board/_notes_history.html",
         context={"rows": rows},
     )
+
+
+# ── Archive actions (#701) ─────────────────────────────────────────────────
+
+
+@router.post("/board/jobs/{fingerprint}/un-withdraw", response_class=HTMLResponse)
+def un_withdraw(
+    fingerprint: str,
+    request: Request,  # noqa: ARG001
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> HTMLResponse:
+    """Reverse a withdraw stage transition. Restores prior stage from
+    audit_log (fallback 'applied'). Returns empty — row vanishes from
+    Archive's withdraw-filter view; remains visible in unfiltered Archive
+    until next page navigation."""
+    row = db.execute(
+        "SELECT id, fingerprint, title, company, stage FROM jobs WHERE fingerprint=?",
+        (fingerprint,),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if row["stage"] != "withdrawn":
+        raise HTTPException(status_code=409, detail="Only withdrawn jobs can be un-withdrawn")
+    un_withdraw_job(db, row)
+    return HTMLResponse("")
+
+
+@router.get("/board/jobs/{fingerprint}/reattribute/modal", response_class=HTMLResponse)
+def reattribute_modal(
+    fingerprint: str,
+    request: Request,
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> HTMLResponse:
+    """Render the reattribute modal partial for a not_selected Archive row.
+
+    404 unknown, 409 if stage != 'not_selected' (reattribute only makes
+    sense for company-rejected rows that may have been mis-attributed).
+    """
+    row = db.execute(
+        "SELECT fingerprint, title, company, stage FROM jobs WHERE fingerprint=?",
+        (fingerprint,),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if row["stage"] != "not_selected":
+        raise HTTPException(status_code=409, detail="Reattribute is only valid for not_selected jobs")
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request=request,
+        name="board/_reattribute_modal.html",
+        context={"row": row},
+    )
+
+
+@router.get("/board/jobs/{fingerprint}/archive-actions-cell", response_class=HTMLResponse)
+def archive_actions_cell(
+    fingerprint: str,
+    request: Request,
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> HTMLResponse:
+    """Cancel-restore endpoint for the reattribute modal. Renders the
+    original 4-stage actions cell for the row.
+    """
+    row = db.execute(
+        "SELECT fingerprint, stage FROM jobs WHERE fingerprint=?",
+        (fingerprint,),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request=request,
+        name="board/_archive_actions_cell.html",
+        context={"row": row},
+    )
+
+
+@router.get("/board/jobs/search", response_class=HTMLResponse)
+def jobs_search(
+    request: Request,
+    search: str = Query(default=""),
+    exclude: str = Query(default=""),
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> HTMLResponse:
+    """Autocomplete search for the reattribute modal. Returns up to 10
+    title/company LIKE matches in stages where re-attribution makes sense
+    (applied, interview, offer, withdrawn, rejected, not_selected),
+    excluding the current row's fingerprint.
+
+    Returns empty rows list when query is blank (short-circuit).
+    """
+    q = (search or "").strip()
+    if not q:
+        templates = request.app.state.templates
+        return templates.TemplateResponse(
+            request=request,
+            name="board/_reattribute_search_results.html",
+            context={"rows": [], "query": ""},
+        )
+    pattern = f"%{q}%"
+    rows = db.execute(
+        "SELECT fingerprint, title, company, stage FROM jobs "
+        "WHERE (title LIKE ? OR company LIKE ?) "
+        "  AND stage IN ('applied','interview','offer','withdrawn','rejected','not_selected') "
+        "  AND fingerprint != ? "
+        "ORDER BY stage_updated DESC, created_at DESC "
+        "LIMIT 10",
+        (pattern, pattern, exclude),
+    ).fetchall()
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request=request,
+        name="board/_reattribute_search_results.html",
+        context={"rows": rows, "query": q},
+    )
+
+
+@router.post("/board/jobs/{fingerprint}/reattribute-from-archive", response_class=HTMLResponse)
+def reattribute_from_archive(
+    fingerprint: str,
+    request: Request,  # noqa: ARG001
+    target_fingerprint: str = Form(""),
+    reason: str = Form(""),
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> HTMLResponse:
+    """Reattribute the rejection from the current not_selected row to a
+    different job. Calls un_not_selected_job on current row (restores prior
+    stage, deletes marker files), then handle_not_selected on target with
+    changed_by='archive_reattribute'.
+
+    Atomic: 404 on unknown source or target; 409 if source stage !=
+    'not_selected' or if target_fingerprint missing/blank.
+    """
+    if not target_fingerprint:
+        raise HTTPException(status_code=409, detail="target_fingerprint is required")
+
+    source = db.execute(
+        "SELECT id, fingerprint, title, company, url, stage, prep_folder_path, reject_reason "
+        "FROM jobs WHERE fingerprint=?",
+        (fingerprint,),
+    ).fetchone()
+    if source is None:
+        raise HTTPException(status_code=404, detail="Source job not found")
+    if source["stage"] != "not_selected":
+        raise HTTPException(status_code=409, detail="Reattribute source must be not_selected")
+
+    target = db.execute(
+        "SELECT id, fingerprint, title, company, url, stage, prep_folder_path FROM jobs WHERE fingerprint=?",
+        (target_fingerprint,),
+    ).fetchone()
+    if target is None:
+        raise HTTPException(status_code=404, detail="Target job not found")
+
+    final_reason = (reason or "").strip() or "Reattributed"
+
+    un_not_selected_job(db, source)
+    handle_not_selected(db, target, final_reason, changed_by="archive_reattribute")
+
+    return HTMLResponse("")

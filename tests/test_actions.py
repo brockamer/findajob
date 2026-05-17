@@ -415,6 +415,120 @@ class TestUnNotSelectedJob:
         assert row["stage"] == "applied"
 
 
+# ── un_withdraw_job ─────────────────────────────────────────────────────────
+
+
+class TestUnWithdrawJob:
+    def test_restores_prior_stage_from_audit_log(self, db):
+        """Prior stage from audit_log is restored (e.g. applied → withdrawn → applied)."""
+        job = insert_job(db, stage="withdrawn")
+        db.execute(
+            "INSERT INTO audit_log (job_id, field_changed, old_value, new_value, changed_at) "
+            "VALUES (?, 'stage', 'applied', 'withdrawn', datetime('now'))",
+            (job["id"],),
+        )
+        db.commit()
+        job = db.execute("SELECT * FROM jobs WHERE id=?", (job["id"],)).fetchone()
+
+        restored = actions.un_withdraw_job(db, job)
+
+        assert restored == "applied"
+        row = db.execute("SELECT stage FROM jobs WHERE id=?", (job["id"],)).fetchone()
+        assert row["stage"] == "applied"
+
+    def test_restores_interview_stage(self, db):
+        """Prior stage of 'interview' is also restorable."""
+        job = insert_job(db, stage="withdrawn")
+        db.execute(
+            "INSERT INTO audit_log (job_id, field_changed, old_value, new_value, changed_at) "
+            "VALUES (?, 'stage', 'interview', 'withdrawn', datetime('now'))",
+            (job["id"],),
+        )
+        db.commit()
+        job = db.execute("SELECT * FROM jobs WHERE id=?", (job["id"],)).fetchone()
+
+        restored = actions.un_withdraw_job(db, job)
+
+        assert restored == "interview"
+        row = db.execute("SELECT stage FROM jobs WHERE id=?", (job["id"],)).fetchone()
+        assert row["stage"] == "interview"
+
+    def test_fallback_to_applied_when_no_audit_row(self, db):
+        """Without a prior audit_log entry, fallback to 'applied'."""
+        job = insert_job(db, stage="withdrawn")
+        job = db.execute("SELECT * FROM jobs WHERE id=?", (job["id"],)).fetchone()
+
+        restored = actions.un_withdraw_job(db, job)
+
+        assert restored == "applied"
+        row = db.execute("SELECT stage FROM jobs WHERE id=?", (job["id"],)).fetchone()
+        assert row["stage"] == "applied"
+
+    def test_reject_reason_untouched(self, db):
+        """withdraw never sets reject_reason; un_withdraw doesn't touch it either."""
+        job = insert_job(db, stage="withdrawn")
+        # Manually set a reject_reason (shouldn't happen in practice, but must be preserved)
+        db.execute("UPDATE jobs SET reject_reason='Preexisting' WHERE id=?", (job["id"],))
+        db.commit()
+        job = db.execute("SELECT * FROM jobs WHERE id=?", (job["id"],)).fetchone()
+
+        actions.un_withdraw_job(db, job)
+
+        row = db.execute("SELECT reject_reason FROM jobs WHERE id=?", (job["id"],)).fetchone()
+        assert row["reject_reason"] == "Preexisting"
+
+    def test_writes_audit_row_with_changed_by_user(self, db):
+        """Audit row written with old=withdrawn, new=restored, changed_by='user'."""
+        job = insert_job(db, stage="withdrawn")
+        db.execute(
+            "INSERT INTO audit_log (job_id, field_changed, old_value, new_value, changed_at) "
+            "VALUES (?, 'stage', 'applied', 'withdrawn', datetime('now'))",
+            (job["id"],),
+        )
+        db.commit()
+        job = db.execute("SELECT * FROM jobs WHERE id=?", (job["id"],)).fetchone()
+
+        actions.un_withdraw_job(db, job)
+
+        audits = db.execute(
+            "SELECT field_changed, old_value, new_value, changed_by FROM audit_log WHERE job_id=? ORDER BY id",
+            (job["id"],),
+        ).fetchall()
+        new_audits = [a for a in audits if a["changed_by"] == "user"]
+        assert len(new_audits) == 1
+        assert new_audits[0]["field_changed"] == "stage"
+        assert new_audits[0]["old_value"] == "withdrawn"
+        assert new_audits[0]["new_value"] == "applied"
+
+    def test_no_folder_side_effects(self, db, tmp_path):
+        """No folder is moved; the existing folder path (if any) is unchanged."""
+        folder = tmp_path / "companies" / "_applied" / "Acme_Withdraw_test"
+        folder.mkdir(parents=True)
+        (folder / "resume.pdf").touch()
+
+        job = insert_job(db, stage="withdrawn", folder=str(folder))
+        db.commit()
+        job = db.execute("SELECT * FROM jobs WHERE id=?", (job["id"],)).fetchone()
+
+        actions.un_withdraw_job(db, job)
+
+        # Folder still at original location, untouched
+        assert folder.exists()
+        # prep_folder_path unchanged in DB
+        row = db.execute("SELECT prep_folder_path FROM jobs WHERE id=?", (job["id"],)).fetchone()
+        assert row["prep_folder_path"] == str(folder)
+
+    def test_no_feedback_log_row(self, db):
+        """un_withdraw never writes or deletes feedback_log rows."""
+        job = insert_job(db, stage="withdrawn")
+        job = db.execute("SELECT * FROM jobs WHERE id=?", (job["id"],)).fetchone()
+
+        actions.un_withdraw_job(db, job)
+
+        count = db.execute("SELECT COUNT(*) FROM feedback_log WHERE job_id=?", (job["id"],)).fetchone()[0]
+        assert count == 0
+
+
 # ── handle_waitlist ─────────────────────────────────────────────────────────
 
 

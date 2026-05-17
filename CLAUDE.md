@@ -193,6 +193,8 @@ responds in the same request — no poll cycle, no mirror table.
 | Change reject reason | `POST /board/jobs/{fp}/change-reject-reason` | Rejected tab inline dropdown (#697) |
 | Un-not-selected | `POST /board/jobs/{fp}/un-not-selected` | Not Selected tab button (#698) |
 | Change not-selected reason | `POST /board/jobs/{fp}/change-not-selected-reason` | Not Selected tab inline dropdown (#698) |
+| Un-withdraw | `POST /board/jobs/{fp}/un-withdraw` | Archive actions cell (#701) |
+| Reattribute | `POST /board/jobs/{fp}/reattribute-from-archive` | Archive reattribute modal (#701) |
 | Edit user_notes | `POST /board/jobs/{fp}/notes` | Notes input on any tab that surfaces the column (Dashboard / Review / Waitlist / Applied). 800ms debounce. Blur writes `notes_history`; keyup only writes `jobs.user_notes`. |
 | Confirm rejection email | `POST /board/rejections-review/{id}/confirm` | Rejections-review queue (#362) |
 | Dismiss rejection email | `POST /board/rejections-review/{id}/dismiss` | Rejections-review queue (#362) |

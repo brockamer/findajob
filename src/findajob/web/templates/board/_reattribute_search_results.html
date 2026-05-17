@@ -1,0 +1,34 @@
+{#
+  Search results for the reattribute autocomplete. Renders a small <ul>
+  of clickable candidates. Click populates the hidden target_fingerprint
+  field on the enclosing form via inline JS (HTMX's hx-on::click).
+
+  Inputs:
+    rows — list of {fingerprint, title, company, stage} dicts (10 max)
+#}
+{% if rows %}
+<ul class="border border-amber-200 rounded bg-white max-h-40 overflow-y-auto">
+  {% for r in rows %}
+  <li>
+    <button type="button"
+            class="block w-full text-left px-2 py-1 hover:bg-amber-100 text-xs"
+            data-fp="{{ r.fingerprint | e }}"
+            data-label="{{ r.title | e }} @ {{ r.company | e }}"
+            hx-on:click="
+              const form = this.closest('form');
+              form.querySelector('input[name=target_fingerprint]').value = this.dataset.fp;
+              const sel = document.createElement('li');
+              sel.className = 'px-2 py-1 text-amber-700';
+              sel.textContent = 'Selected: ' + this.dataset.label;
+              this.closest('ul').replaceWith(sel);
+            ">
+      <span class="font-medium">{{ r.title | e }}</span>
+      <span class="text-slate-500">@ {{ r.company | e }}</span>
+      <span class="text-slate-400">[{{ r.stage | e }}]</span>
+    </button>
+  </li>
+  {% endfor %}
+</ul>
+{% elif query %}
+<span class="text-slate-400">No matches.</span>
+{% endif %}

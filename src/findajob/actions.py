@@ -380,6 +380,42 @@ def un_not_selected_job(conn: sqlite3.Connection, job: Any) -> str:
     return restored_stage
 
 
+def un_withdraw_job(conn: sqlite3.Connection, job: Any) -> str:
+    """Reverse a withdraw: restore the prior stage from audit_log
+    (typically applied/interview/offer).
+
+    Returns the restored stage. Falls back to 'applied' if no audit_log
+    row found — the audit write inside the inline _transition_stage call
+    in board_actions.py guarantees coverage for in-system transitions, so
+    the fallback is belt-and-suspenders.
+
+    Unlike un_not_selected_job, there is no marker file to delete (withdraw
+    never wrote one) and no folder to touch (withdraw doesn't move folders).
+    Unlike un_reject_job, no feedback_log row exists (withdraw doesn't
+    write to feedback_log). Pure stage restoration.
+    """
+    now = datetime.now(UTC).isoformat()
+
+    prior = conn.execute(
+        "SELECT old_value FROM audit_log "
+        "WHERE job_id=? AND field_changed='stage' AND new_value='withdrawn' "
+        "ORDER BY changed_at DESC LIMIT 1",
+        (job["id"],),
+    ).fetchone()
+    restored_stage = prior[0] if prior and prior[0] else "applied"
+
+    conn.execute(
+        "UPDATE jobs SET stage=?, updated_at=? WHERE id=?",
+        (restored_stage, now, job["id"]),
+    )
+    conn.commit()
+    write_audit(conn, job["id"], "stage", "withdrawn", restored_stage, changed_by="user")
+    log_event(
+        "job_un_withdrawn", job_id=job["id"], company=job["company"], title=job["title"], restored_stage=restored_stage
+    )
+    return restored_stage
+
+
 def reactivate_from_ingest(conn: sqlite3.Connection, job: Any, overwrite_fields: dict[str, str]) -> None:
     """Reactivate a waitlisted job via manual ingest.
 

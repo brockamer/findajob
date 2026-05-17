@@ -1,0 +1,52 @@
+{#
+  Archive-tab actions cell — 4 stage cases:
+
+  - scored: Promote (POST /promote) — bumps relevance_score=7, surfaces row on Dashboard
+  - rejected: Un-reject with confirm modal (GET /un-reject/confirm) — destructive
+    (deletes feedback_log row). Reuses #697's generic _confirm_modal.html partial.
+  - withdrawn: Un-withdraw (POST /un-withdraw) — pure stage restore, no warning
+  - not_selected: Un-not-selected (POST /un-not-selected) + Reattribute button
+    (GET /reattribute/modal) — operator marks the rejection as belonging to
+    a different job.
+
+  All buttons fire with hx-target='closest tr' hx-swap='outerHTML' so the
+  row vanishes on success (un-*) or gets replaced by the modal/cell on GET.
+
+  Inputs: row — sqlite3.Row with .fingerprint, .stage
+#}
+<td class="px-3 py-1 align-top text-sm whitespace-nowrap">
+  {% if row.stage == 'scored' %}
+    <button type="button"
+            class="rounded bg-indigo-600 px-2 py-1 text-xs font-medium text-white hover:bg-indigo-500"
+            hx-post="/board/jobs/{{ row.fingerprint }}/promote"
+            hx-target="closest tr"
+            hx-swap="outerHTML">Promote</button>
+  {% elif row.stage == 'rejected' %}
+    <button type="button"
+            class="rounded bg-slate-100 hover:bg-slate-200 px-2 py-0.5 text-xs text-slate-700"
+            hx-get="/board/jobs/{{ row.fingerprint }}/un-reject/confirm"
+            hx-target="closest td"
+            hx-swap="outerHTML">Un-reject</button>
+  {% elif row.stage == 'withdrawn' %}
+    <button type="button"
+            class="rounded bg-slate-100 hover:bg-slate-200 px-2 py-0.5 text-xs text-slate-700"
+            hx-post="/board/jobs/{{ row.fingerprint }}/un-withdraw"
+            hx-target="closest tr"
+            hx-swap="outerHTML">Un-withdraw</button>
+  {% elif row.stage == 'not_selected' %}
+    <div class="flex gap-1">
+      <button type="button"
+              class="rounded bg-slate-100 hover:bg-slate-200 px-2 py-0.5 text-xs text-slate-700"
+              hx-post="/board/jobs/{{ row.fingerprint }}/un-not-selected"
+              hx-target="closest tr"
+              hx-swap="outerHTML">Un-not-selected</button>
+      <button type="button"
+              class="rounded bg-slate-100 hover:bg-slate-200 px-2 py-0.5 text-xs text-slate-700"
+              hx-get="/board/jobs/{{ row.fingerprint }}/reattribute/modal"
+              hx-target="closest td"
+              hx-swap="outerHTML">Reattribute</button>
+    </div>
+  {% else %}
+    <span class="text-xs text-slate-400">—</span>
+  {% endif %}
+</td>

@@ -17,7 +17,8 @@ def client(tmp_path: Path) -> TestClient:
     conn.execute(
         "CREATE TABLE jobs (fingerprint TEXT, title TEXT, company TEXT, stage TEXT, "
         "relevance_score INTEGER, fit_score REAL, probability_score REAL, location TEXT, "
-        "remote_status TEXT, source TEXT, url TEXT, created_at TEXT, stage_updated TEXT)"
+        "remote_status TEXT, source TEXT, url TEXT, created_at TEXT, stage_updated TEXT, "
+        "user_notes TEXT)"
     )
     for i in range(150):
         conn.execute(
@@ -64,7 +65,8 @@ def scored_client(tmp_path: Path) -> TestClient:
     conn.execute(
         "CREATE TABLE jobs (id TEXT, fingerprint TEXT, title TEXT, company TEXT, stage TEXT, "
         "relevance_score INTEGER, fit_score REAL, probability_score REAL, location TEXT, "
-        "remote_status TEXT, source TEXT, url TEXT, created_at TEXT, stage_updated TEXT)"
+        "remote_status TEXT, source TEXT, url TEXT, created_at TEXT, stage_updated TEXT, "
+        "user_notes TEXT)"
     )
     # Two score-6 rows at stage='scored' — should appear with min_score=6 and have Promote button
     conn.execute(
