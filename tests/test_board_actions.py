@@ -2316,3 +2316,183 @@ class TestRegenerateCell:
     def test_404_unknown_fingerprint(self, client: TestClient):
         response = client.get("/board/jobs/fp_nonexistent/regenerate/cell")
         assert response.status_code == 404
+# ── Review/Waitlist affordance buttons (#702 F8) ──────────────────────────
+
+
+class TestReviewTabRendersWaitlistButton:
+    def test_review_tab_shows_both_promote_and_waitlist_buttons(self, client: TestClient):
+        """Review tab status cell renders Waitlist alongside Promote (#702 G8 gap).
+        Today the only affordance was Promote; users with 'interesting-but-not-now'
+        manual_review rows had to promote-then-waitlist (two clicks)."""
+        response = client.get("/board/review")
+        assert response.status_code == 200
+        text = response.text
+
+        # The manual_review row from the fixture (fp_manual)
+        assert 'data-fingerprint="fp_manual"' in text
+
+        # Scope assertions to fp_manual's row so unrelated rows can't satisfy them
+        anchor = text.find('data-fingerprint="fp_manual"')
+        row_end = text.find("</tr>", anchor)
+        row = text[anchor:row_end]
+
+        assert "Promote" in row
+        assert "Waitlist" in row
+        assert 'hx-post="/board/jobs/fp_manual/promote"' in row
+        assert 'hx-post="/board/jobs/fp_manual/waitlist"' in row
+
+
+class TestWaitlistFromReview:
+    def test_manual_review_row_waitlists_via_existing_endpoint(self, client: TestClient):
+        """/waitlist already accepts any stage; the new Review-tab button just
+        wires a new caller. Verify the transition happens and audit row writes."""
+        response = client.post("/board/jobs/fp_manual/waitlist")
+        assert response.status_code == 200
+        assert response.text == ""
+        assert _fetch_stage(client, "fp_manual") == "waitlisted"
+
+        audit = _fetch_audit(client, "fp_manual")
+        assert any(a == ("stage", "manual_review", "waitlisted") for a in audit)
+
+
+class TestWaitlistTabRendersFlagForPrepButton:
+    def test_waitlist_tab_shows_both_reactivate_and_flag_for_prep(self, client: TestClient):
+        """Waitlist tab status cell renders Flag-for-Prep alongside Reactivate
+        (#702 G9 gap). Today operators had to reactivate-then-prep (two clicks)."""
+        response = client.get("/board/waitlist")
+        assert response.status_code == 200
+        text = response.text
+        assert 'data-fingerprint="fp_waitlisted"' in text
+
+        anchor = text.find('data-fingerprint="fp_waitlisted"')
+        row_end = text.find("</tr>", anchor)
+        row = text[anchor:row_end]
+
+        assert "Reactivate" in row
+        assert "Flag for Prep" in row
+        assert 'hx-post="/board/jobs/fp_waitlisted/reactivate"' in row
+        assert 'hx-post="/board/jobs/fp_waitlisted/reactivate-and-prep"' in row
+
+
+class TestReactivateAndPrep:
+    def test_happy_path_without_folder(self, client: TestClient, popen_calls):
+        """Waitlisted job with no prep folder: handle_reactivate flips waitlisted→scored,
+        then the route flips scored→prep_in_progress and spawns prep_application.py.
+        Two audit rows written for clean traceability."""
+        response = client.post("/board/jobs/fp_waitlisted/reactivate-and-prep")
+        assert response.status_code == 200
+        assert response.text == ""
+        assert _fetch_stage(client, "fp_waitlisted") == "prep_in_progress"
+
+        audit = _fetch_audit(client, "fp_waitlisted")
+        # Reactivate row + prep row, in order
+        assert ("stage", "waitlisted", "scored") in audit
+        assert ("stage", "scored", "prep_in_progress") in audit
+
+        prep_calls = [c for c in popen_calls if "prep_application.py" in c[1]]
+        assert len(prep_calls) == 1
+
+    def test_happy_path_with_folder(self, client: TestClient, popen_calls):
+        """Waitlisted job with a folder in _waitlisted/: handle_reactivate moves
+        the folder back to companies/ and flips to materials_drafted; route then
+        flips to prep_in_progress."""
+        wl_dir = client._tmp_path / "companies" / "_waitlisted"
+        wl_dir.mkdir(parents=True)
+        folder = wl_dir / "Acme_waitlist_prep"
+        folder.mkdir()
+        (folder / "resume.pdf").touch()
+        conn = sqlite3.connect(client._db_path)
+        conn.execute(
+            "UPDATE jobs SET prep_folder_path=? WHERE fingerprint='fp_waitlisted'",
+            (str(folder),),
+        )
+        conn.commit()
+        conn.close()
+
+        response = client.post("/board/jobs/fp_waitlisted/reactivate-and-prep")
+        assert response.status_code == 200
+        assert _fetch_stage(client, "fp_waitlisted") == "prep_in_progress"
+
+        audit = _fetch_audit(client, "fp_waitlisted")
+        assert ("stage", "waitlisted", "materials_drafted") in audit
+        assert ("stage", "materials_drafted", "prep_in_progress") in audit
+
+        # Folder moved back out of _waitlisted/
+        assert not folder.exists()
+
+        prep_calls = [c for c in popen_calls if "prep_application.py" in c[1]]
+        assert len(prep_calls) == 1
+
+    def test_409_for_non_waitlisted_stage(self, client: TestClient, popen_calls):
+        """Route is only valid from stage='waitlisted'. Direct URL access from
+        any other stage (scored, materials_drafted, applied, ...) returns 409."""
+        response = client.post("/board/jobs/fp_scored/reactivate-and-prep")
+        assert response.status_code == 409
+        assert _fetch_stage(client, "fp_scored") == "scored"
+        assert _fetch_audit(client, "fp_scored") == []
+        assert popen_calls == []
+
+    def test_idempotent_on_prep_in_progress(self, client: TestClient, popen_calls):
+        """Match /prep's silent-success on already-in-flight rows so a fast
+        double-click doesn't surface a 409. The route flips waitlisted→prep_in_progress
+        on the first click; a second click finds stage='prep_in_progress' and
+        returns empty (row was already advanced)."""
+        response = client.post("/board/jobs/fp_prep/reactivate-and-prep")
+        assert response.status_code == 200
+        assert response.text == ""
+        # Stage unchanged
+        assert _fetch_stage(client, "fp_prep") == "prep_in_progress"
+        # No new audit row, no new subprocess
+        assert _fetch_audit(client, "fp_prep") == []
+        assert popen_calls == []
+
+    def test_404_unknown_fingerprint(self, client: TestClient, popen_calls):
+        response = client.post("/board/jobs/fp_nonexistent/reactivate-and-prep")
+        assert response.status_code == 404
+        assert popen_calls == []
+
+    def test_429_when_queue_full(self, client: TestClient, popen_calls):
+        """Same 3-in-flight cap as /prep and /regenerate. Returns 429 and
+        does NOT advance the row's stage."""
+        conn = sqlite3.connect(client._db_path)
+        conn.execute(
+            "INSERT INTO jobs (id, fingerprint, url, title, company, source, stage) "
+            "VALUES ('inflight1','fp_inflight1','u','T','C','test','prep_in_progress')"
+        )
+        conn.execute(
+            "INSERT INTO jobs (id, fingerprint, url, title, company, source, stage) "
+            "VALUES ('inflight2','fp_inflight2','u','T','C','test','prep_in_progress')"
+        )
+        # fp_prep is already prep_in_progress → 3 in flight
+        conn.commit()
+        conn.close()
+
+        response = client.post("/board/jobs/fp_waitlisted/reactivate-and-prep")
+        assert response.status_code == 429
+
+        # Stage unchanged, no audit rows, no subprocess
+        assert _fetch_stage(client, "fp_waitlisted") == "waitlisted"
+        assert _fetch_audit(client, "fp_waitlisted") == []
+        prep_calls = [c for c in popen_calls if "prep_application.py" in c[1]]
+        assert prep_calls == []
+
+    def test_402_when_spend_ceiling_reached(self, client: TestClient, popen_calls, monkeypatch):
+        """Same spend-ceiling launch gate as /prep and /regenerate. Returns 402
+        without advancing the row's stage."""
+        from findajob.spend_ceiling import LaunchGateRefusal
+        from findajob.web.routes import board_actions
+
+        monkeypatch.setattr(
+            board_actions,
+            "check_launch_gate",
+            lambda _db: LaunchGateRefusal(ceiling_usd=50.0, current_sum_usd=51.23),
+        )
+
+        response = client.post("/board/jobs/fp_waitlisted/reactivate-and-prep")
+        assert response.status_code == 402
+
+        # Stage unchanged
+        assert _fetch_stage(client, "fp_waitlisted") == "waitlisted"
+        assert _fetch_audit(client, "fp_waitlisted") == []
+        prep_calls = [c for c in popen_calls if "prep_application.py" in c[1]]
+        assert prep_calls == []

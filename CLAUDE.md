@@ -182,7 +182,7 @@ responds in the same request — no poll cycle, no mirror table.
 | Flag for Prep | `POST /board/jobs/{fp}/prep` | Dashboard dropdown |
 | Regenerate | `POST /board/jobs/{fp}/regenerate` | Dashboard dropdown — gated by `GET /board/jobs/{fp}/regenerate/confirm` modal (#700); Cancel restores cell via `GET /board/jobs/{fp}/regenerate/cell` |
 | Applied | `POST /board/jobs/{fp}/apply` | Dashboard dropdown |
-| Waitlist | `POST /board/jobs/{fp}/waitlist` | Dashboard dropdown |
+| Waitlist | `POST /board/jobs/{fp}/waitlist` | Dashboard dropdown + Review tab button (#702) |
 | Reject (w/ reason) | `POST /board/jobs/{fp}/reject` | Dashboard / Review / Waitlist reject cell |
 | Interviewing | `POST /board/jobs/{fp}/interview` | Applied dropdown |
 | Offer | `POST /board/jobs/{fp}/offer` | Applied dropdown |
@@ -190,6 +190,7 @@ responds in the same request — no poll cycle, no mirror table.
 | Not Selected (w/ reason) | `POST /board/jobs/{fp}/not-selected` | Applied dropdown + reject cell |
 | Promote | `POST /board/jobs/{fp}/promote` | Review button |
 | Reactivate | `POST /board/jobs/{fp}/reactivate` | Waitlist button |
+| Reactivate and prep | `POST /board/jobs/{fp}/reactivate-and-prep` | Waitlist tab "Flag for Prep" button (#702). Same spend-ceiling + queue-cap gates as `/prep`; writes two audit rows for traceability. |
 | Change reject reason | `POST /board/jobs/{fp}/change-reject-reason` | Rejected tab inline dropdown (#697) |
 | Un-not-selected | `POST /board/jobs/{fp}/un-not-selected` | Not Selected tab button (#698) |
 | Change not-selected reason | `POST /board/jobs/{fp}/change-not-selected-reason` | Not Selected tab inline dropdown (#698) |

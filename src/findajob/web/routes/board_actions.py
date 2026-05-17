@@ -571,6 +571,74 @@ def reactivate(
     return HTMLResponse("")
 
 
+@router.post("/board/jobs/{fingerprint}/reactivate-and-prep", response_class=HTMLResponse)
+def reactivate_and_prep(
+    fingerprint: str,
+    request: Request,  # noqa: ARG001
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> HTMLResponse:
+    """Collapse the two-step waitlist→reactivate→prep flow (#702 G9).
+
+    Order of gates: 404 → idempotent-success-on-already-advanced → 409 →
+    402 (spend ceiling) → 429 (queue cap). Mutations only run after all
+    gates pass, so a tripped gate leaves the row at stage='waitlisted'.
+
+    Writes two audit rows for traceability — handle_reactivate writes
+    (waitlisted → scored | materials_drafted), then this route writes
+    (* → prep_in_progress).
+    """
+    job = _fetch_job(db, fingerprint)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    # Idempotency: match /prep's silent-success on already-in-flight rows so
+    # a fast double-click doesn't surface a 409.
+    if job["stage"] in ("prep_in_progress", "materials_drafted"):
+        return HTMLResponse("")
+
+    if job["stage"] != "waitlisted":
+        raise HTTPException(status_code=409, detail="Job is not waitlisted")
+
+    refusal = check_launch_gate(db)
+    if refusal is not None:
+        raise HTTPException(
+            status_code=402,
+            detail=(
+                f"Monthly LLM spend ceiling reached: ${refusal.current_sum_usd:.2f} / "
+                f"${refusal.ceiling_usd:.2f}. Raise or disable the ceiling in /settings/."
+            ),
+        )
+
+    if _prep_in_flight(db) >= MAX_CONCURRENT_PREPS:
+        return _prep_queue_full_response()
+
+    handle_reactivate(db, job)
+
+    # Re-read intermediate stage so the audit row's old_value matches whatever
+    # handle_reactivate landed on (scored if no folder, materials_drafted if folder).
+    intermediate_stage = db.execute("SELECT stage FROM jobs WHERE id=?", (job["id"],)).fetchone()[0]
+
+    now = datetime.now(UTC).isoformat()
+    db.execute(
+        "UPDATE jobs SET stage='prep_in_progress', apply_flag=1, stage_updated=?, updated_at=? WHERE id=?",
+        (now, now, job["id"]),
+    )
+    db.commit()
+    write_audit(db, job["id"], "stage", intermediate_stage, "prep_in_progress")
+    log_event(
+        "web_reactivate_and_prep_dispatched",
+        job_id=job["id"],
+        company=job["company"],
+        title=job["title"],
+    )
+
+    # _launch_prep_subprocess wants the full job row with url
+    full_job = db.execute("SELECT id, title, company, url, stage FROM jobs WHERE id=?", (job["id"],)).fetchone()
+    _launch_prep_subprocess(db, full_job)
+
+    return HTMLResponse("")
+
+
 _PROMOTABLE_STAGES = ("manual_review", "scored")
 
 

@@ -65,16 +65,32 @@
     </select>
     {% endif %}
   {% elif tab == 'review' %}
-    <button type="button"
-            class="rounded bg-indigo-600 px-2 py-1 text-xs font-medium text-white hover:bg-indigo-500"
-            hx-post="/board/jobs/{{ fp }}/promote"
-            hx-target="closest tr"
-            hx-swap="outerHTML">Promote</button>
+    <div class="flex gap-1">
+      <button type="button"
+              class="rounded bg-indigo-600 px-2 py-1 text-xs font-medium text-white hover:bg-indigo-500"
+              hx-post="/board/jobs/{{ fp }}/promote"
+              hx-target="closest tr"
+              hx-swap="outerHTML">Promote</button>
+      <button type="button"
+              class="rounded bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-200"
+              hx-post="/board/jobs/{{ fp }}/waitlist"
+              hx-target="closest tr"
+              hx-swap="outerHTML"
+              title="Defer to Waitlist without promoting">Waitlist</button>
+    </div>
   {% elif tab == 'waitlist' %}
-    <button type="button"
-            class="rounded bg-indigo-600 px-2 py-1 text-xs font-medium text-white hover:bg-indigo-500"
-            hx-post="/board/jobs/{{ fp }}/reactivate"
-            hx-target="closest tr"
-            hx-swap="outerHTML">Reactivate</button>
+    <div class="flex gap-1">
+      <button type="button"
+              class="rounded bg-indigo-600 px-2 py-1 text-xs font-medium text-white hover:bg-indigo-500"
+              hx-post="/board/jobs/{{ fp }}/reactivate"
+              hx-target="closest tr"
+              hx-swap="outerHTML">Reactivate</button>
+      <button type="button"
+              class="rounded bg-emerald-600 px-2 py-1 text-xs font-medium text-white hover:bg-emerald-500"
+              hx-post="/board/jobs/{{ fp }}/reactivate-and-prep"
+              hx-target="closest tr"
+              hx-swap="outerHTML"
+              title="Reactivate and start prep in one step">Flag for Prep</button>
+    </div>
   {% endif %}
 </td>
