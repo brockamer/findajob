@@ -65,15 +65,28 @@ def _prep_queue_full_response() -> HTMLResponse:
     )
 
 
-def _launch_prep_subprocess(db: sqlite3.Connection, job: sqlite3.Row) -> int:
+def _launch_prep_subprocess(
+    db: sqlite3.Connection,
+    job: sqlite3.Row,
+    *,
+    kind: str = "prep",
+    extra_args: tuple[str, ...] = (),
+) -> int:
     """Insert a ``background_tasks`` row, then spawn prep_application.
 
     Returns the new task_id so a caller (e.g. status page) can poll.
     The subprocess reads ``FINDAJOB_BG_TASK_ID`` from env and writes
     back ``status='succeeded'``/``'failed'`` on exit. Watchdog reaps
-    stuck rows after 60 minutes per the kind timeout.
+    stuck rows after the kind-specific timeout in
+    :data:`KIND_TIMEOUT_MINUTES`.
+
+    ``kind`` and ``extra_args`` are how the Phase B route (#691)
+    re-uses this launcher: ``kind='prep_phase_b'`` gives the watchdog
+    a distinct row class to reap into ``briefing_ready`` (not
+    ``scored``), and ``extra_args=('--phase=b',)`` tells the
+    orchestrator to skip Phase A re-runs.
     """
-    task_id = record_start(db, job_id=job["id"], kind="prep")
+    task_id = record_start(db, job_id=job["id"], kind=kind)
     try:
         proc = subprocess.Popen(
             [
@@ -83,6 +96,7 @@ def _launch_prep_subprocess(db: sqlite3.Connection, job: sqlite3.Row) -> int:
                 job["title"],
                 job["url"],
                 job["id"],
+                *extra_args,
             ],
             start_new_session=True,
             env={**os.environ, TASK_ID_ENV_VAR: str(task_id)},
@@ -457,6 +471,81 @@ def regenerate_cell(
         name="board/_status_cell.html",
         context={"row": row, "tab": "dashboard"},
     )
+
+
+@router.post("/board/jobs/{fingerprint}/continue-prep", response_class=HTMLResponse)
+def continue_prep(
+    fingerprint: str,
+    request: Request,
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> HTMLResponse:
+    """Promote a briefing_ready job into the Phase B subprocess (#691).
+
+    The briefing-first gate's "continue" half — the operator has read
+    the Phase A briefing on ``/materials/{fp}/`` and decided to spend
+    the Phase B budget (~$0.63–1.80 for tailor → cover → critique →
+    outreach). Gates mirror ``/prep`` exactly: 404 → idempotent on
+    already-advanced → 409 → 402 (spend ceiling) → 429 (queue cap).
+
+    Stage transition (``briefing_ready → prep_in_progress``) happens
+    BEFORE the subprocess spawn so the watchdog + concurrency cap
+    observe a consistent in-flight state — same invariant as
+    ``/prep``. Failure paths route to ``_handle_phase_b_failure``
+    (inside the orchestrator) which resets to ``briefing_ready`` and
+    preserves the prep folder so the operator can retry without
+    re-paying Phase A.
+    """
+    refusal = check_launch_gate(db)
+    if refusal is not None:
+        raise HTTPException(
+            status_code=402,
+            detail=(
+                f"Monthly LLM spend ceiling reached: ${refusal.current_sum_usd:.2f} / "
+                f"${refusal.ceiling_usd:.2f}. Raise or disable the ceiling in /settings/."
+            ),
+        )
+
+    row = _fetch_dashboard_row(db, fingerprint)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    # Idempotency: already in flight or already done — return current row.
+    if row["stage"] in ("prep_in_progress", "materials_drafted"):
+        return _render_dashboard_row(request, row, db)
+
+    if row["stage"] != "briefing_ready":
+        raise HTTPException(
+            status_code=409,
+            detail="Continue-prep only valid for jobs at stage='briefing_ready'",
+        )
+
+    if _prep_in_flight(db) >= MAX_CONCURRENT_PREPS:
+        return _prep_queue_full_response()
+
+    job = db.execute(
+        "SELECT id, title, company, url, stage FROM jobs WHERE fingerprint=?",
+        (fingerprint,),
+    ).fetchone()
+
+    now = datetime.now(UTC).isoformat()
+    db.execute(
+        "UPDATE jobs SET stage='prep_in_progress', stage_updated=?, updated_at=? WHERE id=?",
+        (now, now, job["id"]),
+    )
+    db.commit()
+    write_audit(db, job["id"], "stage", job["stage"], "prep_in_progress")
+    log_event(
+        "web_continue_prep_dispatched",
+        job_id=job["id"],
+        company=job["company"],
+        title=job["title"],
+    )
+
+    _launch_prep_subprocess(db, job, kind="prep_phase_b", extra_args=("--phase=b",))
+
+    updated = _fetch_dashboard_row(db, fingerprint)
+    assert updated is not None
+    return _render_dashboard_row(request, updated, db)
 
 
 @router.post("/board/jobs/{fingerprint}/apply", response_class=HTMLResponse)

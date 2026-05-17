@@ -22,6 +22,7 @@ def github_blob_url(path: str) -> str:
 FOLDER_STAGES: tuple[str, ...] = (
     "materials_drafted",
     "prep_in_progress",
+    "briefing_ready",
     "applied",
     "interview",
     "offer",
@@ -32,5 +33,8 @@ FOLDER_STAGES: tuple[str, ...] = (
 """Stages for which a job has a prep folder on disk.
 
 Used by `src/findajob/web/templates/_job_row.html` to decide hyperlink vs
-plain text for the company cell.
+plain text for the company cell. ``briefing_ready`` is included because
+Phase A (#691) writes briefing.md + briefing.docx to the prep folder
+before the operator-confirmed continuation gate — the folder link must
+be clickable so the operator can read the briefing before deciding.
 """

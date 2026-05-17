@@ -210,6 +210,7 @@ def test_router_registered_on_app(client: TestClient):
     assert "/board/jobs/{fingerprint}/prep" in paths
     for endpoint in (
         "apply",
+        "continue-prep",
         "interview",
         "offer",
         "withdraw",
@@ -688,6 +689,179 @@ class TestPrepConcurrencyCap:
 
         assert response.status_code == 200
         assert response.text.strip().startswith("<tr")
+        prep_calls = [c for c in popen_calls if "prep_application.py" in c[1]]
+        assert prep_calls == []
+
+
+# ── /continue-prep handler (#691 briefing-first gate) ─────────────────────
+
+
+def _seed_briefing_ready(
+    client: TestClient,
+    fingerprint: str = "fp_briefing",
+    *,
+    job_id: str = "id_briefing",
+    company: str = "Briefing Co",
+    title: str = "Senior Ops",
+) -> None:
+    """Insert a job at stage='briefing_ready' for the /continue-prep tests."""
+    conn = sqlite3.connect(client._db_path)
+    conn.execute(
+        "INSERT INTO jobs (id, fingerprint, url, title, company, source, stage, relevance_score) "
+        "VALUES (?, ?, 'https://example.com/job', ?, ?, 'test', 'briefing_ready', 8)",
+        (job_id, fingerprint, title, company),
+    )
+    conn.commit()
+    conn.close()
+
+
+def _fetch_background_tasks(client: TestClient, job_id: str) -> list[tuple[str, str]]:
+    """Return (kind, status) tuples for background_tasks rows for a job."""
+    conn = sqlite3.connect(client._db_path)
+    rows = conn.execute(
+        "SELECT kind, status FROM background_tasks WHERE job_id=? ORDER BY id",
+        (job_id,),
+    ).fetchall()
+    conn.close()
+    return [tuple(r) for r in rows]
+
+
+class TestContinuePrep:
+    def test_happy_path_advances_briefing_ready_to_prep_in_progress(self, client: TestClient, popen_calls):
+        _seed_briefing_ready(client)
+
+        response = client.post("/board/jobs/fp_briefing/continue-prep")
+
+        assert response.status_code == 200
+        assert _fetch_stage(client, "fp_briefing") == "prep_in_progress"
+        audit = _fetch_audit(client, "fp_briefing")
+        assert any(a == ("stage", "briefing_ready", "prep_in_progress") for a in audit)
+
+    def test_subprocess_launched_with_phase_b_flag(self, client: TestClient, popen_calls):
+        """Phase B is dispatched by passing --phase=b to prep_application.py;
+        absence of the flag would re-run Phase A and double-charge."""
+        _seed_briefing_ready(client)
+
+        client.post("/board/jobs/fp_briefing/continue-prep")
+
+        prep_calls = [c for c in popen_calls if "prep_application.py" in c[1]]
+        assert len(prep_calls) == 1
+        assert "--phase=b" in prep_calls[0]
+
+    def test_subprocess_uses_prep_phase_b_kind(self, client: TestClient, popen_calls):
+        """background_tasks.kind must be 'prep_phase_b' (not 'prep') so the
+        watchdog's reap_prep_phase_b resets to briefing_ready, not scored."""
+        _seed_briefing_ready(client)
+
+        client.post("/board/jobs/fp_briefing/continue-prep")
+
+        assert _fetch_background_tasks(client, "id_briefing") == [("prep_phase_b", "running")]
+
+    def test_returns_updated_row_html(self, client: TestClient, popen_calls):
+        _seed_briefing_ready(client)
+
+        response = client.post("/board/jobs/fp_briefing/continue-prep")
+
+        assert response.status_code == 200
+        assert response.text.strip().startswith("<tr")
+        assert 'data-fingerprint="fp_briefing"' in response.text
+
+    def test_404_on_unknown_fingerprint(self, client: TestClient, popen_calls):
+        response = client.post("/board/jobs/fp_nonexistent/continue-prep")
+
+        assert response.status_code == 404
+        assert popen_calls == []
+
+    def test_409_on_scored(self, client: TestClient, popen_calls):
+        """Non-briefing_ready stages other than the idempotent set must 409."""
+        response = client.post("/board/jobs/fp_scored/continue-prep")
+
+        assert response.status_code == 409
+        assert _fetch_stage(client, "fp_scored") == "scored"
+        assert _fetch_audit(client, "fp_scored") == []
+        assert popen_calls == []
+
+    def test_409_on_waitlisted(self, client: TestClient, popen_calls):
+        response = client.post("/board/jobs/fp_waitlisted/continue-prep")
+
+        assert response.status_code == 409
+        assert _fetch_stage(client, "fp_waitlisted") == "waitlisted"
+        assert popen_calls == []
+
+    def test_idempotent_on_prep_in_progress(self, client: TestClient, popen_calls):
+        """Double-click after first POST flipped to prep_in_progress: 200, no
+        new subprocess, no new audit row."""
+        response = client.post("/board/jobs/fp_prep/continue-prep")
+
+        assert response.status_code == 200
+        assert _fetch_stage(client, "fp_prep") == "prep_in_progress"
+        assert popen_calls == []
+        assert _fetch_audit(client, "fp_prep") == []
+
+    def test_idempotent_on_materials_drafted(self, client: TestClient, popen_calls):
+        """Clicking continue-prep on a fully-drafted job is a no-op."""
+        response = client.post("/board/jobs/fp_drafted/continue-prep")
+
+        assert response.status_code == 200
+        assert _fetch_stage(client, "fp_drafted") == "materials_drafted"
+        assert popen_calls == []
+
+    def test_double_post_launches_subprocess_once(self, client: TestClient, popen_calls):
+        _seed_briefing_ready(client)
+
+        first = client.post("/board/jobs/fp_briefing/continue-prep")
+        second = client.post("/board/jobs/fp_briefing/continue-prep")
+
+        assert first.status_code == 200
+        assert second.status_code == 200
+        prep_calls = [c for c in popen_calls if "prep_application.py" in c[1]]
+        assert len(prep_calls) == 1
+        assert _fetch_stage(client, "fp_briefing") == "prep_in_progress"
+
+    def test_429_when_queue_full(self, client: TestClient, popen_calls):
+        """Phase B shares the cap with Phase A — three Phase A subprocesses
+        in flight should block a new continue-prep."""
+        _seed_briefing_ready(client)
+        conn = sqlite3.connect(client._db_path)
+        conn.execute(
+            "INSERT INTO jobs (id, fingerprint, url, title, company, source, stage) "
+            "VALUES ('inflight1','fp_inflight1','u','T','C','test','prep_in_progress')"
+        )
+        conn.execute(
+            "INSERT INTO jobs (id, fingerprint, url, title, company, source, stage) "
+            "VALUES ('inflight2','fp_inflight2','u','T','C','test','prep_in_progress')"
+        )
+        # fp_prep is already prep_in_progress → 3 in flight total
+        conn.commit()
+        conn.close()
+
+        response = client.post("/board/jobs/fp_briefing/continue-prep")
+
+        assert response.status_code == 429
+        assert _fetch_stage(client, "fp_briefing") == "briefing_ready"
+        assert _fetch_audit(client, "fp_briefing") == []
+        prep_calls = [c for c in popen_calls if "prep_application.py" in c[1]]
+        assert prep_calls == []
+
+    def test_402_when_spend_ceiling_reached(self, client: TestClient, popen_calls, monkeypatch):
+        """Same spend-ceiling launch gate as /prep. Returns 402 without
+        advancing the row's stage so the briefing isn't orphaned."""
+        from findajob.spend_ceiling import LaunchGateRefusal
+        from findajob.web.routes import board_actions
+
+        monkeypatch.setattr(
+            board_actions,
+            "check_launch_gate",
+            lambda _db: LaunchGateRefusal(ceiling_usd=50.0, current_sum_usd=51.23),
+        )
+
+        _seed_briefing_ready(client)
+
+        response = client.post("/board/jobs/fp_briefing/continue-prep")
+
+        assert response.status_code == 402
+        assert _fetch_stage(client, "fp_briefing") == "briefing_ready"
+        assert _fetch_audit(client, "fp_briefing") == []
         prep_calls = [c for c in popen_calls if "prep_application.py" in c[1]]
         assert prep_calls == []
 

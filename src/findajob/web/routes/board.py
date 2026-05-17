@@ -43,7 +43,7 @@ _DASHBOARD_DEFAULT_SCORE_MIN = 7
 # being clobbered by the base WHERE. The default keeps cold-load behavior
 # unchanged at score >= 7.
 _DASHBOARD_BASE_WHERE = (
-    "stage IN ('scored','manual_review','prep_in_progress','materials_drafted')"
+    "stage IN ('scored','manual_review','prep_in_progress','briefing_ready','materials_drafted')"
     " AND NOT EXISTS ("
     "  SELECT 1 FROM jobs sib"
     "  WHERE sib.id != jobs.id"

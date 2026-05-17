@@ -31,11 +31,15 @@ from datetime import UTC, datetime, timedelta
 # Per-kind timeout in minutes. Watchdog reaps rows older than this and
 # in ``status='running'``. Numbers chosen to match prior heuristics:
 # - prep: 60min, matched by stale-prep watchdog reset (CLAUDE.md)
+# - prep_phase_b: 60min, mirrors prep — Phase B is the more expensive
+#   half of the split orchestrator (#691); reset target is briefing_ready
+#   (NOT scored) so the operator can retry without losing the briefing.
 # - interview_prep: 30min, conservative ceiling for a one-shot Opus call
 # - speculative_research: 10min, matched by ``fail_stuck_speculative``
 # These are upper bounds — typical runtime is well below.
 KIND_TIMEOUT_MINUTES: dict[str, int] = {
     "prep": 60,
+    "prep_phase_b": 60,
     "interview_prep": 30,
     "speculative_research": 10,
 }

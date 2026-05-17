@@ -7,6 +7,7 @@
   'scored': 'bg-slate-100 text-slate-700',
   'manual_review': 'bg-amber-100 text-amber-800',
   'prep_in_progress': 'bg-sky-100 text-sky-800',
+  'briefing_ready': 'bg-teal-100 text-teal-800',
   'materials_drafted': 'bg-indigo-100 text-indigo-800',
   'applied': 'bg-emerald-100 text-emerald-800',
   'interview': 'bg-purple-100 text-purple-800',
@@ -28,6 +29,79 @@
     <span class="text-slate-400 font-mono truncate">{{ folder_name }}</span>
   </div>
 </header>
+
+{# Briefing-first gate (#691). When Phase A is done and we're waiting for
+   the operator to decide whether to spend ~$0.63–1.80 on Phase B, surface
+   the decision affordances inline: Continue prep (POST /continue-prep)
+   or reject from the briefing with a substantive reason (POST /reject —
+   handle_rejection writes feedback_log so the scorer still learns from
+   the decision). The reject_reasons dropdown is the same one the board
+   tabs use; an "Other" option falls back to free text via the input. #}
+{% if is_briefing_gate %}
+<aside class="mb-5 border-2 border-teal-300 bg-teal-50 rounded-md px-4 py-4"
+       x-data="{ rejecting: false, reason: '' }">
+  <div class="flex items-start gap-3">
+    <span class="text-teal-700 text-xl shrink-0" aria-hidden="true">📋</span>
+    <div class="flex-1 min-w-0">
+      <h2 class="text-base font-semibold text-teal-900">Briefing ready — decide before continuing prep</h2>
+      <p class="text-sm text-slate-700 mt-1">
+        Phase A is complete (company research, briefing, fit analysis).
+        Read the briefing below, then continue to Phase B (resume tailor,
+        cover, recruiter critique, outreach) — typical cost ~$0.63–$1.80 —
+        or reject with a substantive reason so the scorer learns from your
+        signal.
+      </p>
+      <div class="mt-3 flex flex-wrap items-center gap-2">
+        <form method="POST" action="/board/jobs/{{ fingerprint }}/continue-prep" x-show="!rejecting">
+          <button type="submit"
+                  class="inline-flex items-center px-4 py-2 rounded text-sm font-medium bg-teal-700 hover:bg-teal-800 text-white">
+            Continue prep →
+          </button>
+        </form>
+        <button type="button"
+                class="inline-flex items-center px-3 py-2 rounded text-sm font-medium border border-rose-300 text-rose-700 hover:bg-rose-50"
+                x-show="!rejecting"
+                @click="rejecting = true">
+          Reject…
+        </button>
+      </div>
+      {# Reject form — uses the same /reject endpoint as the board tabs.
+         handle_rejection moves the folder to companies/_rejected/ and
+         writes feedback_log for the scorer. The dropdown surfaces the
+         canonical reject_reasons; blank input on submit falls back to
+         "Other" server-side. #}
+      <form method="POST" action="/board/jobs/{{ fingerprint }}/reject"
+            class="mt-4 flex flex-wrap items-center gap-2 pt-3 border-t border-teal-200"
+            x-show="rejecting" x-cloak>
+        <label class="text-sm text-slate-700 font-medium">Reject reason:</label>
+        {% if reject_reasons %}
+        <select name="reason" x-model="reason"
+                class="text-sm border border-slate-300 rounded px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-rose-500">
+          <option value="">Choose…</option>
+          {% for r in reject_reasons %}
+          <option value="{{ r }}">{{ r }}</option>
+          {% endfor %}
+          <option value="Other">Other</option>
+        </select>
+        {% else %}
+        <input type="text" name="reason" x-model="reason" placeholder="e.g. Wrong title fit"
+               class="text-sm border border-slate-300 rounded px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-rose-500">
+        {% endif %}
+        <button type="submit"
+                class="inline-flex items-center px-3 py-1.5 rounded text-sm font-medium bg-rose-700 hover:bg-rose-800 text-white disabled:opacity-60"
+                :disabled="!reason">
+          Reject
+        </button>
+        <button type="button"
+                class="inline-flex items-center px-3 py-1.5 rounded text-sm font-medium border border-slate-300 text-slate-700 hover:bg-white"
+                @click="rejecting = false; reason = ''">
+          Cancel
+        </button>
+      </form>
+    </div>
+  </div>
+</aside>
+{% endif %}
 
 {# Post-applied banner (#210) — when the materials have already been sent,
    make it clear that edits here don't change what the employer received.

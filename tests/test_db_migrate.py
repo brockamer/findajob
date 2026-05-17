@@ -486,3 +486,203 @@ def test_briefing_ready_helper_is_idempotent(tmp_path: Path) -> None:
         assert rowid_after == rowid_before, "rebuild ran on second apply_pending — helper is not idempotent"
     finally:
         conn.close()
+
+
+# ── #691: rebuild helper must preserve indexes ────────────────────────────
+#
+# Regression: a constraint-relaxation rebuild that calls
+# ``ALTER TABLE ... RENAME`` + ``DROP TABLE`` drops every named index
+# attached to the renamed shell. Without re-applying them, the rebuilt
+# ``jobs`` runs without ``idx_jobs_fingerprint`` / ``idx_jobs_stage`` /
+# etc., silently degrading every dashboard query. Verified empirically
+# against sqlite_master before the fix landed.
+
+
+def _named_indexes(conn: sqlite3.Connection, table: str) -> list[str]:
+    """Return non-autoindex names attached to ``table`` (sorted)."""
+    rows = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name=? "
+        "AND name NOT LIKE 'sqlite_autoindex_%' ORDER BY name",
+        (table,),
+    ).fetchall()
+    return [r[0] for r in rows]
+
+
+def test_briefing_ready_rebuild_preserves_jobs_indexes(tmp_path: Path) -> None:
+    """The rebuild path on a legacy stack (CHECK without briefing_ready) must
+    leave every named ``jobs`` index in place. Without index re-creation
+    the rebuilt table runs without ``idx_jobs_fingerprint`` etc.,
+    silently degrading every dashboard query.
+    """
+    db = tmp_path / "rebuild_preserves_indexes.db"
+
+    conn = sqlite3.connect(str(db))
+    try:
+        apply_pending(conn)
+        indexes_at_head = _named_indexes(conn, "jobs")
+        assert indexes_at_head, "fixture-baseline broken: fresh DB should have named jobs indexes"
+    finally:
+        conn.close()
+
+    # Force the rebuild by simulating the pre-#691 CHECK constraint.
+    conn = sqlite3.connect(str(db))
+    try:
+        old_check_create = """
+        CREATE TABLE jobs_old_check (
+            id TEXT PRIMARY KEY,
+            fingerprint TEXT UNIQUE NOT NULL,
+            url TEXT NOT NULL,
+            title TEXT NOT NULL,
+            company TEXT NOT NULL,
+            source TEXT NOT NULL DEFAULT 'test',
+            stage TEXT DEFAULT 'discovered' CHECK(stage IN (
+                'discovered', 'enriched', 'scored', 'manual_review',
+                'prep_in_progress', 'materials_drafted', 'waitlisted', 'applied',
+                'response_received', 'interview', 'offer', 'rejected',
+                'not_selected', 'withdrawn'
+            ))
+        )
+        """
+        conn.execute("PRAGMA foreign_keys=OFF")
+        cols = [row[1] for row in conn.execute("PRAGMA table_info(jobs)").fetchall()]
+        keep_cols = ["id", "fingerprint", "url", "title", "company", "source", "stage"]
+        keep_cols_csv = ",".join(c for c in keep_cols if c in cols)
+        conn.execute("ALTER TABLE jobs RENAME TO _jobs_v1_oldcheck")
+        conn.executescript(old_check_create.replace("jobs_old_check", "jobs"))
+        conn.execute(f"INSERT INTO jobs ({keep_cols_csv}) SELECT {keep_cols_csv} FROM _jobs_v1_oldcheck")
+        conn.execute("DROP TABLE _jobs_v1_oldcheck")
+        conn.commit()
+        conn.execute("PRAGMA foreign_keys=ON")
+    finally:
+        conn.close()
+
+    conn = sqlite3.connect(str(db))
+    try:
+        apply_pending(conn)
+        indexes_after_rebuild = _named_indexes(conn, "jobs")
+        assert indexes_after_rebuild == indexes_at_head, (
+            f"rebuild dropped jobs indexes: had {indexes_at_head}, now {indexes_after_rebuild}"
+        )
+    finally:
+        conn.close()
+
+
+# ── #691: background_tasks.kind gains 'prep_phase_b' ──────────────────────
+#
+# Phase B is dispatched as a distinct ``background_tasks.kind`` so the
+# watchdog can reap stuck Phase B runs into ``briefing_ready`` (preserving
+# the briefing folder) instead of ``scored``. Mirror the briefing_ready
+# stage-CHECK migration: fresh DB picks it up via 0002; legacy v1 stacks
+# absorb it via the rebuild helper.
+
+
+def _kind_check_accepts(conn: sqlite3.Connection, kind_value: str) -> bool:
+    """True iff an INSERT of a background_tasks row with this kind succeeds."""
+    try:
+        conn.execute(
+            "INSERT INTO background_tasks (job_id, kind) VALUES (?, ?)",
+            (f"probe-{kind_value}", kind_value),
+        )
+        conn.execute("DELETE FROM background_tasks WHERE job_id=?", (f"probe-{kind_value}",))
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        conn.rollback()
+        return False
+
+
+def test_fresh_db_accepts_prep_phase_b_kind(tmp_path: Path) -> None:
+    """A fresh DB migrated through ``apply_pending`` accepts
+    ``kind='prep_phase_b'`` as a ``background_tasks.kind`` value."""
+    db = tmp_path / "fresh_phase_b.db"
+    conn = sqlite3.connect(str(db))
+    try:
+        apply_pending(conn)
+        assert _kind_check_accepts(conn, "prep_phase_b"), "fresh DB must accept kind='prep_phase_b' after apply_pending"
+    finally:
+        conn.close()
+
+
+def test_existing_v1_db_gains_prep_phase_b_via_helper(tmp_path: Path) -> None:
+    """A stack at schema_version=1 with the OLD ``background_tasks.kind``
+    CHECK (no ``prep_phase_b``) gets the constraint updated when
+    ``apply_pending`` runs again. Existing rows + indexes preserved."""
+    db = tmp_path / "existing_v1_phase_b.db"
+
+    conn = sqlite3.connect(str(db))
+    try:
+        apply_pending(conn)
+    finally:
+        conn.close()
+
+    conn = sqlite3.connect(str(db))
+    try:
+        # Sentinel row to verify preservation across the rebuild.
+        conn.execute("INSERT INTO background_tasks (job_id, kind) VALUES ('preserve-2', 'prep')")
+        conn.commit()
+
+        # Simulate the pre-#691 CHECK (no prep_phase_b).
+        old_check = """
+        CREATE TABLE background_tasks_old_check (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id TEXT NOT NULL,
+            kind TEXT NOT NULL CHECK(kind IN ('prep', 'interview_prep', 'speculative_research')),
+            started_at TEXT NOT NULL DEFAULT (datetime('now')),
+            finished_at TEXT,
+            status TEXT NOT NULL DEFAULT 'running' CHECK(status IN ('running', 'succeeded', 'failed')),
+            error_message TEXT,
+            pid INTEGER
+        )
+        """
+        conn.execute("PRAGMA foreign_keys=OFF")
+        cols = [row[1] for row in conn.execute("PRAGMA table_info(background_tasks)").fetchall()]
+        cols_csv = ",".join(cols)
+        conn.execute("ALTER TABLE background_tasks RENAME TO _bg_v1_oldcheck")
+        conn.executescript(old_check.replace("background_tasks_old_check", "background_tasks"))
+        conn.execute(f"INSERT INTO background_tasks ({cols_csv}) SELECT {cols_csv} FROM _bg_v1_oldcheck")
+        conn.execute("DROP TABLE _bg_v1_oldcheck")
+        conn.commit()
+        conn.execute("PRAGMA foreign_keys=ON")
+
+        assert not _kind_check_accepts(conn, "prep_phase_b"), (
+            "test setup broken: simulated-old-state should reject prep_phase_b"
+        )
+    finally:
+        conn.close()
+
+    conn = sqlite3.connect(str(db))
+    try:
+        apply_pending(conn)
+        assert _kind_check_accepts(conn, "prep_phase_b"), "after apply_pending, kind='prep_phase_b' must be accepted"
+        # Sentinel + named indexes preserved.
+        row = conn.execute("SELECT job_id, kind FROM background_tasks WHERE job_id='preserve-2'").fetchone()
+        assert row == ("preserve-2", "prep")
+        assert _named_indexes(conn, "background_tasks") == [
+            "idx_background_tasks_job_id",
+            "idx_background_tasks_status_kind",
+        ], "rebuild must preserve background_tasks named indexes"
+    finally:
+        conn.close()
+
+
+def test_prep_phase_b_helper_is_idempotent(tmp_path: Path) -> None:
+    """Running ``apply_pending`` twice on a DB that already has
+    ``prep_phase_b`` in the CHECK must not trigger a second rebuild.
+    """
+    db = tmp_path / "idempotent_phase_b.db"
+    conn = sqlite3.connect(str(db))
+    try:
+        apply_pending(conn)
+        conn.execute("INSERT INTO background_tasks (job_id, kind) VALUES ('idem-2', 'prep_phase_b')")
+        conn.commit()
+        rowid_before = conn.execute("SELECT rowid FROM background_tasks WHERE job_id='idem-2'").fetchone()[0]
+    finally:
+        conn.close()
+
+    conn = sqlite3.connect(str(db))
+    try:
+        apply_pending(conn)
+        rowid_after = conn.execute("SELECT rowid FROM background_tasks WHERE job_id='idem-2'").fetchone()[0]
+        assert rowid_after == rowid_before, "rebuild ran on second apply_pending — helper is not idempotent"
+    finally:
+        conn.close()

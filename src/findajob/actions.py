@@ -261,6 +261,74 @@ def reset_prep_to_scored(
     return True
 
 
+def reset_prep_to_briefing_ready(
+    conn: sqlite3.Connection,
+    job_id: str,
+    reason: str,
+) -> bool:
+    """Roll a failed Phase B attempt back from prep_in_progress to briefing_ready.
+
+    Companion to :func:`reset_prep_to_scored` for the #691 briefing-first
+    gate. The operator has already paid for Phase A — the briefing exists
+    on disk and the fit scores are stored. A Phase B subprocess crash
+    that reset to ``scored`` would discard both and force a re-run of the
+    whole pipeline. Resetting to ``briefing_ready`` instead preserves the
+    Phase A work so the operator can retry Phase B (or reject from the
+    briefing) without re-paying ~$0.33.
+
+    Guards on stage='prep_in_progress' to avoid clobbering a Phase B that
+    raced ahead to materials_drafted. Critically does NOT null
+    ``prep_folder_path`` — that's how Phase B re-entry knows where to
+    re-read the briefing.
+
+    Returns True if the reset actually happened.
+    """
+    now = datetime.now(UTC).isoformat()
+    cur = conn.execute(
+        "UPDATE jobs SET stage='briefing_ready', stage_updated=?, updated_at=? WHERE id=? AND stage='prep_in_progress'",
+        (now, now, job_id),
+    )
+    conn.commit()
+    if cur.rowcount == 0:
+        return False
+    write_audit(conn, job_id, "stage", "prep_in_progress", "briefing_ready")
+    log_event("prep_phase_b_failed_reset", job_id=job_id, reason=reason)
+    return True
+
+
+def reset_briefing_ready_to_scored(
+    conn: sqlite3.Connection,
+    job_id: str,
+    reason: str,
+) -> bool:
+    """Roll a stuck briefing_ready job back to scored after the decision-window expires.
+
+    For the #691 48h watchdog reaper. A briefing the operator never
+    decided on isn't dead — the briefing folder remains on disk so the
+    operator can re-flag the job (via the standard /prep route) and the
+    folder link will resurface the existing briefing rather than
+    re-paying Phase A. The DB row drops out of the "awaiting decision"
+    section without forfeiting the Phase A work.
+
+    Guards on stage='briefing_ready' to avoid clobbering a job that the
+    operator continued in the meantime. Critically does NOT null
+    ``prep_folder_path`` — that's the resurface path for re-flagged jobs.
+
+    Returns True if the reset actually happened.
+    """
+    now = datetime.now(UTC).isoformat()
+    cur = conn.execute(
+        "UPDATE jobs SET stage='scored', stage_updated=?, updated_at=? WHERE id=? AND stage='briefing_ready'",
+        (now, now, job_id),
+    )
+    conn.commit()
+    if cur.rowcount == 0:
+        return False
+    write_audit(conn, job_id, "stage", "briefing_ready", "scored")
+    log_event("briefing_ready_stale_reset", job_id=job_id, reason=reason)
+    return True
+
+
 def promote_to_scored(
     conn: sqlite3.Connection,
     job: Any,

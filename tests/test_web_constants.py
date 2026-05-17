@@ -8,6 +8,7 @@ def test_folder_stages_is_frozen_tuple() -> None:
     expected = {
         "materials_drafted",
         "prep_in_progress",
+        "briefing_ready",
         "applied",
         "interview",
         "offer",

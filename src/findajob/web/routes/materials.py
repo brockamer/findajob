@@ -71,6 +71,11 @@ _APPLIED_DATE_RE = re.compile(r"\.applied-(\d{4}-\d{2}-\d{2})\.md$")
 # operator that edits don't change what the employer received.
 POST_APPLIED_STAGES = frozenset({"applied", "interview", "offer", "not_selected", "withdrawn"})
 
+# Briefing-first gate stage (#691). The folder view renders a Continue-prep
+# affordance + reject dropdown when stage matches, so the operator can
+# decide based on Phase A's briefing before paying for Phase B.
+BRIEFING_GATE_STAGE = "briefing_ready"
+
 
 def _latest_applied_date(folder: Path) -> str | None:
     """Return the most recent date (YYYY-MM-DD) seen in *.applied-DATE.md
@@ -362,6 +367,20 @@ def folder_view(
     is_post_applied = stage in POST_APPLIED_STAGES
     applied_date = _latest_applied_date(folder) if is_post_applied else None
 
+    # Briefing-first gate (#691). Load reject_reasons only when the gate is
+    # active so the folder view stays cheap for the other 99% of states.
+    is_briefing_gate = stage == BRIEFING_GATE_STAGE
+    reject_reasons: tuple[str, ...] = ()
+    if is_briefing_gate:
+        from findajob.config_loader import load_reject_reasons
+
+        try:
+            reject_reasons, _ = load_reject_reasons()
+        except Exception:
+            # Missing / malformed yaml: the gate still renders with a
+            # free-text reject input via the fallback (handled in template).
+            reject_reasons = ()
+
     templates = request.app.state.templates
     return templates.TemplateResponse(
         request=request,
@@ -378,6 +397,8 @@ def folder_view(
             "breakdown_total": breakdown_total,
             "is_post_applied": is_post_applied,
             "applied_date": applied_date,
+            "is_briefing_gate": is_briefing_gate,
+            "reject_reasons": reject_reasons,
         },
     )
 

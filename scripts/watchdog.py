@@ -30,7 +30,11 @@ import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from findajob.actions import reset_prep_to_scored
+from findajob.actions import (
+    reset_briefing_ready_to_scored,
+    reset_prep_to_briefing_ready,
+    reset_prep_to_scored,
+)
 from findajob.audit import log_event
 from findajob.background_tasks import KIND_TIMEOUT_MINUTES, find_stuck, record_failed
 from findajob.db import connect
@@ -41,7 +45,14 @@ ORPHAN_FOLDER_MIN_AGE_MIN = 120
 """2h grace before sweeping an orphan — long enough that an in-flight prep
 that hasn't yet written prep_folder_path won't get swept mid-run."""
 
+BRIEFING_READY_STALE_AGE_HOURS = 48
+"""Briefing-ready jobs the operator hasn't decided on within 48h reset to
+``scored``. Keeps the dashboard's awaiting-decision section honest while
+preserving ``prep_folder_path`` so a re-flag resurfaces the existing
+briefing rather than re-paying Phase A (#691)."""
+
 _WATCHDOG_REASON = "watchdog_stale_reset"
+_BRIEFING_STALE_REASON = "watchdog_briefing_ready_stale"
 
 
 def reap_prep(conn: sqlite3.Connection) -> int:
@@ -61,6 +72,56 @@ def reap_prep(conn: sqlite3.Connection) -> int:
             error_message=f"watchdog: subprocess > {timeout}min — likely died (PID {row['pid']})",
         )
         if reset_prep_to_scored(conn, row["job_id"], reason=_WATCHDOG_REASON):
+            count += 1
+    return count
+
+
+def reap_prep_phase_b(conn: sqlite3.Connection) -> int:
+    """Mark stuck `prep_phase_b` background_tasks failed; reset stage to briefing_ready.
+
+    Companion to :func:`reap_prep` for the #691 briefing-first gate. The
+    distinct ``kind='prep_phase_b'`` (vs ``kind='prep'``) lets the
+    watchdog route Phase B failures to ``reset_prep_to_briefing_ready``
+    (preserves ``prep_folder_path`` + briefing folder) instead of
+    ``reset_prep_to_scored`` (would discard both). The operator can
+    re-try Phase B without re-paying Phase A.
+    """
+    timeout = KIND_TIMEOUT_MINUTES["prep_phase_b"]
+    stuck = find_stuck(conn, kind="prep_phase_b", max_age_minutes=timeout)
+    count = 0
+    for row in stuck:
+        record_failed(
+            conn,
+            row["id"],
+            error_message=f"watchdog: subprocess > {timeout}min — likely died (PID {row['pid']})",
+        )
+        if reset_prep_to_briefing_ready(conn, row["job_id"], reason=_WATCHDOG_REASON):
+            count += 1
+    return count
+
+
+def reap_briefing_ready_stale(conn: sqlite3.Connection) -> int:
+    """Reset briefing_ready jobs older than 48h to ``scored``.
+
+    The 48h ceiling on the operator decision window (#691). A briefing
+    the operator never decided on isn't dead — ``prep_folder_path`` is
+    preserved so a re-flag resurfaces the existing briefing rather than
+    re-paying Phase A. This reaper cleans up the dashboard's
+    awaiting-decision section without forfeiting Phase A's work.
+
+    Distinct from :func:`reap_prep_phase_b`: this one is time-since-stage,
+    not subprocess-stuck. No ``background_tasks`` row to mark failed —
+    Phase A already finished cleanly; only the operator's decision is
+    overdue. Uses ``jobs.stage_updated`` as the age signal.
+    """
+    cutoff = (datetime.now(UTC) - timedelta(hours=BRIEFING_READY_STALE_AGE_HOURS)).isoformat()
+    stale = conn.execute(
+        "SELECT id FROM jobs WHERE stage='briefing_ready' AND stage_updated < ?",
+        (cutoff,),
+    ).fetchall()
+    count = 0
+    for row in stale:
+        if reset_briefing_ready_to_scored(conn, row["id"], reason=_BRIEFING_STALE_REASON):
             count += 1
     return count
 
@@ -198,6 +259,8 @@ def main() -> None:
     conn.row_factory = sqlite3.Row
     try:
         prep_count = reap_prep(conn)
+        phase_b_count = reap_prep_phase_b(conn)
+        briefing_stale_count = reap_briefing_ready_stale(conn)
         interview_count = reap_interview_prep(conn)
         spec_count = reap_speculative_research(conn)
         orphans = sweep_orphan_folders(conn)
@@ -206,6 +269,8 @@ def main() -> None:
     log_event(
         "watchdog_run",
         stale_reset=prep_count,
+        prep_phase_b_failed=phase_b_count,
+        briefing_ready_stale_reset=briefing_stale_count,
         interview_failed=interview_count,
         speculative_failed=spec_count,
         orphans_swept=orphans,

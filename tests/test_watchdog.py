@@ -367,3 +367,175 @@ def test_sweep_orphan_folders_handles_missing_companies_dir(db, tmp_path, monkey
     monkeypatch.setattr(watchdog, "BASE", str(tmp_path))
     # companies/ deliberately not created
     assert watchdog.sweep_orphan_folders(db) == 0
+
+
+# ── reap_prep_phase_b (#691) ──────────────────────────────────────────────
+
+
+def _insert_job_with_folder(conn, *, stage: str, prep_folder_path: str) -> str:
+    """Insert a jobs row including prep_folder_path so the Phase B reaper's
+    folder-preservation invariant can be exercised."""
+    job_id = str(uuid.uuid4())[:8]
+    stage_updated = datetime.now(UTC).isoformat()
+    conn.execute(
+        "INSERT INTO jobs (id, fingerprint, url, title, company, source, stage, stage_updated, prep_folder_path) "
+        "VALUES (?, ?, ?, 'Ops', 'Acme', 'manual', ?, ?, ?)",
+        (job_id, f"fp_{job_id}", f"https://example.com/{job_id}", stage, stage_updated, prep_folder_path),
+    )
+    conn.commit()
+    return job_id
+
+
+def test_reap_prep_phase_b_resets_to_briefing_ready(db, _patch_log):
+    """A stuck prep_phase_b row past the kind timeout → background_tasks row
+    marked failed AND jobs.stage rolls back to briefing_ready (NOT scored).
+    Critically, prep_folder_path is preserved so the operator can re-try
+    Phase B without re-paying Phase A."""
+    job_id = _insert_job_with_folder(db, stage="prep_in_progress", prep_folder_path="/tmp/prep_folder_xyz")
+    task_id = record_start(db, job_id=job_id, kind="prep_phase_b", pid=99)
+    _backdate_task(db, task_id, minutes_ago=KIND_TIMEOUT_MINUTES["prep_phase_b"] + 1)
+
+    count = watchdog.reap_prep_phase_b(db)
+
+    assert count == 1
+    row = db.execute("SELECT stage, prep_folder_path FROM jobs WHERE id=?", (job_id,)).fetchone()
+    assert row["stage"] == "briefing_ready"
+    assert row["prep_folder_path"] == "/tmp/prep_folder_xyz", "Phase B reaper must preserve briefing folder"
+    task_status = db.execute("SELECT status FROM background_tasks WHERE id=?", (task_id,)).fetchone()["status"]
+    assert task_status == "failed"
+
+
+def test_reap_prep_phase_b_leaves_fresh_rows_alone(db, _patch_log):
+    """A prep_phase_b row inside the timeout window is not reaped."""
+    job_id = _insert_job_with_folder(db, stage="prep_in_progress", prep_folder_path="/tmp/x")
+    task_id = record_start(db, job_id=job_id, kind="prep_phase_b")
+    # default started_at = now → fresh
+
+    count = watchdog.reap_prep_phase_b(db)
+
+    assert count == 0
+    assert db.execute("SELECT status FROM background_tasks WHERE id=?", (task_id,)).fetchone()["status"] == "running"
+    assert db.execute("SELECT stage FROM jobs WHERE id=?", (job_id,)).fetchone()["stage"] == "prep_in_progress"
+
+
+def test_reap_prep_phase_b_does_not_touch_prep_kind(db, _patch_log):
+    """A stuck kind='prep' row is left for reap_prep — different reset target.
+
+    Regression cover for the bug this whole arc avoids: if reap_prep_phase_b
+    swept up plain 'prep' rows too, Phase A subprocess crashes would land
+    in briefing_ready (with an empty folder) instead of scored.
+    """
+    job_id = _insert_job_with_folder(db, stage="prep_in_progress", prep_folder_path="/tmp/y")
+    task_id = record_start(db, job_id=job_id, kind="prep")
+    _backdate_task(db, task_id, minutes_ago=KIND_TIMEOUT_MINUTES["prep"] + 1)
+
+    count = watchdog.reap_prep_phase_b(db)
+
+    assert count == 0
+    assert db.execute("SELECT status FROM background_tasks WHERE id=?", (task_id,)).fetchone()["status"] == "running"
+    # Stage still prep_in_progress (would become 'scored' under reap_prep, not 'briefing_ready' here)
+    assert db.execute("SELECT stage FROM jobs WHERE id=?", (job_id,)).fetchone()["stage"] == "prep_in_progress"
+
+
+def test_reap_prep_phase_b_writes_audit_log_entry(db, _patch_log):
+    """The phase-B-specific transition is recorded so operator-visible
+    history distinguishes 'Phase A crashed' from 'Phase B crashed'."""
+    job_id = _insert_job_with_folder(db, stage="prep_in_progress", prep_folder_path="/tmp/z")
+    task_id = record_start(db, job_id=job_id, kind="prep_phase_b")
+    _backdate_task(db, task_id, minutes_ago=120)
+
+    watchdog.reap_prep_phase_b(db)
+
+    audit_row = db.execute(
+        "SELECT old_value, new_value FROM audit_log WHERE job_id=? AND field_changed='stage'",
+        (job_id,),
+    ).fetchone()
+    assert audit_row is not None
+    assert audit_row["old_value"] == "prep_in_progress"
+    assert audit_row["new_value"] == "briefing_ready"
+
+
+# ── reap_briefing_ready_stale (#691) ──────────────────────────────────────
+
+
+def _backdate_stage(conn, job_id: str, *, hours_ago: int) -> None:
+    """Push a jobs row's stage_updated into the past so the briefing-stale
+    reaper sees it as overdue."""
+    past = (datetime.now(UTC) - timedelta(hours=hours_ago)).isoformat()
+    conn.execute("UPDATE jobs SET stage_updated=? WHERE id=?", (past, job_id))
+    conn.commit()
+
+
+def test_reap_briefing_ready_stale_resets_after_48h(db, _patch_log):
+    """A briefing_ready job whose stage_updated is older than the 48h
+    ceiling resets to scored, preserving prep_folder_path so a re-flag
+    resurfaces the existing briefing."""
+    job_id = _insert_job_with_folder(db, stage="briefing_ready", prep_folder_path="/tmp/briefing_xyz")
+    _backdate_stage(db, job_id, hours_ago=watchdog.BRIEFING_READY_STALE_AGE_HOURS + 1)
+
+    count = watchdog.reap_briefing_ready_stale(db)
+
+    assert count == 1
+    row = db.execute("SELECT stage, prep_folder_path FROM jobs WHERE id=?", (job_id,)).fetchone()
+    assert row["stage"] == "scored"
+    assert row["prep_folder_path"] == "/tmp/briefing_xyz", "48h reaper must preserve the briefing folder"
+
+
+def test_reap_briefing_ready_stale_leaves_fresh_rows_alone(db, _patch_log):
+    """A briefing_ready job inside the 48h decision window is not reaped."""
+    job_id = _insert_job_with_folder(db, stage="briefing_ready", prep_folder_path="/tmp/fresh")
+    _backdate_stage(db, job_id, hours_ago=watchdog.BRIEFING_READY_STALE_AGE_HOURS - 2)
+
+    count = watchdog.reap_briefing_ready_stale(db)
+
+    assert count == 0
+    assert db.execute("SELECT stage FROM jobs WHERE id=?", (job_id,)).fetchone()["stage"] == "briefing_ready"
+
+
+def test_reap_briefing_ready_stale_ignores_other_stages(db, _patch_log):
+    """Old jobs at other stages (scored, materials_drafted, etc.) are
+    untouched — the 48h reset is specific to the awaiting-decision stage."""
+    for stage in ("scored", "materials_drafted", "prep_in_progress"):
+        job_id = _insert_job_with_folder(db, stage=stage, prep_folder_path=f"/tmp/{stage}")
+        _backdate_stage(db, job_id, hours_ago=watchdog.BRIEFING_READY_STALE_AGE_HOURS + 24)
+
+    count = watchdog.reap_briefing_ready_stale(db)
+
+    assert count == 0
+
+
+def test_reap_briefing_ready_stale_writes_audit_log_entry(db, _patch_log):
+    job_id = _insert_job_with_folder(db, stage="briefing_ready", prep_folder_path="/tmp/audit")
+    _backdate_stage(db, job_id, hours_ago=watchdog.BRIEFING_READY_STALE_AGE_HOURS + 1)
+
+    watchdog.reap_briefing_ready_stale(db)
+
+    audit_row = db.execute(
+        "SELECT old_value, new_value FROM audit_log WHERE job_id=? AND field_changed='stage'",
+        (job_id,),
+    ).fetchone()
+    assert audit_row is not None
+    assert audit_row["old_value"] == "briefing_ready"
+    assert audit_row["new_value"] == "scored"
+
+
+def test_main_emits_phase_b_and_briefing_stale_counts(db, monkeypatch, _patch_log):
+    """main()'s watchdog_run event carries per-kind counts so daily-health
+    log scrubs can spot a runaway Phase B or operator-decision backlog."""
+    monkeypatch.setattr(watchdog, "connect", lambda *a, **kw: _ConnWrapper(db))
+
+    # Stuck Phase B
+    job_b = _insert_job_with_folder(db, stage="prep_in_progress", prep_folder_path="/tmp/b")
+    task_b = record_start(db, job_id=job_b, kind="prep_phase_b")
+    _backdate_task(db, task_b, minutes_ago=KIND_TIMEOUT_MINUTES["prep_phase_b"] + 1)
+
+    # Stale briefing_ready
+    job_br = _insert_job_with_folder(db, stage="briefing_ready", prep_folder_path="/tmp/br")
+    _backdate_stage(db, job_br, hours_ago=watchdog.BRIEFING_READY_STALE_AGE_HOURS + 1)
+
+    watchdog.main()
+
+    events = _read_events(_patch_log)
+    e = next(ev for ev in events if ev["event"] == "watchdog_run")
+    assert e["prep_phase_b_failed"] == 1
+    assert e["briefing_ready_stale_reset"] == 1

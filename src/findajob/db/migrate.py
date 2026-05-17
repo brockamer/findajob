@@ -197,15 +197,79 @@ def _bridge_legacy_to_v1(conn: sqlite3.Connection) -> None:
             conn.execute("ALTER TABLE onboarding_sessions DROP COLUMN tester_google_key")
 
 
+def _extract_table_ddl(migration_filename: str, table: str) -> tuple[str, list[str]]:
+    """Parse ``CREATE TABLE`` + every ``CREATE INDEX`` for a table out of a migration.
+
+    Returns ``(create_table_sql, [create_index_sql, ...])`` with ``IF NOT
+    EXISTS`` stripped — the rebuild path needs a fresh CREATE that would
+    otherwise short-circuit because the renamed shell still exists in
+    ``sqlite_master`` momentarily.
+
+    Used by the constraint-rebuild helpers below. SQLite has no
+    ``ALTER TABLE ... ALTER CHECK``, so the only way to change a CHECK
+    constraint is rename-create-copy-drop. Both the table and its
+    associated indexes must be re-created (indexes follow the renamed
+    table on rename, then vanish when the renamed shell is dropped —
+    verified empirically against sqlite_master).
+    """
+    sql = (MIGRATIONS_DIR / migration_filename).read_text(encoding="utf-8")
+    create_re = re.compile(rf"CREATE TABLE IF NOT EXISTS {re.escape(table)} \(.*?\n\);", re.DOTALL)
+    create_match = create_re.search(sql)
+    if create_match is None:  # pragma: no cover — caller asserts a valid (file, table)
+        raise RuntimeError(f"Could not locate CREATE TABLE {table} in {migration_filename}")
+    create_sql = create_match.group(0).replace("IF NOT EXISTS ", "")
+
+    index_re = re.compile(
+        rf"CREATE\s+(?:UNIQUE\s+)?INDEX(?:\s+IF\s+NOT\s+EXISTS)?\s+\S+\s+ON\s+{re.escape(table)}\s*\([^)]*\)(?:\s+WHERE\s+[^;]*)?;",
+        re.IGNORECASE,
+    )
+    index_sqls = [m.group(0) for m in index_re.finditer(sql)]
+    return create_sql, index_sqls
+
+
+def _rebuild_table_with_indexes(
+    conn: sqlite3.Connection,
+    *,
+    table: str,
+    migration_filename: str,
+    legacy_alias: str,
+) -> None:
+    """Rebuild ``table`` from its DDL in ``migration_filename``, preserving rows + indexes.
+
+    The recipe: PRAGMA foreign_keys=OFF, rename original to ``legacy_alias``,
+    run the migration's CREATE TABLE, INSERT INTO new SELECT FROM old over
+    the legacy column set, re-execute every CREATE INDEX from the migration,
+    DROP the legacy shell. Caller commits inside this function so the
+    rebuild lands atomically.
+
+    Index re-creation is non-negotiable: ``DROP TABLE`` removes the named
+    indexes that ``ALTER TABLE RENAME`` left attached to the renamed
+    shell. Without re-applying them, the rebuilt table runs without
+    ``idx_jobs_fingerprint`` / ``idx_jobs_stage`` / etc., silently
+    degrading every dashboard query.
+    """
+    create_sql, index_sqls = _extract_table_ddl(migration_filename, table)
+
+    legacy_cols = [row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()]
+    cols_csv = ",".join(legacy_cols)
+
+    conn.execute("PRAGMA foreign_keys=OFF")
+    try:
+        conn.execute(f"ALTER TABLE {table} RENAME TO {legacy_alias}")
+        conn.executescript(create_sql)
+        conn.execute(f"INSERT INTO {table} ({cols_csv}) SELECT {cols_csv} FROM {legacy_alias}")
+        conn.execute(f"DROP TABLE {legacy_alias}")
+        for index_sql in index_sqls:
+            conn.execute(index_sql)
+        conn.commit()
+    finally:
+        conn.execute("PRAGMA foreign_keys=ON")
+
+
 def _relax_jobs_stage_check_if_needed(conn: sqlite3.Connection) -> None:
     """If the legacy ``jobs.stage`` CHECK lacks ``'not_selected'``,
     rebuild the table with the v1 CHECK. Idempotent: a no-op when the
     CHECK already includes the value.
-
-    SQLite has no ``ALTER TABLE ... ALTER CHECK`` — the only way to
-    change a CHECK constraint is to recreate the table. The recipe:
-    rename the original out of the way, run 0001's CREATE TABLE jobs
-    DDL, copy rows by intersecting column sets, drop the old table.
     """
     schema_row = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='jobs'").fetchone()
     if schema_row is None:
@@ -213,29 +277,12 @@ def _relax_jobs_stage_check_if_needed(conn: sqlite3.Connection) -> None:
     current_sql = schema_row[0] or ""
     if "'not_selected'" in current_sql:
         return  # already at v1 shape
-
-    # Read the canonical CREATE TABLE jobs block from 0001.
-    initial_sql = (MIGRATIONS_DIR / "0001_initial.sql").read_text(encoding="utf-8")
-    create_match = re.search(r"(CREATE TABLE IF NOT EXISTS jobs \(.*?\n\);)", initial_sql, re.DOTALL)
-    if create_match is None:  # pragma: no cover — 0001 always has this block
-        raise RuntimeError("Could not locate CREATE TABLE jobs in 0001_initial.sql")
-    new_create = create_match.group(1).replace("IF NOT EXISTS jobs", "jobs")
-
-    # Capture the legacy column list so the INSERT INTO ... SELECT
-    # only references columns the legacy table actually has — never
-    # the v1 columns added by ALTER TABLE earlier in this bridge.
-    legacy_cols = [row[1] for row in conn.execute("PRAGMA table_info(jobs)").fetchall()]
-    cols_csv = ",".join(legacy_cols)
-
-    conn.execute("PRAGMA foreign_keys=OFF")
-    try:
-        conn.execute("ALTER TABLE jobs RENAME TO _jobs_legacy_pre_v1")
-        conn.executescript(new_create)
-        conn.execute(f"INSERT INTO jobs ({cols_csv}) SELECT {cols_csv} FROM _jobs_legacy_pre_v1")
-        conn.execute("DROP TABLE _jobs_legacy_pre_v1")
-        conn.commit()
-    finally:
-        conn.execute("PRAGMA foreign_keys=ON")
+    _rebuild_table_with_indexes(
+        conn,
+        table="jobs",
+        migration_filename="0001_initial.sql",
+        legacy_alias="_jobs_legacy_pre_v1",
+    )
 
 
 def _add_briefing_ready_stage_if_needed(conn: sqlite3.Connection) -> None:
@@ -243,12 +290,10 @@ def _add_briefing_ready_stage_if_needed(conn: sqlite3.Connection) -> None:
     rebuild the table from 0001_initial.sql to pick up the new value.
     Idempotent: a no-op when the constraint already includes it.
 
-    Pattern mirrors :func:`_relax_jobs_stage_check_if_needed` — SQLite
-    has no ``ALTER TABLE ... ALTER CHECK``, so the only path is
-    rename-create-copy-drop. Hooked from :func:`apply_pending` so every
-    connect picks up the constraint update without bumping
-    ``_meta.schema_version`` (the change is a constraint relaxation, not
-    a new column or table — invisible to schema_version readers).
+    Hooked from :func:`apply_pending` so every connect picks up the
+    constraint update without bumping ``_meta.schema_version`` (the
+    change is a constraint relaxation, not a new column or table —
+    invisible to schema_version readers).
     """
     schema_row = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='jobs'").fetchone()
     if schema_row is None:
@@ -256,25 +301,37 @@ def _add_briefing_ready_stage_if_needed(conn: sqlite3.Connection) -> None:
     current_sql = schema_row[0] or ""
     if "'briefing_ready'" in current_sql:
         return  # already at #691 shape
+    _rebuild_table_with_indexes(
+        conn,
+        table="jobs",
+        migration_filename="0001_initial.sql",
+        legacy_alias="_jobs_pre_briefing_ready",
+    )
 
-    initial_sql = (MIGRATIONS_DIR / "0001_initial.sql").read_text(encoding="utf-8")
-    create_match = re.search(r"(CREATE TABLE IF NOT EXISTS jobs \(.*?\n\);)", initial_sql, re.DOTALL)
-    if create_match is None:  # pragma: no cover — 0001 always has this block
-        raise RuntimeError("Could not locate CREATE TABLE jobs in 0001_initial.sql")
-    new_create = create_match.group(1).replace("IF NOT EXISTS jobs", "jobs")
 
-    legacy_cols = [row[1] for row in conn.execute("PRAGMA table_info(jobs)").fetchall()]
-    cols_csv = ",".join(legacy_cols)
+def _add_prep_phase_b_kind_if_needed(conn: sqlite3.Connection) -> None:
+    """If the live ``background_tasks.kind`` CHECK lacks ``'prep_phase_b'``,
+    rebuild from 0002_background_tasks.sql to pick up the new value.
+    Idempotent: a no-op when the constraint already includes it.
 
-    conn.execute("PRAGMA foreign_keys=OFF")
-    try:
-        conn.execute("ALTER TABLE jobs RENAME TO _jobs_pre_briefing_ready")
-        conn.executescript(new_create)
-        conn.execute(f"INSERT INTO jobs ({cols_csv}) SELECT {cols_csv} FROM _jobs_pre_briefing_ready")
-        conn.execute("DROP TABLE _jobs_pre_briefing_ready")
-        conn.commit()
-    finally:
-        conn.execute("PRAGMA foreign_keys=ON")
+    Companion to :func:`_add_briefing_ready_stage_if_needed` (#691). The
+    new Phase B subprocess registers a row with ``kind='prep_phase_b'``
+    so the watchdog can reap stuck Phase B runs into ``briefing_ready``
+    (preserving the briefing folder) instead of ``scored`` (the
+    legacy reset target for ``kind='prep'``).
+    """
+    schema_row = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='background_tasks'").fetchone()
+    if schema_row is None:
+        return  # background_tasks table not yet created (pre-0002 stack)
+    current_sql = schema_row[0] or ""
+    if "'prep_phase_b'" in current_sql:
+        return  # already at #691 shape
+    _rebuild_table_with_indexes(
+        conn,
+        table="background_tasks",
+        migration_filename="0002_background_tasks.sql",
+        legacy_alias="_background_tasks_pre_phase_b",
+    )
 
 
 def _infer_baseline_version(conn: sqlite3.Connection) -> int:
@@ -389,5 +446,6 @@ def apply_pending(conn: sqlite3.Connection, *, dry_run: bool = False) -> list[Ap
     # only when one helper depends on another; today they don't.
     if not dry_run:
         _add_briefing_ready_stage_if_needed(conn)
+        _add_prep_phase_b_kind_if_needed(conn)
 
     return applied

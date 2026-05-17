@@ -94,7 +94,8 @@ new transition logic to `watchdog.py` or to any out-of-band path — every
 new action is a new web handler + a new `findajob.actions` helper.
 
 Some transitions also spawn detached generator subprocesses:
-- `POST /board/jobs/{fp}/prep` and `/regenerate` → `scripts/prep_application.py` (briefing, tailored resume, cover, recruiter critique, outreach drafts)
+- `POST /board/jobs/{fp}/prep` and `/regenerate` → `scripts/prep_application.py` (briefing, tailored resume, cover, recruiter critique, outreach drafts). Default `--phase=all` runs Phase A then Phase B in sequence.
+- `POST /board/jobs/{fp}/continue-prep` → `scripts/prep_application.py --phase=b` (the briefing-first gate #691). Promotes a `briefing_ready` row to `prep_in_progress` and runs Phase B only (resume tailor → cover → critique → outreach). Operator-confirmed continuation after Phase A's briefing.
 - `POST /board/jobs/{fp}/interview` → `scripts/interview_prep.py` (interview prep artifact). Always (re)launches on each click — re-clicking is the regenerate mechanism after a recruiter sends panel info; a sentinel file `.interview_prep_in_progress` in the prep folder guards against concurrent runs.
 - `POST /ingest/speculative` and `POST /speculative/regenerate/{id}` → `scripts/run_speculative_research.py` (briefing + role-synth pipeline). Async — status page polls `/speculative/status/{id}/poll` every 5s until `status='ready_for_review'`. Full route surface in `findajob.web.routes.speculative` (POST `/ingest/speculative`, GET `/speculative/status/{id}` + `/poll`, GET `/speculative/review/{id}`, POST `/speculative/{approve,regenerate,trash}/{id}`).
 - `POST /board/jobs/{fp}/apply` is synthetic-aware: reads `jobs.synthetic` and writes `audit_log.changed_by='outreach_button'` for synthetic rows (label flips to "Sent Outreach" on the dashboard); otherwise the existing `'user'` value. No separate route — single endpoint, server-derived signal.
@@ -179,7 +180,8 @@ responds in the same request — no poll cycle, no mirror table.
 
 | Action | Endpoint | Where it lives |
 |---|---|---|
-| Flag for Prep | `POST /board/jobs/{fp}/prep` | Dashboard dropdown |
+| Flag for Prep | `POST /board/jobs/{fp}/prep` | Dashboard dropdown. Runs the full Phase A + Phase B pipeline (legacy `--phase=all` default). |
+| Continue prep | `POST /board/jobs/{fp}/continue-prep` | Briefing-first gate panel on `/materials/{fp}/` when stage is `briefing_ready` (#691). Promotes `briefing_ready → prep_in_progress` and spawns `prep_application.py --phase=b` (Phase B only). Same idempotency + spend-ceiling + queue-cap gates as `/prep`. |
 | Regenerate | `POST /board/jobs/{fp}/regenerate` | Dashboard dropdown — gated by `GET /board/jobs/{fp}/regenerate/confirm` modal (#700); Cancel restores cell via `GET /board/jobs/{fp}/regenerate/cell` |
 | Applied | `POST /board/jobs/{fp}/apply` | Dashboard dropdown. Response carries the `_undo_toast.html` partial as `hx-swap-oob` into `#undo-toast` (#699). |
 | Un-apply | `POST /board/jobs/{fp}/un-apply` | Undo button inside the 30s undo toast (#699). 409 once the audit_log row '… → applied' is older than 30 seconds — gate is SQL-side `datetime('now', '-30 seconds')` for clock-drift safety. |
@@ -212,7 +214,9 @@ The rejections-review row is keyed by `rejection_suggestions.id` rather than `jo
 
 **Stage `not_selected`:** Set by `POST /board/jobs/{fp}/not-selected`. Only valid for post-application stages (`applied`, `interview`, `offer`); 409 otherwise. Folder stays in `companies/_applied/` with a `NOT_SELECTED_{reason}_{date}.txt` marker file. Does NOT write to `feedback_log` — company rejections must not contaminate the scorer's feedback loop. `notify_waitlist_resurface()` still fires.
 
-**Stage `prep_in_progress`:** Set by `POST /board/jobs/{fp}/prep` immediately before launching `prep_application.py` as a subprocess. Prevents duplicate prep runs (handler idempotency guard + 3-job concurrency cap). Cleared to `materials_drafted` on success. `scripts/watchdog.py` rolls any job stuck > 60 min back to `scored` so the operator can re-flag.
+**Stage `prep_in_progress`:** Set by `POST /board/jobs/{fp}/prep` or `POST /board/jobs/{fp}/continue-prep` immediately before launching `prep_application.py` as a subprocess. Prevents duplicate prep runs (handler idempotency guard + 3-job concurrency cap shared across both routes). Cleared to `materials_drafted` on success. `scripts/watchdog.py` rolls any job stuck > 60 min back: `kind='prep'` rows reset to `scored` (via `reset_prep_to_scored`); `kind='prep_phase_b'` rows reset to `briefing_ready` (via `reset_prep_to_briefing_ready`) so the operator can re-try Phase B without re-paying Phase A (#691).
+
+**Stage `briefing_ready`:** Set by `_run_prep_phase_a` at Phase A completion. The briefing folder is written to disk, `fit_score` + `probability_score` are stored in the DB, and the operator decides via `/materials/{fp}/` whether to continue (POST `/continue-prep`) or reject (POST `/reject` with a substantive reason — `handle_rejection` writes `feedback_log` as usual). `scripts/watchdog.reap_briefing_ready_stale` resets rows older than 48h to `scored` *without* nulling `prep_folder_path`, so a re-flag resurfaces the existing briefing rather than re-paying Phase A.
 
 **Health checks** (`notify.py health-check`): warns if manual_review backlog > 100, a source silently stopped producing jobs, or any target-company job scored 3–6 in last 7 days (potential mis-scores).
 

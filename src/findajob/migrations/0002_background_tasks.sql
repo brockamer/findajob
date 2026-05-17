@@ -15,7 +15,7 @@
 CREATE TABLE IF NOT EXISTS background_tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     job_id TEXT NOT NULL,
-    kind TEXT NOT NULL CHECK(kind IN ('prep', 'interview_prep', 'speculative_research')),
+    kind TEXT NOT NULL CHECK(kind IN ('prep', 'prep_phase_b', 'interview_prep', 'speculative_research')),
     started_at TEXT NOT NULL DEFAULT (datetime('now')),
     finished_at TEXT,
     status TEXT NOT NULL DEFAULT 'running' CHECK(status IN ('running', 'succeeded', 'failed')),
