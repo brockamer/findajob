@@ -1,0 +1,42 @@
+{#
+  Undo toast for the /apply action (#699 F3). Rendered as an HTMX
+  out-of-band swap from the /apply response — replaces the empty
+  <div id="undo-toast"> placeholder in base.html.
+
+  Inputs:
+    fingerprint — the job that was just applied
+
+  Behavior:
+    - Alpine x-data tracks a 30-second visibility window.
+    - x-init starts two timers: a 30s setTimeout that fades the toast,
+      and a 1s setInterval that drives the countdown display.
+    - The Undo button hx-posts to /un-apply targeting this whole
+      <div id="undo-toast">. On 200, the server returns empty and
+      the toast is replaced by nothing (HTMX outerHTML of empty).
+      On 409 (expired window), HTMX leaves the toast in place; the
+      htmx-error-toast plumbing in base.html surfaces the error.
+
+  The toast disappears on whichever happens first: 30s timer expiry,
+  successful Undo click, or operator dismiss.
+#}
+<div id="undo-toast"
+     hx-swap-oob="true"
+     x-data="{ visible: true, secondsLeft: 30 }"
+     x-init="setTimeout(() => visible = false, 30000); setInterval(() => secondsLeft = Math.max(0, secondsLeft - 1), 1000)"
+     x-show="visible"
+     x-transition.opacity.duration.300ms
+     class="fixed top-4 right-4 z-50 max-w-sm rounded bg-slate-900 px-4 py-3 text-sm text-white shadow-lg flex items-center gap-3">
+  <span>Applied. Folder moved and snapshot saved.</span>
+  <button type="button"
+          hx-post="/board/jobs/{{ fingerprint }}/un-apply"
+          hx-target="#undo-toast"
+          hx-swap="outerHTML"
+          @click="visible = false"
+          class="rounded bg-white/10 hover:bg-white/20 px-2 py-1 text-xs font-medium">
+    Undo (<span x-text="secondsLeft"></span>s)
+  </button>
+  <button type="button"
+          @click="visible = false"
+          aria-label="Dismiss"
+          class="text-white/70 hover:text-white text-base leading-none">✕</button>
+</div>

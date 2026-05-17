@@ -14,6 +14,9 @@
 </head>
 <body class="bg-slate-50 text-slate-900" hx-boost="true">
   <div id="htmx-error-toast" class="fixed top-4 right-4 z-50 hidden max-w-sm rounded bg-red-600 px-4 py-3 text-sm text-white shadow-lg"></div>
+  {# #699 F3: OOB target for the post-apply undo toast. Empty placeholder is
+     replaced by templates/board/_undo_toast.html on a /apply response. #}
+  <div id="undo-toast"></div>
   {% block nav %}{% include "_nav.html" %}{% endblock %}
   <main class="{% block main_classes %}max-w-6xl mx-auto px-4 py-6{% endblock %}">
     {% if _rendered_md is defined and _rendered_md %}<div class="prose prose-slate max-w-none">{{ _rendered_md | safe }}</div>{% endif %}

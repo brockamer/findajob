@@ -529,6 +529,115 @@ class TestUnWithdrawJob:
         assert count == 0
 
 
+# ── un_apply_job (#699) ─────────────────────────────────────────────────────
+
+
+class TestUnApplyJob:
+    """Reverse a recent /apply: move folder back from _applied/, delete the
+    *.applied-YYYY-MM-DD.md snapshot files, flip stage to materials_drafted,
+    clear apply_flag, write audit row with changed_by='web_un_apply'."""
+
+    def _seed_applied_with_folder(self, db, tmp_path):
+        """Set up the typical post-apply state: stage='applied', folder in
+        _applied/ with one real .md + one snapshot sibling."""
+        folder = tmp_path / "companies" / "_applied" / "Acme_UnApply_test"
+        folder.mkdir(parents=True)
+        # Real material
+        (folder / "resume.md").write_text("# Resume content")
+        # Snapshot sibling (what /apply's snapshot_applied_md_files would have written)
+        (folder / "resume.applied-2026-05-17.md").write_text("# Snapshot at apply time")
+        # Non-md file is untouched
+        (folder / "resume.pdf").write_bytes(b"%PDF")
+
+        job = insert_job(db, stage="applied", folder=str(folder), apply_flag=1)
+        return job, folder
+
+    def test_moves_folder_back_to_companies(self, db, tmp_path):
+        job, folder = self._seed_applied_with_folder(db, tmp_path)
+        job = db.execute("SELECT * FROM jobs WHERE id=?", (job["id"],)).fetchone()
+
+        actions.un_apply_job(db, job)
+
+        assert not folder.exists()
+        new_path = db.execute("SELECT prep_folder_path FROM jobs WHERE id=?", (job["id"],)).fetchone()[0]
+        # Folder ends up at companies/{base}, not companies/_applied/{base}
+        assert os.path.basename(new_path) == "Acme_UnApply_test"
+        assert os.path.dirname(new_path).endswith("companies")
+        assert os.path.isdir(new_path)
+        # Real material survived the round-trip
+        assert (os.path.join(new_path, "resume.md")) in [os.path.join(new_path, f) for f in os.listdir(new_path)]
+        assert os.path.isfile(os.path.join(new_path, "resume.md"))
+
+    def test_deletes_only_snapshot_files_not_originals(self, db, tmp_path):
+        """Snapshot files match the _APPLIED_SNAPSHOT_RE regex
+        (.applied-YYYY-MM-DD.md); originals and incidentally-named files survive."""
+        job, folder = self._seed_applied_with_folder(db, tmp_path)
+        # Adversarial incidentally-named file that a glob *.applied-*.md
+        # would clobber but the regex correctly skips (no date suffix shape).
+        (folder / "notes.applied-rewrite.md").write_text("# Operator's edit notes")
+        job = db.execute("SELECT * FROM jobs WHERE id=?", (job["id"],)).fetchone()
+
+        actions.un_apply_job(db, job)
+
+        new_path = db.execute("SELECT prep_folder_path FROM jobs WHERE id=?", (job["id"],)).fetchone()[0]
+        survivors = set(os.listdir(new_path))
+        assert "resume.md" in survivors
+        assert "resume.pdf" in survivors
+        # Incidentally-named (no YYYY-MM-DD shape) survives — regex precision pin
+        assert "notes.applied-rewrite.md" in survivors
+        # Snapshot deleted
+        assert "resume.applied-2026-05-17.md" not in survivors
+
+    def test_apply_flag_cleared(self, db, tmp_path):
+        """Spec pin: post-un-apply rows have apply_flag=0 even though
+        /prep-completed materials_drafted rows have apply_flag=1. Locks the
+        spec so a future reader doesn't 'fix' the asymmetry."""
+        job, _ = self._seed_applied_with_folder(db, tmp_path)
+        job = db.execute("SELECT * FROM jobs WHERE id=?", (job["id"],)).fetchone()
+
+        actions.un_apply_job(db, job)
+
+        flag = db.execute("SELECT apply_flag FROM jobs WHERE id=?", (job["id"],)).fetchone()[0]
+        assert flag == 0
+
+    def test_stage_flips_to_materials_drafted(self, db, tmp_path):
+        job, _ = self._seed_applied_with_folder(db, tmp_path)
+        job = db.execute("SELECT * FROM jobs WHERE id=?", (job["id"],)).fetchone()
+
+        actions.un_apply_job(db, job)
+
+        stage = db.execute("SELECT stage FROM jobs WHERE id=?", (job["id"],)).fetchone()[0]
+        assert stage == "materials_drafted"
+
+    def test_writes_audit_with_changed_by_web_un_apply(self, db, tmp_path):
+        job, _ = self._seed_applied_with_folder(db, tmp_path)
+        job = db.execute("SELECT * FROM jobs WHERE id=?", (job["id"],)).fetchone()
+
+        actions.un_apply_job(db, job)
+
+        audits = db.execute(
+            "SELECT field_changed, old_value, new_value, changed_by FROM audit_log WHERE job_id=? ORDER BY id",
+            (job["id"],),
+        ).fetchall()
+        un_apply_rows = [a for a in audits if a["changed_by"] == "web_un_apply"]
+        assert len(un_apply_rows) == 1
+        assert un_apply_rows[0]["field_changed"] == "stage"
+        assert un_apply_rows[0]["old_value"] == "applied"
+        assert un_apply_rows[0]["new_value"] == "materials_drafted"
+
+    def test_handles_missing_folder_path_gracefully(self, db):
+        """apply_flag was set, stage=applied, but prep_folder_path is NULL
+        (folder was never moved). The helper should still flip stage and
+        write audit — no crash."""
+        job = insert_job(db, stage="applied", folder=None, apply_flag=1)
+        job = db.execute("SELECT * FROM jobs WHERE id=?", (job["id"],)).fetchone()
+
+        actions.un_apply_job(db, job)
+
+        stage = db.execute("SELECT stage FROM jobs WHERE id=?", (job["id"],)).fetchone()[0]
+        assert stage == "materials_drafted"
+
+
 # ── handle_waitlist ─────────────────────────────────────────────────────────
 
 

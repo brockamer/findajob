@@ -1068,7 +1068,10 @@ class TestApply:
         response = client.post("/board/jobs/fp_drafted/apply")
 
         assert response.status_code == 200
-        assert response.text == ""  # empty body = HTMX removes the row
+        # Body is the undo toast partial carrying hx-swap-oob="true" (#699).
+        # HTMX strips the OOB element from the body before the primary swap
+        # into closest tr, so the row is still removed despite non-empty body.
+        assert 'id="undo-toast"' in response.text
         assert _fetch_stage(client, "fp_drafted") == "applied"
         # Folder moved into _applied/
         conn = sqlite3.connect(client._db_path)
@@ -2496,3 +2499,109 @@ class TestReactivateAndPrep:
         assert _fetch_audit(client, "fp_waitlisted") == []
         prep_calls = [c for c in popen_calls if "prep_application.py" in c[1]]
         assert prep_calls == []
+# ── /un-apply route + /apply OOB toast (#699 F3) ──────────────────────────
+
+
+def _seed_applied_audit(client: TestClient, fingerprint: str, seconds_ago: int) -> None:
+    """Seed an audit_log row '… → applied' at a known offset from now.
+    SQL-side datetime arithmetic so the test clock and DB clock can't drift."""
+    conn = sqlite3.connect(client._db_path)
+    job_id = conn.execute("SELECT id FROM jobs WHERE fingerprint=?", (fingerprint,)).fetchone()[0]
+    conn.execute(
+        "INSERT INTO audit_log (job_id, field_changed, old_value, new_value, changed_at, changed_by) "
+        "VALUES (?, 'stage', 'materials_drafted', 'applied', datetime('now', ?), 'user')",
+        (job_id, f"-{seconds_ago} seconds"),
+    )
+    conn.commit()
+    conn.close()
+
+
+class TestUnApply:
+    def test_happy_path_within_window(self, client: TestClient):
+        """Audit row at -5s → un-apply succeeds and flips stage back to materials_drafted."""
+        _seed_applied_audit(client, "fp_applied", seconds_ago=5)
+
+        response = client.post("/board/jobs/fp_applied/un-apply")
+        assert response.status_code == 200
+        assert _fetch_stage(client, "fp_applied") == "materials_drafted"
+
+        # New audit row written by un_apply_job
+        audit = _fetch_audit(client, "fp_applied")
+        assert any(a == ("stage", "applied", "materials_drafted") for a in audit)
+
+    def test_409_on_expired_window(self, client: TestClient):
+        """Audit row at -60s exceeds the 30s undo window → 409, no state change."""
+        _seed_applied_audit(client, "fp_applied", seconds_ago=60)
+
+        response = client.post("/board/jobs/fp_applied/un-apply")
+        assert response.status_code == 409
+        # Stage unchanged
+        assert _fetch_stage(client, "fp_applied") == "applied"
+        # No new audit row from un-apply
+        audit = _fetch_audit(client, "fp_applied")
+        assert not any(a == ("stage", "applied", "materials_drafted") for a in audit)
+
+    def test_409_when_no_applied_audit_row_exists(self, client: TestClient):
+        """Defensive: stage='applied' was set in fixture but no audit row was
+        seeded. Without an audit row, the window guard can't verify recency —
+        treated as expired."""
+        # fp_applied is stage='applied' in fixture but has no audit_log row.
+        response = client.post("/board/jobs/fp_applied/un-apply")
+        assert response.status_code == 409
+        assert _fetch_stage(client, "fp_applied") == "applied"
+
+    def test_409_on_non_applied_stage(self, client: TestClient):
+        """Direct URL access from a non-applied stage returns 409."""
+        response = client.post("/board/jobs/fp_drafted/un-apply")
+        assert response.status_code == 409
+        assert _fetch_stage(client, "fp_drafted") == "materials_drafted"
+
+    def test_404_unknown_fingerprint(self, client: TestClient):
+        response = client.post("/board/jobs/fp_nonexistent/un-apply")
+        assert response.status_code == 404
+
+    def test_apply_flag_cleared_to_zero(self, client: TestClient):
+        """Pin spec: post-un-apply rows have apply_flag=0."""
+        _seed_applied_audit(client, "fp_applied", seconds_ago=5)
+        # Pre-condition: set apply_flag=1 so the assertion is meaningful
+        conn = sqlite3.connect(client._db_path)
+        conn.execute("UPDATE jobs SET apply_flag=1 WHERE fingerprint='fp_applied'")
+        conn.commit()
+        conn.close()
+
+        client.post("/board/jobs/fp_applied/un-apply")
+
+        conn = sqlite3.connect(client._db_path)
+        flag = conn.execute("SELECT apply_flag FROM jobs WHERE fingerprint='fp_applied'").fetchone()[0]
+        conn.close()
+        assert flag == 0
+
+
+class TestApplyToastOOB:
+    def test_apply_response_includes_undo_toast_oob_swap(self, client: TestClient):
+        """POST /apply on a real (non-synthetic) materials_drafted row returns
+        an out-of-band swap targeting #undo-toast — so the toast appears even
+        though the row itself was removed by the empty primary swap."""
+        response = client.post("/board/jobs/fp_drafted/apply")
+        assert response.status_code == 200
+        text = response.text
+
+        # The OOB marker must be on the toast root, targeting the base
+        # template's <div id="undo-toast"></div> placeholder.
+        assert 'id="undo-toast"' in text
+        assert 'hx-swap-oob="true"' in text
+        # The toast's Undo button posts to /un-apply for this specific job
+        assert 'hx-post="/board/jobs/fp_drafted/un-apply"' in text
+
+    def test_apply_on_synthetic_job_still_returns_toast(self, client: TestClient):
+        """Synthetic [SPEC] jobs use the same /apply route; the toast is
+        identical (un-apply behavior is identical per spec)."""
+        conn = sqlite3.connect(client._db_path)
+        conn.execute("UPDATE jobs SET title='[SPEC] Test Speculative', synthetic=1 WHERE fingerprint='fp_drafted'")
+        conn.commit()
+        conn.close()
+
+        response = client.post("/board/jobs/fp_drafted/apply")
+        assert response.status_code == 200
+        assert 'id="undo-toast"' in response.text
+        assert 'hx-post="/board/jobs/fp_drafted/un-apply"' in response.text

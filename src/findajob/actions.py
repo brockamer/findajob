@@ -455,6 +455,58 @@ def un_withdraw_job(conn: sqlite3.Connection, job: Any, *, commit: bool = True) 
     return restored_stage
 
 
+def un_apply_job(conn: sqlite3.Connection, job: Any) -> None:
+    """Reverse a recent /apply (#699): move folder back from companies/_applied/
+    to companies/, delete the *.applied-YYYY-MM-DD.md snapshot siblings written
+    by snapshot_applied_md_files, flip stage to materials_drafted, clear
+    apply_flag, and write an audit_log row tagged 'web_un_apply'.
+
+    Caller (the /un-apply route) is responsible for the 30s time-window guard;
+    this helper is unconditional — if the row's stage is 'applied', it reverses.
+
+    Note on apply_flag: the spec clears it back to 0 even though /prep-completed
+    materials_drafted rows have apply_flag=1. The asymmetry is intentional — an
+    un-applied row is "draft I had decided to send, then changed my mind", not
+    "draft pending dispatch", so the flag-zero state is correct.
+    """
+    now = datetime.now(UTC).isoformat()
+
+    # Re-fetch prep_folder_path from the DB so callers can pass any row shape
+    # that has at least .id — matches handle_rejection's pattern.
+    jd = conn.execute("SELECT prep_folder_path FROM jobs WHERE id=?", (job["id"],)).fetchone()
+    folder = jd["prep_folder_path"] if jd and jd["prep_folder_path"] else None
+    new_path = folder  # default: keep whatever path is on the row
+    if folder and os.path.isdir(folder):
+        # Move folder back from _applied/ to companies/
+        dest = os.path.join(BASE, "companies", os.path.basename(folder))
+        shutil.move(folder, dest)
+        new_path = dest
+        log_event("folder_moved_from_applied", job_id=job["id"], folder=os.path.basename(folder))
+
+        # Delete only files matching the exact snapshot regex (mirrors
+        # snapshot_applied_md_files's filter — not a glob, which would
+        # also match incidentally-named files).
+        dest_path = Path(dest)
+        for md in dest_path.glob("*.md"):
+            if _APPLIED_SNAPSHOT_RE.search(md.name):
+                md.unlink()
+                log_event("snapshot_removed_for_un_apply", job_id=job["id"], snapshot=md.name)
+
+    conn.execute(
+        "UPDATE jobs SET stage='materials_drafted', apply_flag=0, prep_folder_path=?, "
+        "stage_updated=?, updated_at=? WHERE id=?",
+        (new_path, now, now, job["id"]),
+    )
+    conn.commit()
+    write_audit(conn, job["id"], "stage", "applied", "materials_drafted", changed_by="web_un_apply")
+    log_event(
+        "job_un_applied",
+        job_id=job["id"],
+        company=job["company"],
+        title=job["title"],
+    )
+
+
 def reactivate_from_ingest(conn: sqlite3.Connection, job: Any, overwrite_fields: dict[str, str]) -> None:
     """Reactivate a waitlisted job via manual ingest.
 

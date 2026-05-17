@@ -29,6 +29,7 @@ from findajob.actions import (
     notify_waitlist_resurface,
     promote_to_scored,
     snapshot_applied_md_files,
+    un_apply_job,
     un_not_selected_job,
     un_reject_job,
     un_withdraw_job,
@@ -461,10 +462,17 @@ def regenerate_cell(
 @router.post("/board/jobs/{fingerprint}/apply", response_class=HTMLResponse)
 def apply(
     fingerprint: str,
-    request: Request,  # noqa: ARG001 — kept for handler signature parity
+    request: Request,
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
 ) -> HTMLResponse:
-    """Move job to the Applied tab. Returns empty body — HTMX removes the dashboard row."""
+    """Move job to the Applied tab. Response body is the undo toast partial
+    (#699 F3) carrying an out-of-band swap into #undo-toast — HTMX strips the
+    OOB element from the response before doing the primary swap into the row,
+    so the row is removed *and* the toast appears in the same request.
+
+    Idempotency: re-clicking on an already-applied row returns empty (no toast)
+    — the 30s window has either already passed or is being handled by an
+    earlier in-flight toast."""
     job = _fetch_job(db, fingerprint)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -473,6 +481,52 @@ def apply(
     changed_by = "outreach_button" if is_synthetic_job(job) else "user"
     _transition_stage(db, job, "applied", event_name="web_applied", changed_by=changed_by)
     _move_folder_to_applied(db, job)
+
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request=request,
+        name="board/_undo_toast.html",
+        context={"fingerprint": fingerprint},
+    )
+
+
+@router.post("/board/jobs/{fingerprint}/un-apply", response_class=HTMLResponse)
+def un_apply(
+    fingerprint: str,
+    request: Request,  # noqa: ARG001
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> HTMLResponse:
+    """Reverse a recent /apply within the 30-second undo window (#699 F3).
+
+    Gates:
+      - 404 if fingerprint unknown
+      - 409 if stage != 'applied' (the dropdown surface is no longer applicable)
+      - 409 if no audit_log row '… → applied' within the last 30 seconds
+        (the undo window has expired)
+
+    On success, returns empty body — HTMX's outerHTML swap of the toast cell
+    with empty content removes it from the DOM. The row reappears on the
+    Dashboard at the next page load (not auto-inserted)."""
+    job = _fetch_job(db, fingerprint)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job["stage"] != "applied":
+        raise HTTPException(status_code=409, detail="Job is not at stage='applied'")
+
+    # SQL-side window check — both /apply's write_audit and this gate use
+    # SQLite's datetime('now'), so test seeds and production writes are
+    # comparable without Python/DB clock drift.
+    recent = db.execute(
+        "SELECT 1 FROM audit_log "
+        "WHERE job_id=? AND field_changed='stage' AND new_value='applied' "
+        "  AND changed_at > datetime('now', '-30 seconds') "
+        "LIMIT 1",
+        (job["id"],),
+    ).fetchone()
+    if recent is None:
+        raise HTTPException(status_code=409, detail="Undo window expired")
+
+    un_apply_job(db, job)
     return HTMLResponse("")
 
 

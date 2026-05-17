@@ -181,7 +181,8 @@ responds in the same request — no poll cycle, no mirror table.
 |---|---|---|
 | Flag for Prep | `POST /board/jobs/{fp}/prep` | Dashboard dropdown |
 | Regenerate | `POST /board/jobs/{fp}/regenerate` | Dashboard dropdown — gated by `GET /board/jobs/{fp}/regenerate/confirm` modal (#700); Cancel restores cell via `GET /board/jobs/{fp}/regenerate/cell` |
-| Applied | `POST /board/jobs/{fp}/apply` | Dashboard dropdown |
+| Applied | `POST /board/jobs/{fp}/apply` | Dashboard dropdown. Response carries the `_undo_toast.html` partial as `hx-swap-oob` into `#undo-toast` (#699). |
+| Un-apply | `POST /board/jobs/{fp}/un-apply` | Undo button inside the 30s undo toast (#699). 409 once the audit_log row '… → applied' is older than 30 seconds — gate is SQL-side `datetime('now', '-30 seconds')` for clock-drift safety. |
 | Waitlist | `POST /board/jobs/{fp}/waitlist` | Dashboard dropdown + Review tab button (#702) |
 | Reject (w/ reason) | `POST /board/jobs/{fp}/reject` | Dashboard / Review / Waitlist reject cell |
 | Interviewing | `POST /board/jobs/{fp}/interview` | Applied dropdown |
