@@ -102,7 +102,7 @@ def client(tmp_path: Path) -> TestClient:
     conn.execute(
         "CREATE TABLE jobs (id TEXT, fingerprint TEXT, title TEXT, company TEXT, stage TEXT, "
         "relevance_score INTEGER, fit_score REAL, probability_score REAL, interview_likelihood INTEGER, "
-        "location TEXT, remote_status TEXT, known_contacts TEXT, comp_estimate TEXT, "
+        "location TEXT, remote_status TEXT, known_contacts TEXT, user_notes TEXT, comp_estimate TEXT, "
         "ai_notes TEXT, created_at TEXT, stage_updated TEXT, url TEXT, prep_folder_path TEXT)"
     )
     conn.execute(

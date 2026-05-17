@@ -26,7 +26,7 @@
   {% endif %}
   {% for s in specs if s.name in visible %}
     {% set field = s.name %}
-    {% if tab == 'applied' and field == 'user_notes' %}
+    {% if field == 'user_notes' %}
       {% include "board/_notes_cell.html" %}
     {% elif field == 'company_history' %}
       {% include "board/_company_history_cell.html" %}

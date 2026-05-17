@@ -25,6 +25,7 @@ CREATE TABLE jobs (
     location TEXT,
     remote_status TEXT,
     known_contacts TEXT,
+    user_notes TEXT,
     comp_estimate TEXT,
     ai_notes TEXT,
     created_at TEXT,

@@ -16,7 +16,7 @@ def client(tmp_path: Path) -> TestClient:
     conn = sqlite3.connect(db)
     conn.execute(
         "CREATE TABLE jobs (fingerprint TEXT, title TEXT, company TEXT, stage TEXT, "
-        "score_flag_reason TEXT, source TEXT, url TEXT, created_at TEXT, stage_updated TEXT)"
+        "score_flag_reason TEXT, source TEXT, user_notes TEXT, url TEXT, created_at TEXT, stage_updated TEXT)"
     )
     conn.execute(
         "INSERT INTO jobs (fingerprint, title, company, stage, score_flag_reason, source, created_at) "

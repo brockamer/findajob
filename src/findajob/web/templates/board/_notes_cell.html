@@ -1,9 +1,20 @@
 {#
-  Editable user_notes cell for the Applied tab. Inputs:
+  Editable user_notes cell. Tab-agnostic — fires whenever 'user_notes' is
+  a visible column on any board tab.
+
+  Inputs:
     row — a sqlite3.Row (or dict) with .fingerprint and .user_notes
-  Auto-saves on blur + 800ms after last keystroke. Server responds with a
-  re-rendered <td> (this template) swapped via hx-swap="outerHTML".
-  No audit log entry — notes are free-text and versioned elsewhere.
+
+  The input auto-saves on blur + 800ms after last keystroke. Server
+  responds with a re-rendered <td> swapped via hx-swap="outerHTML".
+
+  The notes_history table records blur-time edits only — keystroke writes
+  skip the history row to avoid mid-edit noise. The <details> disclosure
+  lazy-loads the history via hx-get on first open.
+
+  hx-on::config-request injects the original DOM event.type as a form
+  param so the handler can branch blur-vs-keyup (HTMX request headers
+  don't carry event type — see #696 commit notes).
 #}
 <td class="px-3 py-1 align-top text-sm">
   <input
@@ -13,6 +24,16 @@
     value="{{ row.user_notes or '' }}"
     hx-post="/board/jobs/{{ row.fingerprint }}/notes"
     hx-trigger="blur, keyup changed delay:800ms"
+    hx-on::config-request="event.detail.parameters.event_type = event.detail.triggeringEvent?.type || ''"
     hx-target="closest td"
     hx-swap="outerHTML">
+  <details class="mt-1 text-xs">
+    <summary class="cursor-pointer text-slate-500 hover:text-slate-700 select-none">history</summary>
+    <div class="mt-1"
+         hx-get="/board/jobs/{{ row.fingerprint }}/notes/history"
+         hx-trigger="toggle once from:closest details"
+         hx-swap="innerHTML">
+      <span class="text-slate-400">Loading…</span>
+    </div>
+  </details>
 </td>

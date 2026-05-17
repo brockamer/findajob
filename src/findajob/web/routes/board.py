@@ -79,7 +79,7 @@ def _dashboard_query(parsed: ParsedFilters) -> tuple[str, list[object]]:
     order = "DESC" if parsed.desc else "ASC"
     sql = (
         "SELECT fingerprint, title, company, location, remote_status, known_contacts, "
-        "comp_estimate, ai_notes, relevance_score, fit_score, probability_score, "
+        "comp_estimate, ai_notes, user_notes, relevance_score, fit_score, probability_score, "
         "interview_likelihood, stage, created_at, stage_updated, url, prep_folder_path "
         f"FROM jobs WHERE ({_DASHBOARD_BASE_WHERE}){clauses} ORDER BY {sort} {order}"
     )
@@ -284,7 +284,7 @@ def _review_query(parsed: ParsedFilters) -> tuple[str, list[object]]:
     sort = parsed.sort or _REVIEW_DEFAULT_SORT
     order = "DESC" if parsed.desc else "ASC"
     sql = (
-        "SELECT fingerprint, title, company, score_flag_reason, source, created_at, stage, url "
+        "SELECT fingerprint, title, company, score_flag_reason, source, user_notes, created_at, stage, url "
         f"FROM jobs WHERE ({_REVIEW_BASE_WHERE}){clauses} "
         f"ORDER BY {sort} {order}"
     )
@@ -334,7 +334,7 @@ def _waitlist_query(parsed: ParsedFilters) -> tuple[str, list[object]]:
     SELECT w.fingerprint, w.title, w.company, w.relevance_score,
            w.fit_score, w.probability_score, w.interview_likelihood,
            w.location, w.remote_status,
-           w.ai_notes, w.created_at, w.stage, w.url,
+           w.ai_notes, w.user_notes, w.created_at, w.stage, w.url,
            (SELECT j2.title || ' (' || j2.stage || ')'
               FROM jobs j2
              WHERE j2.company = w.company

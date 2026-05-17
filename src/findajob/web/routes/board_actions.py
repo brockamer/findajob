@@ -16,6 +16,7 @@ import sqlite3
 import subprocess
 import sys
 from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse
@@ -611,12 +612,21 @@ def notes(
     fingerprint: str,
     request: Request,
     notes: str = Form(""),
+    event_type: str = Form(""),
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
 ) -> HTMLResponse:
-    """Write free-text user notes for the Applied tab. No audit log entry —
-    notes are rewritten on every keystroke-debounce; audit is noise."""
+    """Write free-text user notes. Tab-agnostic — fires from any board tab
+    where the user_notes column is visible.
+
+    The handler always overwrites jobs.user_notes (live experience preserved
+    on both blur and keyup-debounce triggers). A row is appended to
+    notes_history ONLY when event_type == 'blur' — keyup writes would flood
+    the table with mid-edit keystrokes. The event_type form param is
+    injected client-side by hx-on::config-request reading event.type from
+    the DOM event; HTMX request headers don't carry event type.
+    """
     row = db.execute(
-        "SELECT fingerprint, user_notes FROM jobs WHERE fingerprint=?",
+        "SELECT id, fingerprint, user_notes FROM jobs WHERE fingerprint=?",
         (fingerprint,),
     ).fetchone()
     if row is None:
@@ -625,6 +635,11 @@ def notes(
         "UPDATE jobs SET user_notes=?, updated_at=datetime('now') WHERE fingerprint=?",
         (notes, fingerprint),
     )
+    if event_type == "blur":
+        db.execute(
+            "INSERT INTO notes_history (job_id, notes) VALUES (?, ?)",
+            (row["id"], notes),
+        )
     db.commit()
     updated = db.execute(
         "SELECT fingerprint, user_notes FROM jobs WHERE fingerprint=?",
@@ -636,4 +651,44 @@ def notes(
         request=request,
         name="board/_notes_cell.html",
         context={"row": updated},
+    )
+
+
+@router.get("/board/jobs/{fingerprint}/notes/history", response_class=HTMLResponse)
+def notes_history(
+    fingerprint: str,
+    request: Request,
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> HTMLResponse:
+    """Render the notes_history disclosure fragment for one job.
+
+    Lazy-loaded on <details> first-open via hx-trigger="toggle once". PT
+    rendering happens server-side; the template stays Jinja-pure.
+    """
+    job = db.execute("SELECT id FROM jobs WHERE fingerprint=?", (fingerprint,)).fetchone()
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    raw_rows = db.execute(
+        "SELECT notes, updated_at FROM notes_history WHERE job_id=? ORDER BY updated_at DESC, id DESC",
+        (job["id"],),
+    ).fetchall()
+
+    pt = ZoneInfo("America/Los_Angeles")
+    utc = ZoneInfo("UTC")
+    rows = []
+    for r in raw_rows:
+        # updated_at is stored as 'YYYY-MM-DD HH:MM:SS' (naive UTC, sqlite datetime())
+        dt = datetime.fromisoformat(r["updated_at"]).replace(tzinfo=utc).astimezone(pt)
+        rows.append(
+            {
+                "notes": r["notes"],
+                "updated_at_pt": dt.strftime("%Y-%m-%d %H:%M %Z"),
+            }
+        )
+
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request=request,
+        name="board/_notes_history.html",
+        context={"rows": rows},
     )

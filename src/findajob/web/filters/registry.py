@@ -80,6 +80,7 @@ DASHBOARD_COLUMNS: tuple[ColumnSpec, ...] = (
         default_visible=False,
     ),
     ColumnSpec(name="ai_notes", label="AI notes", kind=Kind.TEXT),
+    ColumnSpec(name="user_notes", label="Notes", kind=Kind.TEXT),
     ColumnSpec(name="created_at", label="Date", kind=Kind.DATE),
     # Stage is filterable but not visible by default — score-5/6 triage opt-in.
     ColumnSpec(
@@ -166,6 +167,7 @@ REVIEW_COLUMNS: tuple[ColumnSpec, ...] = (
         kind=Kind.ENUM,
         enum_values=_SOURCE_VALUES,
     ),
+    ColumnSpec(name="user_notes", label="Notes", kind=Kind.TEXT),
     ColumnSpec(name="created_at", label="Date", kind=Kind.DATE),
 )
 validate_specs(REVIEW_COLUMNS)
@@ -215,6 +217,7 @@ WAITLIST_COLUMNS: tuple[ColumnSpec, ...] = (
         db_expr="w.ai_notes",
         default_visible=False,
     ),
+    ColumnSpec(name="user_notes", label="Notes", kind=Kind.TEXT, db_expr="w.user_notes"),
     ColumnSpec(name="created_at", label="Date", kind=Kind.DATE, db_expr="w.created_at"),
     ColumnSpec(
         name="blocking_app",

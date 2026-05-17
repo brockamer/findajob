@@ -1295,3 +1295,144 @@ class TestApplySyntheticBranch:
         conn.close()
         assert row is not None
         assert row[0] == "user", f"real /apply must write changed_by='user', got {row[0]!r}"
+
+
+# ── notes_history (#696) ──────────────────────────────────────────────────
+
+
+def _fetch_notes_history(client: TestClient, fingerprint: str) -> list[tuple[str | None, str]]:
+    """Returns (notes, updated_at) rows for a job, newest-first."""
+    conn = sqlite3.connect(client._db_path)
+    rows = conn.execute(
+        "SELECT nh.notes, nh.updated_at "
+        "FROM notes_history nh JOIN jobs j ON j.id = nh.job_id "
+        "WHERE j.fingerprint=? ORDER BY nh.updated_at DESC, nh.id DESC",
+        (fingerprint,),
+    ).fetchall()
+    conn.close()
+    return [(r[0], r[1]) for r in rows]
+
+
+class TestNotesHistory:
+    def test_blur_writes_history_row(self, client: TestClient):
+        response = client.post(
+            "/board/jobs/fp_applied/notes",
+            data={"notes": "Recruiter call Wed", "event_type": "blur"},
+        )
+        assert response.status_code == 200
+        rows = _fetch_notes_history(client, "fp_applied")
+        assert len(rows) == 1
+        assert rows[0][0] == "Recruiter call Wed"
+        # Negative pair: no orphan rows under a different fingerprint
+        assert _fetch_notes_history(client, "fp_drafted") == []
+
+    def test_keyup_does_not_write_history(self, client: TestClient):
+        response = client.post(
+            "/board/jobs/fp_applied/notes",
+            data={"notes": "mid-edit text", "event_type": "keyup"},
+        )
+        assert response.status_code == 200
+        # user_notes still updated (live experience preserved)
+        assert _fetch_user_notes(client, "fp_applied") == "mid-edit text"
+        # But no history row appended
+        assert _fetch_notes_history(client, "fp_applied") == []
+
+    def test_empty_event_type_does_not_write_history(self, client: TestClient):
+        """Default empty event_type (legacy POSTs, missing JS) is treated as
+        non-blur — safer default than writing history on every POST."""
+        response = client.post(
+            "/board/jobs/fp_applied/notes",
+            data={"notes": "no event_type"},  # no event_type field
+        )
+        assert response.status_code == 200
+        assert _fetch_user_notes(client, "fp_applied") == "no event_type"
+        assert _fetch_notes_history(client, "fp_applied") == []
+
+    def test_multiple_blurs_append_in_time_order(self, client: TestClient):
+        """Three blur POSTs leave three history rows. Newest-first ordering is
+        verified by id (datetime('now') has 1-second resolution; rapid posts
+        share a timestamp, so id is the tiebreaker — matches the route handler's
+        ORDER BY clause)."""
+        for i in range(3):
+            r = client.post(
+                "/board/jobs/fp_applied/notes",
+                data={"notes": f"note v{i}", "event_type": "blur"},
+            )
+            assert r.status_code == 200
+        rows = _fetch_notes_history(client, "fp_applied")
+        assert len(rows) == 3
+        # Newest-first: v2 then v1 then v0
+        assert [r[0] for r in rows] == ["note v2", "note v1", "note v0"]
+
+    def test_mixed_blur_and_keyup_only_blur_writes_history(self, client: TestClient):
+        """Realistic editing sequence: keyup-debounce fires several times, then
+        a single blur lands the canonical save. Only the blur should hit
+        notes_history; keyups update user_notes but skip history."""
+        for v in ("partial-1", "partial-2", "partial-3"):
+            client.post(
+                "/board/jobs/fp_applied/notes",
+                data={"notes": v, "event_type": "keyup"},
+            )
+        client.post(
+            "/board/jobs/fp_applied/notes",
+            data={"notes": "final", "event_type": "blur"},
+        )
+        assert _fetch_user_notes(client, "fp_applied") == "final"
+        rows = _fetch_notes_history(client, "fp_applied")
+        assert len(rows) == 1
+        assert rows[0][0] == "final"
+
+    def test_history_route_returns_newest_first(self, client: TestClient):
+        for i in range(3):
+            client.post(
+                "/board/jobs/fp_applied/notes",
+                data={"notes": f"v{i}", "event_type": "blur"},
+            )
+        response = client.get("/board/jobs/fp_applied/notes/history")
+        assert response.status_code == 200
+        # Newest-first: v2 appears before v1 appears before v0 in response body
+        text = response.text
+        assert text.find("v2") < text.find("v1") < text.find("v0")
+        # Each value rendered exactly once (no duplicate-row bug)
+        assert text.count(">v2<") == 1
+
+    def test_history_route_empty_returns_marker(self, client: TestClient):
+        """Job with no history shows the empty-state marker, not an empty <ol>."""
+        response = client.get("/board/jobs/fp_applied/notes/history")
+        assert response.status_code == 200
+        assert "No history yet" in response.text
+        assert "<ol" not in response.text
+
+    def test_history_route_404_on_unknown_fingerprint(self, client: TestClient):
+        response = client.get("/board/jobs/fp_nonexistent/notes/history")
+        assert response.status_code == 404
+
+    def test_history_route_renders_pt_timestamps(self, client: TestClient):
+        """updated_at is stored as naive UTC; the route must convert to PT
+        (America/Los_Angeles) and emit a TZ-tagged string. Validates the
+        ZoneInfo("UTC")→ZoneInfo("America/Los_Angeles") conversion."""
+        client.post(
+            "/board/jobs/fp_applied/notes",
+            data={"notes": "tz-test", "event_type": "blur"},
+        )
+        response = client.get("/board/jobs/fp_applied/notes/history")
+        assert response.status_code == 200
+        # PT abbreviation appears as PDT or PST depending on the date
+        text = response.text
+        assert " PDT" in text or " PST" in text, f"PT timezone suffix missing — UTC bleed-through? body: {text[:200]!r}"
+        # Negative: bare 'UTC' tag must NOT appear (conversion failed if it does)
+        assert " UTC" not in text
+
+    def test_post_notes_response_unchanged_by_history_write(self, client: TestClient):
+        """The /notes POST response is still the re-rendered cell <td>;
+        history writes are a side effect, not a response-shape change. Guards
+        against accidental swap-shape regression."""
+        response = client.post(
+            "/board/jobs/fp_applied/notes",
+            data={"notes": "shape-check", "event_type": "blur"},
+        )
+        assert response.status_code == 200
+        assert response.text.strip().startswith("<td")
+        assert 'value="shape-check"' in response.text
+        # History disclosure is part of the cell, even when blur fires
+        assert "history" in response.text

@@ -71,7 +71,7 @@ _REQUIRED_ONBOARDING_SESSIONS_COLUMNS: tuple[str, ...] = (
     "cumulative_cost_usd",
 )
 _REMOVED_ONBOARDING_SESSIONS_COLUMNS: tuple[str, ...] = ("tester_google_key",)
-_REQUIRED_TABLES: tuple[str, ...] = ("notifications",)
+_REQUIRED_TABLES: tuple[str, ...] = ("notifications", "notes_history")
 _REMOVED_TABLES: tuple[str, ...] = ("cost_calibration",)
 
 

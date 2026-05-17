@@ -55,7 +55,7 @@ def client(tmp_path: Path, active_sources_path: Path, monkeypatch: pytest.Monkey
         "id TEXT PRIMARY KEY, fingerprint TEXT, title TEXT, company TEXT, "
         "stage TEXT, reject_reason TEXT, relevance_score INTEGER, "
         "fit_score REAL, probability_score REAL, interview_likelihood INTEGER, "
-        "location TEXT, remote_status TEXT, known_contacts TEXT, "
+        "location TEXT, remote_status TEXT, known_contacts TEXT, user_notes TEXT, "
         "comp_estimate TEXT, ai_notes TEXT, created_at TEXT, "
         "stage_updated TEXT, url TEXT, prep_folder_path TEXT"
         ")"

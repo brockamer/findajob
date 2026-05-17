@@ -55,6 +55,12 @@
       "type": "index"
     },
     {
+      "name": "idx_notes_history_job_updated",
+      "sql": "CREATE INDEX idx_notes_history_job_updated ON notes_history(job_id,updated_at DESC)",
+      "tbl_name": "notes_history",
+      "type": "index"
+    },
+    {
       "name": "idx_notifications_kind",
       "sql": "CREATE INDEX idx_notifications_kind ON notifications(kind)",
       "tbl_name": "notifications",
@@ -755,6 +761,66 @@
       "name": "jobs",
       "sql": "CREATE TABLE jobs(id TEXT PRIMARY KEY,fingerprint TEXT UNIQUE NOT NULL,loose_fingerprint TEXT,url TEXT NOT NULL,title TEXT NOT NULL,company TEXT NOT NULL,location TEXT DEFAULT '',source TEXT NOT NULL,raw_jd_text TEXT,relevance_score INTEGER CHECK(relevance_score BETWEEN 1 AND 10),interview_likelihood INTEGER CHECK(interview_likelihood BETWEEN 1 AND 10),strengths_alignment TEXT,industry_sector TEXT,comp_estimate TEXT DEFAULT '',ai_notes TEXT,score_status TEXT CHECK(score_status IN('scored','manual_review','needs_info')),score_flag_reason TEXT,remote_status TEXT DEFAULT 'Unknown',network_depth INTEGER DEFAULT 0,known_contacts TEXT DEFAULT '',stage TEXT DEFAULT 'discovered' CHECK(stage IN('discovered','enriched','scored','manual_review','prep_in_progress','materials_drafted','waitlisted','applied','response_received','interview','offer','rejected','not_selected','withdrawn')),stage_updated TEXT,status TEXT DEFAULT 'active' CHECK(status IN('active','manual_review','skipped','applied','rejected','interviewing','offer')),apply_flag INTEGER DEFAULT 0,reject_reason TEXT DEFAULT '',prep_folder_path TEXT,gdrive_folder_url TEXT,fit_score REAL,probability_score REAL,user_notes TEXT DEFAULT '',created_at TEXT DEFAULT(datetime('now')),updated_at TEXT DEFAULT(datetime('now')),dupe_of TEXT DEFAULT '',synthetic INTEGER NOT NULL DEFAULT 0,speculative_briefing_folder TEXT)",
       "tbl_name": "jobs",
+      "type": "table"
+    },
+    {
+      "columns": [
+        {
+          "cid": 0,
+          "dflt_value": null,
+          "name": "id",
+          "notnull": 0,
+          "pk": 1,
+          "type": "INTEGER"
+        },
+        {
+          "cid": 1,
+          "dflt_value": null,
+          "name": "job_id",
+          "notnull": 1,
+          "pk": 0,
+          "type": "INTEGER"
+        },
+        {
+          "cid": 2,
+          "dflt_value": null,
+          "name": "notes",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "cid": 3,
+          "dflt_value": "datetime('now')",
+          "name": "updated_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "cid": 4,
+          "dflt_value": "'operator'",
+          "name": "author",
+          "notnull": 1,
+          "pk": 0,
+          "type": "TEXT"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "job_id",
+          "id": 0,
+          "match": "NONE",
+          "on_delete": "NO ACTION",
+          "on_update": "NO ACTION",
+          "seq": 0,
+          "table": "jobs",
+          "to": "id"
+        }
+      ],
+      "name": "notes_history",
+      "sql": "CREATE TABLE notes_history(id INTEGER PRIMARY KEY AUTOINCREMENT,job_id INTEGER NOT NULL REFERENCES jobs(id),notes TEXT,updated_at TEXT NOT NULL DEFAULT(datetime('now')),author TEXT NOT NULL DEFAULT 'operator')",
+      "tbl_name": "notes_history",
       "type": "table"
     },
     {
