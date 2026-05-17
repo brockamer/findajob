@@ -1436,3 +1436,214 @@ class TestNotesHistory:
         assert 'value="shape-check"' in response.text
         # History disclosure is part of the cell, even when blur fires
         assert "history" in response.text
+
+
+# ── Rejected-tab affordances (#697) ───────────────────────────────────────
+
+
+def _seed_rejected_audit_log(client: TestClient, fingerprint: str) -> None:
+    """Seed an audit_log row with field_changed='stage', new_value='rejected'
+    so the _fetch_un_reject_job_with_date subquery surfaces a rejected_date."""
+    conn = sqlite3.connect(client._db_path)
+    job_id = conn.execute("SELECT id FROM jobs WHERE fingerprint=?", (fingerprint,)).fetchone()[0]
+    conn.execute(
+        "INSERT INTO audit_log (job_id, field_changed, old_value, new_value, changed_at, changed_by) "
+        "VALUES (?, 'stage', 'scored', 'rejected', '2026-05-15 14:30:00', 'user')",
+        (job_id,),
+    )
+    conn.commit()
+    conn.close()
+
+
+class TestUnRejectConfirm:
+    def test_returns_modal_with_rejection_context(self, client: TestClient):
+        _seed_user_rejected_job(client, "fp_user_rej")
+        _seed_rejected_audit_log(client, "fp_user_rej")
+
+        response = client.get("/board/jobs/fp_user_rej/un-reject/confirm")
+        assert response.status_code == 200
+
+        text = response.text
+        # Modal copy carries the destructive-action warning
+        assert "feedback signal" in text
+        # Context lines surface the rejection date (from audit_log JOIN) and reason
+        assert "2026-05-15" in text
+        assert "Wrong domain" in text
+        # Confirm button posts to /un-reject; cancel restores via /un-reject/cell
+        assert 'hx-post="/board/jobs/fp_user_rej/un-reject"' in text
+        assert 'hx-get="/board/jobs/fp_user_rej/un-reject/cell"' in text
+        # Negative: no row was actually un-rejected — this is just the modal
+        assert _fetch_stage(client, "fp_user_rej") == "rejected"
+
+    def test_works_without_audit_log_date(self, client: TestClient):
+        """If audit_log has no stage→rejected row, the modal still renders —
+        the rejected_date context line is just omitted."""
+        _seed_user_rejected_job(client, "fp_user_rej")
+        # No _seed_rejected_audit_log call
+
+        response = client.get("/board/jobs/fp_user_rej/un-reject/confirm")
+        assert response.status_code == 200
+        assert "feedback signal" in response.text
+        # Negative: date not present (no audit_log row → NULL rejected_date → no context line)
+        assert "Rejected:" not in response.text
+
+    def test_409_for_not_selected_stage(self, client: TestClient):
+        """Company rejections (not_selected) can't be un-rejected via this flow."""
+        conn = sqlite3.connect(client._db_path)
+        _insert_job(conn, fingerprint="fp_not_sel_confirm", stage="not_selected")
+        conn.close()
+
+        response = client.get("/board/jobs/fp_not_sel_confirm/un-reject/confirm")
+        assert response.status_code == 409
+
+    def test_404_unknown_fingerprint(self, client: TestClient):
+        response = client.get("/board/jobs/fp_nonexistent/un-reject/confirm")
+        assert response.status_code == 404
+
+
+class TestUnRejectCell:
+    def test_returns_button_cell_for_rejected(self, client: TestClient):
+        _seed_user_rejected_job(client, "fp_user_rej")
+
+        response = client.get("/board/jobs/fp_user_rej/un-reject/cell")
+        assert response.status_code == 200
+        text = response.text
+        # Button surfaces the un-reject affordance
+        assert "Un-reject" in text
+        # Click triggers GET to /un-reject/confirm (the modal endpoint)
+        assert 'hx-get="/board/jobs/fp_user_rej/un-reject/confirm"' in text
+
+    def test_inert_dash_for_non_rejected_stage(self, client: TestClient):
+        """Cell endpoint accepts any stage (it's the restore-endpoint) but the
+        template renders an inert dash for non-rejected rows — no button."""
+        response = client.get("/board/jobs/fp_drafted/un-reject/cell")
+        assert response.status_code == 200
+        assert "Un-reject" not in response.text
+        assert "—" in response.text
+
+    def test_404_unknown_fingerprint(self, client: TestClient):
+        response = client.get("/board/jobs/fp_nonexistent/un-reject/cell")
+        assert response.status_code == 404
+
+
+class TestChangeRejectReason:
+    def test_updates_jobs_and_writes_audit(self, client: TestClient):
+        _seed_user_rejected_job(client, "fp_user_rej")
+        assert _fetch_user_notes is not None  # sanity: file structure intact
+
+        response = client.post(
+            "/board/jobs/fp_user_rej/change-reject-reason",
+            data={"reason": "Compensation"},
+        )
+        assert response.status_code == 200
+
+        conn = sqlite3.connect(client._db_path)
+        new_reason = conn.execute("SELECT reject_reason FROM jobs WHERE fingerprint=?", ("fp_user_rej",)).fetchone()[0]
+        conn.close()
+        assert new_reason == "Compensation"
+
+        # Audit row written with the canonical changed_by='user' for operator actions
+        audit = _fetch_audit(client, "fp_user_rej")
+        assert ("reject_reason", "Wrong domain", "Compensation") in audit
+
+    def test_audit_changed_by_is_user(self, client: TestClient):
+        """changed_by='user' for operator-initiated web changes (matches /apply
+        convention; closes the load-bearing gap from the code-explorer's review)."""
+        _seed_user_rejected_job(client, "fp_user_rej")
+        client.post(
+            "/board/jobs/fp_user_rej/change-reject-reason",
+            data={"reason": "Location"},
+        )
+        conn = sqlite3.connect(client._db_path)
+        row = conn.execute(
+            "SELECT al.changed_by FROM audit_log al JOIN jobs j ON j.id = al.job_id "
+            "WHERE j.fingerprint=? AND al.field_changed='reject_reason'",
+            ("fp_user_rej",),
+        ).fetchone()
+        conn.close()
+        assert row is not None
+        assert row[0] == "user"
+
+    def test_blank_reason_defaults_to_other(self, client: TestClient):
+        """Matches /reject's `(reason or '').strip() or 'Other'` convention."""
+        _seed_user_rejected_job(client, "fp_user_rej")
+        response = client.post(
+            "/board/jobs/fp_user_rej/change-reject-reason",
+            data={"reason": ""},
+        )
+        assert response.status_code == 200
+        conn = sqlite3.connect(client._db_path)
+        new_reason = conn.execute("SELECT reject_reason FROM jobs WHERE fingerprint=?", ("fp_user_rej",)).fetchone()[0]
+        conn.close()
+        assert new_reason == "Other"
+
+    def test_idempotent_when_reason_unchanged(self, client: TestClient):
+        """Posting the same reason twice writes one audit row, not two."""
+        _seed_user_rejected_job(client, "fp_user_rej")
+        client.post(
+            "/board/jobs/fp_user_rej/change-reject-reason",
+            data={"reason": "Compensation"},
+        )
+        client.post(
+            "/board/jobs/fp_user_rej/change-reject-reason",
+            data={"reason": "Compensation"},
+        )
+        # Two POSTs, but only the first should have a different new_value
+        audit = [a for a in _fetch_audit(client, "fp_user_rej") if a[0] == "reject_reason"]
+        assert len(audit) == 1, f"expected one reject_reason audit row, got {audit}"
+
+    def test_response_is_rerendered_cell(self, client: TestClient):
+        _seed_user_rejected_job(client, "fp_user_rej")
+        response = client.post(
+            "/board/jobs/fp_user_rej/change-reject-reason",
+            data={"reason": "Compensation"},
+        )
+        assert response.status_code == 200
+        assert response.text.strip().startswith("<td")
+        # Cell re-renders with the new reason selected in the dropdown
+        assert "Compensation" in response.text
+
+    def test_409_for_not_selected_stage(self, client: TestClient):
+        conn = sqlite3.connect(client._db_path)
+        _insert_job(conn, fingerprint="fp_not_sel_change", stage="not_selected")
+        conn.close()
+        response = client.post(
+            "/board/jobs/fp_not_sel_change/change-reject-reason",
+            data={"reason": "Compensation"},
+        )
+        assert response.status_code == 409
+
+    def test_404_unknown_fingerprint(self, client: TestClient):
+        response = client.post(
+            "/board/jobs/fp_nonexistent/change-reject-reason",
+            data={"reason": "Compensation"},
+        )
+        assert response.status_code == 404
+
+
+class TestSyntheticUnReject:
+    def test_synthetic_unreject_succeeds_without_feedback_log(self, client: TestClient):
+        """Synthetic [SPEC] jobs never have feedback_log rows; un-reject must
+        still complete via the existing DELETE-is-noop path. Validates the AC's
+        synthetic-row exception clause without requiring code change in
+        actions.un_reject_job."""
+        conn = sqlite3.connect(client._db_path)
+        _insert_job(conn, fingerprint="fp_spec_rej", stage="rejected", title="[SPEC] Pricing strategy")
+        job_id = conn.execute("SELECT id FROM jobs WHERE fingerprint='fp_spec_rej'").fetchone()[0]
+        conn.execute("UPDATE jobs SET synthetic=1, reject_reason='Mismatch' WHERE id=?", (job_id,))
+        conn.commit()
+        # Intentionally NO feedback_log row — synthetic rows never get one
+        conn.close()
+
+        response = client.post("/board/jobs/fp_spec_rej/un-reject")
+        assert response.status_code == 200
+        # Negative: no error surfaced even though feedback_log had no row to delete
+        assert _fetch_stage(client, "fp_spec_rej") == "scored"
+        # Confirm modal also works for synthetic
+        # (regression guard: GET /confirm shouldn't error on synthetic=1)
+        conn = sqlite3.connect(client._db_path)
+        conn.execute("UPDATE jobs SET stage='rejected', reject_reason='Mismatch' WHERE fingerprint='fp_spec_rej'")
+        conn.commit()
+        conn.close()
+        confirm = client.get("/board/jobs/fp_spec_rej/un-reject/confirm")
+        assert confirm.status_code == 200

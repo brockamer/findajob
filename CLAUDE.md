@@ -190,6 +190,7 @@ responds in the same request — no poll cycle, no mirror table.
 | Not Selected (w/ reason) | `POST /board/jobs/{fp}/not-selected` | Applied dropdown + reject cell |
 | Promote | `POST /board/jobs/{fp}/promote` | Review button |
 | Reactivate | `POST /board/jobs/{fp}/reactivate` | Waitlist button |
+| Change reject reason | `POST /board/jobs/{fp}/change-reject-reason` | Rejected tab inline dropdown (#697) |
 | Edit user_notes | `POST /board/jobs/{fp}/notes` | Notes input on any tab that surfaces the column (Dashboard / Review / Waitlist / Applied). 800ms debounce. Blur writes `notes_history`; keyup only writes `jobs.user_notes`. |
 | Confirm rejection email | `POST /board/rejections-review/{id}/confirm` | Rejections-review queue (#362) |
 | Dismiss rejection email | `POST /board/rejections-review/{id}/dismiss` | Rejections-review queue (#362) |

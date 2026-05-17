@@ -45,7 +45,8 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
         "fit_score REAL, probability_score REAL, interview_likelihood INTEGER, "
         "location TEXT, remote_status TEXT, known_contacts TEXT, user_notes TEXT, "
         "comp_estimate TEXT, ai_notes TEXT, created_at TEXT, "
-        "stage_updated TEXT, url TEXT, prep_folder_path TEXT"
+        "stage_updated TEXT, url TEXT, prep_folder_path TEXT, "
+        "synthetic INTEGER NOT NULL DEFAULT 0"
         ")"
     )
     conn.execute(

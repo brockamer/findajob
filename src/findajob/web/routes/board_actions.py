@@ -545,6 +545,133 @@ def un_reject(
     return HTMLResponse("")
 
 
+def _fetch_un_reject_job_with_date(db: sqlite3.Connection, fingerprint: str) -> sqlite3.Row | None:
+    """Like _fetch_un_reject_job but JOINs audit_log for the rejection date.
+
+    Mirrors the LEFT JOIN subquery from _rejected_source() in board.py so the
+    confirm-modal context can show 'rejected on YYYY-MM-DD'. Indexed by j.id;
+    the GROUP BY + MAX(changed_at) handles re-reject sequences.
+    """
+    return db.execute(
+        "SELECT j.id, j.fingerprint, j.title, j.company, j.url, j.stage, "
+        "       j.reject_reason, j.synthetic, al.rejected_date "
+        "FROM jobs j "
+        "LEFT JOIN ( "
+        "  SELECT job_id, MAX(changed_at) AS rejected_date "
+        "  FROM audit_log "
+        "  WHERE field_changed='stage' AND new_value IN ('rejected','not_selected') "
+        "  GROUP BY job_id "
+        ") al ON al.job_id = j.id "
+        "WHERE j.fingerprint=?",
+        (fingerprint,),
+    ).fetchone()
+
+
+@router.get("/board/jobs/{fingerprint}/un-reject/confirm", response_class=HTMLResponse)
+def un_reject_confirm(
+    fingerprint: str,
+    request: Request,
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> HTMLResponse:
+    """Render the un-reject confirm modal into the row's un-reject cell.
+
+    Only valid for stage='rejected'. Returns 404 on unknown fingerprint and
+    409 on any other stage (not_selected, scored, applied, etc.).
+    """
+    job = _fetch_un_reject_job_with_date(db, fingerprint)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job["stage"] != "rejected":
+        raise HTTPException(status_code=409, detail="Only user-rejected jobs can be un-rejected")
+
+    context_lines = []
+    if job["rejected_date"]:
+        context_lines.append(f"Rejected: {job['rejected_date']}")
+    if job["reject_reason"]:
+        context_lines.append(f"Reason: {job['reject_reason']}")
+
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request=request,
+        name="board/_confirm_modal.html",
+        context={
+            "copy": "This deletes the scorer's feedback signal for this rejection. Continue?",
+            "context_lines": context_lines,
+            "confirm_url": f"/board/jobs/{fingerprint}/un-reject",
+            "confirm_target": "closest tr",
+            "cancel_url": f"/board/jobs/{fingerprint}/un-reject/cell",
+        },
+    )
+
+
+@router.get("/board/jobs/{fingerprint}/un-reject/cell", response_class=HTMLResponse)
+def un_reject_cell(
+    fingerprint: str,
+    request: Request,
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> HTMLResponse:
+    """Render the un-reject button cell — the Cancel-restoration endpoint
+    for the confirm modal swap. Returns 404 on unknown fingerprint; cells
+    on non-rejected rows render the inert dash (no 409)."""
+    row = db.execute(
+        "SELECT fingerprint, stage, title FROM jobs WHERE fingerprint=?",
+        (fingerprint,),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request=request,
+        name="board/_unreject_cell.html",
+        context={"row": row},
+    )
+
+
+@router.post("/board/jobs/{fingerprint}/change-reject-reason", response_class=HTMLResponse)
+def change_reject_reason(
+    fingerprint: str,
+    request: Request,
+    reason: str = Form(""),
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> HTMLResponse:
+    """Update jobs.reject_reason in place. No folder move, no feedback_log touch.
+    Writes audit_log so the change is durable in history.
+
+    Matches /reject's no-validation convention — any non-empty string is
+    accepted; blank defaults to 'Other'. Returns the re-rendered cell.
+    """
+    row = db.execute(
+        "SELECT id, fingerprint, stage, reject_reason FROM jobs WHERE fingerprint=?",
+        (fingerprint,),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if row["stage"] != "rejected":
+        raise HTTPException(status_code=409, detail="Only user-rejected jobs can have their reason changed")
+
+    new_reason = (reason or "").strip() or "Other"
+    old_reason = row["reject_reason"] or ""
+
+    if new_reason != old_reason:
+        db.execute(
+            "UPDATE jobs SET reject_reason=?, updated_at=datetime('now') WHERE id=?",
+            (new_reason, row["id"]),
+        )
+        write_audit(db, row["id"], "reject_reason", old_reason, new_reason, changed_by="user")
+        db.commit()
+
+    updated = db.execute(
+        "SELECT fingerprint, stage, reject_reason FROM jobs WHERE fingerprint=?",
+        (fingerprint,),
+    ).fetchone()
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request=request,
+        name="board/_change_reject_reason_cell.html",
+        context={"row": updated},
+    )
+
+
 _POST_APPLICATION_STAGES = ("applied", "interview", "offer")
 
 

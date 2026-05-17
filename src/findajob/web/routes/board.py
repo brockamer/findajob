@@ -408,6 +408,7 @@ def _rejected_query(parsed: ParsedFilters) -> tuple[str, list[object]]:
     order = "DESC" if parsed.desc else "ASC"
     sql = (
         "SELECT j.fingerprint, j.title, j.company, j.url, j.stage, j.reject_reason, "
+        "       j.id, j.relevance_score, j.location, j.remote_status, j.ai_notes, j.user_notes, j.synthetic, "
         "       CASE j.stage WHEN 'not_selected' THEN 'company' ELSE 'user' END AS rejection_source, "
         "       al.rejected_date "
         f"{_rejected_source()} "

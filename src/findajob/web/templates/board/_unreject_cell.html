@@ -1,0 +1,25 @@
+{#
+  Un-reject button cell for the Rejected tab. Only renders the button when
+  stage='rejected' (user rejection); company rejections (not_selected) do
+  not get un-rejected via this flow.
+
+  Inputs:
+    row — sqlite3.Row with .fingerprint, .stage, .title
+
+  Click triggers GET /un-reject/confirm which swaps in the confirm modal
+  (defined in _confirm_modal.html). Cancel restores this cell via the
+  /un-reject/cell GET endpoint.
+#}
+<td class="px-3 py-1 align-top text-sm whitespace-nowrap">
+  {% if row.stage == 'rejected' %}
+  <button type="button"
+          hx-get="/board/jobs/{{ row.fingerprint }}/un-reject/confirm"
+          hx-target="closest td"
+          hx-swap="outerHTML"
+          class="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-xs">
+    Un-reject
+  </button>
+  {% else %}
+  <span class="text-xs text-slate-400" title="Company rejections can't be un-rejected via this flow.">—</span>
+  {% endif %}
+</td>

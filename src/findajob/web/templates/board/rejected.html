@@ -12,7 +12,7 @@
 </p>
 {% include "_filters.html" %}
 <table class="min-w-full bg-white shadow-sm rounded-sm density-{{ density | default('compact') }}">
-  {% set leading_cols = [] %}
+  {% set leading_cols = [('', ''), ('Reason', '')] %}
   {% include "_table_header.html" %}
   <tbody id="rows">
     {% include "_job_rows_fragment.html" %}

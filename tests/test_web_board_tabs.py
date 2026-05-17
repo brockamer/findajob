@@ -34,7 +34,7 @@ def client(tmp_path: Path) -> TestClient:
         "interview_likelihood INTEGER, location TEXT, remote_status TEXT, known_contacts TEXT, "
         "comp_estimate TEXT, ai_notes TEXT, user_notes TEXT, score_flag_reason TEXT, "
         "source TEXT, reject_reason TEXT, url TEXT, created_at TEXT, stage_updated TEXT, "
-        "prep_folder_path TEXT)"
+        "prep_folder_path TEXT, synthetic INTEGER NOT NULL DEFAULT 0)"
     )
     conn.execute(
         "CREATE TABLE audit_log (id INTEGER PRIMARY KEY, job_id TEXT, field_changed TEXT, "

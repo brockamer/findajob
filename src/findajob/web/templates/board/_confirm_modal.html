@@ -1,0 +1,42 @@
+{#
+  Generic confirm modal partial. HTMX-driven, server-rendered, swaps into
+  a single <td> cell. Reusable across actions that need Tier-1 confirmation.
+
+  Inputs:
+    copy         — the primary warning text (required)
+    context_lines — optional list of supporting context strings (rendered as <ul>)
+    confirm_url  — URL the Confirm button POSTs to (required)
+    confirm_target — hx-target for the confirm POST. Default 'closest tr' for
+                     row-removal actions; pass 'closest td' for cell-only swaps.
+    confirm_swap — hx-swap for the confirm POST (default 'outerHTML')
+    cancel_url   — URL the Cancel button GETs to restore the original cell
+
+  The whole modal is wrapped in a <td> so it slots cleanly into a row when
+  the trigger cell is swapped via outerHTML.
+#}
+<td class="px-3 py-1 align-top text-sm" data-confirm-modal>
+  <div class="rounded border border-red-300 bg-red-50 p-2">
+    <p class="text-xs text-red-900 mb-1">{{ copy }}</p>
+    {% if context_lines %}
+    <ul class="text-[11px] text-red-700 mb-2 list-disc list-inside">
+      {% for line in context_lines %}<li>{{ line }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+    <div class="flex gap-1">
+      <button type="button"
+              hx-post="{{ confirm_url }}"
+              hx-target="{{ confirm_target | default('closest tr') }}"
+              hx-swap="{{ confirm_swap | default('outerHTML') }}"
+              class="px-2 py-0.5 bg-red-600 hover:bg-red-700 text-white rounded text-xs">
+        Confirm
+      </button>
+      <button type="button"
+              hx-get="{{ cancel_url }}"
+              hx-target="closest td"
+              hx-swap="outerHTML"
+              class="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-xs">
+        Cancel
+      </button>
+    </div>
+  </div>
+</td>

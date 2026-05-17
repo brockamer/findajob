@@ -1,0 +1,36 @@
+{#
+  Inline reject-reason change dropdown for the Rejected tab.
+
+  Inputs:
+    row — sqlite3.Row with .fingerprint, .stage, .reject_reason
+
+  Only operable when stage='rejected' (user rejection has a meaningful reject_reason
+  that the operator may want to recategorize). For stage='not_selected', renders
+  the current reason as plain text — company rejection reasons aren't operator-edited.
+
+  On change, POSTs new reason to /change-reject-reason. Server updates
+  jobs.reject_reason + audit_log + returns this re-rendered cell.
+#}
+<td class="px-3 py-1 align-top text-sm whitespace-nowrap">
+  {% if row.stage == 'rejected' %}
+  <select
+    class="block rounded border-slate-300 bg-white px-2 py-1 text-xs"
+    data-fp="{{ row.fingerprint }}"
+    hx-post="/board/jobs/{{ row.fingerprint }}/change-reject-reason"
+    hx-trigger="change"
+    hx-target="closest td"
+    hx-swap="outerHTML"
+    name="reason">
+    {% for option in reject_reason_options() %}
+    <option value="{{ option }}" {% if option == row.reject_reason %}selected{% endif %}>{{ option }}</option>
+    {% endfor %}
+    {# If current reject_reason is not in the option list (legacy / removed reason),
+       surface it so the dropdown still reflects state. #}
+    {% if row.reject_reason and row.reject_reason not in reject_reason_options() %}
+    <option value="{{ row.reject_reason }}" selected>{{ row.reject_reason }} (legacy)</option>
+    {% endif %}
+  </select>
+  {% else %}
+  <span class="text-xs text-slate-500">{{ row.reject_reason or '—' }}</span>
+  {% endif %}
+</td>
