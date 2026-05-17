@@ -36,7 +36,8 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     # Two not_selected rows
     conn.execute(
         "INSERT INTO jobs (id, fingerprint, title, company, stage, reject_reason, url, location) "
-        "VALUES ('id-ns1','fp-ns1','Principal Eng','Meta','not_selected','No Response','https://example.com/j1','Menlo Park')"
+        "VALUES ('id-ns1','fp-ns1','Principal Eng','Meta','not_selected','No Response',"
+        "'https://example.com/j1','Menlo Park')"
     )
     conn.execute(
         "INSERT INTO audit_log (job_id, field_changed, old_value, new_value, changed_at, changed_by) "
