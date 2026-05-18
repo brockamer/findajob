@@ -716,7 +716,12 @@ def un_withdraw_job(
     return restored_stage
 
 
-def un_apply_job(conn: sqlite3.Connection, job: Any) -> None:
+def un_apply_job(
+    conn: sqlite3.Connection,
+    job: Any,
+    *,
+    deferred_fs: list[FsOp] | None = None,
+) -> None:
     """Reverse a recent /apply (#699): move folder back from companies/_applied/
     to companies/, delete the *.applied-YYYY-MM-DD.md snapshot siblings written
     by snapshot_applied_md_files, flip stage to materials_drafted, clear
@@ -729,7 +734,17 @@ def un_apply_job(conn: sqlite3.Connection, job: Any) -> None:
     materials_drafted rows have apply_flag=1. The asymmetry is intentional — an
     un-applied row is "draft I had decided to send, then changed my mind", not
     "draft pending dispatch", so the flag-zero state is correct.
+
+    Args:
+        deferred_fs: See module docstring. The single closure performs the
+            folder move AND the snapshot deletes in one pass; the snapshot
+            glob iterates at execution time (at the post-move destination),
+            so there's no closure-capture trap from collecting per-file
+            closures inside a loop (#709 pattern).
     """
+    own_transaction = deferred_fs is None
+    fs_ops: list[FsOp] = []
+
     now = datetime.now(UTC).isoformat()
 
     # Re-fetch prep_folder_path from the DB so callers can pass any row shape
@@ -739,28 +754,42 @@ def un_apply_job(conn: sqlite3.Connection, job: Any) -> None:
     new_path = folder  # default: keep whatever path is on the row
     if folder and os.path.isdir(folder):
         assert isinstance(folder, str)  # mypy narrowing — prep_folder_path is TEXT
-        # Move folder back from _applied/ to companies/
         dest = os.path.join(BASE, "companies", os.path.basename(folder))
-        shutil.move(folder, dest)
         new_path = dest
-        log_event("folder_moved_from_applied", job_id=job["id"], folder=os.path.basename(folder))
+        src_folder: str = folder
+        dest_folder: str = dest
+        folder_name = os.path.basename(folder)
+        job_id: str = job["id"]
 
-        # Delete only files matching the exact snapshot regex (mirrors
-        # snapshot_applied_md_files's filter — not a glob, which would
-        # also match incidentally-named files).
-        dest_path = Path(dest)
-        for md in dest_path.glob("*.md"):
-            if _APPLIED_SNAPSHOT_RE.search(md.name):
-                md.unlink()
-                log_event("snapshot_removed_for_un_apply", job_id=job["id"], snapshot=md.name)
+        def _move_and_clean_snapshots(
+            src: str = src_folder,
+            d: str = dest_folder,
+            jid: str = job_id,
+            fname: str = folder_name,
+        ) -> None:
+            # Single closure: glob iteration happens at execution time on the
+            # post-move folder, so collapsing the per-file deletes inside the
+            # loop into one closure body sidesteps the lazy-capture trap that
+            # bit un_not_selected_job in #709.
+            shutil.move(src, d)
+            log_event("folder_moved_from_applied", job_id=jid, folder=fname)
+            for md in Path(d).glob("*.md"):
+                if _APPLIED_SNAPSHOT_RE.search(md.name):
+                    md.unlink()
+                    log_event("snapshot_removed_for_un_apply", job_id=jid, snapshot=md.name)
+
+        fs_ops.append(_move_and_clean_snapshots)
 
     conn.execute(
         "UPDATE jobs SET stage='materials_drafted', apply_flag=0, prep_folder_path=?, "
         "stage_updated=?, updated_at=? WHERE id=?",
         (new_path, now, now, job["id"]),
     )
-    conn.commit()
-    write_audit(conn, job["id"], "stage", "applied", "materials_drafted", changed_by="web_un_apply")
+    if own_transaction:
+        conn.commit()
+    write_audit(
+        conn, job["id"], "stage", "applied", "materials_drafted", changed_by="web_un_apply", commit=own_transaction
+    )
     log_event(
         "job_un_applied",
         job_id=job["id"],
@@ -768,13 +797,31 @@ def un_apply_job(conn: sqlite3.Connection, job: Any) -> None:
         title=job["title"],
     )
 
+    if deferred_fs is None:
+        for op in fs_ops:
+            op()
+    else:
+        deferred_fs.extend(fs_ops)
 
-def reactivate_from_ingest(conn: sqlite3.Connection, job: Any, overwrite_fields: dict[str, str]) -> None:
+
+def reactivate_from_ingest(
+    conn: sqlite3.Connection,
+    job: Any,
+    overwrite_fields: dict[str, str],
+    *,
+    deferred_fs: list[FsOp] | None = None,
+) -> None:
     """Reactivate a waitlisted job via manual ingest.
 
     Sets stage=scored, relevance_score=8, overwrites non-blank submitted
     fields, moves prep folder from _waitlisted/ back to companies/.
+
+    Args:
+        deferred_fs: See module docstring.
     """
+    own_transaction = deferred_fs is None
+    fs_ops: list[FsOp] = []
+
     now = datetime.now(UTC).isoformat()
 
     set_parts = ["stage='scored'", "relevance_score=8", "updated_at=?"]
@@ -788,13 +835,32 @@ def reactivate_from_ingest(conn: sqlite3.Connection, job: Any, overwrite_fields:
     if folder and os.path.isdir(folder):
         assert isinstance(folder, str)  # mypy narrowing — prep_folder_path is TEXT
         dest = os.path.join(BASE, "companies", os.path.basename(folder))
-        shutil.move(folder, dest)
-        conn.execute("UPDATE jobs SET prep_folder_path=? WHERE id=?", (dest, job["id"]))
-        log_event("folder_moved_from_waitlisted", job_id=job["id"], folder=os.path.basename(folder))
+        src_folder: str = folder
+        folder_name = os.path.basename(folder)
+        job_id: str = job["id"]
 
-    conn.commit()
-    write_audit(conn, job["id"], "stage", "waitlisted", "scored")
+        def _move_from_waitlisted(
+            src: str = src_folder,
+            d: str = dest,
+            jid: str = job_id,
+            fname: str = folder_name,
+        ) -> None:
+            shutil.move(src, d)
+            log_event("folder_moved_from_waitlisted", job_id=jid, folder=fname)
+
+        fs_ops.append(_move_from_waitlisted)
+        conn.execute("UPDATE jobs SET prep_folder_path=? WHERE id=?", (dest, job["id"]))
+
+    if own_transaction:
+        conn.commit()
+    write_audit(conn, job["id"], "stage", "waitlisted", "scored", commit=own_transaction)
     log_event("job_reactivated_via_ingest", job_id=job["id"], company=job["company"], title=job["title"])
+
+    if deferred_fs is None:
+        for op in fs_ops:
+            op()
+    else:
+        deferred_fs.extend(fs_ops)
 
 
 def refresh_active_job(conn: sqlite3.Connection, job: Any, overwrite_fields: dict[str, str]) -> None:

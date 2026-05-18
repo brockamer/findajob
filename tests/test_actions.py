@@ -1132,3 +1132,131 @@ class TestActionsDeferredFs:
         assert len(audits) == 0
         # Post-rollback: no marker file on disk (the deferred write never ran)
         assert list(folder.glob("NOT_SELECTED_*.txt")) == []
+
+    def test_un_apply_job_deferred_fs_is_rollback_safe(self, db, tmp_path):
+        """#726 — un_apply_job participates in the deferred_fs contract.
+
+        Seed an applied row with a folder in `_applied/` containing a
+        snapshot `.applied-YYYY-MM-DD.md` file. Verify that ``deferred_fs=[]``
+        leaves both the folder and the snapshot on disk pre-execution, that
+        rollback restores DB state, and that the deferred closures haven't
+        run (so the snapshot is still on disk).
+        """
+        applied_dir = tmp_path / "companies" / "_applied"
+        applied_dir.mkdir(parents=True, exist_ok=True)
+        folder = applied_dir / "Acme_Ops_un_apply_deferred"
+        folder.mkdir()
+        snapshot = folder / "resume.applied-2026-05-18.md"
+        snapshot.write_text("snapshot content")
+
+        job = insert_job(db, stage="applied", folder=str(folder))
+        db.commit()
+        job = db.execute("SELECT * FROM jobs WHERE id=?", (job["id"],)).fetchone()
+
+        deferred: list = []
+        actions.un_apply_job(db, job, deferred_fs=deferred)
+        # Pre-rollback: DB shows new state
+        assert db.execute("SELECT stage FROM jobs WHERE id=?", (job["id"],)).fetchone()["stage"] == "materials_drafted"
+        # Pre-rollback: fs op queued but NOT executed — folder + snapshot still in place
+        assert folder.exists(), "deferred_fs must not execute fs ops"
+        assert snapshot.exists()
+        assert len(deferred) == 1
+
+        db.rollback()
+
+        # Post-rollback: every DB write reversed
+        row = db.execute("SELECT stage, apply_flag FROM jobs WHERE id=?", (job["id"],)).fetchone()
+        assert row["stage"] == "applied"
+        audits = db.execute("SELECT * FROM audit_log WHERE job_id=?", (job["id"],)).fetchall()
+        assert len(audits) == 0
+        # Post-rollback: filesystem state still pre-call
+        assert folder.exists()
+        assert snapshot.exists()
+
+    def test_un_apply_job_multiple_snapshots_single_closure_no_capture_trap(self, db, tmp_path):
+        """#726 — un_apply_job collapses per-snapshot deletes into ONE closure
+        whose body iterates `glob("*.md")` at execution time (#709 lessons
+        learned). Verify that with 2+ snapshots, executing the deferred list
+        deletes ALL matching snapshots — a lazy-capture regression would
+        only delete the last one because the iteration variable would bind
+        to the final value.
+
+        Distinct from `un_not_selected_job`'s 2-marker test in that
+        un_apply_job intentionally uses single-closure-with-internal-loop
+        rather than N-closures-each-binding-one-path. Both patterns are
+        valid; this test locks in the chosen one.
+        """
+        applied_dir = tmp_path / "companies" / "_applied"
+        applied_dir.mkdir(parents=True, exist_ok=True)
+        folder = applied_dir / "Acme_Ops_multi_snap"
+        folder.mkdir()
+        snap_a = folder / "resume.applied-2026-05-18.md"
+        snap_b = folder / "cover.applied-2026-05-18.md"
+        snap_a.write_text("resume")
+        snap_b.write_text("cover")
+        # Non-snapshot .md should survive
+        unrelated = folder / "briefing.md"
+        unrelated.write_text("briefing — not a snapshot, must survive")
+
+        # Monkeypatch BASE so the deferred move targets tmp_path/companies/ —
+        # without this, dest is `<repo>/companies/` and the test pollutes the
+        # real repo. (Existing un_apply tests use this same pattern.)
+        import findajob.actions as actions_mod
+
+        original_base = actions_mod.BASE
+        actions_mod.BASE = str(tmp_path)
+        try:
+            job = insert_job(db, stage="applied", folder=str(folder))
+            db.commit()
+            job = db.execute("SELECT * FROM jobs WHERE id=?", (job["id"],)).fetchone()
+
+            deferred: list = []
+            actions.un_apply_job(db, job, deferred_fs=deferred)
+            assert len(deferred) == 1, "single closure body, not per-snapshot"
+
+            db.commit()
+            for op in deferred:
+                op()
+        finally:
+            actions_mod.BASE = original_base
+
+        moved_folder = tmp_path / "companies" / folder.name
+        assert moved_folder.exists()
+        # Both snapshots deleted at the destination
+        assert not (moved_folder / snap_a.name).exists()
+        assert not (moved_folder / snap_b.name).exists()
+        # Non-snapshot .md survived
+        assert (moved_folder / unrelated.name).exists()
+
+    def test_reactivate_from_ingest_deferred_fs_is_rollback_safe(self, db, tmp_path):
+        """#726 — reactivate_from_ingest participates in the deferred_fs contract.
+
+        Seed a waitlisted row with a folder in `_waitlisted/`. Verify
+        ``deferred_fs=[]`` keeps the folder at `_waitlisted/`, then rollback
+        restores `stage='waitlisted'` and the folder remains in place.
+        """
+        wl_dir = tmp_path / "companies" / "_waitlisted"
+        wl_dir.mkdir(parents=True, exist_ok=True)
+        folder = wl_dir / "Acme_Ops_reactivate_deferred"
+        folder.mkdir()
+
+        job = insert_job(db, stage="waitlisted", folder=str(folder))
+        db.commit()
+        job = db.execute("SELECT * FROM jobs WHERE id=?", (job["id"],)).fetchone()
+
+        deferred: list = []
+        actions.reactivate_from_ingest(db, job, overwrite_fields={}, deferred_fs=deferred)
+        # Pre-rollback: DB shows new state
+        assert db.execute("SELECT stage FROM jobs WHERE id=?", (job["id"],)).fetchone()["stage"] == "scored"
+        # Pre-rollback: fs op queued but NOT executed — folder still at _waitlisted/
+        assert folder.exists(), "deferred_fs must not execute fs ops"
+        assert len(deferred) == 1
+
+        db.rollback()
+
+        # Post-rollback: DB writes reversed
+        assert db.execute("SELECT stage FROM jobs WHERE id=?", (job["id"],)).fetchone()["stage"] == "waitlisted"
+        audits = db.execute("SELECT * FROM audit_log WHERE job_id=?", (job["id"],)).fetchall()
+        assert len(audits) == 0
+        # Post-rollback: folder still at _waitlisted/
+        assert folder.exists()
