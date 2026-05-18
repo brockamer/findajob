@@ -10,6 +10,10 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Added
+
+- **feat(loose-ends): #572 — static UX loose-end audit Phase 1.** New `scripts/audit_loose_ends.py` script and `findajob.loose_ends/` package walk the source tree, diff user-input-file consumers against UI-surface coverage, and emit a dated markdown report. Operator-curated `config/audit_exclusions.yaml` (tracked) carries the intentional-CLI-only allowlist. Two LLM calls per run (classifier at `temperature=0` for cross-run determinism; prose-writer at default). Quarterly manual trigger; ≤ $0.50/run budget self-enforced by the shim (exit 2 on overrun). Spec: `docs/superpowers/specs/2026-05-18-572-ux-audit-phase1-design.md`.
+
 ### Changed
 
 - **#726 refactor(actions): `un_apply_job` + `reactivate_from_ingest` gain `deferred_fs` parity with #709.** The two remaining helpers in `findajob.actions` that carried the same fs-then-DB ordering #709 removed from the other seven. Not bug-triggering today (no composing callers), but eliminates the inconsistency while the pattern is still fresh. `un_apply_job` intentionally collapses its folder-move + per-snapshot deletes into one closure whose body iterates `glob("*.md")` at execution time — different shape from #709's `un_not_selected_job` (N closures, each binding one `marker_path`); both are valid. New regression test `test_un_apply_job_multiple_snapshots_single_closure_no_capture_trap` seeds 2 snapshot files and asserts both are deleted on execute, locking in the single-closure shape. **No `migration-required`** — pure refactor, no schema/config/cron/mount changes.
