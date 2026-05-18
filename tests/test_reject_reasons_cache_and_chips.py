@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient
 
 from findajob.onboarding import mark_complete
 from findajob.web.app import create_app
+from tests.conftest import ensure_view_prefs_table
 
 
 @pytest.fixture
@@ -75,6 +76,7 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
         "VALUES ('id-rej','stage','scored','rejected','2026-01-01 00:00:00','user')"
     )
     conn.commit()
+    ensure_view_prefs_table(conn)
     conn.close()
 
     companies = tmp_path / "companies"

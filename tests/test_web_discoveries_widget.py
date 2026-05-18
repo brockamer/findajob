@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 from findajob.onboarding import mark_complete
 from findajob.web.app import create_app
 from findajob.web.discoveries import STALE_THRESHOLD_DAYS, load_discoveries_summary
+from tests.conftest import ensure_view_prefs_table
 
 
 def _write_json(base_root: Path, payload: dict) -> Path:
@@ -110,6 +111,7 @@ def client(tmp_path: Path) -> TestClient:
         "old_value TEXT, new_value TEXT, changed_at TEXT, changed_by TEXT)"
     )
     conn.commit()
+    ensure_view_prefs_table(conn)
     conn.close()
     companies = tmp_path / "companies"
     companies.mkdir()

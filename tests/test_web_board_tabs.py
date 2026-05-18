@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 
 from findajob.onboarding import mark_complete
 from findajob.web.app import create_app
+from tests.conftest import ensure_view_prefs_table
 
 TAB_LINKS = [
     "/board/dashboard",
@@ -47,6 +48,7 @@ def client(tmp_path: Path) -> TestClient:
         "success INTEGER DEFAULT 1, error_message TEXT, input_tokens INTEGER, "
         "output_tokens INTEGER, cost_usd REAL, logged_at TEXT DEFAULT (datetime('now')))"
     )
+    ensure_view_prefs_table(conn)
     conn.commit()
     conn.close()
     companies = tmp_path / "companies"

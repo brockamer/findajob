@@ -1274,6 +1274,39 @@
       "sql": "CREATE TABLE speculative_requests(id INTEGER PRIMARY KEY AUTOINCREMENT,company TEXT NOT NULL,hint TEXT,personal_notes TEXT,status TEXT NOT NULL DEFAULT 'researching' CHECK(status IN('researching','ready_for_review','approved','trashed','failed')),error_message TEXT,briefing_md TEXT,role_cards_json TEXT,briefing_folder TEXT,submitted_at TEXT NOT NULL DEFAULT(datetime('now')),research_completed_at TEXT,approved_at TEXT,approved_role_count INTEGER,briefing_prompt_version TEXT,synth_prompt_version TEXT)",
       "tbl_name": "speculative_requests",
       "type": "table"
+    },
+    {
+      "columns": [
+        {
+          "cid": 0,
+          "dflt_value": null,
+          "name": "tab",
+          "notnull": 0,
+          "pk": 1,
+          "type": "TEXT"
+        },
+        {
+          "cid": 1,
+          "dflt_value": null,
+          "name": "query_string",
+          "notnull": 1,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "cid": 2,
+          "dflt_value": "datetime('now')",
+          "name": "updated_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "TEXT"
+        }
+      ],
+      "foreign_keys": [],
+      "name": "view_prefs",
+      "sql": "CREATE TABLE view_prefs(tab TEXT PRIMARY KEY CHECK(tab IN('dashboard','applied','review','waitlist','rejected','not_selected','archive')),query_string TEXT NOT NULL,updated_at TEXT NOT NULL DEFAULT(datetime('now')))",
+      "tbl_name": "view_prefs",
+      "type": "table"
     }
   ]
 }

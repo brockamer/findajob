@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from findajob.onboarding import mark_complete
 from findajob.web.app import create_app
+from tests.conftest import ensure_view_prefs_table
 
 
 @pytest.fixture
@@ -27,6 +28,7 @@ def client(tmp_path: Path) -> TestClient:
             "VALUES (?, ?, ?, 'scored', ?, ?, '2026-01-01')",
             (f"fp-{i:03}", f"Role {i}", f"Co {i}", 1 + i % 10, 1.0 + i % 10),
         )
+    ensure_view_prefs_table(conn)
     conn.commit()
     conn.close()
     companies = tmp_path / "companies"
@@ -87,6 +89,7 @@ def scored_client(tmp_path: Path) -> TestClient:
         "INSERT INTO jobs (id, fingerprint, title, company, stage, relevance_score, created_at) "
         "VALUES ('id-9','fp-9','Nine Applied','Co9','applied',9,'2026-04-24')"
     )
+    ensure_view_prefs_table(conn)
     conn.commit()
     conn.close()
     companies = tmp_path / "companies"
@@ -165,6 +168,7 @@ def reject_mix_client(tmp_path: Path) -> TestClient:
         "INSERT INTO jobs (id, fingerprint, title, company, stage, relevance_score, created_at) "
         "VALUES ('id-r','fp-r','Rejected Job','CoR','rejected',5,'2026-04-24')"
     )
+    ensure_view_prefs_table(conn)
     conn.commit()
     conn.close()
     companies = tmp_path / "companies"

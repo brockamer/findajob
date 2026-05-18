@@ -1,11 +1,17 @@
 {# src/findajob/web/templates/_filters.html
    Top filter bar above each board tab's <table>.
    Inputs: parsed (ParsedFilters), specs (current tab's ColumnSpec list),
-           density (string).
-   Owns: density toggle, active-filter chip strip include, Copy-link button.
+           visible (set[str] of column names currently shown), density (string),
+           tab (storage tab id; mapped to URL form for the reset POST).
+   Owns: density toggle, Columns dropdown (#277), Reset-to-defaults link (#277),
+         active-filter chip strip include, Copy-link button.
    Per-column inputs live inside the <table>'s <thead> via _table_header.html.
 #}
 {% set current_density = density | default('compact') %}
+{% set raw_path = request.url.path.rstrip('/') %}
+{% set page_path = raw_path[:-5] if raw_path.endswith('/rows') else raw_path %}
+{% set rows_url = page_path + '/rows' %}
+{% set url_tab = tab | replace('_', '-') %}
 <div class="mb-1 flex items-center gap-3 flex-wrap">
   <div class="text-xs text-slate-600 flex items-center gap-1">
     <span>Rows:</span>
@@ -15,5 +21,64 @@
     <a href="?{{ filter_qs_with(base_qs, 'density', 'expanded') }}"
        class="rounded px-2 py-1 {% if current_density == 'expanded' %}bg-slate-900 text-white{% else %}bg-slate-100 text-slate-700 hover:bg-slate-200{% endif %}">Expanded</a>
   </div>
+  {# #277: Columns dropdown — checkbox per spec column. Apply commits the
+     checked names into the hidden cols input; filters.js fires htmx 'change'
+     so the rows fragment re-fetches with the new ?cols= querystring. #}
+  <div x-data="{ open: false }" class="relative text-xs text-slate-600">
+    <button type="button"
+            @click="open = !open"
+            class="rounded px-2 py-1 bg-slate-100 text-slate-700 hover:bg-slate-200">
+      Columns ▾
+    </button>
+    <input type="hidden"
+           name="cols"
+           data-filter-input
+           data-popover-target="cols"
+           value="{{ parsed.cols | join(',') if parsed.cols else '' }}"
+           hx-get="{{ rows_url }}"
+           hx-trigger="change"
+           hx-target="#rows"
+           hx-swap="innerHTML"
+           hx-include="[data-filter-input]"
+           hx-push-url="true">
+    <div x-show="open"
+         x-cloak
+         @click.outside="open = false"
+         class="absolute z-10 mt-1 bg-white border border-slate-300 rounded shadow-lg p-2 min-w-[12rem]">
+      <div class="font-semibold uppercase text-slate-500 mb-1">Columns</div>
+      {% for s in specs %}
+        <label class="block">
+          <input type="checkbox"
+                 value="{{ s.name }}"
+                 data-popover-checkbox="cols"
+                 {% if s.name in visible %}checked{% endif %}>
+          {{ s.label }}
+        </label>
+      {% endfor %}
+      <div class="mt-2 flex gap-1">
+        <button type="button"
+                data-popover-apply="cols"
+                @click="open = false"
+                class="px-2 py-0.5 bg-slate-900 text-white rounded">Apply</button>
+        <button type="button"
+                data-popover-clear="cols"
+                @click="open = false"
+                class="px-2 py-0.5 bg-slate-100 text-slate-700 rounded">Clear</button>
+        <button type="button"
+                @click="open = false"
+                class="px-2 py-0.5 text-slate-500">Cancel</button>
+      </div>
+    </div>
+  </div>
+  {# #277: Reset-to-defaults — clears persisted view_prefs for this tab.
+     POST so a browser back-button doesn't accidentally re-clear. #}
+  <form method="post"
+        action="/board/{{ url_tab }}/reset-view"
+        class="inline">
+    <button type="submit"
+            class="text-xs text-slate-500 hover:text-slate-800 underline">
+      Reset to defaults
+    </button>
+  </form>
 </div>
 {% include "_active_filters.html" %}

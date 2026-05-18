@@ -23,6 +23,7 @@ from fastapi.testclient import TestClient
 from findajob.fetchers.adapters import registry
 from findajob.onboarding import mark_complete
 from findajob.web.app import create_app
+from tests.conftest import ensure_view_prefs_table
 
 
 @pytest.fixture
@@ -67,6 +68,7 @@ def client(tmp_path: Path, active_sources_path: Path, monkeypatch: pytest.Monkey
         ")"
     )
     conn.commit()
+    ensure_view_prefs_table(conn)
     conn.close()
 
     companies = tmp_path / "companies"

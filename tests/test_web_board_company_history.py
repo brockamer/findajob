@@ -21,6 +21,7 @@ from fastapi.testclient import TestClient
 from findajob.onboarding import mark_complete
 from findajob.web.app import create_app
 from findajob.web.company_history import _company_key
+from tests.conftest import ensure_view_prefs_table
 
 
 def _iso_days_ago(days: int) -> str:
@@ -42,6 +43,7 @@ def _make_client(tmp_path: Path) -> tuple[sqlite3.Connection, Path]:
 
 
 def _finalize(tmp_path: Path, conn: sqlite3.Connection, db: Path) -> TestClient:
+    ensure_view_prefs_table(conn)
     conn.commit()
     conn.close()
     companies = tmp_path / "companies"

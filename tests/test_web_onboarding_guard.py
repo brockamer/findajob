@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from findajob.onboarding import mark_complete
 from findajob.web.app import create_app
+from tests.conftest import ensure_view_prefs_table
 
 _MINIMAL_SCHEMA = """
 CREATE TABLE jobs (
@@ -51,6 +52,7 @@ def unconfigured_client(tmp_path: Path) -> TestClient:
     db_path = tmp_path / "pipeline.db"
     conn = sqlite3.connect(db_path)
     conn.executescript(_MINIMAL_SCHEMA)
+    ensure_view_prefs_table(conn)
     conn.close()
     (tmp_path / "companies").mkdir()
     app = create_app(
@@ -67,6 +69,7 @@ def configured_client(tmp_path: Path) -> TestClient:
     db_path = tmp_path / "pipeline.db"
     conn = sqlite3.connect(db_path)
     conn.executescript(_MINIMAL_SCHEMA)
+    ensure_view_prefs_table(conn)
     conn.close()
     (tmp_path / "companies").mkdir()
     mark_complete(tmp_path)

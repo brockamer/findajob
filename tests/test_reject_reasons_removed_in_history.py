@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 from findajob import config_loader
 from findajob.onboarding import mark_complete
 from findajob.web.app import create_app
+from tests.conftest import ensure_view_prefs_table
 
 
 @pytest.fixture
@@ -85,6 +86,7 @@ def client_with_orphan_feedback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
         );
         """
     )
+    ensure_view_prefs_table(conn)
 
     # 3. Insert one rejected job + a feedback_log row whose reason is
     #    NOT in the current YAML — this is the orphan condition.

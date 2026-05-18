@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from findajob.onboarding import mark_complete
 from findajob.web.app import create_app
+from tests.conftest import ensure_view_prefs_table
 
 
 @pytest.fixture
@@ -32,6 +33,7 @@ def client(tmp_path: Path) -> TestClient:
             "VALUES (?, 't', ?, 'scored', ?, '2026-04-01')",
             (fp, company, score),
         )
+    ensure_view_prefs_table(conn)
     conn.commit()
     conn.close()
     companies = tmp_path / "companies"

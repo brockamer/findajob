@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 
 from findajob.onboarding import mark_complete
 from findajob.web.app import create_app
+from tests.conftest import ensure_view_prefs_table
 
 
 @pytest.fixture
@@ -49,6 +50,7 @@ def app_with_db(tmp_path: Path) -> Iterator[tuple[TestClient, Path]]:
       logged_at TEXT DEFAULT (datetime('now'))
     );
     """)
+    ensure_view_prefs_table(conn)
     conn.commit()
     conn.close()
 

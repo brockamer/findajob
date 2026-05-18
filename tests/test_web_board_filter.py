@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from findajob.onboarding import mark_complete
 from findajob.web.app import create_app
+from tests.conftest import ensure_view_prefs_table
 
 
 @pytest.fixture
@@ -25,6 +26,7 @@ def client(tmp_path: Path) -> TestClient:
         "CREATE TABLE audit_log (id INTEGER PRIMARY KEY, job_id TEXT, field_changed TEXT, "
         "old_value TEXT, new_value TEXT, changed_at TEXT, changed_by TEXT)"
     )
+    ensure_view_prefs_table(conn)
     for fp, title, company in [
         ("fp1", "NPI PM", "Meta"),
         ("fp2", "Staff Eng", "Anthropic"),

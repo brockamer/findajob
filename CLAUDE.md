@@ -82,6 +82,16 @@ URL contract — flat, type-suffixed param names: `?col=sub` (TEXT), `?col_min=&
 
 Adding a new tab: declare ColumnSpec list in `registry.py`, add base WHERE + `_<tab>_query()` in `routes/board.py`, include `_filters.html` + `_table_header.html` in the template.
 
+**Per-tab persistence (#277).** The framework's URL state persists per tab via the `view_prefs` SQLite table (migration 0005). Cascade for what filters/cols apply on load: **URL ?cols= + filter params > persisted `view_prefs` row > `ColumnSpec.default_visible`**.
+
+Mechanism — redirect-on-cold-load + auto-save-on-URL-settle, both in `findajob.web.routes.board`:
+
+- `_maybe_redirect_to_persisted(...)` — page GET with no allowlisted filter state but a persisted row 303-redirects to the same path with `?<persisted_qs>`. Bookmarks/deep-links win because the URL has filter state by the time this check runs.
+- `_persist_view(...)` — every page + `/rows` GET auto-saves the serialized parsed filters via `findajob.web.view_prefs.save()`. Density and other unrelated URL params (`?dismiss_*=`) are filtered by construction — `view_prefs.serialize()` rebuilds the querystring from `ParsedFilters` after parsing, not from `request.url.query`.
+- `POST /board/{tab}/reset-view` — explicit clear via the "Reset to defaults" link in `_filters.html`. 303s back to the bare tab URL.
+
+UI: the "Columns ▾" dropdown in `_filters.html` mirrors the enum-popover Alpine pattern from `_table_header.html` (checkbox per spec column, Apply/Clear/Cancel buttons, hidden `cols` input + `filters.js` handler commits the new `?cols=` via HTMX). Adding a new tab to persistence: append the tab id to `view_prefs.ALLOWED_TABS`, the migration's CHECK constraint, the `_URL_TAB_TO_STORAGE` map (if the URL form uses a hyphen), and the `ensure_view_prefs_table()` test helper.
+
 ---
 
 ## Critical Architecture Rules

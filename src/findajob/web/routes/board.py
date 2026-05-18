@@ -5,11 +5,12 @@ from __future__ import annotations
 import os
 import sqlite3
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from findajob.config_loader import load_spend_ceiling
 from findajob.fetchers.adapters import registry as _adapter_registry
+from findajob.web import view_prefs
 from findajob.web.company_history import build_history_by_fp, fetch_company_history
 from findajob.web.discoveries import load_discoveries_summary
 from findajob.web.filters import ColumnSpec, ParsedFilters, build_filter_clauses, parse_filter_params
@@ -28,10 +29,49 @@ def _normalize_density(raw: str) -> str:
 
 
 def _resolve_visible(specs: tuple[ColumnSpec, ...], parsed: ParsedFilters) -> set[str]:
-    """Cascade: URL ?cols= > ColumnSpec.default_visible. (Persisted prefs in #277.)"""
+    """URL is the authority by the time this runs.
+
+    Cascade (full picture, #277): URL ?cols= wins → if absent, the page
+    handler has already 303-redirected from view_prefs.load() so the
+    persisted state is now in the URL → if neither, fall back to
+    ColumnSpec.default_visible here.
+    """
     if parsed.cols:
         return set(parsed.cols)
     return {s.name for s in specs if s.default_visible}
+
+
+def _maybe_redirect_to_persisted(
+    request: Request,
+    tab: str,
+    parsed: ParsedFilters,
+    db: sqlite3.Connection,
+) -> RedirectResponse | None:
+    """If the URL carries no filter state and view_prefs has a row for
+    this tab, return a 303 to the same path with the persisted query
+    string. Caller short-circuits the handler on a non-None return.
+
+    Unrelated query params (?density=, ?dismiss_*=) are deliberately
+    dropped here — they're not part of the filter framework's URL
+    contract, and persisting them is out of scope for #277. The redirect
+    target rebuilds the URL with only the persisted querystring.
+    """
+    if view_prefs.has_filter_state(parsed):
+        return None
+    persisted = view_prefs.load(db, tab)
+    if not persisted:
+        return None
+    return RedirectResponse(url=f"{request.url.path}?{persisted}", status_code=303)
+
+
+def _persist_view(db: sqlite3.Connection, tab: str, parsed: ParsedFilters) -> None:
+    """Auto-save the current parsed filter state, allowlisted.
+
+    Inlined into page + /rows GETs so every filter mutation updates the
+    per-tab pref. Empty parsed state is a no-op — use the reset
+    endpoint to explicitly clear persistence.
+    """
+    view_prefs.save(db, tab, view_prefs.serialize(parsed))
 
 
 _DASHBOARD_DEFAULT_SORT = "relevance_score"
@@ -123,6 +163,10 @@ def dashboard(
 
     specs = filter_registry.DASHBOARD_COLUMNS
     parsed = parse_filter_params(specs, request.query_params)
+    redirect = _maybe_redirect_to_persisted(request, "dashboard", parsed, db)
+    if redirect is not None:
+        return redirect  # type: ignore[return-value]
+    _persist_view(db, "dashboard", parsed)
     sql, params = _dashboard_query(parsed)
     rows = db.execute(sql, params).fetchall()
     history_by_fp = build_history_by_fp(rows, fetch_company_history(db))
@@ -254,6 +298,10 @@ def applied(
 ) -> HTMLResponse:
     specs = filter_registry.APPLIED_COLUMNS
     parsed = parse_filter_params(specs, request.query_params)
+    redirect = _maybe_redirect_to_persisted(request, "applied", parsed, db)
+    if redirect is not None:
+        return redirect  # type: ignore[return-value]
+    _persist_view(db, "applied", parsed)
     sql, params = _applied_query(parsed)
     rows = db.execute(sql, params).fetchall()
     materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
@@ -299,6 +347,10 @@ def review(
 ) -> HTMLResponse:
     specs = filter_registry.REVIEW_COLUMNS
     parsed = parse_filter_params(specs, request.query_params)
+    redirect = _maybe_redirect_to_persisted(request, "review", parsed, db)
+    if redirect is not None:
+        return redirect  # type: ignore[return-value]
+    _persist_view(db, "review", parsed)
     sql, params = _review_query(parsed)
     rows = db.execute(sql, params).fetchall()
     materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
@@ -357,6 +409,10 @@ def waitlist(
 ) -> HTMLResponse:
     specs = filter_registry.WAITLIST_COLUMNS
     parsed = parse_filter_params(specs, request.query_params)
+    redirect = _maybe_redirect_to_persisted(request, "waitlist", parsed, db)
+    if redirect is not None:
+        return redirect  # type: ignore[return-value]
+    _persist_view(db, "waitlist", parsed)
     sql, params = _waitlist_query(parsed)
     rows = db.execute(sql, params).fetchall()
     history_by_fp = build_history_by_fp(rows, fetch_company_history(db))
@@ -426,6 +482,10 @@ def rejected(
 ) -> HTMLResponse:
     specs = filter_registry.REJECTED_COLUMNS
     parsed = parse_filter_params(specs, request.query_params)
+    redirect = _maybe_redirect_to_persisted(request, "rejected", parsed, db)
+    if redirect is not None:
+        return redirect  # type: ignore[return-value]
+    _persist_view(db, "rejected", parsed)
     sql, params = _rejected_query(parsed)
     rows = db.execute(sql, params).fetchall()
     materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
@@ -453,6 +513,7 @@ def rejected_rows(
 ) -> HTMLResponse:
     specs = filter_registry.REJECTED_COLUMNS
     parsed = parse_filter_params(specs, request.query_params)
+    _persist_view(db, "rejected", parsed)
     sql, params = _rejected_query(parsed)
     rows = db.execute(sql, params).fetchall()
     materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
@@ -519,6 +580,10 @@ def not_selected(
 ) -> HTMLResponse:
     specs = filter_registry.NOT_SELECTED_COLUMNS
     parsed = parse_filter_params(specs, request.query_params)
+    redirect = _maybe_redirect_to_persisted(request, "not_selected", parsed, db)
+    if redirect is not None:
+        return redirect  # type: ignore[return-value]
+    _persist_view(db, "not_selected", parsed)
     sql, params = _not_selected_query(parsed)
     rows = db.execute(sql, params).fetchall()
     materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
@@ -546,6 +611,7 @@ def not_selected_rows(
 ) -> HTMLResponse:
     specs = filter_registry.NOT_SELECTED_COLUMNS
     parsed = parse_filter_params(specs, request.query_params)
+    _persist_view(db, "not_selected", parsed)
     sql, params = _not_selected_query(parsed)
     rows = db.execute(sql, params).fetchall()
     materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
@@ -597,6 +663,10 @@ def archive(
 ) -> HTMLResponse:
     specs = filter_registry.ARCHIVE_COLUMNS
     parsed = parse_filter_params(specs, request.query_params)
+    redirect = _maybe_redirect_to_persisted(request, "archive", parsed, db)
+    if redirect is not None:
+        return redirect  # type: ignore[return-value]
+    _persist_view(db, "archive", parsed)
     sql, params = _archive_query(parsed, offset=0)
     rows = db.execute(sql, params).fetchall()
     has_more = len(rows) == _ARCHIVE_PAGE_SIZE
@@ -627,6 +697,7 @@ def archive_rows(
 ) -> HTMLResponse:
     specs = filter_registry.ARCHIVE_COLUMNS
     parsed = parse_filter_params(specs, request.query_params)
+    _persist_view(db, "archive", parsed)
     sql, params = _archive_query(parsed, offset=offset)
     rows = db.execute(sql, params).fetchall()
     has_more = len(rows) == _ARCHIVE_PAGE_SIZE
@@ -661,6 +732,7 @@ def dashboard_rows(
 ) -> HTMLResponse:
     specs = filter_registry.DASHBOARD_COLUMNS
     parsed = parse_filter_params(specs, request.query_params)
+    _persist_view(db, "dashboard", parsed)
     sql, params = _dashboard_query(parsed)
     rows = db.execute(sql, params).fetchall()
     history_by_fp = build_history_by_fp(rows, fetch_company_history(db))
@@ -688,6 +760,7 @@ def applied_rows(
 ) -> HTMLResponse:
     specs = filter_registry.APPLIED_COLUMNS
     parsed = parse_filter_params(specs, request.query_params)
+    _persist_view(db, "applied", parsed)
     sql, params = _applied_query(parsed)
     rows = db.execute(sql, params).fetchall()
     materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
@@ -713,6 +786,7 @@ def review_rows(
 ) -> HTMLResponse:
     specs = filter_registry.REVIEW_COLUMNS
     parsed = parse_filter_params(specs, request.query_params)
+    _persist_view(db, "review", parsed)
     sql, params = _review_query(parsed)
     rows = db.execute(sql, params).fetchall()
     materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
@@ -738,6 +812,7 @@ def waitlist_rows(
 ) -> HTMLResponse:
     specs = filter_registry.WAITLIST_COLUMNS
     parsed = parse_filter_params(specs, request.query_params)
+    _persist_view(db, "waitlist", parsed)
     sql, params = _waitlist_query(parsed)
     rows = db.execute(sql, params).fetchall()
     history_by_fp = build_history_by_fp(rows, fetch_company_history(db))
@@ -756,3 +831,39 @@ def waitlist_rows(
             "materials_base_url": materials_base_url,
         },
     )
+
+
+# ──────────────────────────────────────────────────────────────────────
+# #277 — Reset view prefs. Auto-save (persist) lives inline in every
+# page + /rows GET; explicit reset is the only POST surface.
+# ──────────────────────────────────────────────────────────────────────
+
+
+_URL_TAB_TO_STORAGE: dict[str, str] = {
+    "dashboard": "dashboard",
+    "applied": "applied",
+    "review": "review",
+    "waitlist": "waitlist",
+    "rejected": "rejected",
+    "not-selected": "not_selected",
+    "archive": "archive",
+}
+
+
+@router.post("/board/{tab}/reset-view")
+def reset_view(
+    tab: str,
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> RedirectResponse:
+    """Clear the per-tab persisted filter / sort / cols state.
+
+    The Reset-to-defaults link in ``_filters.html`` POSTs here. 303
+    redirects to the bare ``/board/{tab}`` URL so the page renders
+    with no querystring — the cascade then falls through to
+    ``ColumnSpec.default_visible``.
+    """
+    storage_tab = _URL_TAB_TO_STORAGE.get(tab)
+    if storage_tab is None:
+        raise HTTPException(status_code=404, detail=f"unknown tab: {tab}")
+    view_prefs.reset(db, storage_tab)
+    return RedirectResponse(url=f"/board/{tab}", status_code=303)

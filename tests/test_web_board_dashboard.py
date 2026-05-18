@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from findajob.onboarding import mark_complete
 from findajob.web.app import create_app
+from tests.conftest import ensure_view_prefs_table
 
 
 @pytest.fixture
@@ -37,6 +38,7 @@ def client(tmp_path: Path) -> TestClient:
         "INSERT INTO jobs (fingerprint, title, company, stage, relevance_score, url) "
         "VALUES ('fp3','Junior','Acme','scored',3,'https://example.com/acme-jr')"
     )
+    ensure_view_prefs_table(conn)
     conn.commit()
     conn.close()
     companies = tmp_path / "companies"
@@ -116,6 +118,7 @@ def test_speculative_title_links_to_internal_jd_viewer(tmp_path: Path) -> None:
         "VALUES ('spec1','[SPEC] Director of Capacity','Anthropic','scored',7,"
         "'speculative://Anthropic/0/42','Lead capacity planning for clusters.', 1)"
     )
+    ensure_view_prefs_table(conn)
     conn.commit()
     conn.close()
     companies = tmp_path / "companies"
@@ -148,6 +151,7 @@ def test_jd_viewer_renders_raw_jd_text(tmp_path: Path) -> None:
         "VALUES ('spec1','[SPEC] Director of Capacity','Anthropic','scored',"
         "'Lead capacity planning for clusters.', 1)"
     )
+    ensure_view_prefs_table(conn)
     conn.commit()
     conn.close()
     companies = tmp_path / "companies"
@@ -184,6 +188,7 @@ def test_materials_redirects_synthetic_row_to_jd_viewer(tmp_path: Path) -> None:
         "INSERT INTO jobs (fingerprint, title, company, stage, raw_jd_text, synthetic) "
         "VALUES ('real1','Director','Acme','scored','Real JD.', 0)"
     )
+    ensure_view_prefs_table(conn)
     conn.commit()
     conn.close()
     companies = tmp_path / "companies"
@@ -218,6 +223,7 @@ def test_materials_serves_spec_folder_when_synthetic_pre_prep(tmp_path: Path) ->
         "VALUES ('jid1','spec1','[SPEC] Lead','Acme','scored','desc.', 1, ?)",
         (spec_folder_name,),
     )
+    ensure_view_prefs_table(conn)
     conn.commit()
     conn.close()
     companies = tmp_path / "companies"
@@ -243,6 +249,7 @@ def test_jd_viewer_404_for_unknown_fingerprint(tmp_path: Path) -> None:
         "CREATE TABLE jobs (id TEXT, fingerprint TEXT, title TEXT, company TEXT, stage TEXT, "
         "raw_jd_text TEXT, synthetic INTEGER DEFAULT 0)"
     )
+    ensure_view_prefs_table(conn)
     conn.commit()
     conn.close()
     companies = tmp_path / "companies"
