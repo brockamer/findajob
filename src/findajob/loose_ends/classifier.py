@@ -24,6 +24,24 @@ from findajob.loose_ends.coverage_map import SurfaceRef
 from findajob.loose_ends.surface_map import CallSite
 
 
+def _strip_json_fences(text: str) -> str:
+    """Strip markdown code fences around an LLM's JSON response.
+
+    Tolerates ```json ... ```, ``` ... ```, and bare JSON. Surfaced by #572
+    Task 5: Haiku 4.5 fences JSON output despite role-prompt instructions.
+    """
+    s = text.strip()
+    if s.startswith("```"):
+        # Drop the opening fence line entirely (```json or just ```).
+        first_newline = s.find("\n")
+        if first_newline != -1:
+            s = s[first_newline + 1 :]
+        # Drop a trailing fence.
+        if s.endswith("```"):
+            s = s[:-3].rstrip()
+    return s
+
+
 @dataclass(frozen=True)
 class Finding:
     """One classified loose-end candidate."""
@@ -63,7 +81,7 @@ def classify_gaps(
         total_cost += float(getattr(result, "cost_usd", 0.0) or 0.0)
         # result.text is a JSON string per the role prompt's contract.
         try:
-            parsed = json.loads(result.text)
+            parsed = json.loads(_strip_json_fences(result.text))
         except json.JSONDecodeError:
             parsed = {
                 "confidence": "low",

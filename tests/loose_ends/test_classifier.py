@@ -86,3 +86,36 @@ def test_report_has_both_required_sections(tmp_path: Path) -> None:
     assert "operator-asserted CLI-only" in body
     # Cost was tracked from the mock.
     assert prose_cost == 0.05
+
+
+def test_classifier_strips_markdown_fences_around_json() -> None:
+    """LLMs (notably Haiku) wrap JSON in ```json ... ``` fences despite role-prompt
+    instructions to the contrary. The parser must tolerate this — strip fences
+    before json.loads(). Without this, every Finding gets demoted to low-confidence
+    via the JSONDecodeError fallback path (observed in #572 Task 5's first run)."""
+    surface = {
+        "config/real_gap.yaml": [CallSite(file="src/findajob/bar.py", line=10, snippet="y = 'config/real_gap.yaml'")],
+    }
+    coverage: dict[str, list[SurfaceRef]] = {}
+    exclusions: dict[str, str] = {}
+
+    fake_llm = MagicMock()
+    # Fenced JSON — the production failure mode.
+    fenced_json = (
+        '```json\n{"confidence": "high", "rationale": "no UI", "suggested_surface": "/settings/real-gap/"}\n```'
+    )
+    fake_llm.return_value.text = fenced_json
+    fake_llm.return_value.cost_usd = 0.0
+
+    with patch("findajob.loose_ends.classifier.openrouter.complete", fake_llm):
+        findings, _ = classify_gaps(
+            surface_map=surface,
+            coverage_map=coverage,
+            exclusions=exclusions,
+        )
+
+    assert len(findings) == 1
+    # MUST parse correctly through the fences, NOT fall through to "low".
+    assert findings[0].confidence == "high"
+    assert findings[0].rationale == "no UI"
+    assert findings[0].suggested_surface == "/settings/real-gap/"
