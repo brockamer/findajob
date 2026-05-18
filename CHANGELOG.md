@@ -10,6 +10,8 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+## [0.27.0] — 2026-05-17
+
 ### Migration required
 - **#277 New `view_prefs` table (migration 0005).** `src/findajob/migrations/0005_view_prefs.sql` creates the per-tab persistence table that drives the new Columns dropdown + filter-state persistence on every board tab. Schema: `tab TEXT PRIMARY KEY CHECK (tab IN (…seven tab ids…))`, `query_string TEXT NOT NULL`, `updated_at TEXT NOT NULL DEFAULT (datetime('now'))`. Bumps `_meta.schema_version` to 5. Idempotent — fresh installs and existing stacks both pick it up on the next `apply_pending` (which `scripts/init_db.py` runs at every container start). No operator action required beyond `docker compose pull && docker compose up -d`. Test fixtures that hand-roll a minimal schema rather than running migrations need `tests.conftest.ensure_view_prefs_table(conn)` after their CREATE statements — added to all 11 board-route tests this PR.
 
@@ -1172,7 +1174,8 @@ from GHCR and deployed via Docker Compose on a shared Docker host.
 - Documentation cleanup — removing `sigoden/aichat` references in favor of
   `blob42/aichat-ng` — is tracked in #70
 
-[Unreleased]: https://github.com/brockamer/findajob/compare/v0.26.0...HEAD
+[Unreleased]: https://github.com/brockamer/findajob/compare/v0.27.0...HEAD
+[0.27.0]: https://github.com/brockamer/findajob/releases/tag/v0.27.0
 [0.26.0]: https://github.com/brockamer/findajob/releases/tag/v0.26.0
 [0.25.1]: https://github.com/brockamer/findajob/releases/tag/v0.25.1
 [0.25.0]: https://github.com/brockamer/findajob/releases/tag/v0.25.0
