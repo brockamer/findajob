@@ -52,7 +52,13 @@
         signal.
       </p>
       <div class="mt-3 flex flex-wrap items-center gap-2">
-        <form method="POST" action="/board/jobs/{{ fingerprint }}/continue-prep" x-show="!rejecting">
+        {# POSTs to the materials-flow wrapper (not /board/jobs/.../continue-prep)
+           because this page is server-rendered HTML, not HTMX. The dashboard-flow
+           route returns a <tr> for HTMX swap — a plain form POST would navigate
+           to a page whose body is a bare <tr>. The materials-flow wrapper
+           applies the same gates + dispatches the same Phase B subprocess, then
+           303-redirects back here. #}
+        <form method="POST" action="/materials/{{ fingerprint }}/continue-prep" x-show="!rejecting">
           <button type="submit"
                   class="inline-flex items-center px-4 py-2 rounded text-sm font-medium bg-teal-700 hover:bg-teal-800 text-white">
             Continue prep →
@@ -65,12 +71,12 @@
           Reject…
         </button>
       </div>
-      {# Reject form — uses the same /reject endpoint as the board tabs.
-         handle_rejection moves the folder to companies/_rejected/ and
-         writes feedback_log for the scorer. The dropdown surfaces the
-         canonical reject_reasons; blank input on submit falls back to
-         "Other" server-side. #}
-      <form method="POST" action="/board/jobs/{{ fingerprint }}/reject"
+      {# Reject form — POSTs to the materials-flow wrapper for the same
+         page-shape reason as Continue prep. The wrapper calls the same
+         handle_rejection helper (writes feedback_log, moves folder to
+         _rejected/, fires notify_waitlist_resurface), then 303-redirects to
+         /materials/ so the row drops off the In-flight section. #}
+      <form method="POST" action="/materials/{{ fingerprint }}/reject"
             class="mt-4 flex flex-wrap items-center gap-2 pt-3 border-t border-teal-200"
             x-show="rejecting" x-cloak>
         <label class="text-sm text-slate-700 font-medium">Reject reason:</label>

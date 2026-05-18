@@ -111,22 +111,29 @@ def test_gate_panel_absent_for_scored(folder_client):
 # ── POST targets ──────────────────────────────────────────────────────────
 
 
-def test_continue_prep_button_points_at_correct_endpoint(folder_client):
-    """The Continue-prep affordance must POST to /board/jobs/{fp}/continue-prep —
-    NOT the materials regenerate route."""
+def test_continue_prep_button_points_at_materials_flow_endpoint(folder_client):
+    """The Continue-prep form MUST post to the materials-flow wrapper
+    (/materials/{fp}/continue-prep), NOT the dashboard-flow endpoint
+    (/board/jobs/{fp}/continue-prep). The dashboard route returns an
+    HTMX-shaped <tr>; a plain form POST would navigate the operator to
+    a page whose body is a bare <tr>. Regression cover for the bug the
+    advisor caught at the Session 2 pre-PR checkpoint."""
     client = folder_client(stage="briefing_ready")
     resp = client.get("/materials/fp")
-    assert 'action="/board/jobs/fp/continue-prep"' in resp.text
-    assert 'method="POST"' in resp.text
+    assert 'action="/materials/fp/continue-prep"' in resp.text
+    # And NOT the dashboard-flow endpoint (the bug-prone version):
+    assert 'action="/board/jobs/fp/continue-prep"' not in resp.text
 
 
-def test_reject_form_posts_to_board_reject_route(folder_client):
-    """Reject from the briefing surface uses the same /reject endpoint as the
-    board tabs — handle_rejection writes feedback_log so the scorer still
-    learns from this decision."""
+def test_reject_form_posts_to_materials_flow_endpoint(folder_client):
+    """Same reasoning as continue-prep: the dashboard-flow /reject returns
+    HTMLResponse(""), which renders as a blank page on plain-form POST.
+    The materials-flow wrapper calls the same handle_rejection helper
+    (writes feedback_log, moves folder), then 303-redirects to /materials/."""
     client = folder_client(stage="briefing_ready")
     resp = client.get("/materials/fp")
-    assert 'action="/board/jobs/fp/reject"' in resp.text
+    assert 'action="/materials/fp/reject"' in resp.text
+    assert 'action="/board/jobs/fp/reject"' not in resp.text
 
 
 # ── reject_reasons surface ────────────────────────────────────────────────
@@ -197,3 +204,185 @@ def test_stage_badge_uses_briefing_ready_class(folder_client):
     # Teal palette per the template's stage_class map.
     assert "bg-teal-100" in resp.text
     assert "text-teal-800" in resp.text
+
+
+# ── materials-flow route wrappers ─────────────────────────────────────────
+#
+# /materials/{fp}/continue-prep and /materials/{fp}/reject exist as 303-
+# redirecting wrappers around their dashboard-flow counterparts so the
+# server-rendered materials page can post plain forms without the operator
+# landing on a bare <tr> or blank body. Cover behaviour + redirect targets.
+
+
+@pytest.fixture()
+def popen_calls(monkeypatch):
+    """Capture subprocess.Popen invocations from the materials-flow route
+    so /materials/{fp}/continue-prep doesn't actually fork prep_application.py."""
+    calls: list[list[str]] = []
+
+    class _FakePopen:
+        pid = 99999
+
+        def __init__(self, args, **_kw):
+            calls.append(args)
+
+    from findajob.web.routes import board_actions
+
+    monkeypatch.setattr(board_actions.subprocess, "Popen", _FakePopen)
+    return calls
+
+
+def _fetch_stage(client: TestClient, fingerprint: str) -> str | None:
+    conn = sqlite3.connect(client._db_path) if hasattr(client, "_db_path") else None
+    if conn is None:
+        # The folder_client fixture doesn't expose _db_path — recreate path.
+        import tempfile  # noqa: F401 — unused; kept to mirror other test helpers
+
+        return None
+    row = conn.execute("SELECT stage FROM jobs WHERE fingerprint=?", (fingerprint,)).fetchone()
+    conn.close()
+    return row[0] if row else None
+
+
+def _stage_from_tmp(tmp_path, fingerprint: str = "fp") -> str | None:
+    """Read jobs.stage directly from the test DB; the folder_client fixture
+    doesn't expose _db_path so we open the well-known tmp path ourselves."""
+    db_path = tmp_path / "pipeline.db"
+    if not db_path.exists():
+        return None
+    conn = sqlite3.connect(str(db_path))
+    row = conn.execute("SELECT stage FROM jobs WHERE fingerprint=?", (fingerprint,)).fetchone()
+    conn.close()
+    return row[0] if row else None
+
+
+class TestContinuePrepFromMaterials:
+    def test_happy_path_advances_briefing_ready_to_prep_in_progress(self, folder_client, tmp_path, popen_calls):
+        client = folder_client(stage="briefing_ready")
+        resp = client.post("/materials/fp/continue-prep", follow_redirects=False)
+        # 303 redirect — plain form submission lands the operator back on the materials page.
+        assert resp.status_code == 303
+        assert resp.headers["location"] == "/materials/fp"
+        assert _stage_from_tmp(tmp_path) == "prep_in_progress"
+        # Subprocess dispatched with --phase=b (not --phase=all → would double-charge).
+        prep_calls = [c for c in popen_calls if "prep_application.py" in c[1]]
+        assert len(prep_calls) == 1
+        assert "--phase=b" in prep_calls[0]
+
+    def test_404_on_unknown_fingerprint(self, folder_client, popen_calls):
+        client = folder_client(stage="briefing_ready")
+        resp = client.post("/materials/fp_nonexistent/continue-prep", follow_redirects=False)
+        assert resp.status_code == 404
+        assert popen_calls == []
+
+    def test_409_on_scored_stage(self, folder_client, tmp_path, popen_calls):
+        client = folder_client(stage="scored")
+        resp = client.post("/materials/fp/continue-prep", follow_redirects=False)
+        assert resp.status_code == 409
+        assert _stage_from_tmp(tmp_path) == "scored"
+        assert popen_calls == []
+
+    def test_idempotent_on_prep_in_progress(self, folder_client, tmp_path, popen_calls):
+        """Double-submit: second POST finds stage already advanced and redirects
+        without dispatching another subprocess."""
+        client = folder_client(stage="prep_in_progress")
+        resp = client.post("/materials/fp/continue-prep", follow_redirects=False)
+        assert resp.status_code == 303
+        assert resp.headers["location"] == "/materials/fp"
+        assert _stage_from_tmp(tmp_path) == "prep_in_progress"
+        assert popen_calls == []
+
+    def test_queue_full_redirects_with_error_param(self, folder_client, tmp_path, popen_calls):
+        """When the 3-job cap is reached, redirect to /materials/ with an
+        error param so the index page can surface a banner — mirrors the
+        ?regen_error=queue_full convention from regenerate_from_materials."""
+        client = folder_client(stage="briefing_ready")
+        # Seed three in-flight prep rows to trip the cap.
+        db_path = tmp_path / "pipeline.db"
+        conn = sqlite3.connect(str(db_path))
+        for n in range(3):
+            conn.execute(
+                "INSERT INTO jobs (id, fingerprint, url, title, company, source, stage) "
+                "VALUES (?, ?, 'u', 'T', 'C', 'test', 'prep_in_progress')",
+                (f"inflight-{n}", f"fp_inflight_{n}"),
+            )
+        conn.commit()
+        conn.close()
+
+        resp = client.post("/materials/fp/continue-prep", follow_redirects=False)
+        assert resp.status_code == 303
+        assert "continue_prep_error=queue_full" in resp.headers["location"]
+        # Stage unchanged — gate refusals must not advance the row.
+        assert _stage_from_tmp(tmp_path) == "briefing_ready"
+        prep_calls = [c for c in popen_calls if "prep_application.py" in c[1]]
+        assert prep_calls == []
+
+    def test_spend_ceiling_redirects_with_error_param(self, folder_client, tmp_path, popen_calls, monkeypatch):
+        """Patch findajob.spend_ceiling.check_launch_gate (the materials-flow
+        route imports it directly from that module, unlike board_actions
+        which imports + binds at module load)."""
+        from findajob import spend_ceiling
+
+        monkeypatch.setattr(
+            spend_ceiling,
+            "check_launch_gate",
+            lambda _db: spend_ceiling.LaunchGateRefusal(ceiling_usd=50.0, current_sum_usd=51.23),
+        )
+
+        client = folder_client(stage="briefing_ready")
+        resp = client.post("/materials/fp/continue-prep", follow_redirects=False)
+        assert resp.status_code == 303
+        assert "continue_prep_error=spend_ceiling" in resp.headers["location"]
+        assert _stage_from_tmp(tmp_path) == "briefing_ready"
+        prep_calls = [c for c in popen_calls if "prep_application.py" in c[1]]
+        assert prep_calls == []
+
+
+class TestRejectFromMaterials:
+    def test_happy_path_flips_to_rejected_and_redirects(self, folder_client, tmp_path):
+        client = folder_client(stage="briefing_ready")
+        resp = client.post(
+            "/materials/fp/reject",
+            data={"reason": "Wrong title fit"},
+            follow_redirects=False,
+        )
+        assert resp.status_code == 303
+        assert resp.headers["location"] == "/materials/"
+        assert _stage_from_tmp(tmp_path) == "rejected"
+
+    def test_blank_reason_defaults_to_other(self, folder_client, tmp_path):
+        client = folder_client(stage="briefing_ready")
+        resp = client.post("/materials/fp/reject", data={"reason": ""}, follow_redirects=False)
+        assert resp.status_code == 303
+        assert _stage_from_tmp(tmp_path) == "rejected"
+        # Confirm the helper applied the "Other" default.
+        db_path = tmp_path / "pipeline.db"
+        conn = sqlite3.connect(str(db_path))
+        row = conn.execute("SELECT reject_reason FROM jobs WHERE fingerprint=?", ("fp",)).fetchone()
+        conn.close()
+        assert row[0] == "Other"
+
+    def test_404_on_unknown_fingerprint(self, folder_client):
+        client = folder_client(stage="briefing_ready")
+        resp = client.post("/materials/fp_nonexistent/reject", data={"reason": "x"}, follow_redirects=False)
+        assert resp.status_code == 404
+
+    def test_idempotent_on_already_rejected(self, folder_client, tmp_path):
+        """Operator re-submit after the row has already moved: redirect, no
+        second handle_rejection call (would duplicate feedback_log)."""
+        client = folder_client(stage="rejected")
+        # Capture the feedback_log row count before — the idempotency assertion
+        # is that this number doesn't change after the second POST.
+        db_path = tmp_path / "pipeline.db"
+        conn = sqlite3.connect(str(db_path))
+        before = conn.execute("SELECT COUNT(*) FROM feedback_log").fetchone()[0]
+        conn.close()
+
+        resp = client.post("/materials/fp/reject", data={"reason": "Wrong fit"}, follow_redirects=False)
+        assert resp.status_code == 303
+        assert resp.headers["location"] == "/materials/"
+
+        conn = sqlite3.connect(str(db_path))
+        after = conn.execute("SELECT COUNT(*) FROM feedback_log").fetchone()[0]
+        conn.close()
+        assert before == after, "second submit must not duplicate feedback_log"

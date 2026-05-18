@@ -440,6 +440,120 @@ def regenerate_from_materials(
     return RedirectResponse(url="/materials/", status_code=303)
 
 
+@router.post("/materials/{fingerprint}/continue-prep", response_class=RedirectResponse)
+def continue_prep_from_materials(
+    fingerprint: str,
+    request: Request,  # noqa: ARG001 — kept for handler signature parity
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> RedirectResponse:
+    """Plain-form wrapper around ``board_actions.continue_prep`` for the
+    briefing-first gate UI on ``/materials/{fp}/`` (#691).
+
+    The dashboard-flow ``POST /board/jobs/{fp}/continue-prep`` returns an
+    HTMX-shaped ``<tr>`` for in-place row swap. The materials page is
+    server-rendered HTML, not HTMX-driven; a plain form POST to that
+    endpoint would land the operator on a page whose body is a bare
+    ``<tr>``. This wrapper applies the same gates (404 / idempotent /
+    409 / 402 / 429) and dispatches the same Phase B subprocess via
+    the shared ``_launch_prep_subprocess``, then returns a 303 redirect
+    back to ``/materials/`` so the operator lands somewhere coherent.
+
+    Queue-full and spend-ceiling refusals redirect with a query-param
+    error signal that ``materials_index`` can surface via a banner
+    (mirrors ``regenerate_from_materials``'s ``?regen_error=queue_full``
+    convention).
+    """
+    from findajob.spend_ceiling import check_launch_gate
+    from findajob.web.routes.board_actions import (
+        MAX_CONCURRENT_PREPS,
+        _launch_prep_subprocess,
+        _prep_in_flight,
+    )
+
+    job = db.execute(
+        "SELECT id, fingerprint, title, company, url, stage FROM jobs WHERE fingerprint=?",
+        (fingerprint,),
+    ).fetchone()
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    # Idempotent on already-advanced rows — operator double-click lands
+    # safely on /materials/{fp}/ which renders the in-flight state.
+    if job["stage"] in ("prep_in_progress", "materials_drafted"):
+        return RedirectResponse(url=f"/materials/{fingerprint}", status_code=303)
+
+    if job["stage"] != "briefing_ready":
+        raise HTTPException(
+            status_code=409,
+            detail="Continue-prep only valid for jobs at stage='briefing_ready'",
+        )
+
+    refusal = check_launch_gate(db)
+    if refusal is not None:
+        # Surface via /materials/ banner. The exact param name + UI
+        # follows the same convention as `?regen_error=queue_full`.
+        return RedirectResponse(url="/materials/?continue_prep_error=spend_ceiling", status_code=303)
+
+    if _prep_in_flight(db) >= MAX_CONCURRENT_PREPS:
+        return RedirectResponse(url="/materials/?continue_prep_error=queue_full", status_code=303)
+
+    now = datetime.now(UTC).isoformat()
+    db.execute(
+        "UPDATE jobs SET stage='prep_in_progress', stage_updated=?, updated_at=? WHERE id=?",
+        (now, now, job["id"]),
+    )
+    db.commit()
+    from findajob.audit import log_event, write_audit
+
+    write_audit(db, job["id"], "stage", job["stage"], "prep_in_progress")
+    log_event(
+        "web_continue_prep_dispatched_from_materials",
+        job_id=job["id"],
+        company=job["company"],
+        title=job["title"],
+    )
+
+    _launch_prep_subprocess(db, job, kind="prep_phase_b", extra_args=("--phase=b",))
+
+    return RedirectResponse(url=f"/materials/{fingerprint}", status_code=303)
+
+
+@router.post("/materials/{fingerprint}/reject", response_class=RedirectResponse)
+def reject_from_materials(
+    fingerprint: str,
+    request: Request,  # noqa: ARG001 — kept for handler signature parity
+    reason: str = Form(""),
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> RedirectResponse:
+    """Plain-form wrapper around ``handle_rejection`` for the briefing-gate UI.
+
+    The dashboard-flow ``POST /board/jobs/{fp}/reject`` returns
+    ``HTMLResponse("")`` (a blank body) — fine for HTMX swap-out, broken
+    for a plain form. Mirrors the rationale in
+    :func:`continue_prep_from_materials`: same business logic
+    (``handle_rejection`` + ``notify_waitlist_resurface``), 303 redirect
+    to ``/materials/`` so the row drops off the In-flight section.
+
+    Idempotent on already-rejected rows — second submit is a no-op
+    redirect.
+    """
+    from findajob.actions import handle_rejection, notify_waitlist_resurface
+
+    job = db.execute(
+        "SELECT id, fingerprint, title, company, url, stage, relevance_score, prep_folder_path "
+        "FROM jobs WHERE fingerprint=?",
+        (fingerprint,),
+    ).fetchone()
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job["stage"] == "rejected":
+        return RedirectResponse(url="/materials/", status_code=303)
+
+    handle_rejection(db, job, (reason or "").strip() or "Other")
+    notify_waitlist_resurface(db, job["company"])
+    return RedirectResponse(url="/materials/", status_code=303)
+
+
 @router.get("/jobs/{fingerprint}/jd", response_class=HTMLResponse)
 def jd_view(
     fingerprint: str,

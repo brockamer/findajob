@@ -12,6 +12,12 @@
     <div class="flex items-center gap-2">
       {% if stage == 'prep_in_progress' %}
         <span class="text-xs text-slate-500" title="Prep subprocess running">Prep…</span>
+      {% elif stage == 'briefing_ready' %}
+        {# #691: Phase A complete — briefing awaits operator review on /materials/.
+           Link rather than plain badge so the operator's path to the decision is one click. #}
+        <a href="/materials/{{ fp }}"
+           class="text-xs font-medium text-teal-700 hover:underline"
+           title="Briefing ready — open materials page to continue or reject">📋 Briefing</a>
       {% elif stage == 'materials_drafted' %}
         <span class="text-xs font-medium text-emerald-700" title="Materials drafted — ready to apply">Ready</span>
       {% endif %}
