@@ -41,41 +41,71 @@ class SurfaceRef:
     detail: str  # one-line description (route path, slug, tile id, etc.)
 
 
-def _extract_editable_categories(config_files_path: Path) -> list[str]:
-    """Parse EDITABLE_CATEGORIES dict from config_files.py and return all paths."""
+def _extract_editable_categories(config_files_path: Path) -> tuple[list[str], list[str]]:
+    """Parse EDITABLE_CATEGORIES dict. Returns (explicit_paths, wildcard_globs).
+
+    Handles both bare assignment (``EDITABLE_CATEGORIES = {...}``) and
+    type-annotated assignment
+    (``EDITABLE_CATEGORIES: dict[...] = {...}`` → ``ast.AnnAssign``).
+
+    List values yield explicit paths. String values are treated as glob patterns
+    (e.g., ``"config/roles/*.md"``) that the caller glob-expands against repo_root.
+    """
     try:
         tree = ast.parse(config_files_path.read_text(encoding="utf-8"))
     except (OSError, SyntaxError):
-        return []
-    paths: list[str] = []
+        return [], []
+    explicit: list[str] = []
+    wildcards: list[str] = []
     for node in ast.walk(tree):
+        value_node = None
         if isinstance(node, ast.Assign):
-            for target in node.targets:
-                if isinstance(target, ast.Name) and target.id == "EDITABLE_CATEGORIES":
-                    if isinstance(node.value, ast.Dict):
-                        for v in node.value.values:
-                            # Value can be a list of str literals OR a str literal (wildcard glob).
-                            if isinstance(v, ast.List):
-                                for elt in v.elts:
-                                    if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
-                                        paths.append(elt.value)
-    return paths
+            for tgt in node.targets:
+                if isinstance(tgt, ast.Name) and tgt.id == "EDITABLE_CATEGORIES":
+                    value_node = node.value
+        elif isinstance(node, ast.AnnAssign):
+            if isinstance(node.target, ast.Name) and node.target.id == "EDITABLE_CATEGORIES" and node.value is not None:
+                value_node = node.value
+        if not isinstance(value_node, ast.Dict):
+            continue
+        for v in value_node.values:
+            if isinstance(v, ast.List):
+                for elt in v.elts:
+                    if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                        explicit.append(elt.value)
+            elif isinstance(v, ast.Constant) and isinstance(v.value, str):
+                wildcards.append(v.value)
+    return explicit, wildcards
 
 
 def walk_coverage_map(*, repo_root: Path) -> dict[str, list[SurfaceRef]]:
     """Walk web/, build map of UI-covered user-input file paths."""
     result: dict[str, list[SurfaceRef]] = {}
 
-    # Mechanism 1: EDITABLE_CATEGORIES
+    # Mechanism 1: EDITABLE_CATEGORIES (explicit paths + wildcard globs)
     config_files = repo_root / "src" / "findajob" / "web" / "config_files.py"
     if config_files.exists():
-        for path in _extract_editable_categories(config_files):
+        explicit, wildcards = _extract_editable_categories(config_files)
+        rel_config_files = str(config_files.relative_to(repo_root))
+        for path in explicit:
             ref = SurfaceRef(
                 source="EDITABLE_CATEGORIES",
-                file=str(config_files.relative_to(repo_root)),
+                file=rel_config_files,
                 detail=f"/config/ raw editor allows direct edit of {path}",
             )
             result.setdefault(path, []).append(ref)
+        for pattern in wildcards:
+            # Glob-expand against repo_root so concrete paths register as covered.
+            # PurePosixPath splitting works because EDITABLE_CATEGORIES paths use
+            # forward slashes.
+            for concrete in sorted(repo_root.glob(pattern)):
+                rel_concrete = str(concrete.relative_to(repo_root))
+                ref = SurfaceRef(
+                    source="EDITABLE_CATEGORIES",
+                    file=rel_config_files,
+                    detail=f"/config/ raw editor (wildcard {pattern}) covers {rel_concrete}",
+                )
+                result.setdefault(rel_concrete, []).append(ref)
 
     # Mechanism 2: path literals inside route modules
     routes_dir = repo_root / "src" / "findajob" / "web" / "routes"
