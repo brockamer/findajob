@@ -31,6 +31,7 @@ _SPEND_CEILING_PATH = Path(BASE) / "config" / "spend_ceiling.txt"
 # `reasons:` is empty. Operator stacks override via the file (interview-emitted
 # in a follow-up to #429); fresh installs and tester stacks see this default.
 _DEFAULT_REJECT_REASONS: tuple[str, ...] = (
+    "Not relevant",
     "Skills Mismatch",
     "Geography",
     "Compensation",

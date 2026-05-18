@@ -144,3 +144,86 @@ def test_archive_shows_relevance_score_column(scored_client: TestClient) -> None
     assert r.status_code == 200
     # The sort link for relevance_score proves the column is in the header.
     assert "sort=relevance_score" in r.text
+
+
+@pytest.fixture
+def reject_mix_client(tmp_path: Path) -> TestClient:
+    """Fixture with mixed scored + rejected rows for #281 default-exclude tests."""
+    db = tmp_path / "pipeline.db"
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE jobs (id TEXT, fingerprint TEXT, title TEXT, company TEXT, stage TEXT, "
+        "relevance_score INTEGER, fit_score REAL, probability_score REAL, location TEXT, "
+        "remote_status TEXT, source TEXT, url TEXT, created_at TEXT, stage_updated TEXT, "
+        "user_notes TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO jobs (id, fingerprint, title, company, stage, relevance_score, created_at) "
+        "VALUES ('id-s','fp-s','Scored Job','CoS','scored',6,'2026-04-24')"
+    )
+    conn.execute(
+        "INSERT INTO jobs (id, fingerprint, title, company, stage, relevance_score, created_at) "
+        "VALUES ('id-r','fp-r','Rejected Job','CoR','rejected',5,'2026-04-24')"
+    )
+    conn.commit()
+    conn.close()
+    companies = tmp_path / "companies"
+    companies.mkdir()
+    mark_complete(tmp_path)
+    return TestClient(create_app(companies_root=companies, db_path=db, base_root=tmp_path))
+
+
+def test_archive_default_excludes_rejected_rows(reject_mix_client: TestClient) -> None:
+    """#281: Archive default view excludes stage='rejected' so the score-5/6 triage
+    workflow doesn't re-show already-rejected rows."""
+    r = reject_mix_client.get("/board/archive")
+    assert r.status_code == 200
+    assert "Scored Job" in r.text
+    assert "Rejected Job" not in r.text
+
+
+def test_archive_explicit_stage_rejected_surfaces_rejected_rows(reject_mix_client: TestClient) -> None:
+    """#281: ?stage=rejected explicitly overrides the default exclusion."""
+    r = reject_mix_client.get("/board/archive?stage=rejected")
+    assert r.status_code == 200
+    assert "Rejected Job" in r.text
+    assert "Scored Job" not in r.text
+
+
+def test_archive_explicit_stage_scored_still_excludes_rejected(reject_mix_client: TestClient) -> None:
+    """#281: ?stage=scored is the operator's filter — should hide rejected rows naturally,
+    not because of the default-exclude (this verifies the default doesn't double-apply)."""
+    r = reject_mix_client.get("/board/archive?stage=scored")
+    assert r.status_code == 200
+    assert "Scored Job" in r.text
+    assert "Rejected Job" not in r.text
+
+
+def test_archive_rows_htmx_default_excludes_rejected(reject_mix_client: TestClient) -> None:
+    """#281: HTMX partial /board/archive/rows shares the same default-exclude behavior."""
+    r = reject_mix_client.get("/board/archive/rows?offset=0")
+    assert r.status_code == 200
+    assert "Scored Job" in r.text
+    assert "Rejected Job" not in r.text
+
+
+def test_archive_scored_row_renders_hybrid_reject_affordance(scored_client: TestClient) -> None:
+    """#281: scored-stage rows render both the ✕ single-click button (default reason)
+    and the ▾ alternate-reason dropdown alongside Promote."""
+    r = scored_client.get("/board/archive?relevance_score_min=6")
+    assert r.status_code == 200
+    # Single-click ✕ posts to /reject with the Not-relevant default reason
+    assert "/board/jobs/fp-6a/reject" in r.text
+    assert '"reason":"Not relevant"' in r.text
+    # ▾ dropdown lists other reasons; "Not relevant" is excluded (it's the ✕ path)
+    assert '<option value="Not relevant">' not in r.text
+    # At least one alternate reason from the default list shows up in the dropdown
+    assert '<option value="Skills Mismatch">' in r.text
+
+
+def test_archive_non_scored_row_does_not_render_reject_affordance(scored_client: TestClient) -> None:
+    """#281: the new reject affordance is on the scored branch only — applied rows
+    keep their existing non-scored cell behavior (dash, in this fixture)."""
+    r = scored_client.get("/board/archive?relevance_score_min=6")
+    assert r.status_code == 200
+    assert "/board/jobs/fp-9/reject" not in r.text

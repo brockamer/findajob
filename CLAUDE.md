@@ -208,7 +208,7 @@ responds in the same request — no poll cycle, no mirror table.
 
 The rejections-review row is keyed by `rejection_suggestions.id` rather than `jobs.fingerprint` — the suggestion is the source row, the job_id is found via `matched_job_id` (or operator-supplied on reattribute). Confirm/reattribute call `handle_not_selected(..., changed_by='gmail_rejection_detector')` so the audit trail tags the transition.
 
-**REJECT_REASON dropdown**: 11 options (includes "Low Fit Score"). Behavior depends on STATUS:
+**REJECT_REASON dropdown**: vocabulary is per-stack configurable via `config/reject_reasons.yaml`; defaults to a field-agnostic list in `findajob.config_loader._DEFAULT_REJECT_REASONS`, hot-reloaded per request. A "title-signal" subset (declared in the same YAML, defaults in `_DEFAULT_TITLE_SIGNAL_REASONS`) feeds `analyze_feedback._prefilter_candidates` so the scorer learns from rejections where the title alone was a tell. Behavior depends on STATUS:
 - If STATUS = `Not Selected`: company rejection → `stage=not_selected`, NO `feedback_log`, folder stays in `_applied/` with `NOT_SELECTED_` marker file
 - Otherwise: user rejection → `stage=rejected`, writes `feedback_log`, moves folder to `_rejected/`
 

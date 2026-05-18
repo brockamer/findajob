@@ -1,7 +1,9 @@
 {#
   Archive-tab actions cell — 4 stage cases:
 
-  - scored: Promote (POST /promote) — bumps relevance_score=7, surfaces row on Dashboard
+  - scored: Promote (POST /promote, bumps relevance_score=7) + hybrid Reject
+    affordance (single-click ✕ posts /reject with reason="Not relevant"; adjacent
+    ▾ dropdown posts /reject with operator-selected alternate reason). #281.
   - rejected: Un-reject with confirm modal (GET /un-reject/confirm) — destructive
     (deletes feedback_log row). Reuses #697's generic _confirm_modal.html partial.
   - withdrawn: Un-withdraw (POST /un-withdraw) — pure stage restore, no warning
@@ -16,11 +18,35 @@
 #}
 <td class="px-3 py-1 align-top text-sm whitespace-nowrap">
   {% if row.stage == 'scored' %}
-    <button type="button"
-            class="rounded bg-indigo-600 px-2 py-1 text-xs font-medium text-white hover:bg-indigo-500"
-            hx-post="/board/jobs/{{ row.fingerprint }}/promote"
-            hx-target="closest tr"
-            hx-swap="outerHTML">Promote</button>
+    <div class="flex gap-1 items-center">
+      <button type="button"
+              class="rounded bg-indigo-600 px-2 py-1 text-xs font-medium text-white hover:bg-indigo-500"
+              hx-post="/board/jobs/{{ row.fingerprint }}/promote"
+              hx-target="closest tr"
+              hx-swap="outerHTML">Promote</button>
+      <button type="button"
+              title="Reject as 'Not relevant'"
+              aria-label="Reject as Not relevant"
+              class="rounded bg-slate-100 hover:bg-rose-100 hover:text-rose-700 px-2 py-1 text-xs text-slate-700"
+              hx-post="/board/jobs/{{ row.fingerprint }}/reject"
+              hx-vals='{"reason":"Not relevant"}'
+              hx-target="closest tr"
+              hx-swap="outerHTML">✕</button>
+      <select
+              class="block rounded border-slate-300 bg-white px-1 py-1 text-xs text-slate-600"
+              aria-label="Reject with alternate reason"
+              title="Reject with alternate reason"
+              onchange="if(this.value){
+                const tr=this.closest('tr');
+                htmx.ajax('POST','/board/jobs/{{ row.fingerprint }}/reject',{target:tr,swap:'outerHTML',values:{reason:this.value}});
+                this.value='';
+              }">
+        <option value="">▾</option>
+        {% for reason in reject_reason_options() if reason != 'Not relevant' %}
+        <option value="{{ reason }}">{{ reason }}</option>
+        {% endfor %}
+      </select>
+    </div>
   {% elif row.stage == 'rejected' %}
     <button type="button"
             class="rounded bg-slate-100 hover:bg-slate-200 px-2 py-0.5 text-xs text-slate-700"

@@ -573,10 +573,13 @@ def _archive_query(parsed: ParsedFilters, offset: int, page_size: int = _ARCHIVE
     clauses, filter_params = build_filter_clauses(specs, parsed)
     sort = parsed.sort or _ARCHIVE_DEFAULT_SORT
     order = "DESC" if parsed.desc else "ASC"
-    # Strip leading " AND " and prefix with " WHERE " — Archive has no base WHERE.
-    where_sql = ""
-    if clauses:
-        where_sql = " WHERE " + clauses[len(" AND ") :]
+    # Strip leading " AND " — Archive has no base WHERE.
+    where_body = clauses[len(" AND ") :] if clauses else ""
+    # #281: Default-exclude rejected rows so the score-5/6 triage workflow doesn't
+    # re-show already-rejected rows. Reachable via ?stage=rejected or /board/rejected.
+    if "stage" not in parsed.enum:
+        where_body = f"{where_body} AND stage != 'rejected'" if where_body else "stage != 'rejected'"
+    where_sql = f" WHERE {where_body}" if where_body else ""
     sql = (
         "SELECT fingerprint, title, company, stage, relevance_score, fit_score, "
         "probability_score, location, remote_status, source, url, user_notes, created_at, stage_updated "
