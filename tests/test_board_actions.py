@@ -150,6 +150,10 @@ class TestPrep:
         args = popen_calls[0]
         assert "prep_application.py" in args[1]
         assert "--no-sync" not in args
+        # /prep launches Phase A only; the briefing-first gate at /materials/{fp}/
+        # is what continues to Phase B (#691). Without --phase=a, the subprocess
+        # would re-run the full pipeline and skip the operator-decision gate.
+        assert "--phase=a" in args
 
     def test_happy_path_flags_manual_review_job(self, client: TestClient, popen_calls):
         response = client.post("/board/jobs/fp_manual/prep")

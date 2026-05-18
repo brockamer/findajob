@@ -315,7 +315,10 @@ def prep(
         title=job["title"],
     )
 
-    _launch_prep_subprocess(db, job)
+    # Phase A only — operator continues from the briefing-first gate at
+    # /materials/{fp}/ by POSTing to /continue-prep (or rejects with a
+    # substantive reason). Spec: docs/superpowers/specs/2026-05-16-622-prep-cost-gate-design.md.
+    _launch_prep_subprocess(db, job, extra_args=("--phase=a",))
 
     updated = _fetch_dashboard_row(db, fingerprint)
     assert updated is not None  # we just updated this row
