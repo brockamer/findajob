@@ -163,9 +163,9 @@ def dashboard(
 
     specs = filter_registry.DASHBOARD_COLUMNS
     parsed = parse_filter_params(specs, request.query_params)
-    redirect = _maybe_redirect_to_persisted(request, "dashboard", parsed, db)
-    if redirect is not None:
-        return redirect  # type: ignore[return-value]
+    view_prefs_redirect = _maybe_redirect_to_persisted(request, "dashboard", parsed, db)
+    if view_prefs_redirect is not None:
+        return view_prefs_redirect  # type: ignore[return-value]
     _persist_view(db, "dashboard", parsed)
     sql, params = _dashboard_query(parsed)
     rows = db.execute(sql, params).fetchall()
@@ -298,9 +298,9 @@ def applied(
 ) -> HTMLResponse:
     specs = filter_registry.APPLIED_COLUMNS
     parsed = parse_filter_params(specs, request.query_params)
-    redirect = _maybe_redirect_to_persisted(request, "applied", parsed, db)
-    if redirect is not None:
-        return redirect  # type: ignore[return-value]
+    view_prefs_redirect = _maybe_redirect_to_persisted(request, "applied", parsed, db)
+    if view_prefs_redirect is not None:
+        return view_prefs_redirect  # type: ignore[return-value]
     _persist_view(db, "applied", parsed)
     sql, params = _applied_query(parsed)
     rows = db.execute(sql, params).fetchall()
@@ -347,9 +347,9 @@ def review(
 ) -> HTMLResponse:
     specs = filter_registry.REVIEW_COLUMNS
     parsed = parse_filter_params(specs, request.query_params)
-    redirect = _maybe_redirect_to_persisted(request, "review", parsed, db)
-    if redirect is not None:
-        return redirect  # type: ignore[return-value]
+    view_prefs_redirect = _maybe_redirect_to_persisted(request, "review", parsed, db)
+    if view_prefs_redirect is not None:
+        return view_prefs_redirect  # type: ignore[return-value]
     _persist_view(db, "review", parsed)
     sql, params = _review_query(parsed)
     rows = db.execute(sql, params).fetchall()
@@ -409,9 +409,9 @@ def waitlist(
 ) -> HTMLResponse:
     specs = filter_registry.WAITLIST_COLUMNS
     parsed = parse_filter_params(specs, request.query_params)
-    redirect = _maybe_redirect_to_persisted(request, "waitlist", parsed, db)
-    if redirect is not None:
-        return redirect  # type: ignore[return-value]
+    view_prefs_redirect = _maybe_redirect_to_persisted(request, "waitlist", parsed, db)
+    if view_prefs_redirect is not None:
+        return view_prefs_redirect  # type: ignore[return-value]
     _persist_view(db, "waitlist", parsed)
     sql, params = _waitlist_query(parsed)
     rows = db.execute(sql, params).fetchall()
@@ -482,9 +482,9 @@ def rejected(
 ) -> HTMLResponse:
     specs = filter_registry.REJECTED_COLUMNS
     parsed = parse_filter_params(specs, request.query_params)
-    redirect = _maybe_redirect_to_persisted(request, "rejected", parsed, db)
-    if redirect is not None:
-        return redirect  # type: ignore[return-value]
+    view_prefs_redirect = _maybe_redirect_to_persisted(request, "rejected", parsed, db)
+    if view_prefs_redirect is not None:
+        return view_prefs_redirect  # type: ignore[return-value]
     _persist_view(db, "rejected", parsed)
     sql, params = _rejected_query(parsed)
     rows = db.execute(sql, params).fetchall()
@@ -580,9 +580,9 @@ def not_selected(
 ) -> HTMLResponse:
     specs = filter_registry.NOT_SELECTED_COLUMNS
     parsed = parse_filter_params(specs, request.query_params)
-    redirect = _maybe_redirect_to_persisted(request, "not_selected", parsed, db)
-    if redirect is not None:
-        return redirect  # type: ignore[return-value]
+    view_prefs_redirect = _maybe_redirect_to_persisted(request, "not_selected", parsed, db)
+    if view_prefs_redirect is not None:
+        return view_prefs_redirect  # type: ignore[return-value]
     _persist_view(db, "not_selected", parsed)
     sql, params = _not_selected_query(parsed)
     rows = db.execute(sql, params).fetchall()
@@ -663,9 +663,9 @@ def archive(
 ) -> HTMLResponse:
     specs = filter_registry.ARCHIVE_COLUMNS
     parsed = parse_filter_params(specs, request.query_params)
-    redirect = _maybe_redirect_to_persisted(request, "archive", parsed, db)
-    if redirect is not None:
-        return redirect  # type: ignore[return-value]
+    view_prefs_redirect = _maybe_redirect_to_persisted(request, "archive", parsed, db)
+    if view_prefs_redirect is not None:
+        return view_prefs_redirect  # type: ignore[return-value]
     _persist_view(db, "archive", parsed)
     sql, params = _archive_query(parsed, offset=0)
     rows = db.execute(sql, params).fetchall()
