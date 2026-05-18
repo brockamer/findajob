@@ -41,7 +41,7 @@
                 htmx.ajax('POST','/board/jobs/{{ row.fingerprint }}/reject',{target:tr,swap:'outerHTML',values:{reason:this.value}});
                 this.value='';
               }">
-        <option value="">▾</option>
+        <option value="">Other…</option>
         {% for reason in reject_reason_options() if reason != 'Not relevant' %}
         <option value="{{ reason }}">{{ reason }}</option>
         {% endfor %}
