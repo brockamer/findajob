@@ -6,12 +6,26 @@ or drop marker files live here. Invoked from `scripts/watchdog.py` and from
 the web POST handlers in `findajob.web.routes.board_actions`.
 
 Every function takes an open `sqlite3.Connection` as its first argument and,
-by default, commits itself. The ``un_*`` helpers and ``handle_not_selected``
-accept a kwarg-only ``commit=False`` so callers can compose multiple writes
-into one transaction (used by ``reattribute_from_archive`` for atomic
-source-and-target updates). Functions return a `bool` indicating whether a
-folder was moved (or, for `reset_prep_to_scored`, whether the reset actually
-happened).
+by default, commits itself. Helpers that touch the filesystem (folder moves,
+marker file creation/deletion) accept a kwarg-only ``deferred_fs`` list so
+callers can compose multiple writes into one atomic transaction:
+
+- When ``deferred_fs is None`` (default, single-call), the helper runs its
+  DB writes, calls ``conn.commit()``, and then executes its filesystem ops
+  inline. Failure to commit leaves the filesystem untouched; failure of an
+  fs op leaves the DB authoritative (cosmetic disk artifact at worst).
+- When ``deferred_fs`` is a list, the helper appends its filesystem ops as
+  zero-arg closures to that list and does NOT commit. The caller owns the
+  transaction: call ``conn.commit()`` first, then execute each closure.
+  Used by ``reattribute_from_archive`` for atomic source-and-target updates.
+
+This replaces the older ``commit=False`` kwarg from #707. The two concerns
+(transaction ownership + fs deferral) collapsed into one kwarg because every
+caller that wanted ``commit=False`` also needed fs deferral to be meaningful
+in a rollback (#709).
+
+Functions retain their existing return values (`bool` for folder-moved,
+`str` for restored-stage, `None` elsewhere).
 """
 
 import glob
@@ -21,12 +35,15 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from findajob.audit import log_event, write_audit
 from findajob.paths import BASE
+
+FsOp = Callable[[], None]
 
 _APPLIED_SNAPSHOT_RE = re.compile(r"\.applied-\d{4}-\d{2}-\d{2}\.md$")
 
@@ -69,10 +86,28 @@ def snapshot_applied_md_files(
     return created
 
 
-def handle_rejection(conn: sqlite3.Connection, job: Any, reason: str) -> bool:
+def handle_rejection(
+    conn: sqlite3.Connection,
+    job: Any,
+    reason: str,
+    *,
+    deferred_fs: list[FsOp] | None = None,
+) -> bool:
     """Store rejection in DB, write to feedback_log, and move company folder to _rejected.
-    Drops a marker file named {reason}_{date}.txt inside the moved folder.
-    Returns True if a folder was moved."""
+
+    Drops a marker file named ``REJECTED_{reason}_{date}.txt`` inside the moved
+    folder. Returns True if a folder will be (or was) moved.
+
+    Args:
+        deferred_fs: When ``None`` (default), the helper commits the DB writes
+            and then executes filesystem ops inline. When a list is passed,
+            the helper appends fs ops to it as closures and does NOT commit;
+            the caller must commit and then execute each closure. See module
+            docstring.
+    """
+    own_transaction = deferred_fs is None
+    fs_ops: list[FsOp] = []
+
     now = datetime.now(UTC).isoformat()
     old_stage = job["stage"]
     conn.execute(
@@ -90,35 +125,52 @@ def handle_rejection(conn: sqlite3.Connection, job: Any, reason: str) -> bool:
             (job["id"], job["title"], job["company"], job["relevance_score"], reason, jd_excerpt),
         )
 
-    # Move company folder to _rejected if it exists
+    # Stage folder move + marker write as deferred fs ops; DB row gets the
+    # post-move path eagerly so it commits atomically with the stage change.
     folder_moved = False
     folder = jd["prep_folder_path"] if jd else None
     if folder and os.path.isdir(folder):
+        assert isinstance(folder, str)  # mypy narrowing — prep_folder_path is TEXT
         # Derive companies_root from the folder being moved rather than the
-        # process-global `BASE`. The folder lives at `<companies_root>/<name>/`
-        # by convention, so `Path(folder).parent` recovers companies_root.
-        # `BASE`-relative paths broke fixture isolation under the full test
-        # suite — the move target landed at the operator's literal cwd, not
-        # `tmp_path` (#716). The other BASE-relative call sites in this file
-        # (handle_waitlist, handle_reactivate, un_reject, un_apply,
-        # un_withdraw_job) carry the same anti-pattern but aren't exercised
-        # by failing tests today — fix them when a test surfaces.
+        # process-global `BASE`. See #716 for the BASE-relative isolation bug.
         rejected_dir = str(Path(folder).parent / "_rejected")
-        os.makedirs(rejected_dir, exist_ok=True)
-        dest = os.path.join(rejected_dir, os.path.basename(folder))
-        shutil.move(folder, dest)
-        # Drop a marker file: filesystem-safe reason + date
+        folder_name = os.path.basename(folder)
+        dest = os.path.join(rejected_dir, folder_name)
         safe_reason = re.sub(r"[^\w\s-]", "", reason).strip().replace(" ", "_")[:60]
         date_str = datetime.now().strftime("%Y-%m-%d")
-        open(os.path.join(dest, f"REJECTED_{safe_reason}_{date_str}.txt"), "w").close()
+        marker_path = os.path.join(dest, f"REJECTED_{safe_reason}_{date_str}.txt")
+        src_folder: str = folder
+        job_id: str = job["id"]
+
+        def _move_and_mark(
+            src: str = src_folder,
+            d: str = dest,
+            rd: str = rejected_dir,
+            mp: str = marker_path,
+            jid: str = job_id,
+            fname: str = folder_name,
+            r: str = reason,
+        ) -> None:
+            os.makedirs(rd, exist_ok=True)
+            shutil.move(src, d)
+            open(mp, "w").close()
+            log_event("folder_moved_to_rejected", job_id=jid, folder=fname, reason=r)
+
+        fs_ops.append(_move_and_mark)
         conn.execute("UPDATE jobs SET prep_folder_path=? WHERE id=?", (dest, job["id"]))
-        log_event("folder_moved_to_rejected", job_id=job["id"], folder=os.path.basename(folder), reason=reason)
         folder_moved = True
 
-    conn.commit()
-    write_audit(conn, job["id"], "stage", old_stage, "rejected")
-    write_audit(conn, job["id"], "reject_reason", "", reason)
+    if own_transaction:
+        conn.commit()
+    write_audit(conn, job["id"], "stage", old_stage, "rejected", commit=own_transaction)
+    write_audit(conn, job["id"], "reject_reason", "", reason, commit=own_transaction)
     log_event("job_rejected", job_id=job["id"], company=job["company"], title=job["title"], reason=reason)
+
+    if deferred_fs is None:
+        for op in fs_ops:
+            op()
+    else:
+        deferred_fs.extend(fs_ops)
     return folder_moved
 
 
@@ -128,7 +180,7 @@ def handle_not_selected(
     reason: str,
     *,
     changed_by: str | None = None,
-    commit: bool = True,
+    deferred_fs: list[FsOp] | None = None,
 ) -> bool:
     """Company rejected the application. Sets stage=not_selected, drops a marker file.
 
@@ -142,12 +194,13 @@ def handle_not_selected(
             ``'gmail_rejection_detector'`` from the rejections-review confirm
             endpoint per spec §4.5.2 so the audit trail distinguishes
             operator-confirmed Gmail-detected rejections from manual flips.
-        commit: When False, skip the internal ``conn.commit()`` and propagate
-            ``commit=False`` to the inner ``write_audit`` calls so the caller
-            can compose this with another helper inside a single transaction
-            (used by ``reattribute_from_archive`` for atomic source-and-target
-            updates). Default True preserves existing single-call behavior.
+        deferred_fs: When ``None`` (default), commits and runs the marker
+            write inline. When a list, appends the marker write as a closure
+            and does NOT commit. See module docstring.
     """
+    own_transaction = deferred_fs is None
+    fs_ops: list[FsOp] = []
+
     now = datetime.now(UTC).isoformat()
     old_stage = job["stage"]
     conn.execute(
@@ -155,27 +208,59 @@ def handle_not_selected(
         ("not_selected", reason, now, job["id"]),
     )
 
-    # Drop marker file in existing folder (stays in _applied/)
+    # Stage marker write as a deferred fs op (folder stays in _applied/).
     jd = conn.execute("SELECT prep_folder_path FROM jobs WHERE id=?", (job["id"],)).fetchone()
     folder = jd["prep_folder_path"] if jd else None
     if folder and os.path.isdir(folder):
+        assert isinstance(folder, str)  # mypy narrowing — prep_folder_path is TEXT
         safe_reason = re.sub(r"[^\w\s-]", "", reason).strip().replace(" ", "_")[:60]
         date_str = datetime.now().strftime("%Y-%m-%d")
-        open(os.path.join(folder, f"NOT_SELECTED_{safe_reason}_{date_str}.txt"), "w").close()
-        log_event("marker_added_not_selected", job_id=job["id"], folder=os.path.basename(folder), reason=reason)
+        marker_path = os.path.join(folder, f"NOT_SELECTED_{safe_reason}_{date_str}.txt")
+        folder_name = os.path.basename(folder)
+        job_id: str = job["id"]
 
-    if commit:
+        def _write_marker(
+            mp: str = marker_path,
+            jid: str = job_id,
+            fname: str = folder_name,
+            r: str = reason,
+        ) -> None:
+            open(mp, "w").close()
+            log_event("marker_added_not_selected", job_id=jid, folder=fname, reason=r)
+
+        fs_ops.append(_write_marker)
+
+    if own_transaction:
         conn.commit()
-    write_audit(conn, job["id"], "stage", old_stage, "not_selected", changed_by=changed_by, commit=commit)
-    write_audit(conn, job["id"], "reject_reason", "", reason, changed_by=changed_by, commit=commit)
+    write_audit(conn, job["id"], "stage", old_stage, "not_selected", changed_by=changed_by, commit=own_transaction)
+    write_audit(conn, job["id"], "reject_reason", "", reason, changed_by=changed_by, commit=own_transaction)
     log_event("job_not_selected", job_id=job["id"], company=job["company"], title=job["title"], reason=reason)
+
+    if deferred_fs is None:
+        for op in fs_ops:
+            op()
+    else:
+        deferred_fs.extend(fs_ops)
     return False
 
 
-def handle_waitlist(conn: sqlite3.Connection, job: Any) -> bool:
+def handle_waitlist(
+    conn: sqlite3.Connection,
+    job: Any,
+    *,
+    deferred_fs: list[FsOp] | None = None,
+) -> bool:
     """Move job to waitlisted stage and folder to _waitlisted/.
-    Returns True if a folder was moved, False otherwise.
-    Does NOT write to feedback_log — waitlisting is not rejection."""
+
+    Returns True if a folder will be (or was) moved, False otherwise. Does
+    NOT write to feedback_log — waitlisting is not rejection.
+
+    Args:
+        deferred_fs: See module docstring.
+    """
+    own_transaction = deferred_fs is None
+    fs_ops: list[FsOp] = []
+
     now = datetime.now(UTC).isoformat()
     old_stage = job["stage"]
     conn.execute("UPDATE jobs SET stage=?, updated_at=? WHERE id=?", ("waitlisted", now, job["id"]))
@@ -184,32 +269,71 @@ def handle_waitlist(conn: sqlite3.Connection, job: Any) -> bool:
     jd = conn.execute("SELECT prep_folder_path FROM jobs WHERE id=?", (job["id"],)).fetchone()
     folder = jd["prep_folder_path"] if jd else None
     if folder and os.path.isdir(folder):
+        assert isinstance(folder, str)  # mypy narrowing — prep_folder_path is TEXT
         waitlisted_dir = os.path.join(BASE, "companies", "_waitlisted")
-        os.makedirs(waitlisted_dir, exist_ok=True)
         dest = os.path.join(waitlisted_dir, os.path.basename(folder))
-        shutil.move(folder, dest)
+        src_folder: str = folder
+        folder_name = os.path.basename(folder)
+        job_id: str = job["id"]
+
+        def _move_to_waitlisted(
+            src: str = src_folder,
+            d: str = dest,
+            wd: str = waitlisted_dir,
+            jid: str = job_id,
+            fname: str = folder_name,
+        ) -> None:
+            os.makedirs(wd, exist_ok=True)
+            shutil.move(src, d)
+            log_event("folder_moved_to_waitlisted", job_id=jid, folder=fname)
+
+        fs_ops.append(_move_to_waitlisted)
         conn.execute("UPDATE jobs SET prep_folder_path=? WHERE id=?", (dest, job["id"]))
-        log_event("folder_moved_to_waitlisted", job_id=job["id"], folder=os.path.basename(folder))
         folder_moved = True
 
-    conn.commit()
-    write_audit(conn, job["id"], "stage", old_stage, "waitlisted")
+    if own_transaction:
+        conn.commit()
+    write_audit(conn, job["id"], "stage", old_stage, "waitlisted", commit=own_transaction)
     log_event("job_waitlisted", job_id=job["id"], company=job["company"], title=job["title"])
+
+    if deferred_fs is None:
+        for op in fs_ops:
+            op()
+    else:
+        deferred_fs.extend(fs_ops)
     return folder_moved
 
 
-def handle_reactivate(conn: sqlite3.Connection, job: Any) -> bool:
+def handle_reactivate(
+    conn: sqlite3.Connection,
+    job: Any,
+    *,
+    deferred_fs: list[FsOp] | None = None,
+) -> bool:
     """Restore a waitlisted job to scored or materials_drafted.
-    Returns True if a folder was moved back."""
+
+    Returns True if a folder will be (or was) moved back.
+
+    Args:
+        deferred_fs: See module docstring.
+    """
+    own_transaction = deferred_fs is None
+    fs_ops: list[FsOp] = []
+
     now = datetime.now(UTC).isoformat()
     jd = conn.execute("SELECT prep_folder_path FROM jobs WHERE id=?", (job["id"],)).fetchone()
     folder = jd["prep_folder_path"] if jd else None
     folder_moved = False
 
     if folder and os.path.isdir(folder):
-        # Move folder back from _waitlisted/ to companies/
+        assert isinstance(folder, str)  # mypy narrowing — prep_folder_path is TEXT
         dest = os.path.join(BASE, "companies", os.path.basename(folder))
-        shutil.move(folder, dest)
+        src_folder: str = folder
+
+        def _move_from_waitlisted(src: str = src_folder, d: str = dest) -> None:
+            shutil.move(src, d)
+
+        fs_ops.append(_move_from_waitlisted)
         conn.execute(
             "UPDATE jobs SET stage=?, prep_folder_path=?, updated_at=? WHERE id=?",
             ("materials_drafted", dest, now, job["id"]),
@@ -220,9 +344,16 @@ def handle_reactivate(conn: sqlite3.Connection, job: Any) -> bool:
         conn.execute("UPDATE jobs SET stage=?, updated_at=? WHERE id=?", ("scored", now, job["id"]))
         new_stage = "scored"
 
-    conn.commit()
-    write_audit(conn, job["id"], "stage", "waitlisted", new_stage)
+    if own_transaction:
+        conn.commit()
+    write_audit(conn, job["id"], "stage", "waitlisted", new_stage, commit=own_transaction)
     log_event("job_reactivated", job_id=job["id"], company=job["company"], title=job["title"], stage=new_stage)
+
+    if deferred_fs is None:
+        for op in fs_ops:
+            op()
+    else:
+        deferred_fs.extend(fs_ops)
     return folder_moved
 
 
@@ -390,7 +521,7 @@ def un_reject_job(
     job: Any,
     overwrite_fields: dict[str, str],
     *,
-    commit: bool = True,
+    deferred_fs: list[FsOp] | None = None,
 ) -> None:
     """Reverse a user rejection: restore to scored, delete feedback_log rows.
 
@@ -399,11 +530,11 @@ def un_reject_job(
     Deletes feedback_log rows so the scorer's feedback loop stays clean.
 
     Args:
-        commit: When False, skip the internal ``conn.commit()`` and propagate
-            ``commit=False`` to the inner ``write_audit`` calls so the caller
-            can compose this with another helper inside a single transaction.
-            Default True preserves existing single-call behavior.
+        deferred_fs: See module docstring.
     """
+    own_transaction = deferred_fs is None
+    fs_ops: list[FsOp] = []
+
     now = datetime.now(UTC).isoformat()
 
     set_parts = ["stage='scored'", "reject_reason=''", "relevance_score=8", "updated_at=?"]
@@ -416,19 +547,43 @@ def un_reject_job(
 
     folder = job["prep_folder_path"] if job["prep_folder_path"] else None
     if folder and os.path.isdir(folder):
+        assert isinstance(folder, str)  # mypy narrowing — prep_folder_path is TEXT
         dest = os.path.join(BASE, "companies", os.path.basename(folder))
-        shutil.move(folder, dest)
-        conn.execute("UPDATE jobs SET prep_folder_path=? WHERE id=?", (dest, job["id"]))
-        log_event("folder_moved_from_rejected", job_id=job["id"], folder=os.path.basename(folder))
+        src_folder: str = folder
+        folder_name = os.path.basename(folder)
+        job_id: str = job["id"]
 
-    if commit:
+        def _move_from_rejected(
+            src: str = src_folder,
+            d: str = dest,
+            jid: str = job_id,
+            fname: str = folder_name,
+        ) -> None:
+            shutil.move(src, d)
+            log_event("folder_moved_from_rejected", job_id=jid, folder=fname)
+
+        fs_ops.append(_move_from_rejected)
+        conn.execute("UPDATE jobs SET prep_folder_path=? WHERE id=?", (dest, job["id"]))
+
+    if own_transaction:
         conn.commit()
-    write_audit(conn, job["id"], "stage", "rejected", "scored", commit=commit)
-    write_audit(conn, job["id"], "reject_reason", job["reject_reason"] or "", "", commit=commit)
+    write_audit(conn, job["id"], "stage", "rejected", "scored", commit=own_transaction)
+    write_audit(conn, job["id"], "reject_reason", job["reject_reason"] or "", "", commit=own_transaction)
     log_event("job_un_rejected", job_id=job["id"], company=job["company"], title=job["title"])
 
+    if deferred_fs is None:
+        for op in fs_ops:
+            op()
+    else:
+        deferred_fs.extend(fs_ops)
 
-def un_not_selected_job(conn: sqlite3.Connection, job: Any, *, commit: bool = True) -> str:
+
+def un_not_selected_job(
+    conn: sqlite3.Connection,
+    job: Any,
+    *,
+    deferred_fs: list[FsOp] | None = None,
+) -> str:
     """Reverse a company-not-selected stage: restore the prior stage from
     audit_log, clear the reject_reason, delete all NOT_SELECTED_*.txt marker
     files from the job's folder.
@@ -443,12 +598,11 @@ def un_not_selected_job(conn: sqlite3.Connection, job: Any, *, commit: bool = Tr
     keeps the folder in companies/_applied/).
 
     Args:
-        commit: When False, skip the internal ``conn.commit()`` and propagate
-            ``commit=False`` to the inner ``write_audit`` calls so the caller
-            can compose this with another helper inside a single transaction
-            (used by ``reattribute_from_archive`` for atomic source-and-target
-            updates). Default True preserves existing single-call behavior.
+        deferred_fs: See module docstring.
     """
+    own_transaction = deferred_fs is None
+    fs_ops: list[FsOp] = []
+
     now = datetime.now(UTC).isoformat()
 
     prior = conn.execute(
@@ -466,19 +620,37 @@ def un_not_selected_job(conn: sqlite3.Connection, job: Any, *, commit: bool = Tr
 
     folder = job["prep_folder_path"] if job["prep_folder_path"] else None
     if folder and os.path.isdir(folder):
+        assert isinstance(folder, str)  # mypy narrowing — prep_folder_path is TEXT
+        # Snapshot the marker list at planning time so a deferred caller
+        # gets the same set of markers it would have deleted today. Each
+        # closure binds its own ``mp`` via default-arg trick — without it,
+        # lazy capture would bind every closure to the final iteration's
+        # ``marker_path``.
+        folder_name = os.path.basename(folder)
+        job_id: str = job["id"]
         for marker_path in glob.glob(os.path.join(folder, "NOT_SELECTED_*.txt")):
-            os.remove(marker_path)
-            log_event(
-                "marker_removed_not_selected",
-                job_id=job["id"],
-                folder=os.path.basename(folder),
-                marker=os.path.basename(marker_path),
-            )
 
-    if commit:
+            def _remove_marker(
+                mp: str = marker_path,
+                jid: str = job_id,
+                fname: str = folder_name,
+            ) -> None:
+                os.remove(mp)
+                log_event(
+                    "marker_removed_not_selected",
+                    job_id=jid,
+                    folder=fname,
+                    marker=os.path.basename(mp),
+                )
+
+            fs_ops.append(_remove_marker)
+
+    if own_transaction:
         conn.commit()
-    write_audit(conn, job["id"], "stage", "not_selected", restored_stage, changed_by="user", commit=commit)
-    write_audit(conn, job["id"], "reject_reason", job["reject_reason"] or "", "", changed_by="user", commit=commit)
+    write_audit(conn, job["id"], "stage", "not_selected", restored_stage, changed_by="user", commit=own_transaction)
+    write_audit(
+        conn, job["id"], "reject_reason", job["reject_reason"] or "", "", changed_by="user", commit=own_transaction
+    )
     log_event(
         "job_un_not_selected",
         job_id=job["id"],
@@ -486,10 +658,21 @@ def un_not_selected_job(conn: sqlite3.Connection, job: Any, *, commit: bool = Tr
         title=job["title"],
         restored_stage=restored_stage,
     )
+
+    if deferred_fs is None:
+        for op in fs_ops:
+            op()
+    else:
+        deferred_fs.extend(fs_ops)
     return restored_stage
 
 
-def un_withdraw_job(conn: sqlite3.Connection, job: Any, *, commit: bool = True) -> str:
+def un_withdraw_job(
+    conn: sqlite3.Connection,
+    job: Any,
+    *,
+    deferred_fs: list[FsOp] | None = None,
+) -> str:
     """Reverse a withdraw: restore the prior stage from audit_log
     (typically applied/interview/offer).
 
@@ -501,14 +684,15 @@ def un_withdraw_job(conn: sqlite3.Connection, job: Any, *, commit: bool = True) 
     Unlike un_not_selected_job, there is no marker file to delete (withdraw
     never wrote one) and no folder to touch (withdraw doesn't move folders).
     Unlike un_reject_job, no feedback_log row exists (withdraw doesn't
-    write to feedback_log). Pure stage restoration.
+    write to feedback_log). Pure stage restoration — ``deferred_fs`` exists
+    only for caller-composition uniformity; the list stays empty.
 
     Args:
-        commit: When False, skip the internal ``conn.commit()`` and propagate
-            ``commit=False`` to the inner ``write_audit`` call so the caller
-            can compose this with another helper inside a single transaction.
-            Default True preserves existing single-call behavior.
+        deferred_fs: See module docstring. Always appends zero closures for
+            this helper (no fs ops); accepted for API parity.
     """
+    own_transaction = deferred_fs is None
+
     now = datetime.now(UTC).isoformat()
 
     prior = conn.execute(
@@ -523,9 +707,9 @@ def un_withdraw_job(conn: sqlite3.Connection, job: Any, *, commit: bool = True) 
         "UPDATE jobs SET stage=?, updated_at=? WHERE id=?",
         (restored_stage, now, job["id"]),
     )
-    if commit:
+    if own_transaction:
         conn.commit()
-    write_audit(conn, job["id"], "stage", "withdrawn", restored_stage, changed_by="user", commit=commit)
+    write_audit(conn, job["id"], "stage", "withdrawn", restored_stage, changed_by="user", commit=own_transaction)
     log_event(
         "job_un_withdrawn", job_id=job["id"], company=job["company"], title=job["title"], restored_stage=restored_stage
     )
@@ -554,6 +738,7 @@ def un_apply_job(conn: sqlite3.Connection, job: Any) -> None:
     folder = jd["prep_folder_path"] if jd and jd["prep_folder_path"] else None
     new_path = folder  # default: keep whatever path is on the row
     if folder and os.path.isdir(folder):
+        assert isinstance(folder, str)  # mypy narrowing — prep_folder_path is TEXT
         # Move folder back from _applied/ to companies/
         dest = os.path.join(BASE, "companies", os.path.basename(folder))
         shutil.move(folder, dest)
@@ -601,6 +786,7 @@ def reactivate_from_ingest(conn: sqlite3.Connection, job: Any, overwrite_fields:
 
     folder = job["prep_folder_path"] if job["prep_folder_path"] else None
     if folder and os.path.isdir(folder):
+        assert isinstance(folder, str)  # mypy narrowing — prep_folder_path is TEXT
         dest = os.path.join(BASE, "companies", os.path.basename(folder))
         shutil.move(folder, dest)
         conn.execute("UPDATE jobs SET prep_folder_path=? WHERE id=?", (dest, job["id"]))

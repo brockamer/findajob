@@ -10,10 +10,12 @@ import json
 import os
 import sqlite3
 import uuid
+from pathlib import Path
 
 import pytest
 
 from findajob import actions, audit
+from findajob.paths import BASE
 
 SCHEMA = """
 CREATE TABLE jobs (
@@ -942,20 +944,27 @@ def test_handle_rejection_skips_feedback_log_for_synthetic(tmp_path, monkeypatch
     assert real_after["stage"] == "rejected"
 
 
-# ── commit=False atomic-composition kwarg (#707) ────────────────────────────
+# ── deferred_fs atomic-composition kwarg (#709, supersedes #707 commit=False) ──
 
 
-class TestActionsCommitFalse:
-    """Every helper that grew a ``commit=True`` kwarg in #707 must, when
-    called with ``commit=False``, leave its UPDATEs and audit INSERTs inside
-    an open transaction so the caller can compose multiple helpers and commit
-    (or rollback) atomically. The contract is verified by issuing
-    ``conn.rollback()`` after the call and asserting every write disappeared.
+class TestActionsDeferredFs:
+    """Every helper that touches DB+filesystem must, when called with
+    ``deferred_fs=[]``, leave its UPDATEs, audit INSERTs, AND filesystem
+    mutations pending: the DB writes stay in the open transaction, and the
+    fs ops are appended as closures to the passed list (not executed). The
+    contract is verified by issuing ``conn.rollback()`` WITHOUT executing
+    the closures and asserting every DB and disk side effect disappeared.
+
+    This is the regression net for #709: previously fs ops ran inline before
+    the commit decision, so a rollback reverted the DB while leaving the
+    filesystem half-applied.
     """
 
-    def test_un_reject_job_commit_false_is_rollback_safe(self, db, tmp_path):
-        folder = tmp_path / "companies" / "_rejected" / "Acme_Ops_commit_false"
+    def test_un_reject_job_deferred_fs_is_rollback_safe(self, db, tmp_path):
+        folder = tmp_path / "companies" / "_rejected" / "Acme_Ops_deferred"
         folder.mkdir(parents=True)
+        marker = folder / "REJECTED_Wrong_Level_2026-05-18.txt"
+        marker.touch()
         job = insert_job(db, stage="rejected", folder=str(folder), score=2)
         db.execute("UPDATE jobs SET reject_reason='Wrong Level' WHERE id=?", (job["id"],))
         db.execute(
@@ -965,14 +974,20 @@ class TestActionsCommitFalse:
         )
         db.commit()
         job = db.execute("SELECT * FROM jobs WHERE id=?", (job["id"],)).fetchone()
+        expected_dest = Path(BASE) / "companies" / folder.name
 
-        actions.un_reject_job(db, job, overwrite_fields={}, commit=False)
+        deferred: list = []
+        actions.un_reject_job(db, job, overwrite_fields={}, deferred_fs=deferred)
         # Pre-rollback: caller sees the staged change
         assert db.execute("SELECT stage FROM jobs WHERE id=?", (job["id"],)).fetchone()["stage"] == "scored"
+        # Pre-rollback: fs op queued but NOT executed — folder still at _rejected/
+        assert folder.exists(), "deferred_fs must not execute fs ops"
+        assert not expected_dest.exists()
+        assert len(deferred) == 1
 
         db.rollback()
 
-        # Post-rollback: every write reversed — UPDATE, feedback_log DELETE, audit INSERTs
+        # Post-rollback: every DB write reversed
         row = db.execute("SELECT stage, reject_reason FROM jobs WHERE id=?", (job["id"],)).fetchone()
         assert row["stage"] == "rejected"
         assert row["reject_reason"] == "Wrong Level"
@@ -980,9 +995,22 @@ class TestActionsCommitFalse:
         assert fb_count == 1, "DELETE on feedback_log must roll back too"
         audits = db.execute("SELECT * FROM audit_log WHERE job_id=?", (job["id"],)).fetchall()
         assert len(audits) == 0
+        # Post-rollback: filesystem state still pre-call (folder + marker untouched)
+        assert folder.exists()
+        assert marker.exists()
+        assert not expected_dest.exists()
 
-    def test_un_not_selected_job_commit_false_is_rollback_safe(self, db):
-        job = insert_job(db, stage="not_selected")
+    def test_un_not_selected_job_deferred_fs_is_rollback_safe(self, db, tmp_path):
+        # Fixture surgery (#709): the previous version of this test seeded
+        # the job without a folder, so there was no fs side effect to assert
+        # against. Now seed a folder + marker so the rollback assertion can
+        # verify the marker survives an un-not-selected rollback.
+        folder = tmp_path / "companies" / "_applied" / "Acme_Ops_deferred"
+        folder.mkdir(parents=True)
+        marker = folder / "NOT_SELECTED_Company_passed_2026-05-18.txt"
+        marker.touch()
+
+        job = insert_job(db, stage="not_selected", folder=str(folder))
         db.execute(
             "INSERT INTO audit_log (job_id, field_changed, old_value, new_value, changed_at, changed_by) "
             "VALUES (?, 'stage', 'applied', 'not_selected', datetime('now'), 'user')",
@@ -993,8 +1021,12 @@ class TestActionsCommitFalse:
         job = db.execute("SELECT * FROM jobs WHERE id=?", (job["id"],)).fetchone()
         seed_audit_count = db.execute("SELECT COUNT(*) FROM audit_log WHERE job_id=?", (job["id"],)).fetchone()[0]
 
-        actions.un_not_selected_job(db, job, commit=False)
+        deferred: list = []
+        actions.un_not_selected_job(db, job, deferred_fs=deferred)
         assert db.execute("SELECT stage FROM jobs WHERE id=?", (job["id"],)).fetchone()["stage"] == "applied"
+        # Pre-rollback: marker delete queued but NOT executed
+        assert marker.exists(), "deferred_fs must not execute fs ops"
+        assert len(deferred) == 1
 
         db.rollback()
 
@@ -1004,8 +1036,60 @@ class TestActionsCommitFalse:
         # Only the seed audit row survives — no new audit rows from the rolled-back call
         post_count = db.execute("SELECT COUNT(*) FROM audit_log WHERE job_id=?", (job["id"],)).fetchone()[0]
         assert post_count == seed_audit_count
+        # Post-rollback: marker still on disk — the deferred delete never ran
+        assert marker.exists()
 
-    def test_un_withdraw_job_commit_false_is_rollback_safe(self, db):
+    def test_un_not_selected_job_multiple_markers_each_closure_binds_its_own_path(self, db, tmp_path):
+        """Regression net for closure lazy-capture in the marker-glob loop.
+
+        With naive ``lambda: os.remove(marker_path)`` the closure binds to the
+        loop variable, not the per-iteration value — every closure ends up
+        targeting the LAST marker path, so executing the deferred list deletes
+        that one file N times and leaves the others on disk. The default-arg
+        trick ``def _remove_marker(mp=marker_path)`` defeats this by eager-
+        binding ``mp`` at closure definition time.
+
+        Seeding two markers and asserting both queued closures resolve to
+        distinct paths catches a regression that a single-marker test cannot.
+        """
+        folder = tmp_path / "companies" / "_applied" / "Acme_Ops_multi"
+        folder.mkdir(parents=True)
+        marker_a = folder / "NOT_SELECTED_Wrong_Level_2026-05-18.txt"
+        marker_b = folder / "NOT_SELECTED_Company_passed_2026-05-19.txt"
+        marker_a.touch()
+        marker_b.touch()
+
+        job = insert_job(db, stage="not_selected", folder=str(folder))
+        db.execute(
+            "INSERT INTO audit_log (job_id, field_changed, old_value, new_value, changed_at, changed_by) "
+            "VALUES (?, 'stage', 'applied', 'not_selected', datetime('now'), 'user')",
+            (job["id"],),
+        )
+        db.commit()
+        job = db.execute("SELECT * FROM jobs WHERE id=?", (job["id"],)).fetchone()
+
+        deferred: list = []
+        actions.un_not_selected_job(db, job, deferred_fs=deferred)
+        assert len(deferred) == 2, "one closure per marker"
+        # Pre-execute: both markers still on disk (deferred_fs blocks fs ops)
+        assert marker_a.exists()
+        assert marker_b.exists()
+
+        # Execute the deferred ops. Both markers must be deleted — if lazy
+        # capture were broken, both closures would target the same path,
+        # one os.remove() call would raise FileNotFoundError on the second
+        # invocation, AND only one marker would actually disappear.
+        db.commit()
+        for op in deferred:
+            op()
+
+        assert not marker_a.exists()
+        assert not marker_b.exists()
+
+    def test_un_withdraw_job_deferred_fs_is_rollback_safe(self, db):
+        # un_withdraw_job has no fs ops; the kwarg exists for caller-composition
+        # uniformity. Verify the helper still returns the restored stage and
+        # leaves the DB writes pending.
         job = insert_job(db, stage="withdrawn")
         db.execute(
             "INSERT INTO audit_log (job_id, field_changed, old_value, new_value, changed_at, changed_by) "
@@ -1016,8 +1100,10 @@ class TestActionsCommitFalse:
         job = db.execute("SELECT * FROM jobs WHERE id=?", (job["id"],)).fetchone()
         seed_audit_count = db.execute("SELECT COUNT(*) FROM audit_log WHERE job_id=?", (job["id"],)).fetchone()[0]
 
-        actions.un_withdraw_job(db, job, commit=False)
+        deferred: list = []
+        actions.un_withdraw_job(db, job, deferred_fs=deferred)
         assert db.execute("SELECT stage FROM jobs WHERE id=?", (job["id"],)).fetchone()["stage"] == "applied"
+        assert deferred == [], "un_withdraw_job has no fs ops"
 
         db.rollback()
 
@@ -1025,13 +1111,17 @@ class TestActionsCommitFalse:
         post_count = db.execute("SELECT COUNT(*) FROM audit_log WHERE job_id=?", (job["id"],)).fetchone()[0]
         assert post_count == seed_audit_count
 
-    def test_handle_not_selected_commit_false_is_rollback_safe(self, db, tmp_path):
-        folder = tmp_path / "companies" / "_applied" / "Acme_Ops_commit_false"
+    def test_handle_not_selected_deferred_fs_is_rollback_safe(self, db, tmp_path):
+        folder = tmp_path / "companies" / "_applied" / "Acme_Ops_deferred"
         folder.mkdir(parents=True)
         job = insert_job(db, stage="applied", folder=str(folder))
 
-        actions.handle_not_selected(db, job, "Too Senior", commit=False)
+        deferred: list = []
+        actions.handle_not_selected(db, job, "Too Senior", deferred_fs=deferred)
         assert db.execute("SELECT stage FROM jobs WHERE id=?", (job["id"],)).fetchone()["stage"] == "not_selected"
+        # Pre-rollback: marker write queued but NOT executed
+        assert list(folder.glob("NOT_SELECTED_*.txt")) == [], "deferred_fs must not execute fs ops"
+        assert len(deferred) == 1
 
         db.rollback()
 
@@ -1040,3 +1130,5 @@ class TestActionsCommitFalse:
         assert row["reject_reason"] == ""
         audits = db.execute("SELECT * FROM audit_log WHERE job_id=?", (job["id"],)).fetchall()
         assert len(audits) == 0
+        # Post-rollback: no marker file on disk (the deferred write never ran)
+        assert list(folder.glob("NOT_SELECTED_*.txt")) == []

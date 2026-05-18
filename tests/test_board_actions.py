@@ -2189,17 +2189,29 @@ class TestReattributeFromArchive:
         assert response.status_code == 409
 
     def test_handle_not_selected_failure_rolls_back_source_restore(self, client: TestClient, monkeypatch):
-        """#707 — both helpers run with commit=False inside a single
+        """#707 + #709 — both helpers run with deferred_fs inside a single
         transaction; if handle_not_selected raises mid-call, db.rollback() in
-        the route's except branch undoes the source un-not-selected too. The
-        operator sees the error and can retry, rather than discovering a
-        half-applied reattribution with source restored and target unchanged.
+        the route's except branch undoes the source un-not-selected, AND the
+        queued filesystem ops (marker delete on source, marker write on
+        target) never execute. The operator sees the error and can retry,
+        rather than discovering a half-applied reattribution with the source
+        marker file already deleted but the DB un-restored.
         """
         from findajob.web.routes import board_actions
 
+        # Seed source folder + NOT_SELECTED_*.txt marker so the rollback can
+        # be verified to leave the filesystem untouched (#709).
+        src_folder = client._tmp_path / "companies" / "_applied" / "Acme_Ops_rollback"
+        src_folder.mkdir(parents=True)
+        src_marker = src_folder / "NOT_SELECTED_Company_passed_2026-05-18.txt"
+        src_marker.touch()
+
         conn = sqlite3.connect(client._db_path)
         src_id = _insert_job(conn, fingerprint="fp_src_rollback", stage="not_selected")
-        conn.execute("UPDATE jobs SET reject_reason='Company passed' WHERE id=?", (src_id,))
+        conn.execute(
+            "UPDATE jobs SET reject_reason='Company passed', prep_folder_path=? WHERE id=?",
+            (str(src_folder), src_id),
+        )
         conn.execute(
             "INSERT INTO audit_log (job_id, field_changed, old_value, new_value, changed_at, changed_by) "
             "VALUES (?, 'stage', 'applied', 'not_selected', datetime('now'), 'user')",
@@ -2247,6 +2259,13 @@ class TestReattributeFromArchive:
         ).fetchall()
         assert tgt_audits == []
         conn.close()
+
+        # Filesystem unchanged (#709): the source's marker file survived
+        # the failed reattribution — un_not_selected_job staged the delete
+        # via deferred_fs, the route's except branch caught the failure
+        # before db.commit(), so the deferred closures never ran.
+        assert src_marker.exists()
+        assert src_folder.exists()
 
 
 # ── /board/jobs/search handler ────────────────────────────────────────────

@@ -15,6 +15,7 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+from collections.abc import Callable
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
@@ -1313,13 +1314,15 @@ def reattribute_from_archive(
 ) -> HTMLResponse:
     """Reattribute the rejection from the current not_selected row to a
     different job. Calls un_not_selected_job on current row (restores prior
-    stage, deletes marker files), then handle_not_selected on target with
-    changed_by='archive_reattribute'.
+    stage, queues marker-file deletions), then handle_not_selected on target
+    with changed_by='archive_reattribute' (queues marker-file write).
 
-    Both helpers run with ``commit=False`` and a single trailing
-    ``db.commit()`` so source-restore + target-mark land atomically — if
-    either raises mid-call, neither is persisted and the operator sees the
-    error rather than a half-applied reattribution.
+    Both helpers share a ``deferred_fs`` list so source-restore + target-mark
+    land atomically: DB writes accumulate, a single trailing ``db.commit()``
+    persists them, then the queued filesystem ops execute in order. If
+    either helper raises mid-call, neither DB writes nor filesystem changes
+    have happened — the operator sees the error rather than a half-applied
+    reattribution (#709, supersedes the ``commit=False`` shape from #707).
 
     Atomic: 404 on unknown source or target; 409 if source stage !=
     'not_selected' or if target_fingerprint missing/blank.
@@ -1346,12 +1349,16 @@ def reattribute_from_archive(
 
     final_reason = (reason or "").strip() or "Reattributed"
 
+    deferred_fs: list[Callable[[], None]] = []
     try:
-        un_not_selected_job(db, source, commit=False)
-        handle_not_selected(db, target, final_reason, changed_by="archive_reattribute", commit=False)
+        un_not_selected_job(db, source, deferred_fs=deferred_fs)
+        handle_not_selected(db, target, final_reason, changed_by="archive_reattribute", deferred_fs=deferred_fs)
         db.commit()
     except Exception:
         db.rollback()
         raise
+
+    for fs_op in deferred_fs:
+        fs_op()
 
     return HTMLResponse("")
