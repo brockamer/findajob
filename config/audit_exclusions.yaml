@@ -1,0 +1,17 @@
+# Surfaces that are intentionally CLI-only or operator-restricted.
+# The static loose-ends audit (scripts/audit_loose_ends.py, #572) treats
+# any path matching one of these prefixes as covered, even if no /settings/
+# editor exists.
+#
+# Each entry: a path or path prefix relative to repo root, plus a one-line
+# rationale (for operator review and for the audit's `## Exclusions fired
+# this run` report section).
+
+exclusions:
+  - path: "config/spend_ceiling.txt"
+    rationale: "Operator-emergency edit via raw /config/; structured editor is /settings/spend-ceiling/."
+  - path: "config/audit_exclusions.yaml"
+    rationale: "Self-reference — the exclusions file itself is operator-curated, no UI."
+  # Operator mode and /admin/stacks/ are surfaces, not user-input files —
+  # they consume FINDAJOB_OPERATOR_MODE (env var, not file). Env-var audit
+  # is Phase 1.5 (out of scope per spec).
