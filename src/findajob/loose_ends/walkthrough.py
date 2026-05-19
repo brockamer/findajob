@@ -14,6 +14,7 @@ import json
 from dataclasses import asdict, dataclass
 from html.parser import HTMLParser
 from pathlib import Path
+from urllib.parse import urlparse
 
 import yaml
 
@@ -201,3 +202,72 @@ def extract_hints(*, dom: str, current_url: str) -> dict:
         "form_action_targets": parser.form_action_targets,
         "redacted_keys_count": 0,
     }
+
+
+def _url_path(url: str) -> str:
+    """Extract just the path component (e.g. 'https://x.com/foo?a=1' → '/foo')."""
+    parsed = urlparse(url)
+    return parsed.path or "/"
+
+
+def dispatch_step(
+    *,
+    page,  # Playwright Page (or MagicMock in tests)
+    step: Step,
+    base_url: str,
+    persona: str,
+    walkthrough_name: str,
+    exclusions: dict[str, str],
+) -> tuple[Finding | None, float]:
+    """Execute one walkthrough step. Returns (finding, cost) for evaluate_dom; (None, 0.0) otherwise.
+
+    Raises AssertionError on assert_present failure (the only step that hard-fails).
+    """
+    if isinstance(step, GotoStep):
+        page.goto(f"{base_url}{step.url}", wait_until="networkidle")
+        return None, 0.0
+    if isinstance(step, PickFirstRowStep):
+        page.locator(f'[data-stage="{step.stage}"][data-fp]').first.get_attribute("data-fp")
+        return None, 0.0
+    if isinstance(step, ClickActionStep):
+        page.get_by_role("button", name=step.action_text).first.click()
+        page.wait_for_load_state("networkidle")
+        return None, 0.0
+    if isinstance(step, AssertPresentStep):
+        if page.locator(step.selector).count() == 0:
+            raise AssertionError(f"selector not present: {step.selector}")
+        return None, 0.0
+    if isinstance(step, EvaluateDomStep):
+        # Lazy import to break the circular dependency:
+        # rubrics.py imports Finding from this module, so top-level import would cycle.
+        from findajob.loose_ends.rubrics import (  # noqa: PLC0415
+            evaluate_empty_state_no_guidance,
+            evaluate_flow_without_exit,
+        )
+
+        dom = page.content()
+        current_url = _url_path(page.url)
+        hints = extract_hints(dom=dom, current_url=current_url)
+        if step.category == 2:
+            return evaluate_flow_without_exit(
+                persona=persona,
+                walkthrough_name=walkthrough_name,
+                current_url=current_url,
+                context_hint=step.context_hint,
+                visible_button_labels=hints["visible_button_labels"],
+                form_action_targets=hints["form_action_targets"],
+                dom_snippet=dom[:8000],
+                exclusions=exclusions,
+            )
+        if step.category == 3:
+            return evaluate_empty_state_no_guidance(
+                persona=persona,
+                walkthrough_name=walkthrough_name,
+                current_url=current_url,
+                collection_container_ids=hints["collection_container_ids"],
+                visible_button_labels=hints["visible_button_labels"],
+                dom_snippet=dom[:8000],
+                exclusions=exclusions,
+            )
+        raise ValueError(f"unsupported evaluate_dom category: {step.category}")
+    raise ValueError(f"unknown step type: {type(step).__name__}")

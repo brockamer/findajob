@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
@@ -15,6 +16,7 @@ from findajob.loose_ends.walkthrough import (
     Finding,
     GotoStep,
     PickFirstRowStep,
+    dispatch_step,
     extract_hints,
     load_walkthroughs,
     read_findings,
@@ -254,3 +256,114 @@ def test_extract_hints_stable_for_fixed_dom():
     h1 = extract_hints(dom=dom, current_url="/x")
     h2 = extract_hints(dom=dom, current_url="/x")
     assert h1 == h2
+
+
+def test_dispatch_goto_calls_page_goto():
+    page = MagicMock()
+    dispatch_step(
+        page=page,
+        step=GotoStep(url="/board/applied"),
+        base_url="https://example.com",
+        persona="established_user",
+        walkthrough_name="x",
+        exclusions={},
+    )
+    page.goto.assert_called_once_with("https://example.com/board/applied", wait_until="networkidle")
+
+
+def test_dispatch_pick_first_row_uses_data_fp_selector():
+    page = MagicMock()
+    page.locator.return_value.first.get_attribute.return_value = "abc123"
+    dispatch_step(
+        page=page,
+        step=PickFirstRowStep(stage="applied"),
+        base_url="https://example.com",
+        persona="established_user",
+        walkthrough_name="x",
+        exclusions={},
+    )
+    page.locator.assert_called_with('[data-stage="applied"][data-fp]')
+
+
+def test_dispatch_click_action_clicks_by_label():
+    page = MagicMock()
+    dispatch_step(
+        page=page,
+        step=ClickActionStep(action_text="Interviewing"),
+        base_url="https://example.com",
+        persona="established_user",
+        walkthrough_name="x",
+        exclusions={},
+    )
+    page.get_by_role.assert_called_with("button", name="Interviewing")
+
+
+def test_dispatch_evaluate_dom_calls_rubric_evaluator():
+    page = MagicMock()
+    page.content.return_value = "<html><body><button>Filter</button></body></html>"
+    page.url = "https://example.com/board/dashboard"
+    fake_finding = MagicMock()
+    fake_finding.is_loose_end = True
+    with patch(
+        "findajob.loose_ends.rubrics.evaluate_empty_state_no_guidance",
+        return_value=(fake_finding, 0.05),
+    ) as mock_eval:
+        result, cost = dispatch_step(
+            page=page,
+            step=EvaluateDomStep(category=3, rubric="empty_state_no_guidance"),
+            base_url="https://example.com",
+            persona="nux_user",
+            walkthrough_name="dashboard_first_load",
+            exclusions={},
+        )
+    assert result is fake_finding
+    assert cost == 0.05
+    kwargs = mock_eval.call_args.kwargs
+    assert kwargs["persona"] == "nux_user"
+    assert kwargs["current_url"] == "/board/dashboard"
+
+
+def test_dispatch_evaluate_dom_routes_to_flow_without_exit_for_cat2():
+    page = MagicMock()
+    page.content.return_value = "<html></html>"
+    page.url = "https://example.com/board/applied"
+    with patch(
+        "findajob.loose_ends.rubrics.evaluate_flow_without_exit",
+        return_value=(MagicMock(), 0.03),
+    ) as mock_eval:
+        dispatch_step(
+            page=page,
+            step=EvaluateDomStep(category=2, rubric="flow_without_exit", context_hint="hint"),
+            base_url="https://example.com",
+            persona="established_user",
+            walkthrough_name="x",
+            exclusions={},
+        )
+    mock_eval.assert_called_once()
+
+
+def test_dispatch_assert_present_succeeds_when_selector_resolves():
+    page = MagicMock()
+    page.locator.return_value.count.return_value = 1
+    dispatch_step(
+        page=page,
+        step=AssertPresentStep(selector="[data-fp]"),
+        base_url="https://example.com",
+        persona="established_user",
+        walkthrough_name="x",
+        exclusions={},
+    )
+
+
+def test_dispatch_assert_present_raises_when_selector_missing():
+    page = MagicMock()
+    page.locator.return_value.count.return_value = 0
+    with pytest.raises(AssertionError, match="not present"):
+        dispatch_step(
+            page=page,
+            step=AssertPresentStep(selector="[data-fp]"),
+            base_url="https://example.com",
+            persona="established_user",
+            walkthrough_name="x",
+            exclusions={},
+        )
