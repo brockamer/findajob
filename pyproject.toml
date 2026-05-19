@@ -41,6 +41,9 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = [
+    "integration: marks tests as integration tests (requires playwright/fastapi/uvicorn)",
+]
 
 [tool.mypy]
 # Default config — applies to scripts/ and any module not covered by

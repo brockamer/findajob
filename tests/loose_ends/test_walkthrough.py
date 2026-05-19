@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import threading
+import time
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -508,3 +511,102 @@ def test_dispatch_select_option_calls_select_option_on_row_select():
     page.locator.return_value.first.locator.assert_called_with("select")
     page.locator.return_value.first.locator.return_value.select_option.assert_called_with("interview")
     page.wait_for_load_state.assert_called_with("networkidle")
+
+
+@contextmanager
+def _stub_server(port: int = 18572):
+    """Run the stub FastAPI app in a daemon thread; yield base URL."""
+    pytest.importorskip("uvicorn")
+    pytest.importorskip("fastapi")
+    pytest.importorskip("playwright")
+    import uvicorn
+
+    from tests.loose_ends.stub_app.main import app
+
+    config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning")
+    server = uvicorn.Server(config)
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    # Wait for the server to come up
+    for _ in range(40):
+        if server.started:
+            break
+        time.sleep(0.1)
+    if not server.started:
+        raise RuntimeError("stub server did not start in time")
+    try:
+        yield f"http://127.0.0.1:{port}"
+    finally:
+        server.should_exit = True
+        thread.join(timeout=3)
+
+
+@pytest.mark.integration
+def test_end_to_end_walkthrough_against_stub():
+    """Full Playwright run against the stub, with the LLM mocked.
+
+    Asserts: hint extractor + Playwright dispatch + rubric routing all
+    work together. LLM is mocked to keep the test fast and deterministic.
+    """
+    pytest.importorskip("playwright")
+    from playwright.sync_api import sync_playwright
+
+    from findajob.loose_ends.finding import Finding
+
+    with _stub_server() as base_url:
+        # Build a one-walkthrough itinerary that targets the stub's cat-3 page
+        walkthrough = Walkthrough(
+            name="stub_empty_no_cta",
+            persona="nux_user",
+            target_category=3,
+            steps=(
+                GotoStep(url="/empty-no-cta"),
+                EvaluateDomStep(category=3, rubric="empty_state_no_guidance"),
+            ),
+        )
+
+        fake_finding = Finding(
+            persona="nux_user",
+            walkthrough_name="stub_empty_no_cta",
+            current_url="/empty-no-cta",
+            category=3,
+            is_loose_end=True,
+            confidence="high",
+            rationale="Empty table, no CTA.",
+            suggested_surface="Add CTA",
+            excluded=False,
+            exclusion_key=None,
+        )
+        with (
+            patch(
+                "findajob.loose_ends.walkthrough.evaluate_empty_state_no_guidance",
+                return_value=(fake_finding, 0.03),
+            ) as mock_eval,
+            sync_playwright() as pw,
+        ):
+            try:
+                browser = pw.chromium.launch(headless=True)
+            except Exception:
+                try:
+                    browser = pw.chromium.launch(headless=True, channel="chrome")
+                except Exception as exc:
+                    pytest.skip(f"Playwright chromium not available: {exc}")
+            ctx = browser.new_context()
+            page = ctx.new_page()
+            findings, cost = run_walkthrough(
+                page=page,
+                walkthrough=walkthrough,
+                base_url=base_url,
+                exclusions={},
+            )
+            browser.close()
+
+    assert mock_eval.called
+    assert len(findings) == 1
+    assert findings[0].is_loose_end is True
+    assert cost == 0.03
+
+    # Verify the hint extractor saw the expected DOM features
+    kwargs = mock_eval.call_args.kwargs
+    assert "applied-jobs" in kwargs["collection_container_ids"]
+    assert kwargs["current_url"] == "/empty-no-cta"
