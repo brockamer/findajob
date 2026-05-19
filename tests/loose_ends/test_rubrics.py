@@ -9,6 +9,7 @@ import pytest
 import yaml
 
 from findajob.loose_ends.rubrics import (
+    evaluate_empty_state_no_guidance,
     evaluate_flow_without_exit,
     exclusion_key,
     is_excluded,
@@ -190,3 +191,50 @@ def test_evaluate_flow_without_exit_low_confidence_on_bad_json():
         )
     assert f.confidence == "low"
     assert "non-JSON" in f.rationale or "not json" in f.rationale.lower()
+
+
+def test_evaluate_empty_state_calls_llm_and_returns_finding():
+    fake_llm = MagicMock()
+    fake_llm.text = (
+        '{"is_loose_end": true, "confidence": "high", '
+        '"rationale": "Empty dashboard, no CTA.", '
+        '"suggested_surface": "Add a CTA"}'
+    )
+    fake_llm.cost_usd = 0.04
+    with patch(
+        "findajob.loose_ends.rubrics.openrouter.complete",
+        return_value=fake_llm,
+    ) as mock_complete:
+        f, cost = evaluate_empty_state_no_guidance(
+            persona="nux_user",
+            walkthrough_name="dashboard_first_load",
+            current_url="/board/dashboard",
+            collection_container_ids=["job-rows-table"],
+            visible_button_labels=["Filter"],
+            dom_snippet="<html><table id='job-rows-table'></table></html>",
+            exclusions={},
+        )
+    assert mock_complete.called
+    assert f.is_loose_end is True
+    assert f.category == 3
+    assert cost == 0.04
+
+
+def test_evaluate_empty_state_returns_excluded_without_llm():
+    exclusions = {
+        "nux_user::/board/applied::empty_state_no_guidance": "Correctly empty for NUX.",
+    }
+    with patch("findajob.loose_ends.rubrics.openrouter.complete") as mock_complete:
+        f, cost = evaluate_empty_state_no_guidance(
+            persona="nux_user",
+            walkthrough_name="x",
+            current_url="/board/applied",
+            collection_container_ids=[],
+            visible_button_labels=[],
+            dom_snippet="",
+            exclusions=exclusions,
+        )
+    mock_complete.assert_not_called()
+    assert f.excluded is True
+    assert f.exclusion_key == "nux_user::/board/applied::empty_state_no_guidance"
+    assert cost == 0.0

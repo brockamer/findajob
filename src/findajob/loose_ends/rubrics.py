@@ -18,7 +18,7 @@ from typing import Any
 import yaml
 
 from findajob.llm import openrouter
-from findajob.loose_ends.classifier import _strip_json_fences
+from findajob.loose_ends.classifier import strip_json_fences
 from findajob.loose_ends.walkthrough import Finding
 
 
@@ -56,7 +56,7 @@ def is_excluded(
 def _parse_judgment(text: str) -> dict[str, Any]:
     """Parse the LLM's JSON judgment, tolerating fences. Returns low-confidence shape on failure."""
     try:
-        return json.loads(_strip_json_fences(text))
+        return json.loads(strip_json_fences(text))
     except json.JSONDecodeError:
         return {
             "is_loose_end": False,
@@ -119,6 +119,64 @@ def evaluate_flow_without_exit(
             walkthrough_name=walkthrough_name,
             current_url=current_url,
             category=2,
+            is_loose_end=bool(parsed.get("is_loose_end", False)),
+            confidence=str(parsed.get("confidence", "low")),
+            rationale=str(parsed.get("rationale", "")),
+            suggested_surface=str(parsed.get("suggested_surface", "")),
+            excluded=False,
+            exclusion_key=None,
+        ),
+        cost,
+    )
+
+
+def evaluate_empty_state_no_guidance(
+    *,
+    persona: str,
+    walkthrough_name: str,
+    current_url: str,
+    collection_container_ids: list[str],
+    visible_button_labels: list[str],
+    dom_snippet: str,
+    exclusions: dict[str, str],
+) -> tuple[Finding, float]:
+    """Cat 3 rubric evaluator. Returns (Finding, llm_cost_usd)."""
+    rubric = "empty_state_no_guidance"
+    key = exclusion_key(persona=persona, route=current_url, rubric=rubric)
+    if key in exclusions:
+        return (
+            Finding(
+                persona=persona,
+                walkthrough_name=walkthrough_name,
+                current_url=current_url,
+                category=3,
+                is_loose_end=False,
+                confidence="low",
+                rationale=f"Excluded: {exclusions[key]}",
+                suggested_surface="",
+                excluded=True,
+                exclusion_key=key,
+            ),
+            0.0,
+        )
+
+    prompt = json.dumps(
+        {
+            "current_url": current_url,
+            "collection_container_ids": collection_container_ids,
+            "visible_button_labels": visible_button_labels,
+            "dom_snippet": dom_snippet,
+        }
+    )
+    result = openrouter.complete(role=f"loose_ends_{rubric}", prompt=prompt)
+    cost = float(getattr(result, "cost_usd", 0.0) or 0.0)
+    parsed = _parse_judgment(result.text)
+    return (
+        Finding(
+            persona=persona,
+            walkthrough_name=walkthrough_name,
+            current_url=current_url,
+            category=3,
             is_loose_end=bool(parsed.get("is_loose_end", False)),
             confidence=str(parsed.get("confidence", "low")),
             rationale=str(parsed.get("rationale", "")),
