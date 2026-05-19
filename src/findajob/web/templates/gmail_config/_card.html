@@ -13,6 +13,19 @@
     </p>
   {% endif %}
 
+  {% if status == 'login_failed' %}
+    <p class="mb-3 rounded bg-rose-50 p-2 text-sm text-rose-800">
+      App password rejected. Generate a new one at
+      <a class="font-medium underline" target="_blank" rel="noopener"
+         href="https://myaccount.google.com/apppasswords">myaccount.google.com/apppasswords</a>
+      and save again.
+    </p>
+  {% elif status == 'connection_error' %}
+    <p class="mb-3 rounded bg-amber-50 p-2 text-sm text-amber-800">
+      Couldn't reach Gmail. Check your network and try again.
+    </p>
+  {% endif %}
+
   <form>
     <label class="mb-3 block">
       <span class="text-sm font-medium">Gmail address</span>

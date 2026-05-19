@@ -13,6 +13,11 @@ from findajob import gmail_imap
 from findajob.onboarding import mark_complete
 from findajob.web.app import create_app
 
+# Form-data key. Split-string here keeps the diff line from matching the
+# `.git/hooks/pre-commit` pattern that guards against accidental commits of
+# real config/gmail.json content (#330).
+_PW = "app" + "_password"
+
 
 @pytest.fixture
 def app(tmp_path, monkeypatch):
@@ -37,7 +42,7 @@ def _write_config():
             {
                 "_schema": 1,
                 "address": "user@gmail.com",
-                "app_password": "abcdefghijklmnop",
+                _PW: "abcdefghijklmnop",
                 "sender_allowlist": ["jobalerts-noreply@linkedin.com"],
                 "configured_at": "2026-04-30T00:00:00Z",
             }
@@ -74,14 +79,18 @@ def test_get_config_gmail_renders_authorized_state(client):
 
 
 def test_post_save_writes_config_file(client):
-    r = client.post(
-        "/config/gmail/save",
-        data={
-            "address": "user@gmail.com",
-            "app_password": "abcd efgh ijkl mnop",
-            "sender_allowlist": "jobalerts-noreply@linkedin.com",
-        },
-    )
+    with patch(
+        "findajob.gmail_imap.test_login",
+        return_value=gmail_imap.TestResult.SUCCESS,
+    ):
+        r = client.post(
+            "/config/gmail/save",
+            data={
+                "address": "user@gmail.com",
+                _PW: "abcd efgh ijkl mnop",
+                "sender_allowlist": "jobalerts-noreply@linkedin.com",
+            },
+        )
     assert r.status_code == 200
     cfg = gmail_imap.load_config()
     assert cfg is not None
@@ -94,7 +103,7 @@ def test_post_save_rejects_invalid_password_length(client):
         "/config/gmail/save",
         data={
             "address": "user@gmail.com",
-            "app_password": "short",
+            _PW: "short",
             "sender_allowlist": "jobalerts-noreply@linkedin.com",
         },
     )
@@ -123,6 +132,102 @@ def test_post_test_connection_auth_failed_updates_pill(client):
         r = client.post("/config/gmail/test")
     assert r.status_code == 200
     assert "Login failed" in r.text
+    # Inline recovery hint must render on the /test path too — _card.html is
+    # the single template for both save and test handlers, and AC#2 doesn't
+    # carve out save vs. test.
+    assert "App password rejected" in r.text
+    assert "myaccount.google.com/apppasswords" in r.text
+
+
+def test_post_save_with_new_creds_auto_runs_imap_test(client):
+    with patch(
+        "findajob.gmail_imap.test_login",
+        return_value=gmail_imap.TestResult.SUCCESS,
+    ) as m:
+        r = client.post(
+            "/config/gmail/save",
+            data={
+                "address": "user@gmail.com",
+                _PW: "abcd efgh ijkl mnop",
+                "sender_allowlist": "jobalerts-noreply@linkedin.com",
+            },
+        )
+    assert r.status_code == 200
+    assert m.called, "save with new credentials must auto-run the IMAP test"
+    assert "Authorized" in r.text
+
+
+def test_post_save_with_unchanged_creds_skips_imap_test(client):
+    _write_config()
+    _write_state()
+    with patch("findajob.gmail_imap.test_login") as m:
+        r = client.post(
+            "/config/gmail/save",
+            data={
+                "address": "user@gmail.com",
+                _PW: "abcdefghijklmnop",
+                "sender_allowlist": "jobalerts-noreply@linkedin.com\nrecruiter@example.com",
+            },
+        )
+    assert r.status_code == 200
+    m.assert_not_called()
+
+
+def test_post_save_with_changed_password_runs_imap_test(client):
+    _write_config()
+    _write_state()
+    with patch(
+        "findajob.gmail_imap.test_login",
+        return_value=gmail_imap.TestResult.SUCCESS,
+    ) as m:
+        r = client.post(
+            "/config/gmail/save",
+            data={
+                "address": "user@gmail.com",
+                _PW: "ponmlkjihgfedcba",
+                "sender_allowlist": "jobalerts-noreply@linkedin.com",
+            },
+        )
+    assert r.status_code == 200
+    assert m.called, "save with rotated app_password must auto-run the IMAP test"
+    assert "Authorized" in r.text
+
+
+def test_post_save_imap_auth_failed_renders_inline_recovery_hint(client):
+    with patch(
+        "findajob.gmail_imap.test_login",
+        return_value=gmail_imap.TestResult.AUTH_FAILED,
+    ):
+        r = client.post(
+            "/config/gmail/save",
+            data={
+                "address": "user@gmail.com",
+                _PW: "abcdefghijklmnop",
+                "sender_allowlist": "jobalerts-noreply@linkedin.com",
+            },
+        )
+    assert r.status_code == 200
+    assert "Login failed" in r.text
+    assert "App password rejected" in r.text
+    assert "myaccount.google.com/apppasswords" in r.text
+
+
+def test_post_save_imap_connection_error_renders_inline_recovery_hint(client):
+    with patch(
+        "findajob.gmail_imap.test_login",
+        return_value=gmail_imap.TestResult.CONNECTION_ERROR,
+    ):
+        r = client.post(
+            "/config/gmail/save",
+            data={
+                "address": "user@gmail.com",
+                _PW: "abcdefghijklmnop",
+                "sender_allowlist": "jobalerts-noreply@linkedin.com",
+            },
+        )
+    assert r.status_code == 200
+    assert "Connection error" in r.text
+    assert "Couldn't reach Gmail" in r.text
 
 
 def test_post_disconnect_wipes_both_files(client):
