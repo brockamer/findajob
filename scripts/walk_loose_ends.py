@@ -19,7 +19,6 @@ Exit codes:
     0 — audit completed within budget
     1 — LLM/network failure or unhandled exception
     2 — cost ceiling exceeded
-    3 — stack precondition violated (empty target / missing onboarding-complete)
     4 — target unreachable (connection refused, basic-auth rejected)
 """
 
@@ -112,25 +111,30 @@ def _run_with_playwright(
             browser.close()
             sys.exit(4)
 
-        for walkthrough in walkthroughs:
-            print(f"  → {walkthrough.persona}/{walkthrough.name}")
-            findings, cost = run_walkthrough(
-                page=page,
-                walkthrough=walkthrough,
-                base_url=base_url.rstrip("/"),
-                exclusions=exclusions,
-            )
-            for f in findings:
-                write_finding(findings_jsonl, f)
-                total_findings += 1
-            total_cost += cost
-            if total_cost > COST_CEILING_USD:
-                print(
-                    f"ERROR: cost ${total_cost:.4f} exceeded ${COST_CEILING_USD:.2f} ceiling",
-                    file=sys.stderr,
+        try:
+            for walkthrough in walkthroughs:
+                print(f"  → {walkthrough.persona}/{walkthrough.name}")
+                findings, cost = run_walkthrough(
+                    page=page,
+                    walkthrough=walkthrough,
+                    base_url=base_url.rstrip("/"),
+                    exclusions=exclusions,
                 )
-                browser.close()
-                sys.exit(2)
+                for f in findings:
+                    write_finding(findings_jsonl, f)
+                    total_findings += 1
+                total_cost += cost
+                if total_cost > COST_CEILING_USD:
+                    print(
+                        f"ERROR: cost ${total_cost:.4f} exceeded ${COST_CEILING_USD:.2f} ceiling",
+                        file=sys.stderr,
+                    )
+                    browser.close()
+                    sys.exit(2)
+        except Exception as exc:
+            print(f"ERROR: walkthrough failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+            browser.close()
+            sys.exit(1)
         browser.close()
     return total_cost, total_findings
 
@@ -141,7 +145,7 @@ def main() -> int:
     parser.add_argument("--nux-url", default="")
     parser.add_argument("--established-url", default="")
     parser.add_argument("--output-dir", required=True, type=Path)
-    parser.add_argument("--secrets-file", required=True, type=Path)
+    parser.add_argument("--secrets-file", type=Path, default=None)
     parser.add_argument(
         "--report-only",
         action="store_true",
@@ -168,6 +172,9 @@ def main() -> int:
     total_findings = 0
 
     if not args.report_only:
+        if args.secrets_file is None:
+            print("ERROR: --secrets-file is required unless --report-only is set", file=sys.stderr)
+            return 1
         secrets = _load_secrets(args.secrets_file.expanduser())
         # NUX persona block
         if args.persona in ("nux_user", "all"):
