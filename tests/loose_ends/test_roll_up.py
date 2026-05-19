@@ -6,12 +6,12 @@ from datetime import date
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from findajob.loose_ends.finding import Finding, write_finding
 from findajob.loose_ends.roll_up import (
     aggregate_findings,
     exclusions_fired,
     write_report,
 )
-from findajob.loose_ends.walkthrough import Finding, write_finding
 
 
 def _make_finding(**kw):

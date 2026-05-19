@@ -9,18 +9,16 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yaml
 
+from findajob.loose_ends.finding import Finding, read_findings, write_finding
 from findajob.loose_ends.walkthrough import (
     AssertPresentStep,
     ClickActionStep,
     EvaluateDomStep,
-    Finding,
     GotoStep,
     PickFirstRowStep,
     dispatch_step,
     extract_hints,
     load_walkthroughs,
-    read_findings,
-    write_finding,
 )
 
 
@@ -305,7 +303,7 @@ def test_dispatch_evaluate_dom_calls_rubric_evaluator():
     fake_finding = MagicMock()
     fake_finding.is_loose_end = True
     with patch(
-        "findajob.loose_ends.rubrics.evaluate_empty_state_no_guidance",
+        "findajob.loose_ends.walkthrough.evaluate_empty_state_no_guidance",
         return_value=(fake_finding, 0.05),
     ) as mock_eval:
         result, cost = dispatch_step(
@@ -328,7 +326,7 @@ def test_dispatch_evaluate_dom_routes_to_flow_without_exit_for_cat2():
     page.content.return_value = "<html></html>"
     page.url = "https://example.com/board/applied"
     with patch(
-        "findajob.loose_ends.rubrics.evaluate_flow_without_exit",
+        "findajob.loose_ends.walkthrough.evaluate_flow_without_exit",
         return_value=(MagicMock(), 0.03),
     ) as mock_eval:
         dispatch_step(

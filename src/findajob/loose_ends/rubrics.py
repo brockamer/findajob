@@ -19,7 +19,7 @@ import yaml
 
 from findajob.llm import openrouter
 from findajob.loose_ends.classifier import strip_json_fences
-from findajob.loose_ends.walkthrough import Finding
+from findajob.loose_ends.finding import Finding
 
 
 def exclusion_key(*, persona: str, route: str, rubric: str) -> str:

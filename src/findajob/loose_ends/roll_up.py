@@ -12,7 +12,7 @@ from datetime import date
 from pathlib import Path
 
 from findajob.llm import openrouter
-from findajob.loose_ends.walkthrough import Finding, read_findings
+from findajob.loose_ends.finding import Finding, read_findings
 
 
 def aggregate_findings(findings: list[Finding]) -> dict[str, list[Finding]]:
