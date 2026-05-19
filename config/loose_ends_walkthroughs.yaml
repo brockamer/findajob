@@ -1,0 +1,108 @@
+# Curated itinerary for the #572 phase-2 dynamic UX walkthrough.
+# Adding a walkthrough = one entry below, no code changes.
+# Schema: name, persona ({nux_user, established_user}), target_category ({2, 3}), steps.
+
+walkthroughs:
+  # ── nux_user @ findajob-clean ──────────────────────────────────────────────
+  - name: dashboard_first_load
+    persona: nux_user
+    target_category: 3
+    steps:
+      - goto: /board/dashboard
+      - evaluate_dom:
+          category: 3
+          rubric: empty_state_no_guidance
+
+  - name: applied_first_load_empty
+    persona: nux_user
+    target_category: 3
+    steps:
+      - goto: /board/applied
+      - evaluate_dom:
+          category: 3
+          rubric: empty_state_no_guidance
+
+  - name: rejected_first_load_empty
+    persona: nux_user
+    target_category: 3
+    steps:
+      - goto: /board/rejected
+      - evaluate_dom:
+          category: 3
+          rubric: empty_state_no_guidance
+
+  - name: materials_index_first_load
+    persona: nux_user
+    target_category: 3
+    steps:
+      - goto: /materials/
+      - evaluate_dom:
+          category: 3
+          rubric: empty_state_no_guidance
+
+  - name: stats_first_load
+    persona: nux_user
+    target_category: 3
+    steps:
+      - goto: /stats/
+      - evaluate_dom:
+          category: 3
+          rubric: empty_state_no_guidance
+
+  # ── established_user @ findajob-staging ────────────────────────────────────
+  - name: applied_to_interviewing_undo
+    persona: established_user
+    target_category: 2
+    steps:
+      - goto: /board/applied
+      - assert_present: '[data-stage="applied"][data-fp]'
+      - pick_first_row_with_stage: applied
+      - click_action: Interviewing
+      - evaluate_dom:
+          category: 2
+          rubric: flow_without_exit
+          context_hint: "User just transitioned applied → interviewing"
+
+  - name: interviewing_to_offer_path
+    persona: established_user
+    target_category: 2
+    steps:
+      - goto: /board/applied
+      - assert_present: '[data-stage="interview"][data-fp]'
+      - pick_first_row_with_stage: interview
+      - click_action: Offer
+      - evaluate_dom:
+          category: 2
+          rubric: flow_without_exit
+          context_hint: "User just transitioned interviewing → offer"
+
+  - name: waitlist_then_reactivate
+    persona: established_user
+    target_category: 2
+    steps:
+      - goto: /board/waitlisted
+      - assert_present: '[data-stage="waitlisted"][data-fp]'
+      - pick_first_row_with_stage: waitlisted
+      - click_action: Reactivate
+      - evaluate_dom:
+          category: 2
+          rubric: flow_without_exit
+          context_hint: "User just reactivated a waitlisted job"
+
+  - name: dashboard_all_filters_applied
+    persona: established_user
+    target_category: 3
+    steps:
+      - goto: /board/dashboard?col=__nonexistent__&col_min=99
+      - evaluate_dom:
+          category: 3
+          rubric: empty_state_no_guidance
+
+  - name: rejected_view_with_data
+    persona: established_user
+    target_category: 3
+    steps:
+      - goto: /board/rejected
+      - evaluate_dom:
+          category: 3
+          rubric: empty_state_no_guidance

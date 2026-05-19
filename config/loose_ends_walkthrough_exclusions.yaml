@@ -1,0 +1,28 @@
+# Operator-curated exclusions for the #572 phase-2 walkthrough.
+# Each entry says: this (persona, route, rubric) tuple is an intentional
+# dead-end or empty-state, not a loose end. Walker filters these BEFORE
+# calling the LLM. Amend between quarterly runs based on the
+# "## Exclusions fired this run" section of the audit report.
+
+exclusions:
+  # Operator-mode admin views are intentional CLI-only surfaces; not in NUX/established walks
+  # but listed as belt-and-suspenders in case a future walkthrough sweeps /admin/.
+  - persona: established_user
+    route: /admin/stacks/
+    rubric: flow_without_exit
+    rationale: Operator-only view; intentional dead-end.
+  - persona: established_user
+    route: /admin/stacks/
+    rubric: empty_state_no_guidance
+    rationale: Operator-only view; emptiness is N/A.
+
+  # NUX-correctly-empty: the tab IS supposed to be empty on a fresh stack —
+  # the empty state is the design, not a loose end.
+  - persona: nux_user
+    route: /board/applied
+    rubric: empty_state_no_guidance
+    rationale: NUX correctly has zero applied jobs; emptiness is intentional.
+  - persona: nux_user
+    route: /board/rejected
+    rubric: empty_state_no_guidance
+    rationale: NUX correctly has zero rejected jobs; emptiness is intentional.
