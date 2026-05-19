@@ -19,17 +19,28 @@ Cross-task constraints (from #336 Session 2026-05-01):
 
 from __future__ import annotations
 
+import json
 import sqlite3
+from collections.abc import Iterator
 from pathlib import Path
+from typing import cast
 
 from fastapi import APIRouter, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 
 from findajob.audit import log_event
 from findajob.cost_tracking import log_call, role_model
 from findajob.db import connect
+from findajob.llm.openrouter import (
+    LLMSpendCeilingExceeded,
+    OpenRouterError,
+    StreamCaptured,
+    StreamError,
+    StreamFinish,
+    complete_stream,
+)
 from findajob.onboarding import OnboardingSmokeCheckFailed, inject
-from findajob.onboarding.interview_runner import InterviewRunnerError, run_turn
+from findajob.onboarding.interview_runner import InterviewRunnerError, _translate, run_turn
 from findajob.onboarding.parser import ALLOWED_FILENAMES, parse_emission
 from findajob.onboarding.session_store import (
     add_turn_cost,
@@ -43,6 +54,7 @@ from findajob.onboarding.session_store import (
     set_error,
     update_captured_blocks,
 )
+from findajob.spend_ceiling import check_call_gate
 from findajob.web.markdown import render_chat_assistant_html
 
 _INTERVIEWER_MODEL = role_model("onboarding_interviewer")
@@ -416,6 +428,251 @@ def post_turn(
         )
     finally:
         conn.close()
+
+
+# ── SSE streaming variant ─────────────────────────────────────────────────────
+
+
+def _sse_event(event_type: str, data: dict) -> bytes:
+    """Format a Server-Sent Event line block.
+
+    Each event is: ``event: <type>\\ndata: <json>\\n\\n``
+    """
+    return f"event: {event_type}\ndata: {json.dumps(data, separators=(',', ':'))}\n\n".encode()
+
+
+def _stream_turn(
+    *,
+    db_path: Path,
+    session_id: str,
+    chat_key: str,
+    message: str,
+    sess_history: list[dict],
+    sess_captured: dict,
+) -> Iterator[bytes]:
+    """Drive ``complete_stream()`` and yield formatted SSE events.
+
+    Opens its own SQLite connection — the outer route's connection is closed
+    in ``finally`` before ``StreamingResponse`` iterates this generator.
+
+    Chunk sequence:
+
+    - ``captured`` SSE event for each :class:`~findajob.llm.openrouter.StreamCaptured` chunk.
+    - ``finish`` SSE event with pre-rendered ``assistant_html``, cost, and
+      progress fields on success — writes cost_log, append_turn × 2,
+      update_captured_blocks at that point.
+    - ``error`` SSE event (and ``set_error``) on failure paths:
+      mid-stream error chunk, or ``finish_reason == "length"``.
+    """
+    conn = connect(db_path, timeout=30)
+    conn.row_factory = sqlite3.Row
+    try:
+        try:
+            for chunk in complete_stream(
+                role="onboarding_interviewer",
+                prompt=message,
+                cache_system=True,
+                pin_provider="anthropic",
+                history=sess_history,
+                api_key=chat_key,
+            ):
+                chunk_type = chunk["type"]
+
+                if chunk_type == "captured":
+                    captured_chunk = cast(StreamCaptured, chunk)
+                    yield _sse_event("captured", {"name": captured_chunk["name"]})
+
+                elif chunk_type == "finish":
+                    finish_chunk = cast(StreamFinish, chunk)
+                    finish_reason = finish_chunk.get("finish_reason")
+                    assistant_text = finish_chunk["text"]
+                    usage = finish_chunk["usage"]  # StreamUsage TypedDict
+
+                    # finish_reason="length" mirrors run_turn's raise before
+                    # persistence — no append_turn, no cost_log, just error SSE.
+                    if finish_reason == "length":
+                        err = _translate(OpenRouterError("max_tokens cap hit", kind="length"))
+                        set_error(conn, session_id, err.user_message)
+                        conn.commit()
+                        yield _sse_event(
+                            "error",
+                            {
+                                "kind": "length",
+                                "user_message": message,
+                                "message": err.user_message,
+                            },
+                        )
+                        return
+
+                    # --- Successful finish: persist turn + costs ---
+
+                    # Clear any prior error_state (#623 parity with /turn).
+                    clear_error(conn, session_id)
+
+                    # Translate StreamUsage shape → run_turn-shape dict so
+                    # add_turn_cost can read the "cost" key it expects.
+                    usage_compat: dict = {
+                        "prompt_tokens": usage["prompt_tokens"],
+                        "completion_tokens": usage["completion_tokens"],
+                        "cached_tokens": usage["cached_tokens"],
+                        "cost": usage["cost_usd"],
+                        "generation_id": finish_chunk.get("generation_id"),
+                    }
+                    add_turn_cost(conn, session_id, usage_compat)
+
+                    try:
+                        log_call(
+                            conn,
+                            job_id=None,
+                            operation="onboarding_interviewer",
+                            model=_INTERVIEWER_MODEL,
+                            input_text=message,
+                            output_text=assistant_text,
+                            latency_ms=None,
+                            success=True,
+                            cost_usd_override=float(usage["cost_usd"]),
+                            input_tokens_override=int(usage["prompt_tokens"]),
+                            output_tokens_override=int(usage["completion_tokens"]),
+                        )
+                        conn.commit()
+                    except Exception as e:  # noqa: BLE001
+                        log_event(
+                            "cost_log_failed",
+                            operation="onboarding_interviewer",
+                            route="turn-stream",
+                            error=f"{type(e).__name__}: {e}",
+                        )
+
+                    append_turn(conn, session_id, "user", message)
+                    append_turn(conn, session_id, "assistant", assistant_text)
+
+                    new_history = sess_history + [
+                        {"role": "user", "content": message},
+                        {"role": "assistant", "content": assistant_text},
+                    ]
+                    captured = _captured_from_history(new_history)
+                    if captured != sess_captured:
+                        update_captured_blocks(conn, session_id, captured)
+                    conn.commit()
+
+                    # Re-read session to get the updated cumulative cost.
+                    refreshed = get_session(conn, session_id)
+                    cumulative_cost = refreshed.cumulative_cost_usd if refreshed else 0.0
+
+                    keys_collected, openrouter_last4 = _keys_collected_for(conn, session_id)
+
+                    yield _sse_event(
+                        "finish",
+                        {
+                            "user_message": message,
+                            "assistant_html": render_chat_assistant_html(assistant_text),
+                            "captured_count": sum(1 for name in ALLOWED_FILENAMES if name in captured),
+                            "required_count": len(ALLOWED_FILENAMES),
+                            "finalize_ready": all(name in captured for name in ALLOWED_FILENAMES),
+                            "keys_collected": keys_collected,
+                            "openrouter_last4": openrouter_last4,
+                            "cumulative_cost_usd": cumulative_cost,
+                        },
+                    )
+
+                elif chunk_type == "error":
+                    error_chunk = cast(StreamError, chunk)
+                    translated = _translate(OpenRouterError(error_chunk["message"], kind=error_chunk["kind"]))
+                    set_error(conn, session_id, translated.user_message)
+                    conn.commit()
+                    yield _sse_event(
+                        "error",
+                        {
+                            "kind": translated.kind,
+                            "user_message": message,
+                            "message": translated.user_message,
+                        },
+                    )
+        except LLMSpendCeilingExceeded as e:
+            # Defensive guard: complete_stream's internal _check_call_gate()
+            # ran in a TOCTOU window after the route's gate passed. Yield an
+            # SSE error event rather than letting the exception propagate
+            # naked (which would close the response with no client signal).
+            translated = _translate(e)
+            yield _sse_event(
+                "error",
+                {
+                    "kind": translated.kind,
+                    "user_message": message,
+                    "message": translated.user_message,
+                },
+            )
+    finally:
+        conn.close()
+
+
+@router.post("/onboarding/interview/turn-stream", response_model=None)
+def post_turn_stream(
+    request: Request,
+    session_id: str = Form(...),
+    message: str = Form(...),
+) -> StreamingResponse | JSONResponse:
+    """SSE streaming variant of ``POST /onboarding/interview/turn``.
+
+    Returns an ``text/event-stream`` response that drives
+    :func:`~findajob.llm.openrouter.complete_stream` and emits:
+
+    - ``event: captured`` — one per file block close marker seen mid-stream.
+    - ``event: finish`` — final event on success; carries pre-rendered
+      ``assistant_html``, cost, and finalize-readiness fields.
+    - ``event: error`` — on LLM error or ``finish_reason="length"``.
+
+    Pre-flight checks (missing session, no key, spend ceiling) return
+    non-streaming HTTP errors (404 / 503 / 402) BEFORE the SSE response
+    is opened so the client can handle them as normal HTTP failures.
+    """
+    db_path: Path = request.app.state.db_path
+    conn = connect(db_path, timeout=30)
+    conn.row_factory = sqlite3.Row
+    try:
+        sess = get_session(conn, session_id)
+        if sess is None:
+            raise HTTPException(status_code=404, detail="session not found")
+
+        chat_key = _resolved_chat_key(conn, session_id)
+        if not chat_key:
+            raise _unavailable_503()
+
+        # Spend ceiling gate — must run BEFORE opening the SSE response so the
+        # client receives a normal 402 JSON response it can handle separately
+        # from mid-stream SSE error events.
+        try:
+            check_call_gate()
+        except LLMSpendCeilingExceeded as e:
+            translated = _translate(e)
+            return JSONResponse(
+                status_code=402,
+                content={"detail": translated.user_message},
+            )
+
+        # Snapshot session state — the generator runs AFTER this function
+        # returns (StreamingResponse defers iteration) so we must pass in the
+        # values now, not read them lazily from a closed connection.
+        sess_history = list(sess.history)
+        sess_captured = dict(sess.captured_blocks)
+    finally:
+        conn.close()
+
+    return StreamingResponse(
+        _stream_turn(
+            db_path=db_path,
+            session_id=session_id,
+            chat_key=chat_key,
+            message=message,
+            sess_history=sess_history,
+            sess_captured=sess_captured,
+        ),
+        media_type="text/event-stream",
+        headers={
+            "X-Accel-Buffering": "no",
+            "Cache-Control": "no-cache",
+        },
+    )
 
 
 @router.get("/onboarding/interview/{session_id}", response_class=HTMLResponse)
