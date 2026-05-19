@@ -69,7 +69,14 @@
   <div id="stream-progress" class="flex flex-wrap items-center gap-2"
        aria-live="polite" role="status"></div>
 
+  {# hx-boost="false" opts this form out of body-level hx-boost="true" (see
+     base.html). Without it, HTMX intercepts the submit BEFORE our JS handler
+     in onboarding-stream.js runs, fires an XHR GET to the form's default
+     action (current URL + form data as query params), and silently
+     reload-renders the chat page without ever hitting /turn-stream. The
+     Finalize form below uses the same opt-out for the same reason. #}
   <form data-stream-endpoint="/onboarding/interview/turn-stream"
+        hx-boost="false"
         class="space-y-2">
     <input type="hidden" name="session_id" value="{{ session_id }}">
     <textarea name="message" rows="4" required

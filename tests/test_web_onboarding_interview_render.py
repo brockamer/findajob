@@ -190,6 +190,26 @@ def test_interview_page_includes_streaming_form_pointing_at_turn_stream(
     # Negative containment: the streaming endpoint URL must NOT appear as
     # the non-streaming /turn (catches a lazy substring match).
     assert "/onboarding/interview/turn-stream" in body
+    # base.html sets hx-boost="true" on <body>, which boosts all descendant
+    # forms by default. Without an explicit opt-out, HTMX intercepts the
+    # submit BEFORE onboarding-stream.js's handler runs and fires an XHR GET
+    # to the form's default action — the streaming endpoint is never hit and
+    # the chat page silently reload-renders. Caught in browser verification
+    # against findajob-clean after #740 merged; one-line regression guard.
+    assert 'hx-boost="false"' in body
+    # Pair with structural containment: the opt-out must be on the streaming
+    # form specifically. Look at the rendered slice containing the form tag.
+    streaming_form_idx = body.find('data-stream-endpoint="/onboarding/interview/turn-stream"')
+    # The opt-out attribute must live on the same <form ...> opening tag —
+    # search backward for the form open and forward for the tag close, and
+    # assert the hx-boost="false" landed inside that range.
+    form_open = body.rfind("<form", 0, streaming_form_idx)
+    form_close = body.find(">", streaming_form_idx)
+    streaming_form_tag = body[form_open : form_close + 1]
+    assert 'hx-boost="false"' in streaming_form_tag, (
+        "hx-boost='false' must be on the streaming form's opening tag, not a sibling element. "
+        f"Tag was: {streaming_form_tag!r}"
+    )
 
 
 def test_interview_page_hides_finalize_block_when_not_ready(client_with_key: TestClient, base_root: Path) -> None:
