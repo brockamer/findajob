@@ -82,7 +82,7 @@ def _setup_profile(base_root: Path) -> Path:
     return p
 
 
-def _stub_complete(text: str = VALID_LLM_OUTPUT, *, cost: float = 0.02):
+def _stub_complete(text: str = VALID_LLM_OUTPUT, *, cost: float = 0.02, finish_reason: str | None = None):
     """Return a callable that always returns the given CompletionResult."""
     result = CompletionResult(
         text=text,
@@ -91,6 +91,7 @@ def _stub_complete(text: str = VALID_LLM_OUTPUT, *, cost: float = 0.02):
         cached_tokens=0,
         cost_usd=cost,
         generation_id="gen-test-1",
+        finish_reason=finish_reason,
     )
     return MagicMock(return_value=result)
 
@@ -183,6 +184,128 @@ def test_run_openrouter_error_returns_failure(tmp_path: Path) -> None:
         result = run(tmp_path, ntfy_enabled=False)
     assert result.success is False
     assert result.error is not None
+
+
+# ---------------------------------------------------------------------------
+# #678: openrouter_truncated event coverage on both success + failure paths
+# ---------------------------------------------------------------------------
+
+
+def test_logs_openrouter_truncated_when_finish_reason_length(tmp_path: Path) -> None:
+    """Partial-truncation success path: CompletionResult.finish_reason == 'length'
+    must fire openrouter_truncated BEFORE downstream parse runs, so a truncated
+    response that subsequently fails parsing still emits the truncation diagnostic.
+    """
+    _setup_profile(tmp_path)
+    events: list[tuple[str, dict]] = []
+
+    def _capture(event: str, **kw):
+        events.append((event, kw))
+
+    with (
+        patch(
+            "findajob.discoverer.runner.complete",
+            _stub_complete(finish_reason="length"),
+        ),
+        patch("findajob.discoverer.runner.log_event", side_effect=_capture),
+    ):
+        run(tmp_path, ntfy_enabled=False)
+
+    truncated = [(e, kw) for e, kw in events if e == "openrouter_truncated"]
+    assert len(truncated) == 1
+    _, kw = truncated[0]
+    assert kw["role"] == "company_discoverer"
+    assert kw["completion_tokens"] == 200
+    assert kw["content_chars"] > 0
+
+
+def test_does_not_log_truncated_when_finish_reason_stop(tmp_path: Path) -> None:
+    """Negative: finish_reason='stop' (normal completion) must not fire the event."""
+    _setup_profile(tmp_path)
+    events: list[tuple[str, dict]] = []
+
+    def _capture(event: str, **kw):
+        events.append((event, kw))
+
+    with (
+        patch(
+            "findajob.discoverer.runner.complete",
+            _stub_complete(finish_reason="stop"),
+        ),
+        patch("findajob.discoverer.runner.log_event", side_effect=_capture),
+    ):
+        run(tmp_path, ntfy_enabled=False)
+
+    truncated = [e for e, _ in events if e == "openrouter_truncated"]
+    assert truncated == []
+
+
+def test_logs_openrouter_truncated_via_http_boundary_on_null_content(tmp_path: Path) -> None:
+    """Production failure shape regression: content=null + finish_reason='length'
+    drives the wrapper to raise OpenRouterError with `finish_reason` attribute set,
+    runner catches and emits openrouter_truncated BEFORE the existing discovery_failed.
+
+    This is the exact shape captured in the pipeline.jsonl event in #678:
+        {"event": "discovery_failed", "message": "Content not a string: NoneType; finish_reason=length"}
+
+    AC #4: "regression test exercising the role's full output path against a
+    recorded fixture" — drives the real wrapper boundary (urlopen), not a
+    runner-level mock, so the wrapper→runner signal chain is what's under test.
+    """
+    _setup_profile(tmp_path)
+    body = json.dumps(
+        {
+            "id": "gen-test-trunc",
+            "choices": [
+                {
+                    "message": {"role": "assistant", "content": None},
+                    "finish_reason": "length",
+                }
+            ],
+            "usage": {
+                "prompt_tokens": 500,
+                "completion_tokens": 4096,
+                "cost": 0.04,
+                "prompt_tokens_details": {"cached_tokens": 0},
+            },
+        }
+    ).encode("utf-8")
+
+    class _Resp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            pass
+
+        def read(self):
+            return body
+
+    events: list[tuple[str, dict]] = []
+
+    def _capture(event: str, **kw):
+        events.append((event, kw))
+
+    with (
+        patch.dict(os.environ, _FAKE_API_KEY),
+        patch("findajob.llm.openrouter.urllib.request.urlopen", return_value=_Resp()),
+        patch("findajob.discoverer.runner.log_event", side_effect=_capture),
+    ):
+        result = run(tmp_path, ntfy_enabled=False)
+
+    # Both events must fire, in order: truncated first (diagnostic), then
+    # discovery_failed (the run-result fact). They describe different facts and
+    # neither replaces the other.
+    event_names = [e for e, _ in events]
+    assert "openrouter_truncated" in event_names
+    assert "discovery_failed" in event_names
+    assert event_names.index("openrouter_truncated") < event_names.index("discovery_failed")
+
+    truncated = next((kw for e, kw in events if e == "openrouter_truncated"), None)
+    assert truncated is not None
+    assert truncated["role"] == "company_discoverer"
+
+    assert result.success is False
 
 
 def test_run_missing_profile_returns_failure(tmp_path: Path) -> None:

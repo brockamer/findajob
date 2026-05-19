@@ -598,3 +598,29 @@ def test_parse_response_missing_finish_reason_is_none(monkeypatch, tmp_path):
     with patch("findajob.llm.openrouter.urllib.request.urlopen", return_value=_ok_resp(body)):
         result = complete(role="r", prompt="hi", roles_dir=roles)
     assert result.finish_reason is None
+
+
+def test_openrouter_error_carries_finish_reason_on_null_content(monkeypatch, tmp_path):
+    """When content is null and finish_reason=length, OpenRouterError must
+    surface finish_reason as a structured attribute (#678).
+
+    Pre-#678, callers had to grep ``str(e)`` for ``finish_reason=length`` to
+    detect a max_tokens cap from the failure path — brittle to message-format
+    drift. With the attribute, ``e.finish_reason == "length"`` is a
+    contract callers can rely on.
+    """
+    roles = tmp_path / "roles"
+    roles.mkdir()
+    (roles / "r.md").write_text("---\nmodel: openrouter:anthropic/claude-sonnet-4-6\n---\nSYSTEM\n")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-test")
+
+    body = _success_body(text="placeholder")
+    # Real production failure shape: content is null + finish_reason="length".
+    body["choices"][0]["message"]["content"] = None
+    body["choices"][0]["finish_reason"] = "length"
+
+    with patch("findajob.llm.openrouter.urllib.request.urlopen", return_value=_ok_resp(body)):
+        with pytest.raises(OpenRouterError) as exc_info:
+            complete(role="r", prompt="hi", roles_dir=roles)
+    assert exc_info.value.kind == "malformed"
+    assert exc_info.value.finish_reason == "length"

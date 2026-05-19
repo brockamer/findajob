@@ -1,6 +1,7 @@
 ---
 model: openrouter:perplexity/sonar-reasoning-pro
 temperature: 0.2
+max_tokens: 16384
 ---
 <!--
 This prompt is intentionally field-agnostic. It reads the candidate's profile and

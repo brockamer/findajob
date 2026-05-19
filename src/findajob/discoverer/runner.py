@@ -160,6 +160,19 @@ def run(
         )
         latency_ms = int((time.time() - start) * 1000)
 
+        # #678: surface partial-truncation BEFORE downstream parse runs. A
+        # truncated response that subsequently fails parsing would otherwise
+        # log only `discovery_failed reason=parse_error` — the truncation
+        # signal would be lost. run_role() has a parallel emission for roles
+        # routed through it (#666); the discoverer calls complete() directly.
+        if result.finish_reason == "length":
+            log_event(
+                "openrouter_truncated",
+                role="company_discoverer",
+                completion_tokens=result.completion_tokens,
+                content_chars=len(result.text),
+            )
+
         raw_md = _THINK_RE.sub("", result.text).strip()
         if raw_md == "INSUFFICIENT_PROFILE":
             log_event("discovery_failed", reason="insufficient_profile")
@@ -214,6 +227,18 @@ def run(
         return RunResult(success=True, count=len(parsed.companies), error=None, cost_usd=cost)
 
     except OpenRouterError as e:
+        # #678: hard-truncation (content=null + finish_reason='length') comes
+        # through this branch since the wrapper raises before returning a
+        # CompletionResult. Emit openrouter_truncated FIRST so the diagnostic
+        # survives even though the run itself failed. Both events describe
+        # different facts — neither replaces the other.
+        if e.finish_reason == "length":
+            log_event(
+                "openrouter_truncated",
+                role="company_discoverer",
+                completion_tokens=None,
+                content_chars=0,
+            )
         msg = f"OpenRouter error ({e.kind}): {str(e)[:300]}"
         log_event(
             "discovery_failed",
