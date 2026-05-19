@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
 
 from findajob.loose_ends.rubrics import (
+    evaluate_flow_without_exit,
     exclusion_key,
     is_excluded,
     load_exclusions,
@@ -84,3 +86,107 @@ def test_is_excluded_matches_exact_tuple():
         rubric="empty_state_no_guidance",
         exclusions=exclusions,
     )
+
+
+def test_evaluate_flow_without_exit_calls_llm_and_returns_finding():
+    fake_llm = MagicMock()
+    fake_llm.text = (
+        '{"is_loose_end": true, "confidence": "high", '
+        '"rationale": "No back button.", '
+        '"suggested_surface": "Add Back to Applied."}'
+    )
+    fake_llm.cost_usd = 0.03
+    with patch(
+        "findajob.loose_ends.rubrics.openrouter.complete",
+        return_value=fake_llm,
+    ) as mock_complete:
+        f, cost = evaluate_flow_without_exit(
+            persona="established_user",
+            walkthrough_name="applied_undo_exits",
+            current_url="/board/applied",
+            context_hint="User just transitioned applied→interviewing",
+            visible_button_labels=["Filter", "Reset"],
+            form_action_targets=[],
+            dom_snippet="<html>...</html>",
+            exclusions={},
+        )
+    assert mock_complete.called
+    assert f.is_loose_end is True
+    assert f.confidence == "high"
+    assert f.category == 2
+    assert f.excluded is False
+    assert f.exclusion_key is None
+    assert cost == 0.03
+
+
+def test_evaluate_flow_without_exit_handles_fenced_json():
+    """Haiku occasionally wraps JSON in markdown fences — must tolerate."""
+    fake_llm = MagicMock()
+    fake_llm.text = (
+        "```json\n"
+        '{"is_loose_end": false, "confidence": "high", '
+        '"rationale": "Has back button.", "suggested_surface": ""}\n'
+        "```"
+    )
+    fake_llm.cost_usd = 0.02
+    with patch(
+        "findajob.loose_ends.rubrics.openrouter.complete",
+        return_value=fake_llm,
+    ):
+        f, _ = evaluate_flow_without_exit(
+            persona="established_user",
+            walkthrough_name="x",
+            current_url="/",
+            context_hint="",
+            visible_button_labels=[],
+            form_action_targets=[],
+            dom_snippet="",
+            exclusions={},
+        )
+    assert f.is_loose_end is False
+    assert f.confidence == "high"
+
+
+def test_evaluate_flow_without_exit_returns_excluded_without_llm():
+    """Exclusions filtered BEFORE LLM call — non-negotiable."""
+    exclusions = {
+        "established_user::/admin/stacks/::flow_without_exit": "Operator-only.",
+    }
+    with patch("findajob.loose_ends.rubrics.openrouter.complete") as mock_complete:
+        f, cost = evaluate_flow_without_exit(
+            persona="established_user",
+            walkthrough_name="x",
+            current_url="/admin/stacks/",
+            context_hint="",
+            visible_button_labels=[],
+            form_action_targets=[],
+            dom_snippet="",
+            exclusions=exclusions,
+        )
+    mock_complete.assert_not_called()
+    assert f.excluded is True
+    assert f.exclusion_key == "established_user::/admin/stacks/::flow_without_exit"
+    assert f.is_loose_end is False
+    assert cost == 0.0
+
+
+def test_evaluate_flow_without_exit_low_confidence_on_bad_json():
+    fake_llm = MagicMock()
+    fake_llm.text = "this is not json"
+    fake_llm.cost_usd = 0.01
+    with patch(
+        "findajob.loose_ends.rubrics.openrouter.complete",
+        return_value=fake_llm,
+    ):
+        f, _ = evaluate_flow_without_exit(
+            persona="established_user",
+            walkthrough_name="x",
+            current_url="/",
+            context_hint="",
+            visible_button_labels=[],
+            form_action_targets=[],
+            dom_snippet="",
+            exclusions={},
+        )
+    assert f.confidence == "low"
+    assert "non-JSON" in f.rationale or "not json" in f.rationale.lower()
