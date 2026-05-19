@@ -15,17 +15,34 @@ from findajob.loose_ends.rubrics import (
 
 
 def test_exclusion_key_format():
-    assert exclusion_key(persona="nux_user", route="/board/applied", rubric="flow_without_exit") == "nux_user::/board/applied::flow_without_exit"
+    assert (
+        exclusion_key(persona="nux_user", route="/board/applied", rubric="flow_without_exit")
+        == "nux_user::/board/applied::flow_without_exit"
+    )
 
 
 def test_load_exclusions_parses_yaml(tmp_path: Path):
     path = tmp_path / "loose_ends_walkthrough_exclusions.yaml"
-    path.write_text(yaml.safe_dump({
-        "exclusions": [
-            {"persona": "established_user", "route": "/admin/stacks/", "rubric": "flow_without_exit", "rationale": "Operator-only."},
-            {"persona": "nux_user", "route": "/board/applied", "rubric": "empty_state_no_guidance", "rationale": "Correctly empty for NUX."},
-        ]
-    }))
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "exclusions": [
+                    {
+                        "persona": "established_user",
+                        "route": "/admin/stacks/",
+                        "rubric": "flow_without_exit",
+                        "rationale": "Operator-only.",
+                    },
+                    {
+                        "persona": "nux_user",
+                        "route": "/board/applied",
+                        "rubric": "empty_state_no_guidance",
+                        "rationale": "Correctly empty for NUX.",
+                    },
+                ]
+            }
+        )
+    )
     exclusions = load_exclusions(path)
     assert exclusions == {
         "established_user::/admin/stacks/::flow_without_exit": "Operator-only.",
