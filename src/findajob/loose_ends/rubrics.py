@@ -10,3 +10,38 @@ matched tuples skip the LLM and return excluded=True.
 """
 
 from __future__ import annotations
+
+from pathlib import Path
+
+import yaml
+
+
+def exclusion_key(*, persona: str, route: str, rubric: str) -> str:
+    """Flatten an exclusion tuple to its lookup key."""
+    return f"{persona}::{route}::{rubric}"
+
+
+def load_exclusions(path: Path) -> dict[str, str]:
+    """Load the exclusions yaml into a key → rationale dict.
+
+    Raises FileNotFoundError if the file is missing — recovery is documented
+    in the shim's startup check.
+    """
+    if not path.exists():
+        raise FileNotFoundError(f"Exclusions yaml missing: {path}")
+    raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    return {
+        exclusion_key(persona=e["persona"], route=e["route"], rubric=e["rubric"]): e.get("rationale", "")
+        for e in raw.get("exclusions", [])
+    }
+
+
+def is_excluded(
+    *,
+    persona: str,
+    route: str,
+    rubric: str,
+    exclusions: dict[str, str],
+) -> bool:
+    """Exact-tuple lookup; no wildcards (deliberate — operators amend by adding entries)."""
+    return exclusion_key(persona=persona, route=route, rubric=rubric) in exclusions
