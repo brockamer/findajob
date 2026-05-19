@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from findajob.loose_ends.walkthrough import Finding, write_finding, read_findings
+from findajob.loose_ends.walkthrough import Finding, read_findings, write_finding
 
 
 def test_finding_is_frozen_dataclass():
