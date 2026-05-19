@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass
+from html.parser import HTMLParser
 from pathlib import Path
 
 import yaml
@@ -137,3 +138,66 @@ def load_walkthroughs(path: Path) -> list[Walkthrough]:
             )
         )
     return walkthroughs
+
+
+class _HintParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.collection_container_ids: list[str] = []
+        self.visible_button_labels: list[str] = []
+        self.form_action_targets: list[str] = []
+        self._current_button: list[str] | None = None
+        self._current_link: list[str] | None = None
+        self._capturing: str | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        attr_dict = {k: (v or "") for k, v in attrs}
+        if tag in ("table", "ul", "ol", "div"):
+            # Collection container if it has an id or a data-collection attribute.
+            collection_id = attr_dict.get("data-collection") or attr_dict.get("id")
+            classes = attr_dict.get("class", "").split()
+            if collection_id and (
+                tag in ("table", "ul", "ol") or "collection" in classes or "data-collection" in attr_dict
+            ):
+                self.collection_container_ids.append(collection_id)
+        if tag == "button":
+            self._current_button = []
+            self._capturing = "button"
+        if tag == "a" and attr_dict.get("href"):
+            self._current_link = []
+            self._capturing = "link"
+        if tag == "form" and attr_dict.get("action"):
+            self.form_action_targets.append(attr_dict["action"])
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "button" and self._current_button is not None:
+            label = "".join(self._current_button).strip()
+            if label:
+                self.visible_button_labels.append(label)
+            self._current_button = None
+            self._capturing = None
+        if tag == "a" and self._current_link is not None:
+            label = "".join(self._current_link).strip()
+            if label:
+                self.visible_button_labels.append(label)
+            self._current_link = None
+            self._capturing = None
+
+    def handle_data(self, data: str) -> None:
+        if self._capturing == "button" and self._current_button is not None:
+            self._current_button.append(data)
+        if self._capturing == "link" and self._current_link is not None:
+            self._current_link.append(data)
+
+
+def extract_hints(*, dom: str, current_url: str) -> dict:
+    """Pure DOM → structured hints transform. Deterministic for fixed input."""
+    parser = _HintParser()
+    parser.feed(dom)
+    return {
+        "current_url": current_url,
+        "collection_container_ids": sorted(set(parser.collection_container_ids)),
+        "visible_button_labels": parser.visible_button_labels,
+        "form_action_targets": parser.form_action_targets,
+        "redacted_keys_count": 0,
+    }

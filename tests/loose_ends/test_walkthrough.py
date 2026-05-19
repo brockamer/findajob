@@ -15,6 +15,7 @@ from findajob.loose_ends.walkthrough import (
     Finding,
     GotoStep,
     PickFirstRowStep,
+    extract_hints,
     load_walkthroughs,
     read_findings,
     write_finding,
@@ -208,3 +209,48 @@ def test_load_walkthroughs_rejects_invalid_persona(tmp_path: Path):
     )
     with pytest.raises(ValueError, match="persona"):
         load_walkthroughs(path)
+
+
+def test_extract_hints_finds_buttons_and_links():
+    dom = """
+    <html><body>
+        <button>Filter</button>
+        <button type="submit">Apply</button>
+        <a href="/board/dashboard">Go to dashboard</a>
+    </body></html>
+    """
+    hints = extract_hints(dom=dom, current_url="/board/applied")
+    assert hints["current_url"] == "/board/applied"
+    assert set(hints["visible_button_labels"]) == {"Filter", "Apply", "Go to dashboard"}
+
+
+def test_extract_hints_finds_collection_containers():
+    dom = """
+    <html><body>
+        <table id="applied-jobs"><tbody></tbody></table>
+        <ul id="dashboard-list"><li>...</li></ul>
+        <div class="collection" data-collection="rejected"></div>
+    </body></html>
+    """
+    hints = extract_hints(dom=dom, current_url="/board")
+    assert set(hints["collection_container_ids"]) >= {"applied-jobs", "dashboard-list", "rejected"}
+
+
+def test_extract_hints_finds_form_targets():
+    dom = """
+    <html><body>
+        <form action="/board/jobs/abc123/apply" method="post"></form>
+        <form action="/settings/connections/" method="post"></form>
+    </body></html>
+    """
+    hints = extract_hints(dom=dom, current_url="/board")
+    assert "/board/jobs/abc123/apply" in hints["form_action_targets"]
+    assert "/settings/connections/" in hints["form_action_targets"]
+
+
+def test_extract_hints_stable_for_fixed_dom():
+    """Same input → same output (no nondeterminism)."""
+    dom = "<html><body><button>Save</button></body></html>"
+    h1 = extract_hints(dom=dom, current_url="/x")
+    h2 = extract_hints(dom=dom, current_url="/x")
+    assert h1 == h2
