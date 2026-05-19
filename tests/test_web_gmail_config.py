@@ -132,6 +132,11 @@ def test_post_test_connection_auth_failed_updates_pill(client):
         r = client.post("/config/gmail/test")
     assert r.status_code == 200
     assert "Login failed" in r.text
+    # Inline recovery hint must render on the /test path too — _card.html is
+    # the single template for both save and test handlers, and AC#2 doesn't
+    # carve out save vs. test.
+    assert "App password rejected" in r.text
+    assert "myaccount.google.com/apppasswords" in r.text
 
 
 def test_post_save_with_new_creds_auto_runs_imap_test(client):
