@@ -67,6 +67,32 @@ def _validate(address: str, app_password: str, sender_allowlist: str) -> str | N
     return None
 
 
+def _run_imap_test(cfg: gmail_imap.GmailConfig) -> str:
+    """Run the live IMAP login test and persist state. Returns the new status."""
+    result = gmail_imap.test_login(cfg)
+    state = gmail_imap.load_state()
+    if result == gmail_imap.TestResult.SUCCESS:
+        gmail_imap.save_state(
+            replace(
+                state,
+                last_login_at=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+                last_error=None,
+            )
+        )
+        return "authorized"
+    if result == gmail_imap.TestResult.AUTH_FAILED:
+        gmail_imap.save_state(replace(state, last_error="auth_failed"))
+        return "login_failed"
+    return "connection_error"
+
+
+def _creds_changed(old: gmail_imap.GmailConfig | None, new: gmail_imap.GmailConfig) -> bool:
+    """True when address or app_password differs from what was previously saved."""
+    if old is None:
+        return True
+    return old.address != new.address or old.app_password != new.app_password
+
+
 @router.post("/config/gmail/save", response_class=HTMLResponse)
 def save_gmail_config(
     request: Request,
@@ -89,11 +115,13 @@ def save_gmail_config(
         sender_allowlist=senders,
         configured_at=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     )
+    old = gmail_imap.load_config()
     gmail_imap.save_config(cfg)
+    status = _run_imap_test(cfg) if _creds_changed(old, cfg) else "saved_untested"
     return templates.TemplateResponse(
         request=request,
         name="gmail_config/_card.html",
-        context=_ctx(request, status="saved_untested"),
+        context=_ctx(request, status=status),
     )
 
 
@@ -111,33 +139,11 @@ def test_gmail_config(request: Request) -> HTMLResponse:
                 validation_error="Save credentials before testing.",
             ),
         )
-    result = gmail_imap.test_login(cfg)
-    if result == gmail_imap.TestResult.SUCCESS:
-        state = gmail_imap.load_state()
-        gmail_imap.save_state(
-            replace(
-                state,
-                last_login_at=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
-                last_error=None,
-            )
-        )
-        return templates.TemplateResponse(
-            request=request,
-            name="gmail_config/_card.html",
-            context=_ctx(request, status="authorized"),
-        )
-    if result == gmail_imap.TestResult.AUTH_FAILED:
-        state = gmail_imap.load_state()
-        gmail_imap.save_state(replace(state, last_error="auth_failed"))
-        return templates.TemplateResponse(
-            request=request,
-            name="gmail_config/_card.html",
-            context=_ctx(request, status="login_failed"),
-        )
+    status = _run_imap_test(cfg)
     return templates.TemplateResponse(
         request=request,
         name="gmail_config/_card.html",
-        context=_ctx(request, status="connection_error"),
+        context=_ctx(request, status=status),
     )
 
 
