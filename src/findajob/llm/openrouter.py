@@ -85,6 +85,12 @@ class OpenRouterError(Exception):
     ``kind`` classifies the failure for callers that need a UX/retry
     decision without re-parsing the message string. Values:
     ``auth | payment | rate_limit | upstream | network | malformed | config``.
+
+    ``finish_reason`` is set when the malformed-response shape is "content
+    is null because the model hit max_tokens" — i.e. ``finish_reason="length"``
+    in the OpenRouter response. Callers can detect a budget-exhausted truncation
+    via ``e.finish_reason == "length"`` instead of grepping ``str(e)`` for the
+    same substring (which is brittle to message-format drift). #678.
     """
 
     def __init__(
@@ -93,10 +99,12 @@ class OpenRouterError(Exception):
         *,
         kind: str = "unknown",
         status_code: int | None = None,
+        finish_reason: str | None = None,
     ) -> None:
         super().__init__(message)
         self.kind = kind
         self.status_code = status_code
+        self.finish_reason = finish_reason
 
 
 class LLMSpendCeilingExceeded(Exception):
@@ -393,6 +401,8 @@ def _parse_response(raw: str) -> CompletionResult:
         # finish_reason=length" tells the operator immediately that
         # max_tokens was exhausted (reasoning model ate the budget) —
         # the fix is raising max_tokens, not retrying with the same cap.
+        # Also exposed as a structured attribute (#678) so callers can
+        # branch on it without grepping the message.
         try:
             finish_reason_for_err = data["choices"][0].get("finish_reason")
         except (KeyError, IndexError, TypeError):
@@ -400,6 +410,7 @@ def _parse_response(raw: str) -> CompletionResult:
         raise OpenRouterError(
             f"Content not a string: {type(text).__name__}; finish_reason={finish_reason_for_err}",
             kind="malformed",
+            finish_reason=finish_reason_for_err,
         )
     usage = data.get("usage") or {}
     # OpenRouter nests cached_tokens under usage.prompt_tokens_details.cached_tokens
