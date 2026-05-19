@@ -16,9 +16,11 @@ from findajob.loose_ends.walkthrough import (
     EvaluateDomStep,
     GotoStep,
     PickFirstRowStep,
+    Walkthrough,
     dispatch_step,
     extract_hints,
     load_walkthroughs,
+    run_walkthrough,
 )
 
 
@@ -365,3 +367,64 @@ def test_dispatch_assert_present_raises_when_selector_missing():
             walkthrough_name="x",
             exclusions={},
         )
+
+
+def test_run_walkthrough_executes_all_steps_and_returns_findings():
+    page = MagicMock()
+    page.content.return_value = "<html><body></body></html>"
+    page.url = "https://example.com/board/applied"
+    page.locator.return_value.count.return_value = 1  # assert_present succeeds
+    page.locator.return_value.first.get_attribute.return_value = "abc"
+
+    walkthrough = Walkthrough(
+        name="x",
+        persona="established_user",
+        target_category=2,
+        steps=(
+            GotoStep(url="/board/applied"),
+            EvaluateDomStep(category=2, rubric="flow_without_exit"),
+        ),
+    )
+    fake_finding = MagicMock()
+    fake_finding.is_loose_end = True
+    with patch(
+        "findajob.loose_ends.walkthrough.evaluate_flow_without_exit",
+        return_value=(fake_finding, 0.04),
+    ):
+        findings, cost = run_walkthrough(
+            page=page,
+            walkthrough=walkthrough,
+            base_url="https://example.com",
+            exclusions={},
+        )
+    assert len(findings) == 1
+    assert findings[0] is fake_finding
+    assert cost == 0.04
+
+
+def test_run_walkthrough_records_timeout_as_review_finding():
+    """A Playwright timeout mid-walkthrough must NOT abort the run.
+
+    Walker records a REVIEW finding and continues. This is the spec's
+    posture for category-2/3 walks: a missing selector means the page
+    shape drifted, which is itself a finding worth reviewing.
+    """
+    page = MagicMock()
+    page.goto.side_effect = TimeoutError("nav timeout")
+
+    walkthrough = Walkthrough(
+        name="x",
+        persona="established_user",
+        target_category=2,
+        steps=(GotoStep(url="/board/applied"),),
+    )
+    findings, cost = run_walkthrough(
+        page=page,
+        walkthrough=walkthrough,
+        base_url="https://example.com",
+        exclusions={},
+    )
+    assert len(findings) == 1
+    assert findings[0].confidence == "review"
+    assert "timeout" in findings[0].rationale.lower()
+    assert cost == 0.0

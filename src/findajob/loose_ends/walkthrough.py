@@ -166,9 +166,9 @@ def extract_hints(*, dom: str, current_url: str) -> dict:
     }
 
 
-def _url_path(url: str) -> str:
+def _url_path(url: object) -> str:
     """Extract just the path component (e.g. 'https://x.com/foo?a=1' → '/foo')."""
-    parsed = urlparse(url)
+    parsed = urlparse(str(url))
     return parsed.path or "/"
 
 
@@ -226,3 +226,50 @@ def dispatch_step(
             )
         raise ValueError(f"unsupported evaluate_dom category: {step.category}")
     raise ValueError(f"unknown step type: {type(step).__name__}")
+
+
+def run_walkthrough(
+    *,
+    page,
+    walkthrough: Walkthrough,
+    base_url: str,
+    exclusions: dict[str, str],
+) -> tuple[list[Finding], float]:
+    """Execute all steps in a walkthrough. Returns (findings, total_cost).
+
+    A Playwright/network timeout at any step records a REVIEW finding and
+    returns early. AssertionError from assert_present is treated the same —
+    page shape drift is worth surfacing, not fatal.
+    """
+    findings: list[Finding] = []
+    total_cost = 0.0
+    for idx, step in enumerate(walkthrough.steps):
+        try:
+            finding, cost = dispatch_step(
+                page=page,
+                step=step,
+                base_url=base_url,
+                persona=walkthrough.persona,
+                walkthrough_name=walkthrough.name,
+                exclusions=exclusions,
+            )
+        except (TimeoutError, AssertionError) as exc:
+            findings.append(
+                Finding(
+                    persona=walkthrough.persona,
+                    walkthrough_name=walkthrough.name,
+                    current_url=_url_path(getattr(page, "url", "")),
+                    category=walkthrough.target_category,
+                    is_loose_end=False,
+                    confidence="review",
+                    rationale=f"walker {type(exc).__name__} at step {idx} ({type(step).__name__}): {exc}",
+                    suggested_surface="",
+                    excluded=False,
+                    exclusion_key=None,
+                )
+            )
+            return findings, total_cost
+        total_cost += cost
+        if finding is not None:
+            findings.append(finding)
+    return findings, total_cost
