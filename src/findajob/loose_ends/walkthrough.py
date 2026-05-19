@@ -52,7 +52,13 @@ class EvaluateDomStep:
     context_hint: str = ""
 
 
-Step = GotoStep | PickFirstRowStep | ClickActionStep | AssertPresentStep | EvaluateDomStep
+@dataclass(frozen=True)
+class SelectOptionStep:
+    row_selector: str  # e.g., 'tr[data-stage="applied"]'
+    option_value: str  # e.g., "interview"
+
+
+Step = GotoStep | PickFirstRowStep | ClickActionStep | AssertPresentStep | EvaluateDomStep | SelectOptionStep
 
 
 @dataclass(frozen=True)
@@ -82,6 +88,13 @@ def _parse_step(raw: dict) -> Step:
             category=int(value["category"]),
             rubric=str(value["rubric"]),
             context_hint=str(value.get("context_hint", "")),
+        )
+    if key == "select_option":
+        if not isinstance(value, dict):
+            raise ValueError(f"select_option value must be a dict, got {type(value).__name__}")
+        return SelectOptionStep(
+            row_selector=str(value["row_selector"]),
+            option_value=str(value["option_value"]),
         )
     raise ValueError(f"unknown step type: {key!r}")
 
@@ -191,7 +204,7 @@ def dispatch_step(
         page.goto(f"{base_url}{step.url}", wait_until="networkidle")
         return None, 0.0
     if isinstance(step, PickFirstRowStep):
-        page.locator(f'[data-stage="{step.stage}"][data-fp]').first.get_attribute("data-fp")
+        page.locator(f'tr[data-stage="{step.stage}"]').first.get_attribute("data-fingerprint")
         return None, 0.0
     if isinstance(step, ClickActionStep):
         page.get_by_role("button", name=step.action_text).first.click()
@@ -200,6 +213,10 @@ def dispatch_step(
     if isinstance(step, AssertPresentStep):
         if page.locator(step.selector).count() == 0:
             raise AssertionError(f"selector not present: {step.selector}")
+        return None, 0.0
+    if isinstance(step, SelectOptionStep):
+        page.locator(step.row_selector).first.locator("select").select_option(step.option_value)
+        page.wait_for_load_state("networkidle")
         return None, 0.0
     if isinstance(step, EvaluateDomStep):
         dom = page.content()

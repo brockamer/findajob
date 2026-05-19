@@ -17,7 +17,7 @@
   {% set stage_class = stage_row_class(row.stage) %}
   {% if stage_class %}{% set _ = row_classes.append(stage_class) %}{% endif %}
 {% endif %}
-<tr class="{{ row_classes | join(' ') }}" data-fingerprint="{{ row.fingerprint }}">
+<tr class="{{ row_classes | join(' ') }}" data-fingerprint="{{ row.fingerprint }}" data-stage="{{ row.stage }}">
   {% if tab in ('dashboard', 'applied', 'review', 'waitlist') %}
     {% include "board/_status_cell.html" %}
     {% include "board/_reject_cell.html" %}

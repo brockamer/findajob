@@ -18,6 +18,7 @@ from findajob.loose_ends.walkthrough import (
     EvaluateDomStep,
     GotoStep,
     PickFirstRowStep,
+    SelectOptionStep,
     Walkthrough,
     dispatch_step,
     extract_hints,
@@ -273,7 +274,7 @@ def test_dispatch_goto_calls_page_goto():
     page.goto.assert_called_once_with("https://example.com/board/applied", wait_until="networkidle")
 
 
-def test_dispatch_pick_first_row_uses_data_fp_selector():
+def test_dispatch_pick_first_row_uses_data_stage_selector():
     page = MagicMock()
     page.locator.return_value.first.get_attribute.return_value = "abc123"
     dispatch_step(
@@ -284,7 +285,7 @@ def test_dispatch_pick_first_row_uses_data_fp_selector():
         walkthrough_name="x",
         exclusions={},
     )
-    page.locator.assert_called_with('[data-stage="applied"][data-fp]')
+    page.locator.assert_called_with('tr[data-stage="applied"]')
 
 
 def test_dispatch_click_action_clicks_by_label():
@@ -458,3 +459,52 @@ def test_run_walkthrough_records_pw_error_as_review_finding():
     assert findings[0].confidence == "review"
     assert "error" in findings[0].rationale.lower()
     assert cost == 0.0
+
+
+def test_parse_select_option_step(tmp_path: Path):
+    """YAML parsing of select_option step produces a SelectOptionStep."""
+    path = tmp_path / "walkthroughs.yaml"
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "walkthroughs": [
+                    {
+                        "name": "x",
+                        "persona": "established_user",
+                        "target_category": 2,
+                        "steps": [
+                            {
+                                "select_option": {
+                                    "row_selector": 'tr[data-stage="applied"]',
+                                    "option_value": "interview",
+                                }
+                            }
+                        ],
+                    }
+                ]
+            }
+        )
+    )
+    [w] = load_walkthroughs(path)
+    assert len(w.steps) == 1
+    step = w.steps[0]
+    assert isinstance(step, SelectOptionStep)
+    assert step.row_selector == 'tr[data-stage="applied"]'
+    assert step.option_value == "interview"
+
+
+def test_dispatch_select_option_calls_select_option_on_row_select():
+    """Dispatcher uses page.locator(row_selector).first.locator("select").select_option(value)."""
+    page = MagicMock()
+    dispatch_step(
+        page=page,
+        step=SelectOptionStep(row_selector='tr[data-stage="applied"]', option_value="interview"),
+        base_url="https://example.com",
+        persona="established_user",
+        walkthrough_name="x",
+        exclusions={},
+    )
+    page.locator.assert_called_with('tr[data-stage="applied"]')
+    page.locator.return_value.first.locator.assert_called_with("select")
+    page.locator.return_value.first.locator.return_value.select_option.assert_called_with("interview")
+    page.wait_for_load_state.assert_called_with("networkidle")

@@ -55,9 +55,10 @@ walkthroughs:
     target_category: 2
     steps:
       - goto: /board/applied
-      - assert_present: '[data-stage="applied"][data-fp]'
-      - pick_first_row_with_stage: applied
-      - click_action: Interviewing
+      - assert_present: 'tr[data-stage="applied"]'
+      - select_option:
+          row_selector: 'tr[data-stage="applied"]'
+          option_value: interview
       - evaluate_dom:
           category: 2
           rubric: flow_without_exit
@@ -68,9 +69,10 @@ walkthroughs:
     target_category: 2
     steps:
       - goto: /board/applied
-      - assert_present: '[data-stage="interview"][data-fp]'
-      - pick_first_row_with_stage: interview
-      - click_action: Offer
+      - assert_present: 'tr[data-stage="interview"]'
+      - select_option:
+          row_selector: 'tr[data-stage="interview"]'
+          option_value: offer
       - evaluate_dom:
           category: 2
           rubric: flow_without_exit
@@ -80,8 +82,8 @@ walkthroughs:
     persona: established_user
     target_category: 2
     steps:
-      - goto: /board/waitlisted
-      - assert_present: '[data-stage="waitlisted"][data-fp]'
+      - goto: /board/waitlist
+      - assert_present: 'tr[data-stage="waitlisted"]'
       - pick_first_row_with_stage: waitlisted
       - click_action: Reactivate
       - evaluate_dom:
