@@ -25,11 +25,14 @@ from __future__ import annotations
 import json
 import os
 import random
+import re
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal, TypedDict
 
 from findajob.paths import BASE
 
@@ -290,13 +293,349 @@ def complete(
         if last_err.kind not in RETRY_KINDS:
             raise last_err
         if attempt < DEFAULT_MAX_ATTEMPTS - 1:
-            delay = min(
-                RETRY_MAX_DELAY_S,
-                RETRY_BASE_DELAY_S * (2**attempt) + random.random() * 0.5,
-            )
+            delay = _compute_backoff_delay(attempt)
             time.sleep(delay)
     assert last_err is not None
     raise last_err
+
+
+# ---------------------------------------------------------------------------
+# Streaming chunk types for complete_stream()
+# ---------------------------------------------------------------------------
+
+
+class StreamCaptured(TypedDict):
+    """Emitted when a <<<END FILE: name.md>>> close marker arrives."""
+
+    type: Literal["captured"]
+    name: str  # e.g. "voice_samples_a.md"
+
+
+class StreamUsage(TypedDict):
+    prompt_tokens: int
+    completion_tokens: int
+    cached_tokens: int
+    cost_usd: float
+
+
+class StreamFinish(TypedDict):
+    """Emitted exactly once at end-of-stream."""
+
+    type: Literal["finish"]
+    text: str  # accumulated assistant text across the entire stream
+    finish_reason: str | None  # "stop", "length", etc.
+    usage: StreamUsage
+    generation_id: str | None
+
+
+class StreamError(TypedDict):
+    """Emitted on failure; always the final chunk when yielded."""
+
+    type: Literal["error"]
+    kind: str  # OpenRouterError.kind values
+    message: str
+
+
+StreamChunk = StreamCaptured | StreamFinish | StreamError
+
+# Regex for FILE block close markers in accumulated text.
+_END_FILE_RE = re.compile(r"<<<END FILE:\s*([^>\s]+)\s*>>>")
+
+
+def complete_stream(
+    *,
+    role: str,
+    prompt: str,
+    history: list[dict] | None = None,
+    cache_system: bool = False,
+    cached_prefix: str | None = None,
+    pin_provider: str | None = None,
+    api_key: str | None = None,
+    max_tokens: int | None = None,
+    timeout_s: int = DEFAULT_TIMEOUT_S,
+    roles_dir: Path | None = None,
+) -> Iterator[StreamChunk]:
+    """Streaming variant of :func:`complete`.
+
+    Yields :data:`StreamChunk` typed dicts progressively as OpenRouter emits
+    SSE events. Use this for long-running onboarding turns where the user
+    needs intermediate progress (file-capture badges) before the full response
+    arrives.
+
+    Chunk sequence:
+
+    - Zero or more :class:`StreamCaptured` chunks — one per
+      ``<<<END FILE: name.md>>>`` close marker seen in the accumulated buffer.
+    - Exactly one :class:`StreamFinish` chunk at end-of-stream (on success).
+    - OR exactly one :class:`StreamError` chunk (on failure). If the error
+      occurs before the first yield, it is the only chunk. If it occurs after
+      a ``captured`` event, it is the final chunk; the generator then closes.
+
+    Spend ceiling:
+        :func:`_check_call_gate` runs before any HTTP work. If
+        :class:`LLMSpendCeilingExceeded` is raised it propagates immediately
+        (not yielded as an error chunk). The route layer returns 402 before
+        opening the SSE response — same contract as :func:`complete`.
+
+    Retry boundary:
+        Before the first yield: up to ``DEFAULT_MAX_ATTEMPTS`` retries on
+        transient failures (rate_limit, upstream, network) with exponential
+        backoff — same as :func:`complete`. After the first yield: no retries;
+        any failure yields an :class:`StreamError` and closes.
+
+    Cleanup:
+        The underlying HTTP response is closed in a ``try/finally`` block.
+        ``GeneratorExit`` (e.g. client disconnect) triggers the ``finally``
+        without needing an explicit close call on the caller's side.
+
+    TODO(#740 route): SSE route handler POST /onboarding/interview/turn-stream
+    TODO(#740 frontend): vanilla JS EventSource consumer
+    """
+    key = api_key if api_key is not None else os.environ.get("OPENROUTER_API_KEY", "")
+    if not key or not key.strip():
+        raise OpenRouterError(
+            "OPENROUTER_API_KEY not set. Add a key in /onboarding/ Step 1 or in data/.env.",
+            kind="config",
+        )
+
+    # Raises LLMSpendCeilingExceeded if monthly ceiling is met — caller catches
+    # this BEFORE opening the SSE response (route returns 402).
+    _check_call_gate()
+
+    base_dir = roles_dir if roles_dir is not None else _DEFAULT_ROLES_DIR
+    front, system_prompt = _read_role_file(base_dir / f"{role}.md")
+    model = str(front.get("model", ""))
+    if model.startswith("openrouter:"):
+        model = model[len("openrouter:") :]
+    if not model:
+        raise OpenRouterError(
+            f"Role '{role}' has no model: in frontmatter.",
+            kind="config",
+        )
+    raw_max = max_tokens if max_tokens is not None else front.get("max_tokens", DEFAULT_MAX_TOKENS)
+    effective_max_tokens = int(raw_max)
+    temperature = front.get("temperature")
+
+    if cache_system:
+        system_message: dict = {
+            "role": "system",
+            "content": [
+                {
+                    "type": "text",
+                    "text": system_prompt,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
+        }
+    else:
+        system_message = {"role": "system", "content": system_prompt}
+    messages: list[dict] = [system_message]
+    if history:
+        messages.extend(history)
+    if cached_prefix is not None:
+        messages.append(
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": cached_prefix,
+                        "cache_control": {"type": "ephemeral"},
+                    },
+                    {"type": "text", "text": prompt},
+                ],
+            }
+        )
+    else:
+        messages.append({"role": "user", "content": prompt})
+
+    payload: dict[str, object] = {
+        "model": model,
+        "messages": messages,
+        "max_tokens": effective_max_tokens,
+        "stream": True,
+        "stream_options": {"include_usage": True},
+    }
+    if temperature is not None:
+        payload["temperature"] = float(temperature)
+    if pin_provider:
+        payload["provider"] = {"only": [pin_provider]}
+
+    body = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(  # noqa: S310 — fixed https URL
+        OPENROUTER_API_URL,
+        data=body,
+        headers={
+            "Authorization": f"Bearer {key.strip()}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://github.com/brockamer/findajob",
+            "X-Title": "findajob LLM wrapper",
+        },
+        method="POST",
+    )
+
+    # --- Pre-first-yield retry loop (mirrors complete()) ---
+    last_err: OpenRouterError | None = None
+    resp = None
+    for attempt in range(DEFAULT_MAX_ATTEMPTS):
+        last_err = None
+        try:
+            resp = urllib.request.urlopen(req, timeout=timeout_s)  # noqa: S310
+            break  # success — exit retry loop, proceed to streaming read
+        except urllib.error.HTTPError as e:
+            try:
+                _raise_for_http_error(e)
+            except OpenRouterError as oe:
+                last_err = oe
+        except urllib.error.URLError as e:
+            last_err = OpenRouterError(
+                f"Could not reach OpenRouter ({e.reason}).",
+                kind="network",
+            )
+        except Exception as e:  # noqa: BLE001
+            last_err = OpenRouterError(
+                f"Unexpected error: {type(e).__name__}: {str(e)[:200]}",
+                kind="unknown",
+            )
+
+        assert last_err is not None
+        if last_err.kind not in RETRY_KINDS:
+            yield StreamError(type="error", kind=last_err.kind, message=str(last_err))
+            return
+        if attempt < DEFAULT_MAX_ATTEMPTS - 1:
+            import logging  # noqa: PLC0415
+
+            logging.getLogger(__name__).warning(
+                "complete_stream: transient error (attempt %d/%d): %s",
+                attempt + 1,
+                DEFAULT_MAX_ATTEMPTS,
+                last_err,
+            )
+            time.sleep(_compute_backoff_delay(attempt))
+        else:
+            # Final attempt failed
+            assert last_err is not None
+            yield StreamError(type="error", kind=last_err.kind, message=str(last_err))
+            return
+
+    if resp is None:
+        # Defensive: should not be reachable — loop above either breaks or returns.
+        yield StreamError(type="error", kind="unknown", message="Failed to open connection.")
+        return
+
+    # --- Streaming read — no retries after this point ---
+    accumulated: list[str] = []
+    last_capture_pos = 0
+    last_finish_reason: str | None = None
+    last_usage: StreamUsage = StreamUsage(prompt_tokens=0, completion_tokens=0, cached_tokens=0, cost_usd=0.0)
+    generation_id: str | None = None
+
+    try:
+        for raw_line_bytes in resp:
+            raw_line = raw_line_bytes.decode("utf-8", errors="replace").rstrip("\r\n")
+
+            # SSE comment lines (e.g. ": OPENROUTER PROCESSING") — skip.
+            if raw_line.startswith(":"):
+                continue
+            # Blank line = event boundary in SSE; nothing to parse.
+            if not raw_line:
+                continue
+            # Only parse data: lines.
+            if not raw_line.startswith("data: "):
+                continue
+
+            payload_str = raw_line[len("data: ") :]
+
+            # Terminal sentinel — stop reading.
+            if payload_str.strip() == "[DONE]":
+                break
+
+            try:
+                chunk = json.loads(payload_str)
+            except json.JSONDecodeError:
+                continue
+
+            # Extract generation id from any data chunk.
+            if generation_id is None:
+                generation_id = chunk.get("id")
+
+            # Extract delta content.
+            try:
+                delta_content = chunk["choices"][0]["delta"].get("content") or ""
+            except (KeyError, IndexError, TypeError):
+                delta_content = ""
+
+            if delta_content:
+                accumulated.append(delta_content)
+
+            # Extract finish_reason (accumulate — terminal chunk has it).
+            try:
+                fr = chunk["choices"][0].get("finish_reason")
+                if fr is not None:
+                    last_finish_reason = fr
+            except (KeyError, IndexError, TypeError):
+                pass
+
+            # Extract usage (accumulate — terminal chunk has it).
+            usage_raw = chunk.get("usage")
+            if usage_raw:
+                ptd = usage_raw.get("prompt_tokens_details") or {}
+                last_usage = StreamUsage(
+                    prompt_tokens=int(usage_raw.get("prompt_tokens", 0)),
+                    completion_tokens=int(usage_raw.get("completion_tokens", 0)),
+                    cached_tokens=int(ptd.get("cached_tokens", 0)),
+                    cost_usd=float(usage_raw.get("cost", 0.0)),
+                )
+
+            # Scan accumulated text for new END FILE markers.
+            if delta_content:
+                full_so_far = "".join(accumulated)
+                for m in _END_FILE_RE.finditer(full_so_far, last_capture_pos):
+                    last_capture_pos = m.end()
+                    yield StreamCaptured(type="captured", name=m.group(1))
+
+    except Exception as e:  # noqa: BLE001
+        # Mid-stream failure — no retries.
+        if isinstance(e, (ConnectionResetError, OSError)):
+            err_kind = "network"
+        elif isinstance(e, urllib.error.URLError):
+            err_kind = "network"
+        elif isinstance(e, urllib.error.HTTPError):
+            err_kind = "upstream"
+        else:
+            err_kind = "unknown"
+        try:
+            resp.close()
+        except Exception:  # noqa: BLE001
+            pass
+        yield StreamError(type="error", kind=err_kind, message=f"{type(e).__name__}: {str(e)[:200]}")
+        return
+    finally:
+        try:
+            resp.close()
+        except Exception:  # noqa: BLE001
+            pass
+
+    # Emit the finish event.
+    yield StreamFinish(
+        type="finish",
+        text="".join(accumulated),
+        finish_reason=last_finish_reason,
+        usage=last_usage,
+        generation_id=generation_id,
+    )
+
+
+def _compute_backoff_delay(attempt: int) -> float:
+    """Exponential backoff delay for retry attempt (0-indexed).
+
+    Returns a value in ``[RETRY_BASE_DELAY_S, RETRY_MAX_DELAY_S]`` with
+    ±0.5s jitter. Shared by :func:`complete` and :func:`complete_stream`.
+    """
+    return min(
+        RETRY_MAX_DELAY_S,
+        RETRY_BASE_DELAY_S * (2**attempt) + random.random() * 0.5,
+    )
 
 
 def _read_role_file(path: Path) -> tuple[dict, str]:
