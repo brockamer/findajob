@@ -63,7 +63,7 @@ exactly as written. Never duplicate or alter the name.
    reads like a template, not a draft.
 4. The FIRST LINE of your output must be a markdown heading with the company
    and title, in this exact format:
-   `# Cover Letter | {Company} | {Job Title}`
+   `# {Company} | {Job Title}`
    Use the company name and job title provided in the prompt. This heading
    renders as the document header in the final .docx output.
 5. Immediately after the heading, include a contact info line. Use the

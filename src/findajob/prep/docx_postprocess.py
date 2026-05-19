@@ -1,55 +1,61 @@
 """Cosmetic post-processing for prep output documents.
 
-- `_add_cover_letter_spacing(docx_path)` — fixes paragraph spacing, strips
-  pandoc bookmark anchors that render as blue brackets in Google Docs.
+- `_add_cover_letter_spacing(docx_path)` — applies 12pt paragraph spacing
+  to body paragraphs in a cover letter `.docx`. The `BodyText` style in
+  `config/reference.docx` has `space_after=20 twips` (~1pt), which renders
+  too tight; direct paragraph formatting here overrides the style for the
+  cover letter only.
 - `_linkify_contact_info(md)` — converts bare email + LinkedIn URLs to
   Markdown hyperlinks before pandoc conversion so the docx has
   clickable links.
 
-Extracted from `scripts/prep_application.py` in M3 (#537). Behavior
-preserved verbatim — both functions are idempotent and silent on
-failure (post-processing must never block prep).
+Imports are at module top so a missing `python-docx` install fails loudly
+at orchestrator import time, not silently per-call. Cosmetic-only runtime
+failures (corrupt docx, python-docx API drift) are caught and logged
+without blocking prep.
 """
 
 import re
 
+from docx import Document
+from docx.opc.exceptions import OpcError
+from docx.shared import Pt
+
+from findajob.audit import log_event
+
 
 def _add_cover_letter_spacing(docx_path: str) -> None:
-    """Post-process cover letter .docx for clean formatting.
+    """Post-process cover letter .docx for readable paragraph spacing.
 
-    Heading 1 is left untouched — the reference.docx theme renders it correctly
-    (teal color, heading font) in Google Docs. Adjustments:
-    1. Remove pandoc bookmark anchors (render as blue bracket in Google Docs)
-    2. Space before the date line to separate from contact info
-    3. 12pt space-after from date onward for readable paragraph gaps
+    Heading 1 (paragraph 0) is left untouched — the reference.docx theme
+    renders it correctly. Adjustments:
+    1. Add 12pt space-before to paragraph [2] (the date) to separate it
+       from the contact-info line.
+    2. Apply 12pt space-after to every body paragraph from [2] onward,
+       overriding the BodyText style's tight 1pt default.
+
+    Bookmark anchors are no longer stripped here — `config/strip-bookmarks.lua`
+    handles them at pandoc time, upstream of this post-process.
     """
     try:
-        from docx import Document
-        from docx.shared import Pt
-
         doc = Document(docx_path)
         if not doc.paragraphs:
             return
 
-        # 1. Strip bookmark anchors that pandoc adds to headings
-        body = doc.element.body
-        ns = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
-        for tag in ("bookmarkStart", "bookmarkEnd"):
-            for bm in body.findall(f".//{{{ns}}}{tag}"):
-                bm.getparent().remove(bm)
-
-        # 2. Add space before the date line (paragraph [2]) to separate from contact
         if len(doc.paragraphs) > 2:
             doc.paragraphs[2].paragraph_format.space_before = Pt(12)
 
-        # 3. Add 12pt space-after from date onward
         for para in doc.paragraphs[2:]:
             if para.text.strip():
                 para.paragraph_format.space_after = Pt(12)
 
         doc.save(docx_path)
-    except Exception:
-        pass  # post-processing is cosmetic — never block prep
+    except (KeyError, AttributeError, ValueError, OSError, OpcError) as exc:
+        log_event(
+            "cover_letter_spacing_failed",
+            docx_path=docx_path,
+            error=f"{type(exc).__name__}: {exc}",
+        )
 
 
 def _linkify_contact_info(md: str) -> str:
