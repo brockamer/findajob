@@ -165,18 +165,31 @@ def test_interview_page_renders_persisted_history_with_role_styling(
     assert 'data-role="assistant"' in body
 
 
-def test_interview_page_includes_htmx_post_form_targeting_messages(
+def test_interview_page_includes_streaming_form_pointing_at_turn_stream(
     client_with_key: TestClient, base_root: Path
 ) -> None:
-    """The user-input form must HTMX-post to /turn with hx-target=#messages
-    and hx-swap=beforeend (Task 5 acceptance)."""
+    """The user-input form must drive the SSE streaming endpoint (#740).
+
+    The form opts into the JS-driven streaming flow via
+    `data-stream-endpoint="/onboarding/interview/turn-stream"`. The
+    onboarding-stream.js module attaches a submit handler that POSTs there
+    and consumes the SSE response progressively.
+    """
     sid = _create_session_with_history(base_root, [])
     resp = client_with_key.get(f"/onboarding/interview/{sid}")
     assert resp.status_code == 200
     body = resp.text
-    assert 'hx-post="/onboarding/interview/turn"' in body
-    assert 'hx-target="#messages"' in body
-    assert 'hx-swap="beforeend"' in body
+    assert 'data-stream-endpoint="/onboarding/interview/turn-stream"' in body
+    # The streaming-progress slot the JS targets for badge chips.
+    assert 'id="stream-progress"' in body
+    # The JS module must be loaded so the form's submit handler attaches.
+    assert "onboarding-stream.js" in body
+    # No HTMX form attrs on the streaming form — they would race with the
+    # JS handler and re-introduce the old non-streaming UX path.
+    assert 'hx-post="/onboarding/interview/turn"' not in body
+    # Negative containment: the streaming endpoint URL must NOT appear as
+    # the non-streaming /turn (catches a lazy substring match).
+    assert "/onboarding/interview/turn-stream" in body
 
 
 def test_interview_page_hides_finalize_block_when_not_ready(client_with_key: TestClient, base_root: Path) -> None:

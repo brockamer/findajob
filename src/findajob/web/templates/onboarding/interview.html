@@ -62,12 +62,14 @@
     <span>Thinking… (the model takes a few seconds per turn)</span>
   </div>
 
-  <form hx-post="/onboarding/interview/turn"
-        hx-target="#messages"
-        hx-swap="beforeend"
-        hx-indicator="#turn-thinking"
-        hx-disabled-elt="find button, find textarea"
-        hx-on::after-request="this.querySelector('textarea').value = ''"
+  {# #740 Streaming chips render here as <<<END FILE: name>>> markers arrive
+     mid-turn. JS clears this on finish/error/retry. The non-streaming /turn
+     route remains available as a fallback for test environments and no-JS
+     deploys; production traffic flows through the streaming endpoint. #}
+  <div id="stream-progress" class="flex flex-wrap items-center gap-2"
+       aria-live="polite" role="status"></div>
+
+  <form data-stream-endpoint="/onboarding/interview/turn-stream"
         class="space-y-2">
     <input type="hidden" name="session_id" value="{{ session_id }}">
     <textarea name="message" rows="4" required
