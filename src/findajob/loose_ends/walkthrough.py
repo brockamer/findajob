@@ -16,6 +16,8 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import yaml
+from playwright.sync_api import Error as PWError
+from playwright.sync_api import TimeoutError as PWTimeout
 
 from findajob.loose_ends.finding import Finding
 from findajob.loose_ends.rubrics import evaluate_empty_state_no_guidance, evaluate_flow_without_exit
@@ -253,7 +255,7 @@ def run_walkthrough(
                 walkthrough_name=walkthrough.name,
                 exclusions=exclusions,
             )
-        except (TimeoutError, AssertionError) as exc:
+        except (PWTimeout, PWError, AssertionError) as exc:
             findings.append(
                 Finding(
                     persona=walkthrough.persona,

@@ -8,6 +8,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
+from playwright.sync_api import Error as PWError
+from playwright.sync_api import TimeoutError as PWTimeout
 
 from findajob.loose_ends.finding import Finding, read_findings, write_finding
 from findajob.loose_ends.walkthrough import (
@@ -403,14 +405,14 @@ def test_run_walkthrough_executes_all_steps_and_returns_findings():
 
 
 def test_run_walkthrough_records_timeout_as_review_finding():
-    """A Playwright timeout mid-walkthrough must NOT abort the run.
+    """A Playwright TimeoutError mid-walkthrough must NOT abort the run.
 
-    Walker records a REVIEW finding and continues. This is the spec's
-    posture for category-2/3 walks: a missing selector means the page
-    shape drifted, which is itself a finding worth reviewing.
+    Walker records a REVIEW finding and returns early. This test exercises
+    the real playwright.sync_api.TimeoutError class, not the builtin, so it
+    catches the production class hierarchy correctly.
     """
     page = MagicMock()
-    page.goto.side_effect = TimeoutError("nav timeout")
+    page.goto.side_effect = PWTimeout("nav timeout")
 
     walkthrough = Walkthrough(
         name="x",
@@ -427,4 +429,32 @@ def test_run_walkthrough_records_timeout_as_review_finding():
     assert len(findings) == 1
     assert findings[0].confidence == "review"
     assert "timeout" in findings[0].rationale.lower()
+    assert cost == 0.0
+
+
+def test_run_walkthrough_records_pw_error_as_review_finding():
+    """A Playwright Error (e.g. detached frame, strict-mode violation) is also caught.
+
+    PWError is Playwright's base exception class and covers connection-closed,
+    detached-frame, and strict-mode violations — all indicate page shape drift
+    worth surfacing as a REVIEW finding rather than crashing the audit.
+    """
+    page = MagicMock()
+    page.goto.side_effect = PWError("element detached")
+
+    walkthrough = Walkthrough(
+        name="x",
+        persona="nux_user",
+        target_category=3,
+        steps=(GotoStep(url="/board/dashboard"),),
+    )
+    findings, cost = run_walkthrough(
+        page=page,
+        walkthrough=walkthrough,
+        base_url="https://example.com",
+        exclusions={},
+    )
+    assert len(findings) == 1
+    assert findings[0].confidence == "review"
+    assert "error" in findings[0].rationale.lower()
     assert cost == 0.0
