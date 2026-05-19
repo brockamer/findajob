@@ -5,7 +5,20 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from findajob.loose_ends.walkthrough import Finding, read_findings, write_finding
+import pytest
+import yaml
+
+from findajob.loose_ends.walkthrough import (
+    AssertPresentStep,
+    ClickActionStep,
+    EvaluateDomStep,
+    Finding,
+    GotoStep,
+    PickFirstRowStep,
+    load_walkthroughs,
+    read_findings,
+    write_finding,
+)
 
 
 def test_finding_is_frozen_dataclass():
@@ -84,3 +97,114 @@ def test_write_finding_appends_one_jsonl_line_per_call(tmp_path: Path):
     assert len(lines) == 2
     for line in lines:
         json.loads(line)  # each line is valid JSON
+
+
+def test_load_walkthroughs_parses_goto_and_evaluate_dom(tmp_path: Path):
+    path = tmp_path / "loose_ends_walkthroughs.yaml"
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "walkthroughs": [
+                    {
+                        "name": "dashboard_first_load",
+                        "persona": "nux_user",
+                        "target_category": 3,
+                        "steps": [
+                            {"goto": "/board/dashboard"},
+                            {"evaluate_dom": {"category": 3, "rubric": "empty_state_no_guidance"}},
+                        ],
+                    }
+                ]
+            }
+        )
+    )
+    walkthroughs = load_walkthroughs(path)
+    assert len(walkthroughs) == 1
+    w = walkthroughs[0]
+    assert w.name == "dashboard_first_load"
+    assert w.persona == "nux_user"
+    assert w.target_category == 3
+    assert len(w.steps) == 2
+    assert isinstance(w.steps[0], GotoStep)
+    assert w.steps[0].url == "/board/dashboard"
+    assert isinstance(w.steps[1], EvaluateDomStep)
+    assert w.steps[1].category == 3
+    assert w.steps[1].rubric == "empty_state_no_guidance"
+
+
+def test_load_walkthroughs_parses_action_steps(tmp_path: Path):
+    path = tmp_path / "loose_ends_walkthroughs.yaml"
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "walkthroughs": [
+                    {
+                        "name": "applied_undo_exits",
+                        "persona": "established_user",
+                        "target_category": 2,
+                        "steps": [
+                            {"goto": "/board/applied"},
+                            {"pick_first_row_with_stage": "applied"},
+                            {"click_action": "Interviewing"},
+                            {"assert_present": "[data-fp]"},
+                            {
+                                "evaluate_dom": {
+                                    "category": 2,
+                                    "rubric": "flow_without_exit",
+                                    "context_hint": "Just transitioned applied→interviewing",
+                                }
+                            },
+                        ],
+                    }
+                ]
+            }
+        )
+    )
+    [w] = load_walkthroughs(path)
+    assert isinstance(w.steps[1], PickFirstRowStep)
+    assert w.steps[1].stage == "applied"
+    assert isinstance(w.steps[2], ClickActionStep)
+    assert w.steps[2].action_text == "Interviewing"
+    assert isinstance(w.steps[3], AssertPresentStep)
+    assert w.steps[3].selector == "[data-fp]"
+    assert w.steps[4].context_hint == "Just transitioned applied→interviewing"
+
+
+def test_load_walkthroughs_rejects_unknown_step(tmp_path: Path):
+    path = tmp_path / "loose_ends_walkthroughs.yaml"
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "walkthroughs": [
+                    {
+                        "name": "x",
+                        "persona": "nux_user",
+                        "target_category": 3,
+                        "steps": [{"unknown_step": "foo"}],
+                    }
+                ]
+            }
+        )
+    )
+    with pytest.raises(ValueError, match="unknown step"):
+        load_walkthroughs(path)
+
+
+def test_load_walkthroughs_rejects_invalid_persona(tmp_path: Path):
+    path = tmp_path / "loose_ends_walkthroughs.yaml"
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "walkthroughs": [
+                    {
+                        "name": "x",
+                        "persona": "month_1_user",
+                        "target_category": 3,
+                        "steps": [],
+                    }
+                ]
+            }
+        )
+    )
+    with pytest.raises(ValueError, match="persona"):
+        load_walkthroughs(path)

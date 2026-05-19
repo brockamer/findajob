@@ -14,6 +14,8 @@ import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+import yaml
+
 
 @dataclass(frozen=True)
 class Finding:
@@ -52,3 +54,86 @@ def read_findings(source: Path) -> list[Finding]:
             continue
         out.append(Finding(**json.loads(raw)))
     return out
+
+
+_VALID_PERSONAS = {"nux_user", "established_user"}
+
+
+@dataclass(frozen=True)
+class GotoStep:
+    url: str
+
+
+@dataclass(frozen=True)
+class PickFirstRowStep:
+    stage: str
+
+
+@dataclass(frozen=True)
+class ClickActionStep:
+    action_text: str
+
+
+@dataclass(frozen=True)
+class AssertPresentStep:
+    selector: str
+
+
+@dataclass(frozen=True)
+class EvaluateDomStep:
+    category: int
+    rubric: str
+    context_hint: str = ""
+
+
+Step = GotoStep | PickFirstRowStep | ClickActionStep | AssertPresentStep | EvaluateDomStep
+
+
+@dataclass(frozen=True)
+class Walkthrough:
+    name: str
+    persona: str
+    target_category: int
+    steps: tuple[Step, ...]
+
+
+def _parse_step(raw: dict) -> Step:
+    if len(raw) != 1:
+        raise ValueError(f"step dict must have exactly one key, got {list(raw.keys())}")
+    [(key, value)] = raw.items()
+    if key == "goto":
+        return GotoStep(url=str(value))
+    if key == "pick_first_row_with_stage":
+        return PickFirstRowStep(stage=str(value))
+    if key == "click_action":
+        return ClickActionStep(action_text=str(value))
+    if key == "assert_present":
+        return AssertPresentStep(selector=str(value))
+    if key == "evaluate_dom":
+        if not isinstance(value, dict):
+            raise ValueError(f"evaluate_dom value must be a dict, got {type(value).__name__}")
+        return EvaluateDomStep(
+            category=int(value["category"]),
+            rubric=str(value["rubric"]),
+            context_hint=str(value.get("context_hint", "")),
+        )
+    raise ValueError(f"unknown step type: {key!r}")
+
+
+def load_walkthroughs(path: Path) -> list[Walkthrough]:
+    """Parse config/loose_ends_walkthroughs.yaml. Raises on invalid persona or step."""
+    raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    walkthroughs: list[Walkthrough] = []
+    for w in raw.get("walkthroughs", []):
+        persona = w["persona"]
+        if persona not in _VALID_PERSONAS:
+            raise ValueError(f"invalid persona '{persona}' (expected one of {_VALID_PERSONAS})")
+        walkthroughs.append(
+            Walkthrough(
+                name=str(w["name"]),
+                persona=persona,
+                target_category=int(w["target_category"]),
+                steps=tuple(_parse_step(s) for s in w.get("steps", [])),
+            )
+        )
+    return walkthroughs
