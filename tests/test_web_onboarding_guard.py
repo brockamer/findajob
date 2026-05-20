@@ -98,3 +98,34 @@ def test_guarded_page_still_renders_badge_when_configured(configured_client: Tes
     assert resp.status_code == 200
     assert 'id="nav-notif-badge"' in resp.text
     assert 'hx-get="/notifications/badge"' in resp.text
+
+
+# ---- #619: HX-Request-aware guard (defense-in-depth for any future nav widget) ----
+#
+# #618 fixed the acute redirect-loop bug by gating the badge `<li>` template-side
+# so no ungated page emits an HTMX poll element. This block guards the same bug
+# class at the boundary: if a future developer adds a new nav widget that polls
+# a different guarded endpoint and forgets the template gate, the guard itself
+# returns HTMX-native semantics (200 + HX-Redirect header) instead of a 307 the
+# HTMX runtime would follow and outerHTML-swap into the trigger element.
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["/notifications/badge", "/board/dashboard", "/stats/funnel"],
+)
+def test_hx_request_to_guarded_endpoint_returns_hx_redirect(unconfigured_client: TestClient, path: str) -> None:
+    resp = unconfigured_client.get(path, headers={"HX-Request": "true"})
+    assert resp.status_code == 200
+    assert resp.headers.get("HX-Redirect") == "/onboarding/"
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["/notifications/badge", "/board/dashboard", "/stats/funnel"],
+)
+def test_non_hx_request_to_guarded_endpoint_still_returns_307(unconfigured_client: TestClient, path: str) -> None:
+    resp = unconfigured_client.get(path)
+    assert resp.status_code == 307
+    assert resp.headers["location"] == "/onboarding/"
+    assert "HX-Redirect" not in resp.headers

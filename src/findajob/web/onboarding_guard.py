@@ -36,9 +36,22 @@ def require_onboarding_complete(request: Request) -> None:
 
     Attached via ``dependencies=[Depends(require_onboarding_complete)]`` on
     the board/materials/stats router includes.
+
+    HTMX-aware branch (#619): when the request is HTMX-initiated, respond
+    with ``200 + HX-Redirect: /onboarding/`` instead of a 30x. HTMX honors
+    `HX-Redirect` by setting `window.location` BEFORE any element swap, so
+    the body is never rendered into the trigger element — sidestepping the
+    redirect-loop bug class that #618 fixed at the template layer for the
+    bell widget specifically. This is the boundary-enforced defense so that
+    any future nav widget polling a guarded endpoint is safe by default.
     """
     if onboarding_complete(request):
         return
+    if request.headers.get("HX-Request"):
+        raise HTTPException(
+            status_code=200,
+            headers={"HX-Redirect": "/onboarding/"},
+        )
     raise HTTPException(
         status_code=307,
         headers={"Location": "/onboarding/"},
