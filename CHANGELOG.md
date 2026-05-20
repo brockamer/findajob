@@ -10,6 +10,8 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+## [0.27.3] — 2026-05-20
+
 ### Migration required
 
 - **#498 `jobs.score_status` CHECK constraint tightened — `needs_info` dropped.** Pre-#498 the constraint permitted `'scored'`, `'manual_review'`, and `'needs_info'`; the third value was dead — never written by any code path, absent from `config/scoring_schema.json`, and verified zero rows across every active cohort stack at filing time. New `findajob.db.migrate._tighten_score_status_check_if_needed()` runs on every `apply_pending` and rebuilds the `jobs` table via the rename-create-copy-drop pattern when the live CHECK still includes `'needs_info'`. Pre-rebuild row-count guard: if any row carries `score_status='needs_info'`, the helper raises `RuntimeError` with a specific recovery message rather than letting `_rebuild_table_with_indexes` surface a buried CHECK violation; the legacy row is left untouched and the stack stops taking writes until cleaned (`UPDATE jobs SET score_status='scored' WHERE …` or operator-chosen value). Helper runs FIRST in `apply_pending`'s post-migration step (before `_add_briefing_ready_stage_if_needed` and `_add_prep_phase_b_kind_if_needed`) so its specific message wins over the generic one a sibling rebuild would surface. Idempotent — short-circuits when `'needs_info'` is no longer in the live schema. Fresh installs pick up the tightened constraint directly from the edited `0001_initial.sql:60`; existing stacks at `_meta.schema_version=1` absorb it on their next entrypoint run with no schema_version bump and no operator action.
@@ -1234,7 +1236,8 @@ from GHCR and deployed via Docker Compose on a shared Docker host.
 - Documentation cleanup — removing `sigoden/aichat` references in favor of
   `blob42/aichat-ng` — is tracked in #70
 
-[Unreleased]: https://github.com/brockamer/findajob/compare/v0.27.2...HEAD
+[Unreleased]: https://github.com/brockamer/findajob/compare/v0.27.3...HEAD
+[0.27.3]: https://github.com/brockamer/findajob/releases/tag/v0.27.3
 [0.27.2]: https://github.com/brockamer/findajob/releases/tag/v0.27.2
 [0.27.1]: https://github.com/brockamer/findajob/releases/tag/v0.27.1
 [0.27.0]: https://github.com/brockamer/findajob/releases/tag/v0.27.0
