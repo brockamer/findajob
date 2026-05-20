@@ -360,6 +360,16 @@ def _tighten_score_status_check_if_needed(conn: sqlite3.Connection) -> None:
     Hooked from :func:`apply_pending` so every connect picks up the
     tightening without bumping ``_meta.schema_version`` (constraint-only
     change, invisible to schema_version readers).
+
+    Coverage note: the guard runs first among the post-migration
+    helpers, but ``_bridge_legacy_to_v1`` runs earlier still — its
+    ``_relax_jobs_stage_check_if_needed`` rebuilds the jobs table from
+    the (now-tightened) 0001 CHECK and would surface a generic
+    ``sqlite3.IntegrityError`` on a v0.10-shape stack that carried
+    ``needs_info`` rows. Cold path: every active cohort stack is at
+    ``schema_version=1`` already, so the bridge is unreachable. If a
+    future fresh v0.10 import needs the specific message, move the
+    guard ahead of :func:`_infer_baseline_version`.
     """
     schema_row = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='jobs'").fetchone()
     if schema_row is None:
