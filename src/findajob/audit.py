@@ -24,6 +24,11 @@ open-append-close so POSIX ``O_APPEND`` atomicity guarantees no lock is
 needed there; the rare rotation block is serialized across processes
 with a non-blocking ``fcntl.flock`` on a sidecar lock file.
 
+The :func:`cron_event_span` context manager wraps a cron entry point's
+main() so every run emits paired ``cron_started`` / ``cron_finished``
+events with the cron slug. The web ``/tools/`` trigger panel and the
+pipeline log viewer both read these events.
+
 Extracted from ``utils.py`` in M4.E2.I2 (#550). #8 added rotation in 2026-05.
 """
 
@@ -36,6 +41,8 @@ import os
 import shutil
 import sqlite3
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -154,3 +161,27 @@ def write_audit(
         )
     if commit:
         conn.commit()
+
+
+@contextmanager
+def cron_event_span(cron_name: str) -> Iterator[None]:
+    """Emit paired cron_started + cron_finished events around a cron run.
+
+    Args:
+        cron_name: Slug matching the entry in
+            :data:`findajob.web.cron_registry.CRON_TILES`.
+
+    Emits ``cron_finished`` with ``status='failed'`` on any exception
+    and re-raises. SIGKILL leaves a dangling ``cron_started``; the web
+    layer's ``is_currently_running`` helper applies a max-runtime
+    ceiling per cron so leaked starts self-clear (see spec §4.3).
+    """
+    log_event("cron_started", cron=cron_name)
+    status = "succeeded"
+    try:
+        yield
+    except BaseException:
+        status = "failed"
+        raise
+    finally:
+        log_event("cron_finished", cron=cron_name, status=status)
