@@ -10,6 +10,10 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Added
+
+- **#8 feat(audit): in-process rotation for `logs/pipeline.jsonl`.** The file caps at 5 MB; on threshold cross, the current file is gzipped to `pipeline.jsonl.1.gz`, older `.gz` backups shift up (`.1.gz` → `.2.gz`, …), and the ring keeps the 6 most recent. Any backup older than 90 days is also swept at the end of every rotation regardless of slot. Total disk footprint per stack is now bounded at a few MB instead of growing unbounded (operator's stack was at 4.99 MB after 36 days pre-#8 across 8 cohort stacks). Implemented inline in `src/findajob/audit.py` rather than via `logging.handlers.RotatingFileHandler` — three of the four needed features (gzip on rotation, 90-day mtime sweep, monkeypatch-friendly `LOG_PATH` resolution for tests) require custom hooks anyway, and stdlib's per-process open file handle would have introduced a multi-process race the existing open-append-close pattern avoids. The hot path stays open-append-close (POSIX `O_APPEND` writes ≤ PIPE_BUF are atomic, so no lock is needed there); the rare rotation block is serialized across the supercronic+uvicorn processes with a non-blocking `fcntl.flock` on a sidecar `<path>.rotate.lock` file. If another process is mid-rotation, the would-be caller skips silently and the next call retries. Reader compat: `findajob.admin.jsonl_tail` already reads only the trailing 1 MB so the admin dashboard is unaffected; `findajob.staging.green._read_events` extended to also read `pipeline.jsonl.1.gz` so the 26h `pipeline_complete` predicate survives a rotation that lands between green-check runs. Docs in `docs/operations/README.md` replace the prior manual-`logrotate` workaround. No `migration-required` — purely additive runtime behavior, no schema/config/compose change.
+
 ## [0.27.3] — 2026-05-20
 
 ### Migration required

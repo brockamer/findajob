@@ -171,19 +171,15 @@ The materials sub-view (`/materials/`) renders prep-folder contents grouped by s
 
 ## Log Rotation
 
-`logs/pipeline.jsonl` grows without bound. Rotation #8 is open; until that lands, rotate manually or set up `logrotate` on the host targeting the bind-mounted log directory.
+`logs/pipeline.jsonl` rotates in-process at 5 MB. The rotator lives in `findajob.audit` (the same module that writes the file) so the behavior is identical inside and outside Docker without per-host `logrotate` setup.
 
-Run `logrotate` on the host against the bind-mounted directory:
+On rotation, the current file is gzipped to `pipeline.jsonl.1.gz`; older backups shift up (`.1.gz` → `.2.gz`, `.2.gz` → `.3.gz`, …). The ring keeps the 6 most recent backups, so disk usage per stack is bounded at roughly 5 MB current file + 6 × ≪5 MB gzipped backups (a few MB total in practice). At the end of every rotation, any backup older than 90 days is also swept regardless of slot — on low-activity stacks where rotation happens only every few months, this prevents indefinitely-stale gzipped history from accumulating.
 
-```
-/opt/stacks/findajob-{handle}/state/logs/*.jsonl {
-    weekly
-    rotate 4
-    compress
-    missingok
-    notifempty
-}
-```
+Two readers know about rotation:
+- The admin dashboard (`findajob.admin.jsonl_tail`) reads only the trailing 1 MB of the *current* file; rotated history is intentionally not surfaced there.
+- The staging green-check (`findajob.staging.green`) reads the current file plus `pipeline.jsonl.1.gz` so the 26h `pipeline_complete` predicate survives a rotation that lands between green-check runs.
+
+If you specifically need a long-running off-host log history, ship `pipeline.jsonl` to syslog / Loki / Datadog from the host — the in-container rotation is intentionally short-window operational visibility, not durable archival. The durable transition trail lives in the `audit_log` SQLite table, not in `pipeline.jsonl`.
 
 ---
 

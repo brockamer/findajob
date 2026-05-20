@@ -18,9 +18,11 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import gzip
 import json
 import subprocess
 import sys
+from collections.abc import Iterable
 from pathlib import Path
 
 from findajob.audit import LOG_PATH as _AUDIT_LOG_PATH
@@ -34,11 +36,9 @@ DEFAULT_SENTINEL = Path(BASE) / "data" / ".staging_clicker_last_status"
 DEFAULT_TRIAGE_MAX_AGE_HOURS = 26
 
 
-def _read_events(log: Path) -> list[dict]:
-    if not log.exists():
-        return []
+def _parse_events(lines: Iterable[str]) -> list[dict]:
     out: list[dict] = []
-    for raw in log.read_text().splitlines():
+    for raw in lines:
         raw = raw.strip()
         if not raw:
             continue
@@ -46,6 +46,27 @@ def _read_events(log: Path) -> list[dict]:
             out.append(json.loads(raw))
         except json.JSONDecodeError:
             continue
+    return out
+
+
+def _read_events(log: Path) -> list[dict]:
+    # Include the most recent rotated backup. `pipeline.jsonl` is
+    # bounded by audit.py's rotator (#8 — 5 MB cap, .1.gz holds the
+    # previous segment); reading only the current file would silently
+    # drop the last triage cycle on a stack that rotated since.
+    out: list[dict] = []
+    rotated = Path(str(log) + ".1.gz")
+    if rotated.exists():
+        try:
+            with gzip.open(rotated, "rt") as f:
+                out.extend(_parse_events(f))
+        except OSError:
+            pass
+    if log.exists():
+        try:
+            out.extend(_parse_events(log.read_text().splitlines()))
+        except OSError:
+            pass
     return out
 
 

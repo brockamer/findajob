@@ -186,8 +186,10 @@ def test_render_under_2s(operator_app, tmp_path: Path) -> None:
     of running the test against trivial fixtures (the previous 500-event ~30KB
     files exercised the happy path without proving the bound matters).
 
-    Operator's stack pipeline.jsonl was ~10MB on 2026-04-30; long-running
-    tester stacks will land in the same range.
+    Sizes this large no longer occur in production after #8 (rotation at 5 MB);
+    the test deliberately seeds past the rotation threshold to verify the
+    dashboard render stays bounded even in the brief window between a file
+    crossing 5 MB and the next log_event call that triggers rotation.
     """
     import json
     import time
