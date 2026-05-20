@@ -339,6 +339,48 @@ def _add_briefing_ready_stage_if_needed(conn: sqlite3.Connection) -> None:
     )
 
 
+def _tighten_score_status_check_if_needed(conn: sqlite3.Connection) -> None:
+    """If the live ``jobs.score_status`` CHECK still permits ``'needs_info'``,
+    rebuild the table from 0001_initial.sql to drop it from the constraint.
+    Idempotent: a no-op once the constraint is already tightened.
+
+    Unlike the relaxation helpers above, this *tightens* the constraint.
+    The rebuild's ``INSERT INTO new SELECT FROM legacy`` would itself
+    fail with a CHECK violation if any row carried ``score_status =
+    'needs_info'`` — but the error message at that point is generic. A
+    pre-rebuild row-count probe lets us fail with a specific message
+    (and before the rename + create do any work). Per #498 AC#2:
+    "existing rows verified ``score_status != 'needs_info'`` before the
+    constraint tightens."
+
+    Verified at filing time that every active cohort stack carried
+    zero ``needs_info`` rows. The guard is defense in depth against
+    future drift, not a known-failure path.
+
+    Hooked from :func:`apply_pending` so every connect picks up the
+    tightening without bumping ``_meta.schema_version`` (constraint-only
+    change, invisible to schema_version readers).
+    """
+    schema_row = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='jobs'").fetchone()
+    if schema_row is None:
+        return
+    current_sql = schema_row[0] or ""
+    if "'needs_info'" not in current_sql:
+        return  # already at #498 shape
+    legacy_count = conn.execute("SELECT COUNT(*) FROM jobs WHERE score_status='needs_info'").fetchone()[0]
+    if legacy_count > 0:
+        raise RuntimeError(
+            f"refusing to tighten jobs.score_status CHECK: {legacy_count} row(s) carry score_status='needs_info'. "
+            "Resolve these rows (re-score or update to 'scored'/'manual_review') before restarting; see #498."
+        )
+    _rebuild_table_with_indexes(
+        conn,
+        table="jobs",
+        migration_filename="0001_initial.sql",
+        legacy_alias="_jobs_pre_score_status_tighten",
+    )
+
+
 def _add_prep_phase_b_kind_if_needed(conn: sqlite3.Connection) -> None:
     """If the live ``background_tasks.kind`` CHECK lacks ``'prep_phase_b'``,
     rebuild from 0002_background_tasks.sql to pick up the new value.
@@ -475,6 +517,10 @@ def apply_pending(conn: sqlite3.Connection, *, dry_run: bool = False) -> list[Ap
     # circuits on a no-op probe of the live schema. Hook order matters
     # only when one helper depends on another; today they don't.
     if not dry_run:
+        # Tightening helper runs first: its specific row-count guard
+        # must fire before any other helper triggers a generic rebuild
+        # that would surface a buried CHECK-violation IntegrityError.
+        _tighten_score_status_check_if_needed(conn)
         _add_briefing_ready_stage_if_needed(conn)
         _add_prep_phase_b_kind_if_needed(conn)
 

@@ -804,3 +804,186 @@ def test_prep_phase_b_helper_is_idempotent(tmp_path: Path) -> None:
         assert rowid_after == rowid_before, "rebuild ran on second apply_pending — helper is not idempotent"
     finally:
         conn.close()
+
+
+# ── #498: tighten jobs.score_status CHECK — drop dead 'needs_info' value ───
+#
+# Constraint *tightening* (vs the relaxations above). The helper's
+# pre-rebuild row-count guard satisfies AC#2 ("existing rows verified
+# score_status != 'needs_info' before the constraint tightens") and gives
+# a specific error message before any rename/create work happens.
+# Verified at filing time that all eight cohort stacks carry zero such
+# rows; the guard is defense in depth.
+
+
+def _score_status_check_accepts(conn: sqlite3.Connection, value: str) -> bool:
+    """True iff an INSERT of a job row with ``score_status=value`` succeeds."""
+    try:
+        conn.execute(
+            "INSERT INTO jobs (id, fingerprint, url, title, company, source, score_status) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (f"probe-ss-{value}", f"fp-probe-ss-{value}", "https://x.test/", "Probe", "Probe Co", "test", value),
+        )
+        conn.execute("DELETE FROM jobs WHERE id=?", (f"probe-ss-{value}",))
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        conn.rollback()
+        return False
+
+
+def test_fresh_db_rejects_needs_info_score_status(tmp_path: Path) -> None:
+    """A fresh DB through ``apply_pending`` has the tightened CHECK from
+    0001_initial.sql — ``needs_info`` is no longer accepted."""
+    db = tmp_path / "fresh_score_status.db"
+    conn = sqlite3.connect(str(db))
+    try:
+        apply_pending(conn)
+        assert _score_status_check_accepts(conn, "scored"), "fresh DB must still accept 'scored'"
+        assert _score_status_check_accepts(conn, "manual_review"), "fresh DB must still accept 'manual_review'"
+        assert not _score_status_check_accepts(conn, "needs_info"), (
+            "fresh DB must reject 'needs_info' — CHECK should be tightened"
+        )
+    finally:
+        conn.close()
+
+
+def test_existing_v1_db_tightens_score_status_via_helper(tmp_path: Path) -> None:
+    """A stack at schema_version=1 with the OLD ``jobs.score_status``
+    CHECK (still permitting ``needs_info``) gets the constraint tightened
+    when ``apply_pending`` runs again. Existing rows preserved."""
+    db = tmp_path / "existing_v1_score_status.db"
+
+    conn = sqlite3.connect(str(db))
+    try:
+        apply_pending(conn)
+    finally:
+        conn.close()
+
+    conn = sqlite3.connect(str(db))
+    try:
+        # Sentinel row to verify preservation across the rebuild.
+        conn.execute(
+            "INSERT INTO jobs (id, fingerprint, url, title, company, source, score_status) "
+            "VALUES ('preserve-ss', 'fp-preserve-ss', 'https://x', 'T', 'C', 'test', 'scored')"
+        )
+        conn.commit()
+
+        # Simulate the pre-#498 CHECK (still includes 'needs_info').
+        old_check_create = """
+        CREATE TABLE jobs_old_check (
+            id TEXT PRIMARY KEY,
+            fingerprint TEXT UNIQUE NOT NULL,
+            url TEXT NOT NULL,
+            title TEXT NOT NULL,
+            company TEXT NOT NULL,
+            source TEXT NOT NULL DEFAULT 'test',
+            score_status TEXT CHECK(score_status IN ('scored', 'manual_review', 'needs_info'))
+        )
+        """
+        conn.execute("PRAGMA foreign_keys=OFF")
+        cols = [row[1] for row in conn.execute("PRAGMA table_info(jobs)").fetchall()]
+        keep_cols = ["id", "fingerprint", "url", "title", "company", "source", "score_status"]
+        keep_cols_csv = ",".join(c for c in keep_cols if c in cols)
+        conn.execute("ALTER TABLE jobs RENAME TO _jobs_v1_oldscore")
+        conn.executescript(old_check_create.replace("jobs_old_check", "jobs"))
+        conn.execute(f"INSERT INTO jobs ({keep_cols_csv}) SELECT {keep_cols_csv} FROM _jobs_v1_oldscore")
+        conn.execute("DROP TABLE _jobs_v1_oldscore")
+        conn.commit()
+        conn.execute("PRAGMA foreign_keys=ON")
+
+        # Sanity check the simulated old state still accepts needs_info.
+        assert _score_status_check_accepts(conn, "needs_info"), (
+            "test setup is broken: simulated-old-state should accept 'needs_info'"
+        )
+    finally:
+        conn.close()
+
+    # Re-run apply_pending; the new helper must tighten the CHECK.
+    conn = sqlite3.connect(str(db))
+    try:
+        apply_pending(conn)
+        assert not _score_status_check_accepts(conn, "needs_info"), "after apply_pending, 'needs_info' must be rejected"
+        row = conn.execute("SELECT id, score_status FROM jobs WHERE id='preserve-ss'").fetchone()
+        assert row == ("preserve-ss", "scored"), "existing row must survive the rebuild"
+    finally:
+        conn.close()
+
+
+def test_score_status_helper_refuses_when_legacy_rows_exist(tmp_path: Path) -> None:
+    """If any row carries ``score_status='needs_info'`` when the helper
+    runs, the rebuild must refuse with a specific error before any
+    rename/create work happens. Satisfies AC#2 of #498.
+    """
+    db = tmp_path / "legacy_rows_score_status.db"
+
+    conn = sqlite3.connect(str(db))
+    try:
+        apply_pending(conn)
+    finally:
+        conn.close()
+
+    # Rewrite jobs with the OLD CHECK so we can insert a 'needs_info' row.
+    conn = sqlite3.connect(str(db))
+    try:
+        old_check_create = """
+        CREATE TABLE jobs_old_check (
+            id TEXT PRIMARY KEY,
+            fingerprint TEXT UNIQUE NOT NULL,
+            url TEXT NOT NULL,
+            title TEXT NOT NULL,
+            company TEXT NOT NULL,
+            source TEXT NOT NULL DEFAULT 'test',
+            score_status TEXT CHECK(score_status IN ('scored', 'manual_review', 'needs_info'))
+        )
+        """
+        conn.execute("PRAGMA foreign_keys=OFF")
+        conn.execute("ALTER TABLE jobs RENAME TO _jobs_v1_legacy_rows")
+        conn.executescript(old_check_create.replace("jobs_old_check", "jobs"))
+        conn.execute(
+            "INSERT INTO jobs (id, fingerprint, url, title, company, source, score_status) "
+            "VALUES ('legacy-needs-info', 'fp-legacy-needs-info', 'https://x', 'T', 'C', 'test', 'needs_info')"
+        )
+        conn.execute("DROP TABLE _jobs_v1_legacy_rows")
+        conn.commit()
+        conn.execute("PRAGMA foreign_keys=ON")
+    finally:
+        conn.close()
+
+    # apply_pending must refuse rather than silently drop or fail with a
+    # generic CHECK violation buried inside _rebuild_table_with_indexes.
+    conn = sqlite3.connect(str(db))
+    try:
+        with pytest.raises(RuntimeError, match="needs_info"):
+            apply_pending(conn)
+        # Row is still there, untouched — fail-closed.
+        row = conn.execute("SELECT id, score_status FROM jobs WHERE id='legacy-needs-info'").fetchone()
+        assert row == ("legacy-needs-info", "needs_info"), "legacy row must not be mutated by the refused rebuild"
+    finally:
+        conn.close()
+
+
+def test_score_status_helper_is_idempotent(tmp_path: Path) -> None:
+    """Running ``apply_pending`` twice on a DB whose CHECK is already
+    tightened must not trigger a second rebuild.
+    """
+    db = tmp_path / "idempotent_score_status.db"
+    conn = sqlite3.connect(str(db))
+    try:
+        apply_pending(conn)
+        conn.execute(
+            "INSERT INTO jobs (id, fingerprint, url, title, company, source, score_status) "
+            "VALUES ('idem-ss', 'fp-idem-ss', 'https://x', 'T', 'C', 'test', 'scored')"
+        )
+        conn.commit()
+        rowid_before = conn.execute("SELECT rowid FROM jobs WHERE id='idem-ss'").fetchone()[0]
+    finally:
+        conn.close()
+
+    conn = sqlite3.connect(str(db))
+    try:
+        apply_pending(conn)
+        rowid_after = conn.execute("SELECT rowid FROM jobs WHERE id='idem-ss'").fetchone()[0]
+        assert rowid_after == rowid_before, "rebuild ran on second apply_pending — helper is not idempotent"
+    finally:
+        conn.close()

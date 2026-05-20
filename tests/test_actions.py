@@ -28,7 +28,7 @@ CREATE TABLE jobs (
     source TEXT NOT NULL DEFAULT 'test',
     raw_jd_text TEXT,
     relevance_score INTEGER CHECK(relevance_score BETWEEN 1 AND 10),
-    score_status TEXT CHECK(score_status IN ('scored', 'manual_review', 'needs_info')),
+    score_status TEXT CHECK(score_status IN ('scored', 'manual_review')),
     score_flag_reason TEXT,
     stage TEXT DEFAULT 'discovered' CHECK(stage IN (
         'discovered', 'enriched', 'scored', 'manual_review',

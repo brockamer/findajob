@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     industry_sector TEXT,
     comp_estimate TEXT DEFAULT '',
     ai_notes TEXT,
-    score_status TEXT CHECK(score_status IN ('scored', 'manual_review', 'needs_info')),
+    score_status TEXT CHECK(score_status IN ('scored', 'manual_review')),
     score_flag_reason TEXT,
     remote_status TEXT DEFAULT 'Unknown',
 
