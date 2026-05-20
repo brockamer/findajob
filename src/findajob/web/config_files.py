@@ -35,6 +35,10 @@ EDITABLE_CATEGORIES: dict[str, list[str] | str] = {
         # #671 — monthly LLM spend ceiling; prefer /settings/spend-ceiling/ for
         # structured edits, but raw /config/ access allows emergency overrides.
         "config/spend_ceiling.txt",
+        # #729 — excluded-employers list; prefer /settings/excluded-employers/
+        # for structured edits, but raw /config/ access allows repair of a
+        # malformed file the structured editor can't render.
+        "config/excluded_employers.yaml",
     ],
     "Role prompts": "config/roles/*.md",
     # #150 — operator-editable prompts powering /tools/ tiles. Same

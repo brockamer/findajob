@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% block title %}Excluded employers — Settings{% endblock %}
+{% block content %}
+<div class="max-w-2xl">
+  <h1 class="text-2xl font-semibold mb-1">Excluded employers</h1>
+  <p class="text-sm text-slate-600 mb-2">
+    Companies on this list are <strong>auto-rejected</strong> before any
+    LLM scoring — the job goes straight to score 1 with rejection reason
+    <code class="text-xs">excluded_employer</code>. Use this for prior
+    employers, ethical objections, or companies you want to never apply
+    to regardless of role.
+  </p>
+  <p class="text-sm text-slate-600 mb-6">
+    Two ways to match: <strong>Exact</strong> matches the company name
+    case-insensitively (e.g. <code class="text-xs">Apple</code> matches
+    "Apple" and "apple"); <strong>Regex</strong> matches a pattern (e.g.
+    <code class="text-xs">^state\s+of\s+\w+$</code> matches "State of
+    California", "State of Texas", etc.).
+  </p>
+
+  {% if load_error %}
+  <div class="px-3 py-2 mb-4 rounded bg-amber-50 border border-amber-200 text-amber-900 text-sm">
+    <strong>File could not be loaded:</strong> {{ load_error }}
+    <div class="mt-1">Showing empty editor. Saving here will overwrite the
+    malformed file. Use <a class="underline" href="/config/">/config/</a>
+    if you want to repair it manually first.</div>
+  </div>
+  {% endif %}
+
+  {# Seed JSON in a script block (NOT inline in x-data) — see #490
+     regression test for the bug class. #}
+  <script id="initial-exact" type="application/json">{{ exact_rows | tojson }}</script>
+  <script id="initial-regex" type="application/json">{{ regex_rows | tojson }}</script>
+  <div
+    x-data="{
+      exact: JSON.parse(document.getElementById('initial-exact').textContent),
+      regex: JSON.parse(document.getElementById('initial-regex').textContent),
+      addExact() { this.exact.push({ text: '' }); },
+      removeExact(i) { this.exact.splice(i, 1); },
+      addRegex() { this.regex.push({ text: '' }); },
+      removeRegex(i) { this.regex.splice(i, 1); }
+    }"
+  >
+    <form
+      hx-post="/settings/excluded-employers/"
+      hx-target="#save-result"
+      hx-swap="innerHTML"
+      class="space-y-6"
+    >
+      <input type="hidden" name="exact_count" :value="exact.length" />
+      <input type="hidden" name="regex_count" :value="regex.length" />
+
+      {# ─── Exact section ──────────────────────────────────────────── #}
+      <section>
+        <h2 class="text-lg font-semibold mb-2">Exact matches</h2>
+        <p class="text-xs text-slate-500 mb-3">
+          Case-insensitive exact match against the cleaned company name.
+        </p>
+
+        <div class="space-y-2">
+          <template x-for="(row, i) in exact" :key="'e' + i">
+            <div class="flex items-center gap-3">
+              <input
+                type="text"
+                :name="'exact_' + i"
+                x-model="row.text"
+                placeholder="Company name"
+                class="flex-1 rounded border-slate-300 shadow-sm focus:border-slate-500 focus:ring-slate-500 text-sm"
+              />
+              <button
+                type="button"
+                @click="removeExact(i)"
+                class="text-slate-400 hover:text-rose-600 text-sm font-medium px-2 py-1 rounded hover:bg-rose-50"
+                title="Remove this entry"
+              >
+                &times;
+              </button>
+            </div>
+          </template>
+        </div>
+
+        <button
+          type="button"
+          @click="addExact()"
+          class="mt-2 text-sm text-slate-600 hover:text-slate-900 border border-slate-300 rounded px-3 py-1.5 hover:bg-slate-100"
+        >
+          + Add company
+        </button>
+      </section>
+
+      {# ─── Regex section ──────────────────────────────────────────── #}
+      <section>
+        <h2 class="text-lg font-semibold mb-2">Regex patterns</h2>
+        <p class="text-xs text-slate-500 mb-3">
+          Case-insensitive Python regex. Useful for parameterized
+          exclusions like <code>^state\s+of\s+\w+$</code> or
+          <code>\b(parent|holdings|group)\b</code>.
+        </p>
+
+        <div class="space-y-2">
+          <template x-for="(row, i) in regex" :key="'r' + i">
+            <div class="flex items-center gap-3">
+              <input
+                type="text"
+                :name="'regex_' + i"
+                x-model="row.text"
+                placeholder="Regex pattern"
+                class="flex-1 rounded border-slate-300 shadow-sm focus:border-slate-500 focus:ring-slate-500 text-sm font-mono"
+              />
+              <button
+                type="button"
+                @click="removeRegex(i)"
+                class="text-slate-400 hover:text-rose-600 text-sm font-medium px-2 py-1 rounded hover:bg-rose-50"
+                title="Remove this pattern"
+              >
+                &times;
+              </button>
+            </div>
+          </template>
+        </div>
+
+        <button
+          type="button"
+          @click="addRegex()"
+          class="mt-2 text-sm text-slate-600 hover:text-slate-900 border border-slate-300 rounded px-3 py-1.5 hover:bg-slate-100"
+        >
+          + Add pattern
+        </button>
+      </section>
+
+      <div class="flex items-center gap-3 pt-2 border-t border-slate-200">
+        <button
+          type="submit"
+          class="bg-slate-800 text-white text-sm font-medium rounded px-4 py-1.5 hover:bg-slate-700"
+        >
+          Save
+        </button>
+
+        <span class="text-xs text-slate-500 htmx-indicator">Saving…</span>
+      </div>
+    </form>
+
+    <div id="save-result" class="mt-4"></div>
+  </div>
+</div>
+{% endblock %}

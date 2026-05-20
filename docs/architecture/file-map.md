@@ -23,6 +23,7 @@ When this map drifts from the actual code (renamed file, new route module, retir
 <repo>/src/findajob/web/middleware/disconnect_state.py # ASGI middleware wrapping receive() to record http.disconnect into scope["findajob.client_disconnected"] (#743) — passive observation, no race with Starlette's listen_for_disconnect; SSE route reads the flag via is_cancelled closure
 <repo>/src/findajob/web/routes/ingest.py     # GET /ingest/ form + POST /ingest/manual handler
 <repo>/src/findajob/web/routes/config.py     # GET /config/, GET/POST /config/files/{path} — in-browser config editor
+<repo>/src/findajob/web/routes/settings_excluded_employers.py # GET/POST /settings/excluded-employers/ — structured editor for config/excluded_employers.yaml; per-section exact + regex with validation. /config/ raw editor remains as fallback. (#729)
 <repo>/src/findajob/web/routes/gmail_config.py # GET/POST /config/gmail/ — IMAP/app-password integration setup (#330)
 <repo>/src/findajob/web/routes/tools.py      # GET /tools/ — guided LLM prompts + config/onboarding links (#150)
 <repo>/src/findajob/web/tools_registry.py   # tile data, prompt loader, claude.ai/new?q= URL builder (#150)

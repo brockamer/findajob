@@ -58,10 +58,10 @@ _NEVER_MATCH = re.compile(r"(?!x)x")
 _hard_reject_cache: tuple[re.Pattern[str], re.Pattern[str] | None] | None = None
 _in_domain_cache: tuple[re.Pattern[str], re.Pattern[str] | None] | None = None
 _companies_cache: frozenset[str] | None = None
-_excluded_employers_cache: tuple[frozenset[str], re.Pattern[str] | None] | None = None
-# Note: reject_reasons is intentionally NOT cached so /settings/reject-reasons/
-# saves take effect on the next request without a process restart (#490).
-# Cost is negligible — small YAML, parse-per-call is microseconds.
+# Note: reject_reasons and excluded_employers are intentionally NOT cached so
+# /settings/reject-reasons/ (#490) and /settings/excluded-employers/ (#729)
+# saves take effect on the next request without a process restart. Cost is
+# negligible — small YAML, parse-per-call is microseconds.
 
 # Warnings emitted (dedup per process)
 _warned: set[str] = set()
@@ -239,15 +239,13 @@ def load_excluded_employers() -> tuple[frozenset[str], re.Pattern[str] | None]:
     Missing file, empty file, or empty lists → `(frozenset(), None)` —
     company-exclusion stage becomes a no-op. Malformed entries raise
     `ConfigError`.
-    """
-    global _excluded_employers_cache
-    if _excluded_employers_cache is not None:
-        return _excluded_employers_cache
 
+    Returns fresh values on every call so `/settings/excluded-employers/`
+    saves take effect on the next request without a process restart (#729).
+    """
     data = _safe_load_yaml(_EXCLUDED_EMPLOYERS_PATH, "excluded_employers.yaml")
     if data is None:
-        _excluded_employers_cache = (frozenset(), None)
-        return _excluded_employers_cache
+        return (frozenset(), None)
 
     exact = data.get("exact", []) or []
     if not isinstance(exact, list):
@@ -268,8 +266,7 @@ def load_excluded_employers() -> tuple[frozenset[str], re.Pattern[str] | None]:
     if regex:
         regex_re = _compile_patterns(regex, _EXCLUDED_EMPLOYERS_PATH, "regex")
 
-    _excluded_employers_cache = (exact_set, regex_re)
-    return _excluded_employers_cache
+    return (exact_set, regex_re)
 
 
 def load_reject_reasons() -> tuple[tuple[str, ...], frozenset[str]]:
@@ -415,14 +412,83 @@ def save_reject_reasons(
         raise
 
 
+def save_excluded_employers(exact: tuple[str, ...], regex: tuple[str, ...]) -> None:
+    """Atomically write `config/excluded_employers.yaml` (#729).
+
+    Validates input before writing. On validation failure, raises ConfigError
+    and does not touch the file. On write failure, the original file is left
+    intact (atomic os.replace).
+
+    Validation:
+      - Each `exact` entry: non-empty after strip
+      - No duplicate `exact` entries (case-insensitive, post-strip)
+      - Each `regex` entry: non-empty after strip, compiles via re.compile
+      - No duplicate `regex` entries (post-strip)
+
+    Empty `exact` and empty `regex` are both valid — yields an explicit
+    `exact: []\\nregex: []\\n` no-op file (operator-configured "no exclusions").
+    """
+    import os
+    import tempfile
+
+    cleaned_exact = tuple(e.strip() for e in exact if e.strip())
+    lowered = [e.lower() for e in cleaned_exact]
+    if len(set(lowered)) != len(lowered):
+        raise ConfigError("excluded_employers: duplicate entries in 'exact' (case-insensitive)")
+
+    cleaned_regex = tuple(p.strip() for p in regex if p.strip())
+    if len(set(cleaned_regex)) != len(cleaned_regex):
+        raise ConfigError("excluded_employers: duplicate entries in 'regex'")
+    for p in cleaned_regex:
+        try:
+            re.compile(p)
+        except re.error as e:
+            raise ConfigError(f"excluded_employers: invalid regex {p!r} — {e}") from e
+
+    lines = []
+    if cleaned_exact:
+        lines.append("exact:")
+        for entry in cleaned_exact:
+            lines.append(f"  - {_yaml_scalar(entry)}")
+    else:
+        lines.append("exact: []")
+    if cleaned_regex:
+        lines.append("regex:")
+        for pattern in cleaned_regex:
+            lines.append(f"  - {_yaml_scalar(pattern)}")
+    else:
+        lines.append("regex: []")
+    body = "\n".join(lines) + "\n"
+
+    _EXCLUDED_EMPLOYERS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=_EXCLUDED_EMPLOYERS_PATH.name + ".",
+        suffix=".tmp",
+        dir=str(_EXCLUDED_EMPLOYERS_PATH.parent),
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
+            fh.write(body)
+        os.replace(tmp_name, _EXCLUDED_EMPLOYERS_PATH)
+    except Exception:
+        if os.path.exists(tmp_name):
+            os.unlink(tmp_name)
+        raise
+
+
+def _yaml_scalar(s: str) -> str:
+    """Quote a YAML scalar safely. Single-quoted form covers regex
+    metachars + names with colons / leading dashes / etc. Embedded
+    single quotes are doubled per YAML spec."""
+    return "'" + s.replace("'", "''") + "'"
+
+
 def _reset_cache() -> None:
     """Test-only. Clears module-level caches and warning dedup."""
     global _hard_reject_cache, _in_domain_cache, _companies_cache
-    global _excluded_employers_cache
     _hard_reject_cache = None
     _in_domain_cache = None
     _companies_cache = None
-    _excluded_employers_cache = None
     _warned.clear()
 
 
