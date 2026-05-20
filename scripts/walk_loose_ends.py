@@ -218,11 +218,10 @@ def main() -> int:
                 total_findings += count
 
     # Roll-up
-    report_dir = repo_root / "docs" / "personal" / "audit-reports"
     report_path, prose_cost = write_report(
         findings_jsonl=findings_jsonl,
         exclusions=exclusions,
-        output_dir=report_dir,
+        output_dir=args.output_dir,
     )
     total_cost += prose_cost
 
