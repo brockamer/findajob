@@ -86,21 +86,32 @@
             <summary class="cursor-pointer rounded border border-slate-300 bg-white px-3 py-1.5 font-medium text-slate-700 hover:bg-slate-100">
               Reattribute
             </summary>
-            <form class="mt-2 flex flex-wrap items-center gap-2"
-                  hx-post="/board/rejections-review/{{ item.id }}/reattribute"
-                  hx-target="#suggestion-{{ item.id }}"
-                  hx-swap="outerHTML">
-              <label class="text-xs text-slate-600">
-                Job ID
-                <input type="text" name="job_id" required
-                       class="ml-1 w-72 rounded border border-slate-300 px-2 py-1 text-sm font-mono"
-                       placeholder="paste jobs.id from /board/...">
-              </label>
-              <button type="submit"
-                      class="rounded bg-slate-700 px-3 py-1 text-sm font-medium text-white hover:bg-slate-800">
-                Apply
-              </button>
-            </form>
+            {% if reattribute_targets %}
+              <form class="mt-2 flex flex-wrap items-center gap-2"
+                    hx-post="/board/rejections-review/{{ item.id }}/reattribute"
+                    hx-target="#suggestion-{{ item.id }}"
+                    hx-swap="outerHTML">
+                <label class="text-xs text-slate-600">
+                  Pick a job
+                  <select name="job_id" required
+                          class="ml-1 w-96 rounded border border-slate-300 px-2 py-1 text-sm">
+                    <option value="" disabled selected>Choose…</option>
+                    {% for j in reattribute_targets %}
+                      <option value="{{ j.id }}">{{ j.title }} at {{ j.company }} ({{ j.stage }})</option>
+                    {% endfor %}
+                  </select>
+                </label>
+                <button type="submit"
+                        class="rounded bg-slate-700 px-3 py-1 text-sm font-medium text-white hover:bg-slate-800">
+                  Apply
+                </button>
+              </form>
+            {% else %}
+              <p class="mt-2 text-xs text-slate-500">
+                No applied/interview/offer jobs to reattribute to. Mark a job as applied first,
+                or dismiss this suggestion.
+              </p>
+            {% endif %}
           </details>
         </div>
       </li>

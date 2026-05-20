@@ -119,6 +119,72 @@ def test_index_empty_state(tmp_path):
     assert "No pending suggestions" in resp.text
 
 
+# ── reattribute dropdown ─────────────────────────────────────────────────────
+
+
+def test_index_renders_reattribute_dropdown_with_legal_targets(tmp_path):
+    """Reattribute affordance is a <select> with applied/interview/offer rows only.
+
+    Regression for #661: prior placeholder asked the operator to paste
+    `jobs.id`, but that UUID is never UI-visible. The dropdown both removes
+    the unusable freeform input and constrains targets to stages the POST
+    handler will accept.
+    """
+    conn, client = _make_client(tmp_path)
+    _seed_job(conn, job_id="job-applied", stage="applied", company="LegalCo")
+    _seed_job(conn, job_id="job-interview", stage="interview", company="LegalCo")
+    _seed_job(conn, job_id="job-offer", stage="offer", company="LegalCo")
+    _seed_job(conn, job_id="job-scored", stage="scored", company="ScoredCo")
+    _seed_job(conn, job_id="job-rejected", stage="rejected", company="RejectedCo")
+    _seed_job(conn, job_id="job-not-selected", stage="not_selected", company="NotSelCo")
+    _seed_suggestion(conn, suggestion_id=1, matched_job_id=None, match_status="unmatched")
+
+    resp = client.get("/board/rejections-review/")
+    assert resp.status_code == 200
+    assert '<select name="job_id"' in resp.text
+    # Legal targets present as options.
+    assert 'value="job-applied"' in resp.text
+    assert 'value="job-interview"' in resp.text
+    assert 'value="job-offer"' in resp.text
+    # Non-legal stages absent.
+    assert 'value="job-scored"' not in resp.text
+    assert 'value="job-rejected"' not in resp.text
+    assert 'value="job-not-selected"' not in resp.text
+    # Old freeform input + placeholder are gone.
+    assert "paste jobs.id" not in resp.text
+    assert 'type="text" name="job_id"' not in resp.text
+
+
+def test_index_reattribute_empty_state_when_no_legal_targets(tmp_path):
+    """With zero applied/interview/offer rows, render a non-actionable hint."""
+    conn, client = _make_client(tmp_path)
+    _seed_job(conn, job_id="job-scored", stage="scored")
+    _seed_suggestion(conn, suggestion_id=1, matched_job_id=None, match_status="unmatched")
+
+    resp = client.get("/board/rejections-review/")
+    assert resp.status_code == 200
+    assert '<select name="job_id"' not in resp.text
+    assert "No applied/interview/offer jobs to reattribute to" in resp.text
+
+
+def test_index_reattribute_targets_sorted_by_recency(tmp_path):
+    """Most-recently-transitioned legal target appears first in the dropdown."""
+    conn, client = _make_client(tmp_path)
+    _seed_job(conn, job_id="job-old", stage="applied", company="OldCo")
+    _seed_job(conn, job_id="job-new", stage="applied", company="NewCo")
+    conn.execute("UPDATE jobs SET stage_updated = '2026-01-01 00:00:00' WHERE id = 'job-old'")
+    conn.execute("UPDATE jobs SET stage_updated = '2026-05-20 00:00:00' WHERE id = 'job-new'")
+    conn.commit()
+    _seed_suggestion(conn, suggestion_id=1, matched_job_id=None, match_status="unmatched")
+
+    resp = client.get("/board/rejections-review/")
+    assert resp.status_code == 200
+    # job-new should appear before job-old in option order.
+    new_pos = resp.text.index('value="job-new"')
+    old_pos = resp.text.index('value="job-old"')
+    assert new_pos < old_pos
+
+
 # ── confirm ──────────────────────────────────────────────────────────────────
 
 

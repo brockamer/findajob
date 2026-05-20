@@ -75,6 +75,24 @@ def _load_job(db: sqlite3.Connection, job_id: str) -> sqlite3.Row:
     return row
 
 
+def _load_legal_reattribute_targets(db: sqlite3.Connection) -> list[dict[str, str]]:
+    """Rows the operator can legally pick as a reattribute target.
+
+    Mirrors the stage gate in ``confirm`` / ``reattribute`` so the dropdown
+    can never offer an option that the POST handler would reject with 409.
+    Sort: most-recently-transitioned first, then by insertion order.
+    """
+    rows = db.execute(
+        """
+        SELECT id, title, company, stage
+        FROM jobs
+        WHERE stage IN ('applied', 'interview', 'offer') AND synthetic = 0
+        ORDER BY stage_updated DESC NULLS LAST, created_at DESC
+        """
+    ).fetchall()
+    return [{"id": r["id"], "title": r["title"], "company": r["company"], "stage": r["stage"]} for r in rows]
+
+
 def _hx_or_redirect(request: Request, status: int = 200) -> HTMLResponse | RedirectResponse:
     """Return an HTMX-friendly empty fragment, or redirect back to the index."""
     if request.headers.get("HX-Request"):
@@ -125,11 +143,17 @@ def index(
         for r in rows
     ]
 
+    reattribute_targets = _load_legal_reattribute_targets(db)
+
     templates = request.app.state.templates
     return templates.TemplateResponse(
         request=request,
         name="rejections_review.html",
-        context={"items": items, "pending_count": len(items)},
+        context={
+            "items": items,
+            "pending_count": len(items),
+            "reattribute_targets": reattribute_targets,
+        },
     )
 
 
