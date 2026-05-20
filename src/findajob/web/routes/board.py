@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import os
 import sqlite3
+from datetime import datetime
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from findajob.config_loader import load_spend_ceiling
 from findajob.fetchers.adapters import registry as _adapter_registry
+from findajob.triage.schedule import next_triage_time
 from findajob.web import view_prefs
 from findajob.web.company_history import build_history_by_fp, fetch_company_history
 from findajob.web.discoveries import load_discoveries_summary
@@ -132,6 +135,8 @@ def dashboard(
     density: str = Query(default=_DEFAULT_DENSITY),
     dismiss_active_sources_banner: int = Query(default=0),
     dismiss_spend_ceiling_banner: int = Query(default=0),
+    dismiss_first_triage_banner: int = Query(default=0),
+    triage_launched: int = Query(default=0),
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
 ) -> HTMLResponse:
     # #603: ?dismiss_active_sources_banner=1 sets a 1-year cookie and
@@ -161,6 +166,21 @@ def dashboard(
         )
         return redirect  # type: ignore[return-value]
 
+    # #752: ?dismiss_first_triage_banner=1 silences the first-visit banner
+    # via a 1-year cookie. Also self-suppresses once jobs exist or sentinel
+    # ages past _FIRST_TRIAGE_WINDOW_HOURS — cookie just covers the
+    # legitimately-first-visit window for users who want to skip the nudge.
+    if dismiss_first_triage_banner:
+        redirect = RedirectResponse(url="/board/dashboard", status_code=303)
+        redirect.set_cookie(
+            "first_triage_banner_dismissed",
+            "1",
+            max_age=31536000,  # 1 year
+            httponly=False,
+            samesite="lax",
+        )
+        return redirect  # type: ignore[return-value]
+
     specs = filter_registry.DASHBOARD_COLUMNS
     parsed = parse_filter_params(specs, request.query_params)
     view_prefs_redirect = _maybe_redirect_to_persisted(request, "dashboard", parsed, db)
@@ -176,6 +196,7 @@ def dashboard(
     rejections_pending = _rejections_pending_count(db)
     show_banner, default_count = _active_sources_banner_state(request)
     show_ceiling_banner = _spend_ceiling_banner_state(request)
+    show_first_triage_banner, next_triage_fire = _first_triage_banner_state(request, db)
     templates = request.app.state.templates
     return templates.TemplateResponse(
         request=request,
@@ -194,6 +215,9 @@ def dashboard(
             "active_sources_banner": show_banner,
             "active_sources_default_count": default_count,
             "spend_ceiling_banner": show_ceiling_banner,
+            "first_triage_banner": show_first_triage_banner,
+            "next_triage_fire": next_triage_fire,
+            "triage_launched": bool(triage_launched),
         },
     )
 
@@ -236,6 +260,41 @@ def _spend_ceiling_banner_state(request: Request) -> bool:
     if request.cookies.get("spend_ceiling_banner_dismissed") == "1":
         return False
     return load_spend_ceiling() is None
+
+
+_FIRST_TRIAGE_WINDOW_HOURS = 48
+"""How long after onboarding completion the first-triage banner remains
+eligible to show. 48h floor — triage runs daily, so a shorter window risks
+expiring the banner before the first cycle has fired for a late-night
+onboarder. Cookie-dismiss is the user's escape hatch within the window."""
+
+
+def _first_triage_banner_state(
+    request: Request,
+    db: sqlite3.Connection,
+) -> tuple[bool, datetime | None]:
+    """Show the empty-dashboard "your first triage hasn't run yet" banner (#752).
+
+    Returns ``(show_banner, next_triage_fire)``. The banner is suppressed when:
+    - The ``first_triage_banner_dismissed`` cookie is "1".
+    - The ``jobs`` table has any rows (first triage produced output already).
+    - The onboarding sentinel is missing, or older than
+      ``_FIRST_TRIAGE_WINDOW_HOURS`` (we only nudge during the legitimately-
+      first-visit window; long-idle users get the standard empty state).
+    """
+    if request.cookies.get("first_triage_banner_dismissed") == "1":
+        return False, None
+    job_count = db.execute("SELECT COUNT(*) FROM jobs").fetchone()[0]
+    if job_count > 0:
+        return False, None
+    base_root: Path = request.app.state.base_root
+    sentinel = base_root / "data" / ".onboarding-complete"
+    if not sentinel.is_file():
+        return False, None
+    age_seconds = datetime.now().timestamp() - sentinel.stat().st_mtime
+    if age_seconds > _FIRST_TRIAGE_WINDOW_HOURS * 3600:
+        return False, None
+    return True, next_triage_time()
 
 
 def _rejections_pending_count(db: sqlite3.Connection) -> int:

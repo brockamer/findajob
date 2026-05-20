@@ -146,18 +146,26 @@ See [`gmail.md`](gmail.md) for the 2FA + app-password procedure. Gmail ingestion
 
 ## 7. Verify and wait for first triage
 
-After onboarding lands you on the dashboard, the feed is empty — no jobs have been triaged yet. By default, triage runs at midnight in your stack's timezone. Until then:
+After onboarding lands you on the dashboard, the feed is empty — no jobs have been triaged yet. By default, triage runs at midnight in your stack's timezone.
 
-- **Wait for the first triage cycle.** You'll see jobs appear in `/board/manual_review/` the next morning. By midday you should have a scored shortlist.
-- **Or trigger triage manually** to validate the pipeline immediately:
+**The dashboard tells you what to do.** A blue banner above the (empty) job table shows when the next scheduled triage will fire and includes a **Trigger triage now** button. Click it to start the pipeline immediately rather than wait for the cron cycle.
+
+**Plan for 5–60 minutes** on the first run — the wide range depends on how many target companies you named in the onboarding interview (more companies → more Greenhouse / Ashby feeds to walk → more jobs to score). Engineering / hyperscaler-flavored candidates with 20+ named companies often see 30–45 minutes; smaller named lists finish in 5–15. Subsequent daily runs are delta-only and complete in 1–5 minutes.
+
+When it finishes, refresh `/board/` and you should see a scored shortlist (typically 20–50 jobs at score ≥ 5 out of several hundred to a few thousand ingested).
+
+<details>
+<summary>Power-user: trigger from the command line</summary>
+
+If you prefer the CLI or your stack's web UI is down:
 
 ```
 fly ssh console --app findajob-<your-handle> --command "python3 /app/scripts/triage.py"
 ```
 
-**Plan for 5–60 minutes** on the first run — the wide range depends on how many target companies you named in the onboarding interview (more companies → more Greenhouse / Ashby feeds to walk → more jobs to score). Engineering / hyperscaler-flavored candidates with 20+ named companies often see 30–45 minutes; smaller named lists finish in 5–15. Subsequent daily runs are delta-only and complete in 1–5 minutes.
+This is equivalent to clicking the dashboard's **Trigger triage now** button — same script, same logs, same `pipeline.jsonl` events.
 
-When it finishes, refresh `/board/` and you should see a scored shortlist (typically 20–50 jobs at score ≥ 5 out of several hundred to a few thousand ingested).
+</details>
 
 ## 8. Daily operation
 

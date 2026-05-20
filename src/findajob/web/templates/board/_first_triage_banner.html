@@ -1,0 +1,50 @@
+{# #752: First-triage empty-state banner. Shown when jobs table is empty
+   AND onboarding completed < 48h ago, unless the
+   first_triage_banner_dismissed cookie is set. Self-suppresses once
+   jobs land in the table (no logic needed beyond the state helper).
+   When the operator just clicked "Trigger triage now" (303 → ?triage_launched=1),
+   the banner switches to a confirmation state. #}
+{% if first_triage_banner %}
+<div class="bg-sky-50 border border-sky-200 rounded p-4 mb-4 flex items-start gap-4">
+  <div class="flex-1 text-sm text-sky-900">
+    {% if triage_launched %}
+      <strong class="text-base">Triage started.</strong>
+      <p class="mt-2">
+        It's running in the background — refresh in a few minutes to see scored jobs.
+        First runs typically take 5–60 minutes depending on how many companies
+        and feeds your profile targets.
+      </p>
+    {% else %}
+      <strong class="text-base">You're set up. Your first triage hasn't run yet.</strong>
+      <p class="mt-2">
+        Triage scans LinkedIn, Greenhouse, and other sources for jobs, then scores
+        them against your profile.
+        {% if next_triage_fire %}
+          Nightly run scheduled for
+          <strong>{{ next_triage_fire.strftime("%a %b %-d at %-I:%M %p") }}</strong>.
+        {% else %}
+          Scheduled run not configured — trigger manually below.
+        {% endif %}
+      </p>
+      <p class="mt-1 text-xs text-sky-700">
+        Discoveries above are research targets only; scored jobs arrive after triage runs.
+      </p>
+    {% endif %}
+  </div>
+  <div class="flex flex-col items-end gap-2 whitespace-nowrap">
+    {% if not triage_launched %}
+      <form method="post" action="/board/trigger-triage">
+        <button type="submit"
+                class="bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium px-3 py-1.5 rounded">
+          Trigger triage now
+        </button>
+      </form>
+    {% endif %}
+    <a href="?dismiss_first_triage_banner=1"
+       class="text-xs text-sky-700 hover:text-sky-900"
+       title="Stop showing this banner. You can still trigger triage from the command line.">
+      Don't show again
+    </a>
+  </div>
+</div>
+{% endif %}

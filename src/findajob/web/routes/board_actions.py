@@ -20,7 +20,7 @@ from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from findajob.actions import (
     handle_not_selected,
@@ -1362,3 +1362,43 @@ def reattribute_from_archive(
         fs_op()
 
     return HTMLResponse("")
+
+
+@router.post("/board/trigger-triage")
+def trigger_triage(
+    request: Request,  # noqa: ARG001 — kept for symmetry with other routes
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> RedirectResponse:
+    """Manually fire ``scripts/triage.py`` from the dashboard first-triage
+    banner (#752).
+
+    Spends real LLM credit. Gated by the same monthly spend ceiling as prep.
+
+    V1 has no server-side idempotency tracking — PRG + browser form
+    behavior covers the impatient-double-click case, and the cost
+    ceiling caps any pathological double-fire. Documented follow-up:
+    sentinel-file or background_tasks-kind tracking for a deterministic
+    "triage already in flight, refusing".
+    """
+    refusal = check_launch_gate(db)
+    if refusal is not None:
+        raise HTTPException(
+            status_code=402,
+            detail=(
+                f"Monthly LLM spend ceiling reached: ${refusal.current_sum_usd:.2f} / "
+                f"${refusal.ceiling_usd:.2f}. Raise or disable the ceiling in /settings/."
+            ),
+        )
+
+    try:
+        subprocess.Popen(
+            [sys.executable, f"{BASE}/scripts/triage.py"],
+            start_new_session=True,
+            env={**os.environ},
+        )
+    except Exception as e:
+        log_event("web_triage_dispatch_failed", error=str(e))
+        raise HTTPException(status_code=500, detail=f"Failed to launch triage: {e}") from e
+
+    log_event("web_triage_dispatched", source="dashboard_banner")
+    return RedirectResponse(url="/board/dashboard?triage_launched=1", status_code=303)
