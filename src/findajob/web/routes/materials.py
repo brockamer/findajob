@@ -367,6 +367,18 @@ def folder_view(
     is_post_applied = stage in POST_APPLIED_STAGES
     applied_date = _latest_applied_date(folder) if is_post_applied else None
 
+    # Phase B progress (#738). The orchestrator writes ``.phase_b_step`` to
+    # the prep folder before each Phase B stage; surface it here so the
+    # operator sees "Phase B in progress — step N of 5" instead of the
+    # generic "⟳ Regenerating…" label that doesn't distinguish Phase A from
+    # Phase B regen. Only read when the row is actually in flight.
+    phase_b_step: str | None = None
+    if stage == "prep_in_progress":
+        try:
+            phase_b_step = (folder / ".phase_b_step").read_text().strip() or None
+        except OSError:
+            phase_b_step = None
+
     # Briefing-first gate (#691). Load reject_reasons only when the gate is
     # active so the folder view stays cheap for the other 99% of states.
     is_briefing_gate = stage == BRIEFING_GATE_STAGE
@@ -399,6 +411,7 @@ def folder_view(
             "applied_date": applied_date,
             "is_briefing_gate": is_briefing_gate,
             "reject_reasons": reject_reasons,
+            "phase_b_step": phase_b_step,
         },
     )
 

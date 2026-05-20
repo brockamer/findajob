@@ -164,10 +164,31 @@
     </div>
     <div class="shrink-0">
       {% if stage == 'prep_in_progress' %}
-        <button type="button" disabled
-                class="inline-flex items-center px-3 py-1.5 rounded text-sm font-medium bg-slate-300 text-slate-600 cursor-not-allowed">
-          ⟳ Regenerating…
-        </button>
+        {% if phase_b_step %}
+          {# #738 — Phase B sidecar present means this is a Continue-prep dispatch
+             (briefing_ready → prep_in_progress), not a Phase A regenerate. Render
+             "step N of 5: <label>" so the operator sees a distinct progress signal
+             rather than the generic "⟳ Regenerating…" label. #}
+          {% set parts = phase_b_step.split(' ', 1) %}
+          {% set progress = parts[0] %}
+          {% set label_map = {
+            'resume': 'tailoring resume',
+            'changes': 'reviewing changes',
+            'cover': 'drafting cover letter',
+            'critique': 'recruiter critique',
+            'outreach': 'drafting outreach'
+          } %}
+          {% set label = label_map.get(parts[1] if parts|length > 1 else '', parts[1] if parts|length > 1 else 'in flight') %}
+          <button type="button" disabled
+                  class="inline-flex items-center px-3 py-1.5 rounded text-sm font-medium bg-sky-200 text-sky-800 cursor-not-allowed">
+            ⟳ Phase B in progress — step {{ progress }}: {{ label }}
+          </button>
+        {% else %}
+          <button type="button" disabled
+                  class="inline-flex items-center px-3 py-1.5 rounded text-sm font-medium bg-slate-300 text-slate-600 cursor-not-allowed">
+            ⟳ Regenerating…
+          </button>
+        {% endif %}
       {% else %}
         <button type="button"
                 class="inline-flex items-center px-3 py-1.5 rounded text-sm font-medium bg-amber-600 hover:bg-amber-700 text-white"
