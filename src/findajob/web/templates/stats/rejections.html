@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% block title %}Rejections — findajob stats{% endblock %}
+{% block main_classes %}w-full px-4 py-6{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-semibold mb-4">Rejection breakdown — all time</h1>
+{% include "stats/_tabs.html" %}
+
+<p class="mb-4 text-sm text-slate-600">
+  Aggregate breakdown of <em>all rejection events</em> — both user-side rejections
+  (logged from the board's reject affordances) and company-side "Not Selected"
+  events from post-application archives. Companion to
+  <a href="/stats/feedback" class="text-blue-700 underline">/stats/feedback</a>,
+  which slices user rejections by reason over the trailing 28 days. This view is
+  all-time and adds a per-company axis — useful for spotting where rejection
+  volume concentrates over months rather than weeks.
+  Total: <span class="font-semibold">{{ total_rejections }}</span> rejection{{ '' if total_rejections == 1 else 's' }}.
+</p>
+
+<section class="mb-8">
+  <h2 class="text-lg font-semibold mb-2">By reason — global</h2>
+  {% if total_rejections == 0 %}
+    <p class="text-sm text-slate-500">No rejections recorded yet.</p>
+  {% else %}
+    <div class="bg-white rounded border border-slate-200 p-3">
+      <canvas id="rejections-global-chart" role="img" aria-label="Rejections per reason, all time" height="90"></canvas>
+      <noscript>
+        <p class="text-sm text-slate-600">Chart requires JavaScript. The table below has the same data.</p>
+      </noscript>
+    </div>
+    <div class="overflow-x-auto mt-2">
+      <table class="min-w-full bg-white shadow-sm rounded-sm text-sm">
+        <thead class="bg-slate-100 text-left text-xs uppercase tracking-wide text-slate-600">
+          <tr>
+            <th class="px-3 py-2">Reason</th>
+            <th class="px-3 py-2 text-right">Count</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for reason in reasons %}
+            <tr class="{% if loop.index0 % 2 %}bg-slate-50{% endif %}">
+              <td class="px-3 py-1">{{ reason }}</td>
+              <td class="px-3 py-1 text-right {% if global_totals[reason] == 0 %}text-slate-300{% endif %}">{{ global_totals[reason] }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+</section>
+
+<section class="mb-6">
+  <h2 class="text-lg font-semibold mb-2">By company — top {{ top_n }}</h2>
+  {% if top_companies %}
+    <div class="bg-white rounded border border-slate-200 p-3">
+      <canvas id="rejections-company-chart" role="img" aria-label="Per-company rejections, stacked by reason" height="110"></canvas>
+      <noscript>
+        <p class="text-sm text-slate-600">Chart requires JavaScript. The table below has the same data.</p>
+      </noscript>
+    </div>
+    <div class="overflow-x-auto mt-2">
+      <table class="min-w-full bg-white shadow-sm rounded-sm text-sm">
+        <thead class="bg-slate-100 text-left text-xs uppercase tracking-wide text-slate-600">
+          <tr>
+            <th class="px-3 py-2">Company</th>
+            <th class="px-3 py-2 text-right">Total</th>
+            {% for reason in reasons %}
+              <th class="px-3 py-2 text-right whitespace-nowrap">{{ reason }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for company in top_companies %}
+            <tr class="{% if loop.index0 % 2 %}bg-slate-50{% endif %}">
+              <td class="px-3 py-1 font-medium">{{ company }}</td>
+              <td class="px-3 py-1 text-right font-semibold">{{ company_totals[company] }}</td>
+              {% for reason in reasons %}
+                <td class="px-3 py-1 text-right {% if per_company[company][reason] == 0 %}text-slate-300{% endif %}">{{ per_company[company][reason] }}</td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="text-sm text-slate-500">No company-attributed rejections yet.</p>
+  {% endif %}
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script id="rejections-global-data" type="application/json">{{ global_chart_data_json | safe }}</script>
+<script id="rejections-company-data" type="application/json">{{ company_chart_data_json | safe }}</script>
+<script>
+  (function () {
+    // Distinct hues, matching the /stats/feedback palette so the same reason
+    // reads as the same color across pages.
+    const palette = [
+      '#1d4ed8', '#2563eb', '#0891b2', '#0d9488', '#059669',
+      '#65a30d', '#ca8a04', '#ea580c', '#dc2626', '#be185d', '#7c3aed',
+    ];
+
+    const globalEl = document.getElementById('rejections-global-chart');
+    if (globalEl) {
+      const g = JSON.parse(document.getElementById('rejections-global-data').textContent);
+      new Chart(globalEl, {
+        type: 'bar',
+        data: {
+          labels: g.labels,
+          datasets: [{
+            label: 'Rejections',
+            data: g.data,
+            backgroundColor: g.labels.map((_, i) => palette[i % palette.length]),
+            borderWidth: 0,
+          }],
+        },
+        options: {
+          responsive: true,
+          scales: {
+            y: { beginAtZero: true, ticks: { precision: 0 } },
+            x: { ticks: { maxRotation: 30, minRotation: 0, autoSkip: false } },
+          },
+          plugins: {
+            legend: { display: false },
+            tooltip: { callbacks: { title: (items) => items[0].label } },
+          },
+        },
+      });
+    }
+
+    const companyEl = document.getElementById('rejections-company-chart');
+    if (companyEl) {
+      const c = JSON.parse(document.getElementById('rejections-company-data').textContent);
+      const datasets = c.datasets.map((ds, i) => ({
+        label: ds.label,
+        data: ds.data,
+        backgroundColor: palette[i % palette.length],
+        borderWidth: 0,
+      }));
+      new Chart(companyEl, {
+        type: 'bar',
+        data: { labels: c.labels, datasets: datasets },
+        options: {
+          responsive: true,
+          scales: {
+            x: { stacked: true, ticks: { maxRotation: 30, minRotation: 0 } },
+            y: { stacked: true, beginAtZero: true, ticks: { precision: 0 } },
+          },
+          plugins: {
+            legend: { position: 'bottom', labels: { boxWidth: 16 } },
+            tooltip: { mode: 'index', intersect: false },
+          },
+        },
+      });
+    }
+  })();
+</script>
+{% endblock %}

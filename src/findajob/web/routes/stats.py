@@ -1,8 +1,8 @@
-"""Stats tabs: /stats/, /stats/funnel, /stats/feedback, /stats/scoring (14e).
+"""Stats tabs: /stats/, /stats/funnel, /stats/feedback, /stats/scoring, /stats/rejections (14e).
 
 Infrastructure for the `/stats/*` web UI group. Deferred dashboards render as
 disabled tabs in stats/_tabs.html until their respective follow-ups ship
-(#195 rejections, #196 throughput, #197 effectiveness).
+(#196 throughput, #197 effectiveness).
 
 Data source: SQLite at request time. No materialized stats tables; pipeline.db
 is small enough that a 30-day audit_log scan is sub-10ms. The feedback
@@ -57,6 +57,14 @@ _FEEDBACK_WINDOW_DAYS = 28
 _FEEDBACK_WEEK_DAYS = 7
 
 _SCORING_WINDOW_DAYS = 30
+
+# /stats/rejections renders an all-time view (no window) because the per-company
+# axis is the novel cut — concentration over months is the signal, and the
+# 28-day reason-trend slice already lives at /stats/feedback. Top-5 companies
+# by absolute count is plenty for v1; rigor (Wilson CI, min-N gates) is the
+# v2 work tracked in #230.
+_REJECTIONS_TOP_COMPANIES = 5
+_REJECTION_STAGES: tuple[str, ...] = ("rejected", "not_selected")
 
 # Score columns charted on /stats/scoring. Tuple shape:
 #   (column_name, label, range_kind, slug)
@@ -379,3 +387,116 @@ def _bucketize_scores(values: list[int | float], kind: str) -> list[dict[str, in
             buckets[idx]["count"] += 1  # type: ignore[operator]
         return buckets
     return []
+
+
+@router.get("/stats/rejections", response_class=HTMLResponse)
+def rejections(
+    request: Request,
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> HTMLResponse:
+    """All-time rejection breakdown — global per-reason bar + per-company top-5 stacked.
+
+    Sources from `jobs.stage IN ('rejected','not_selected')` so this view
+    captures both user rejections (which feedback_log also captures) and
+    company NOT_SELECTED events (which never reach feedback_log by design —
+    company rejections must not contaminate the scorer's feedback loop).
+    Companion to /board/rejected (per-row view) and /stats/feedback (28-day
+    user-rejection trend); orthogonal cuts of overlapping data.
+    """
+    global_rows = db.execute(
+        f"""
+        SELECT COALESCE(NULLIF(reject_reason, ''), '(blank)') AS reason,
+               COUNT(*) AS n
+        FROM jobs
+        WHERE stage IN ({",".join("?" * len(_REJECTION_STAGES))})
+        GROUP BY reason
+        ORDER BY n DESC, reason ASC
+        """,
+        _REJECTION_STAGES,
+    ).fetchall()
+
+    canonical_reasons, _title_signal = load_reject_reasons()
+    extras: list[str] = []
+    for row in global_rows:
+        reason = row["reason"] if isinstance(row, sqlite3.Row) else row[0]
+        if reason and reason not in canonical_reasons and reason not in extras:
+            extras.append(reason)
+    reasons: tuple[str, ...] = canonical_reasons + tuple(sorted(extras))
+
+    global_totals: dict[str, int] = dict.fromkeys(reasons, 0)
+    for row in global_rows:
+        reason = row["reason"] if isinstance(row, sqlite3.Row) else row[0]
+        n = row["n"] if isinstance(row, sqlite3.Row) else row[1]
+        if reason in global_totals:
+            global_totals[reason] = n
+    total_rejections = sum(global_totals.values())
+
+    top_company_rows = db.execute(
+        f"""
+        SELECT company, COUNT(*) AS n
+        FROM jobs
+        WHERE stage IN ({",".join("?" * len(_REJECTION_STAGES))})
+          AND company IS NOT NULL AND TRIM(company) != ''
+        GROUP BY company
+        ORDER BY n DESC, company ASC
+        LIMIT ?
+        """,
+        (*_REJECTION_STAGES, _REJECTIONS_TOP_COMPANIES),
+    ).fetchall()
+    top_companies: list[str] = [row["company"] if isinstance(row, sqlite3.Row) else row[0] for row in top_company_rows]
+    company_totals: dict[str, int] = {
+        (row["company"] if isinstance(row, sqlite3.Row) else row[0]): (
+            row["n"] if isinstance(row, sqlite3.Row) else row[1]
+        )
+        for row in top_company_rows
+    }
+
+    per_company: dict[str, dict[str, int]] = {co: dict.fromkeys(reasons, 0) for co in top_companies}
+    if top_companies:
+        co_placeholders = ",".join("?" * len(top_companies))
+        company_rows = db.execute(
+            f"""
+            SELECT company,
+                   COALESCE(NULLIF(reject_reason, ''), '(blank)') AS reason,
+                   COUNT(*) AS n
+            FROM jobs
+            WHERE stage IN ({",".join("?" * len(_REJECTION_STAGES))})
+              AND company IN ({co_placeholders})
+            GROUP BY company, reason
+            """,
+            (*_REJECTION_STAGES, *top_companies),
+        ).fetchall()
+        for row in company_rows:
+            co = row["company"] if isinstance(row, sqlite3.Row) else row[0]
+            reason = row["reason"] if isinstance(row, sqlite3.Row) else row[1]
+            n = row["n"] if isinstance(row, sqlite3.Row) else row[2]
+            if co in per_company and reason in per_company[co]:
+                per_company[co][reason] = n
+
+    global_chart_data = {
+        "labels": list(reasons),
+        "data": [global_totals[r] for r in reasons],
+    }
+    company_chart_data = {
+        "labels": top_companies,
+        "reasons": list(reasons),
+        "datasets": [{"label": r, "data": [per_company[co][r] for co in top_companies]} for r in reasons],
+    }
+
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request=request,
+        name="stats/rejections.html",
+        context={
+            "tab": "rejections",
+            "reasons": reasons,
+            "global_totals": global_totals,
+            "total_rejections": total_rejections,
+            "top_companies": top_companies,
+            "company_totals": company_totals,
+            "per_company": per_company,
+            "top_n": _REJECTIONS_TOP_COMPANIES,
+            "global_chart_data_json": json.dumps(global_chart_data),
+            "company_chart_data_json": json.dumps(company_chart_data),
+        },
+    )
