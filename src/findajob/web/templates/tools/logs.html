@@ -1,0 +1,51 @@
+{# src/findajob/web/templates/tools/logs.html — #650 log viewer #}
+{% extends "base.html" %}
+{% block title %}Pipeline log — /tools/{% endblock %}
+{% block content %}
+<div class="px-4 py-6 max-w-6xl mx-auto">
+  <h1 class="text-2xl font-semibold mb-2">Pipeline log</h1>
+  <p class="text-sm text-slate-500 mb-4">
+    Tail of <code>logs/pipeline.jsonl</code> — last {{ events|length }} events shown
+    (newest first). <a href="/tools/" class="underline">Back to /tools/</a>.
+  </p>
+
+  <form method="get" class="mb-4 flex items-center gap-2 flex-wrap">
+    <label for="event" class="text-sm font-medium">Filter by event:</label>
+    <select name="event" id="event" class="border rounded px-2 py-1 text-sm">
+      <option value="">(all events)</option>
+      {% for name in observed_names %}
+      <option value="{{ name }}" {% if name in selected_events %}selected{% endif %}>{{ name }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="px-3 py-1 bg-slate-700 text-white text-sm rounded">Apply</button>
+    <a href="/tools/logs/pipeline/" class="text-sm underline">Clear</a>
+  </form>
+
+  <table class="w-full text-xs font-mono">
+    <thead>
+      <tr class="text-left border-b">
+        <th class="py-1 pr-2 w-44">Timestamp</th>
+        <th class="py-1 pr-2 w-48">Event</th>
+        <th class="py-1">Payload</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for ev in events %}
+      <tr class="border-b border-slate-200">
+        <td class="py-1 pr-2 text-slate-500">{{ ev.ts or '' }}</td>
+        <td class="py-1 pr-2 font-medium">{{ ev.event or '' }}</td>
+        <td class="py-1 break-all">
+          {% set ns = namespace(parts=[]) %}
+          {% for k, v in ev.items() if k not in ['ts','event'] %}
+            {% set _ = ns.parts.append(k ~ '=' ~ v|string) %}
+          {% endfor %}
+          {{ ns.parts|join(' · ') }}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="3" class="py-4 text-slate-400 italic">No events in window.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
