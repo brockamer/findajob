@@ -35,7 +35,7 @@ from findajob.actions import (
     reset_prep_to_briefing_ready,
     reset_prep_to_scored,
 )
-from findajob.audit import log_event
+from findajob.audit import cron_event_span, log_event
 from findajob.background_tasks import KIND_TIMEOUT_MINUTES, find_stuck, record_failed
 from findajob.db import connect
 from findajob.paths import BASE
@@ -255,26 +255,27 @@ def sweep_orphan_folders(conn: sqlite3.Connection) -> int:
 
 
 def main() -> None:
-    conn = connect(DB_PATH, timeout=30)
-    conn.row_factory = sqlite3.Row
-    try:
-        prep_count = reap_prep(conn)
-        phase_b_count = reap_prep_phase_b(conn)
-        briefing_stale_count = reap_briefing_ready_stale(conn)
-        interview_count = reap_interview_prep(conn)
-        spec_count = reap_speculative_research(conn)
-        orphans = sweep_orphan_folders(conn)
-    finally:
-        conn.close()
-    log_event(
-        "watchdog_run",
-        stale_reset=prep_count,
-        prep_phase_b_failed=phase_b_count,
-        briefing_ready_stale_reset=briefing_stale_count,
-        interview_failed=interview_count,
-        speculative_failed=spec_count,
-        orphans_swept=orphans,
-    )
+    with cron_event_span("watchdog"):
+        conn = connect(DB_PATH, timeout=30)
+        conn.row_factory = sqlite3.Row
+        try:
+            prep_count = reap_prep(conn)
+            phase_b_count = reap_prep_phase_b(conn)
+            briefing_stale_count = reap_briefing_ready_stale(conn)
+            interview_count = reap_interview_prep(conn)
+            spec_count = reap_speculative_research(conn)
+            orphans = sweep_orphan_folders(conn)
+        finally:
+            conn.close()
+        log_event(
+            "watchdog_run",
+            stale_reset=prep_count,
+            prep_phase_b_failed=phase_b_count,
+            briefing_ready_stale_reset=briefing_stale_count,
+            interview_failed=interview_count,
+            speculative_failed=spec_count,
+            orphans_swept=orphans,
+        )
 
 
 if __name__ == "__main__":
