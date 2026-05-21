@@ -41,6 +41,7 @@ from findajob.classification import is_synthetic_job
 from findajob.paths import BASE
 from findajob.spend_ceiling import check_launch_gate
 from findajob.web.company_history import build_history_by_fp, fetch_company_history
+from findajob.web.cron_dispatch import dispatch_cron
 from findajob.web.filters import registry as filter_registry
 from findajob.web.routes.materials import get_db
 
@@ -1366,39 +1367,19 @@ def reattribute_from_archive(
 
 @router.post("/board/trigger-triage")
 def trigger_triage(
-    request: Request,  # noqa: ARG001 — kept for symmetry with other routes
+    request: Request,
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
 ) -> RedirectResponse:
     """Manually fire ``scripts/triage.py`` from the dashboard first-triage
-    banner (#752).
-
-    Spends real LLM credit. Gated by the same monthly spend ceiling as prep.
-
-    V1 has no server-side idempotency tracking — PRG + browser form
-    behavior covers the impatient-double-click case, and the cost
-    ceiling caps any pathological double-fire. Documented follow-up:
-    sentinel-file or background_tasks-kind tracking for a deterministic
-    "triage already in flight, refusing".
+    banner (#752). Delegates to the shared ``dispatch_cron`` (#650) so the
+    launch path stays single-sourced with ``/tools/trigger-cron/triage``.
+    Override ``redirect_url`` to preserve the banner's destination.
     """
-    refusal = check_launch_gate(db)
-    if refusal is not None:
-        raise HTTPException(
-            status_code=402,
-            detail=(
-                f"Monthly LLM spend ceiling reached: ${refusal.current_sum_usd:.2f} / "
-                f"${refusal.ceiling_usd:.2f}. Raise or disable the ceiling in /settings/."
-            ),
-        )
-
-    try:
-        subprocess.Popen(
-            [sys.executable, f"{BASE}/scripts/triage.py"],
-            start_new_session=True,
-            env={**os.environ},
-        )
-    except Exception as e:
-        log_event("web_triage_dispatch_failed", error=str(e))
-        raise HTTPException(status_code=500, detail=f"Failed to launch triage: {e}") from e
-
-    log_event("web_triage_dispatched", source="dashboard_banner")
-    return RedirectResponse(url="/board/dashboard?triage_launched=1", status_code=303)
+    base_root = request.app.state.base_root
+    return dispatch_cron(
+        "triage",
+        db,
+        base_root,
+        source="dashboard_banner",
+        redirect_url="/board/dashboard?triage_launched=1",
+    )
