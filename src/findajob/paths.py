@@ -1,31 +1,52 @@
 """
 Central path and base-directory resolver for all pipeline scripts.
 
-BASE is derived from this file's location — works wherever the repo is cloned,
-regardless of directory name or home folder. No hardcoded paths.
+Two roots are exported because Fly's single-volume layout puts code and state
+in different places:
 
-The PANDOC binary path is read from config/paths.env. Override the default via
-config/paths.env if your binary lives elsewhere.
+- ``IMAGE_ROOT`` — directory containing scripts/, src/, docs/. Derived from
+  ``__file__``, never from env. Equals ``/app`` in the Docker image, equals
+  the repo root in editable installs on the dev VM.
+- ``BASE`` — state root: data/, logs/, companies/, candidate_context/,
+  config/, .backups/. Defaults to ``IMAGE_ROOT`` so single-substrate deploys
+  (Docker, dev VM) keep working unchanged. On Fly, ``JSP_BASE=/app/state``
+  overrides ``BASE`` to point at the single mounted volume; scripts/ and
+  docs/ stay image-bound at ``/app/`` (= ``IMAGE_ROOT``).
 
-Usage:
-    from findajob.paths import BASE, PANDOC
+Use ``IMAGE_ROOT`` for code-path resolution (subprocess script paths,
+docs-route base, anything bundled in the image). Use ``BASE`` for
+state-path resolution (DB, logs, generated artifacts, operator config).
+Conflating the two is the root cause of #770 + #771.
 
-Use sys.executable (not a PYTHON constant) for subprocess calls to other pipeline scripts.
+The PANDOC binary path is read from ``config/paths.env``. Override the
+default via ``config/paths.env`` if your binary lives elsewhere.
+
+Usage::
+
+    from findajob.paths import BASE, IMAGE_ROOT, PANDOC
+
+Use ``sys.executable`` (not a PYTHON constant) for subprocess calls to
+other pipeline scripts.
 
 Containerized deploys:
-    When running in the findajob Docker image, the app is installed at /app
-    (not the repo's filesystem location). The compose file sets
-    JSP_BASE=/app to pin BASE correctly. See docs/getting-started/install-docker.md
-    for the container architecture.
+    Docker compose sets ``JSP_BASE=/app`` (matches Dockerfile default), so
+    ``BASE == IMAGE_ROOT == /app``. Fly sets ``JSP_BASE=/app/state`` so
+    ``BASE = /app/state`` while ``IMAGE_ROOT = /app``. See
+    ``docs/getting-started/install-docker.md`` and
+    ``docs/operations/fly-deploy.md``.
 """
 
 import os
 import pathlib
 
-# Repo root: src/findajob/paths.py → findajob/ → src/ → repo root
-BASE: str = str(pathlib.Path(__file__).parent.parent.parent.resolve())
+# Image root: directory containing scripts/, src/, docs/. Computed from
+# this file's location BEFORE any env override — load-bearing. Walks
+# src/findajob/paths.py → findajob/ → src/ → repo (or /app) root.
+IMAGE_ROOT: str = str(pathlib.Path(__file__).parent.parent.parent.resolve())
 
-# Allow env-var override for non-standard install locations or testing
+# State root: defaults to IMAGE_ROOT, override via JSP_BASE for split-substrate
+# deploys (Fly's single volume).
+BASE: str = IMAGE_ROOT
 if "JSP_BASE" in os.environ:
     BASE = str(pathlib.Path(os.environ["JSP_BASE"]).resolve())
 

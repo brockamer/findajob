@@ -19,7 +19,7 @@ from fastapi import HTTPException
 from fastapi.responses import RedirectResponse
 
 from findajob.audit import log_event
-from findajob.paths import BASE
+from findajob.paths import IMAGE_ROOT
 from findajob.spend_ceiling import check_launch_gate
 from findajob.web.cron_registry import (
     CRON_TILES_BY_SLUG,
@@ -63,7 +63,7 @@ def dispatch_cron(
 
     # Per T3 reviewer follow-up: CronTile has separate script_path + args (tuple).
     # No string-splitting needed.
-    argv = [sys.executable, f"{BASE}/{tile.script_path}", *tile.args]
+    argv = [sys.executable, f"{IMAGE_ROOT}/{tile.script_path}", *tile.args]
     # Race-close: pre-emit cron_started so a follow-up POST's is_currently_running
     # gate sees the run BEFORE the spawned child reaches its own cron_event_span
     # emission (~100ms later). The duplicate cron_started from the child is

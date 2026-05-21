@@ -5,7 +5,7 @@ import subprocess
 import sys
 
 from findajob.notifications.ntfy import _runtime, db_connect, send
-from findajob.paths import BASE
+from findajob.paths import IMAGE_ROOT
 
 
 def cmd_feedback_review() -> None:
@@ -24,7 +24,7 @@ def cmd_feedback_review() -> None:
     # Run analyze_feedback.py and capture key stats for the notification
     try:
         result = subprocess.run(
-            [sys.executable, f"{BASE}/scripts/analyze_feedback.py", "--json"],
+            [sys.executable, f"{IMAGE_ROOT}/scripts/analyze_feedback.py", "--json"],
             capture_output=True,
             text=True,
             timeout=30,

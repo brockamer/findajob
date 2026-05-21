@@ -24,7 +24,7 @@ import uuid
 from datetime import UTC, datetime
 
 from findajob.db import connect
-from findajob.paths import BASE
+from findajob.paths import BASE, IMAGE_ROOT
 
 DB_PATH = f"{BASE}/data/pipeline.db"
 DEFAULT_FILE = f"{BASE}/manual_job.txt"
@@ -84,7 +84,7 @@ def main():
 
     # Kick off prep
     result = subprocess.run(
-        [sys.executable, f"{BASE}/scripts/prep_application.py", company, title, url, job_id], text=True
+        [sys.executable, f"{IMAGE_ROOT}/scripts/prep_application.py", company, title, url, job_id], text=True
     )
     sys.exit(result.returncode)
 

@@ -38,7 +38,7 @@ from findajob.actions import (
 from findajob.audit import log_event, write_audit
 from findajob.background_tasks import TASK_ID_ENV_VAR, record_failed, record_start
 from findajob.classification import is_synthetic_job
-from findajob.paths import BASE
+from findajob.paths import BASE, IMAGE_ROOT
 from findajob.spend_ceiling import check_launch_gate
 from findajob.web.company_history import build_history_by_fp, fetch_company_history
 from findajob.web.cron_dispatch import dispatch_cron
@@ -93,7 +93,7 @@ def _launch_prep_subprocess(
         proc = subprocess.Popen(
             [
                 sys.executable,
-                f"{BASE}/scripts/prep_application.py",
+                f"{IMAGE_ROOT}/scripts/prep_application.py",
                 job["company"],
                 job["title"],
                 job["url"],
@@ -123,7 +123,7 @@ def _launch_interview_prep_subprocess(db: sqlite3.Connection, job: sqlite3.Row) 
         proc = subprocess.Popen(
             [
                 sys.executable,
-                f"{BASE}/scripts/interview_prep.py",
+                f"{IMAGE_ROOT}/scripts/interview_prep.py",
                 job["company"],
                 job["title"],
                 job["id"],

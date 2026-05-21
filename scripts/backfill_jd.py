@@ -22,7 +22,7 @@ from datetime import UTC, datetime
 from findajob.audit import log_event
 from findajob.classification import JD_MAX_CHARS, strip_jd_boilerplate
 from findajob.db import connect
-from findajob.paths import BASE, load_env
+from findajob.paths import BASE, IMAGE_ROOT, load_env
 
 DB_PATH = f"{BASE}/data/pipeline.db"
 
@@ -206,7 +206,7 @@ def main():
             print(f"\nRescoring {count} backfilled jobs...")
             import subprocess
 
-            subprocess.run([sys.executable, f"{BASE}/scripts/rescore_all.py"], check=False)
+            subprocess.run([sys.executable, f"{IMAGE_ROOT}/scripts/rescore_all.py"], check=False)
         return
 
     # Original behavior: backfill missing gmail_linkedin JDs
@@ -270,7 +270,7 @@ def main():
         print(f"\nRescoring {fetched} backfilled jobs...")
         import subprocess
 
-        subprocess.run([sys.executable, f"{BASE}/scripts/rescore_all.py"], check=False)
+        subprocess.run([sys.executable, f"{IMAGE_ROOT}/scripts/rescore_all.py"], check=False)
 
 
 if __name__ == "__main__":

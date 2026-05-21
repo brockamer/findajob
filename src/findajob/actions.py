@@ -41,7 +41,7 @@ from pathlib import Path
 from typing import Any
 
 from findajob.audit import log_event, write_audit
-from findajob.paths import BASE
+from findajob.paths import BASE, IMAGE_ROOT
 
 FsOp = Callable[[], None]
 
@@ -366,7 +366,7 @@ def notify_waitlist_resurface(conn: sqlite3.Connection, company: str) -> None:
     title = f"Waitlisted jobs at {company}"
     body = "You just rejected/withdrew from this company. Waitlisted roles:\n" + "\n".join(f"• {t}" for t in titles)
     subprocess.Popen(
-        [sys.executable, f"{BASE}/scripts/notify.py", "send-raw", title, body, "--kind", "send_raw"],
+        [sys.executable, f"{IMAGE_ROOT}/scripts/notify.py", "send-raw", title, body, "--kind", "send_raw"],
         start_new_session=True,
     )
     log_event("waitlist_resurface", company=company, count=len(titles))

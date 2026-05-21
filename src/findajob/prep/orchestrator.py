@@ -27,7 +27,7 @@ from findajob.classification import JD_MAX_CHARS
 from findajob.db import connect
 from findajob.llm.role_runner import run_role
 from findajob.notifications.ntfy import quick_notify
-from findajob.paths import BASE, PANDOC, load_env
+from findajob.paths import BASE, IMAGE_ROOT, PANDOC, load_env
 from findajob.prep.cost_projection import compute_projection
 from findajob.prep.docx_postprocess import _add_cover_letter_spacing, _linkify_contact_info
 from findajob.prep.docx_render import render_md_to_docx
@@ -620,7 +620,7 @@ def _run_prep_phase_b(company: str, title: str, url: str, job_id: str) -> None:
         # Quality check — informational only, never block prep
         try:
             qc = subprocess.run(
-                [sys.executable, f"{BASE}/scripts/diag/validate_resume.py", "--json", out["resume_md"]],
+                [sys.executable, f"{IMAGE_ROOT}/scripts/diag/validate_resume.py", "--json", out["resume_md"]],
                 capture_output=True,
                 text=True,
                 timeout=15,
@@ -692,7 +692,7 @@ def _run_prep_phase_b(company: str, title: str, url: str, job_id: str) -> None:
         subprocess.run(
             [
                 sys.executable,
-                f"{BASE}/scripts/find_contacts.py",
+                f"{IMAGE_ROOT}/scripts/find_contacts.py",
                 company,
                 jd_text,
                 outdir,

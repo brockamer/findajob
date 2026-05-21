@@ -6,7 +6,7 @@ env file read at import time).
 
 Subprocess entry point still lives at ``scripts/find_contacts.py`` as a
 thin shim that imports ``main`` from here. ``findajob.prep.orchestrator``
-spawns it via ``BASE/scripts/find_contacts.py`` — that subprocess
+spawns it via ``IMAGE_ROOT/scripts/find_contacts.py`` — that subprocess
 invocation is unchanged.
 """
 

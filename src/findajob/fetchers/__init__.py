@@ -8,7 +8,7 @@ from findajob.audit import log_event
 from findajob.classification import JD_MAX_CHARS, strip_jd_boilerplate
 from findajob.cleaning import clean_company, clean_title, extract_linkedin_job_id
 from findajob.fetchers.adapters._keys import resolve_rapidapi_key
-from findajob.paths import BASE, PANDOC
+from findajob.paths import IMAGE_ROOT, PANDOC
 
 # Per-call throttle to keep morning triage from bursting past the RapidAPI
 # per-minute cap on /v2/linkedin/get. 214-job triage × ~30% LinkedIn ≈ 13s added.
@@ -204,7 +204,7 @@ def notify_send_raw(text: str, kind: str = "gmail_auth_failure") -> None:
     if not body:
         body = title
     subprocess.run(
-        [sys.executable, f"{BASE}/scripts/notify.py", "send-raw", title, body, "--kind", kind],
+        [sys.executable, f"{IMAGE_ROOT}/scripts/notify.py", "send-raw", title, body, "--kind", kind],
         check=False,
         timeout=10,
     )

@@ -65,7 +65,9 @@ def client(tmp_path: Path) -> TestClient:
     companies = tmp_path / "companies"
     companies.mkdir()
 
-    # Seed docs/ under tmp_path so app.state.base_root=tmp_path finds them.
+    # Seed docs/ under tmp_path so app.state.image_root=tmp_path finds them.
+    # image_root (#771) is the code-path root — docs/ is image-bound, not
+    # volume-bound, so the docs route reads through image_root, not base_root.
     docs = tmp_path / "docs"
     (docs / "getting-started").mkdir(parents=True)
     (docs / "operations").mkdir(parents=True)
@@ -78,7 +80,7 @@ def client(tmp_path: Path) -> TestClient:
     (docs / "operations" / "README.md").write_text(OPERATIONS_README_MD)
     (docs / "operations" / "internet-exposure.md").write_text(OPERATIONS_INTERNET_EXPOSURE_MD)
 
-    return TestClient(create_app(companies_root=companies, db_path=db, base_root=tmp_path))
+    return TestClient(create_app(companies_root=companies, db_path=db, base_root=tmp_path, image_root=tmp_path))
 
 
 def test_index_lists_four_guides(client: TestClient) -> None:
@@ -100,7 +102,7 @@ def test_index_does_not_require_onboarding(tmp_path: Path) -> None:
     companies.mkdir()
     (tmp_path / "docs").mkdir()
     (tmp_path / "docs" / "usage.md").write_text("# Usage\n")
-    c = TestClient(create_app(companies_root=companies, db_path=db, base_root=tmp_path))
+    c = TestClient(create_app(companies_root=companies, db_path=db, base_root=tmp_path, image_root=tmp_path))
     r = c.get("/docs/", follow_redirects=False)
     assert r.status_code == 200
 

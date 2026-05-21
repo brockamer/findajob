@@ -26,7 +26,7 @@ from findajob.discoverer.parser import DiscoveryParseError, parse_markdown
 from findajob.discoverer.prompt import build_prompt
 from findajob.discoverer.writer import commit_atomically
 from findajob.llm.openrouter import OpenRouterError, complete
-from findajob.paths import BASE
+from findajob.paths import IMAGE_ROOT
 
 _DEFAULT_TIMEOUT_S = 540  # under cron's 600s timeout, room for IO
 _DEFAULT_COST_THRESHOLD_USD = 1.00
@@ -51,7 +51,7 @@ def _send_ntfy(title: str, body: str, kind: str = "discovery_run") -> None:
         subprocess.run(
             [
                 sys.executable,
-                str(Path(BASE) / "scripts" / "notify.py"),
+                str(Path(IMAGE_ROOT) / "scripts" / "notify.py"),
                 "send-raw",
                 title,
                 body,

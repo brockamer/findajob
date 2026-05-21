@@ -15,7 +15,7 @@ Reads ``feedback_log`` and ``jobs`` to surface:
 
 Subprocess entry point still lives at ``scripts/analyze_feedback.py``
 as a thin shim for the ``--notify``/``--json`` CLI invocations
-(notifications/feedback_review.py spawns it via ``BASE/scripts/...``).
+(notifications/feedback_review.py spawns it via ``IMAGE_ROOT/scripts/...``).
 Direct callers — ``findajob.notifications.scoreboard`` — now import
 ``analyze`` from this module rather than the dynamic-import-from-scripts
 hack the M3 cleanup PR (#544) flagged for follow-up.

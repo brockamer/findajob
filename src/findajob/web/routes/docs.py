@@ -75,8 +75,8 @@ def docs_page(slug: str, request: Request) -> HTMLResponse:
     rel = _PAGES.get(slug.rstrip("/"))
     if rel is None:
         raise HTTPException(status_code=404, detail="doc not found")
-    base_root: Path = request.app.state.base_root
-    docs_root = (base_root / "docs").resolve()
+    image_root: Path = request.app.state.image_root
+    docs_root = (image_root / "docs").resolve()
     path = (docs_root / rel).resolve()
     # Defense-in-depth: the allowlist already constrains the path, but keep
     # the traversal guard since `rel` could theoretically contain `..`.

@@ -24,7 +24,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from findajob.background_tasks import TASK_ID_ENV_VAR, record_failed, record_start
 from findajob.db import connect
-from findajob.paths import BASE
+from findajob.paths import BASE, IMAGE_ROOT
 from findajob.speculative.approver import approve_request
 from findajob.speculative.parser import parse_role_cards
 from findajob.spend_ceiling import check_launch_gate
@@ -80,7 +80,7 @@ def _launch_speculative_research_subprocess(conn: sqlite3.Connection, request_id
     since this kind's subject isn't a ``jobs`` row.
     """
     task_id = record_start(conn, job_id=str(request_id), kind="speculative_research")
-    script_path = Path(BASE) / "scripts" / "run_speculative_research.py"
+    script_path = Path(IMAGE_ROOT) / "scripts" / "run_speculative_research.py"
     try:
         proc = subprocess.Popen(
             [sys.executable, str(script_path), str(request_id)],

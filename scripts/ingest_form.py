@@ -34,7 +34,7 @@ from googleapiclient.discovery import build
 from findajob.audit import log_event
 from findajob.cleaning import fingerprint, is_coarse_location, loose_fingerprint
 from findajob.db import connect
-from findajob.paths import BASE, load_env
+from findajob.paths import BASE, IMAGE_ROOT, load_env
 
 DB_PATH = f"{BASE}/data/pipeline.db"
 SA_FILE = f"{BASE}/config/gsheets_creds.json"
@@ -163,7 +163,7 @@ def main():
             subprocess.run(
                 [
                     sys.executable,
-                    f"{BASE}/scripts/prep_application.py",
+                    f"{IMAGE_ROOT}/scripts/prep_application.py",
                     company,
                     title,
                     url,

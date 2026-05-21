@@ -15,6 +15,7 @@ from fastapi.templating import Jinja2Templates
 
 from findajob.audit import log_event
 from findajob.db import connect
+from findajob.paths import IMAGE_ROOT
 from findajob.web.auth import install_basic_auth
 from findajob.web.constants import FOLDER_STAGES
 from findajob.web.helpers import (
@@ -35,6 +36,7 @@ def create_app(
     companies_root: Path,
     db_path: Path,
     base_root: Path | None = None,
+    image_root: Path | None = None,
 ) -> FastAPI:
     app = FastAPI(title="findajob materials viewer", docs_url=None, redoc_url=None)
 
@@ -121,6 +123,9 @@ def create_app(
     app.state.companies_root = companies_root
     app.state.db_path = db_path
     app.state.base_root = base_root if base_root is not None else Path(os.environ.get("JSP_BASE", "/app"))
+    # image_root resolves code-bound paths (scripts/, docs/, src/) — never the
+    # volume root. On Fly, base_root=/app/state but image_root=/app. See #771.
+    app.state.image_root = image_root if image_root is not None else Path(IMAGE_ROOT)
     app.state.templates = templates
 
     # Schema migrations run from scripts/init_db.py at container start
