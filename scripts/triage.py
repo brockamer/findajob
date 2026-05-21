@@ -15,7 +15,7 @@ import argparse
 import signal
 import traceback
 
-from findajob.audit import log_event
+from findajob.audit import cron_event_span, log_event
 from findajob.triage.orchestrator import _on_sigterm, main
 
 if __name__ == "__main__":
@@ -30,7 +30,8 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     try:
-        main(gmail_since_days=args.gmail_since_days)
+        with cron_event_span("triage"):
+            main(gmail_since_days=args.gmail_since_days)
     except Exception as e:
         log_event("pipeline_crash", error=str(e), traceback=traceback.format_exc())
         raise
