@@ -69,10 +69,23 @@ def _write_config(tmp_path: Path) -> None:
 
 
 def _read_events(tmp_path: Path) -> list[dict]:
+    """Yields domain events only — strips the cron_started/cron_finished envelope
+    that `cron_event_span` (#650) adds around `detect_rejections.main()`. Those
+    are tested in `tests/test_audit_cron_event_span.py`; tests here focus on
+    the script's own logic events (rejection_*).
+    """
     log_path = Path(audit.LOG_PATH)
     if not log_path.exists():
         return []
-    return [json.loads(line) for line in log_path.read_text().splitlines() if line.strip()]
+    out: list[dict] = []
+    for line in log_path.read_text().splitlines():
+        if not line.strip():
+            continue
+        ev = json.loads(line)
+        if ev.get("event") in ("cron_started", "cron_finished"):
+            continue
+        out.append(ev)
+    return out
 
 
 def _make_db(tmp_path: Path) -> None:
