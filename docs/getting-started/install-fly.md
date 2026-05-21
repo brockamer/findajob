@@ -12,7 +12,7 @@ This page is for someone who has never deployed anything to Fly before. If you o
 
 - You want findajob, but you don't want to run a server.
 - You have a credit card and ~$5/month of budget room for hosting (LLM API spend is separate and you control it).
-- You're comfortable with a handful of command-line steps. There is no GUI for the deploy itself — Fly is operated with `fly` on your laptop.
+- You'll paste a handful of commands into a terminal app on your laptop. There is no GUI for the deploy itself — Fly is operated with the `fly` command. If you've never opened a terminal: on macOS, open the **Terminal** app from Applications → Utilities (or Spotlight-search "terminal"). On Linux, your distro's terminal emulator. Each command in this runbook is one line you copy and paste; press Enter to run.
 
 ## Who this is NOT for
 
@@ -23,13 +23,15 @@ This page is for someone who has never deployed anything to Fly before. If you o
 
 Collected before you run the deploy script (it'll prompt for each):
 
-1. **A Fly.io account with billing enabled.** Sign up at <https://fly.io/app/sign-up>, then add a credit card at `https://fly.io/dashboard/<your-org-slug>/billing`. Trial orgs without a card on file are rejected by `fly deploy` with HTTP 422 — fix this before starting.
+1. **A Fly.io account with billing enabled.** Sign up at <https://fly.io/app/sign-up>, then after signing in click **Billing** in the left nav of your Fly dashboard and add a card. Trial orgs without a card on file are rejected by `fly deploy` later (HTTP 422); fix this before starting.
 2. **An OpenRouter API key** for LLM calls. Pay-as-you-go from $0 (no monthly minimum). Sign-up walkthrough: [`api-keys.md`](api-keys.md#openrouter).
 3. **A RapidAPI key** (optional, for LinkedIn / Indeed / Bing search ingestion). BASIC plan is 150 requests/month free, no credit card. Skipping it means LinkedIn / Indeed search is inactive — Greenhouse / Ashby / Lever and Gmail alerts still work. Walkthrough: [`api-keys.md`](api-keys.md#rapidapi).
-4. **An ntfy topic** for push notifications. Free at <https://ntfy.sh/>; pick a long random string as the topic (e.g. `findajob-jane-2026-19`) — anyone who guesses the topic name can read your notifications.
+4. **An ntfy topic for push notifications.** findajob uses [ntfy.sh](https://ntfy.sh/) — a free notification service — to send alerts to your phone for things like "new high-score job found" or "monthly LLM spend ceiling reached." Install the free ntfy app on Android or iOS, then pick a "topic name" that only you and findajob will know (e.g. `findajob-jane-2026-19`). The topic acts as the channel ID; anyone who knows or guesses the name can subscribe to and read your alerts, so use something hard to guess. **You can skip this** and configure ntfy later — see [`notifications.md`](notifications.md) for the post-deploy setup.
 5. **A basic-auth username and password.** Anyone with this credential can reach your dashboard and reconfigure the pipeline. The deploy script generates the password if you let it (`openssl rand -base64 32`); pick a short username like your first name.
 
 A handful of these (OpenRouter + RapidAPI + ntfy + auth) are collected at deploy time so the first browser visit lands on the auth gate, not a half-configured screen.
+
+**A safety net is built in.** You can cap monthly LLM spend at any dollar amount via `/settings/spend-ceiling/` after deploy — the pipeline halts new LLM calls when the running monthly total crosses your cap. Set whatever number won't make you nervous; you can change it later.
 
 ---
 
@@ -98,7 +100,7 @@ bash ops/fly-deploy.sh
 
 The script is idempotent — safe to re-run. On a clean run it:
 
-1. Creates the Fly app under the slug you set in `fly.toml`. (No confirmation prompt — a typo there consumes a wrong slug on your account; verify `app =` is exactly what you want before running. Re-typing the slug is fine, but you'll need to `fly apps destroy` the wrong one first.)
+1. Creates the Fly app under the slug you set in `fly.toml`. (No confirmation prompt — a typo in the app name creates an app under the wrong slug on your Fly account. Verify `app =` is exactly what you want before running. If you typo, `fly apps destroy <wrong-name>` removes the wrong app — costs nothing if no machine has been deployed yet (just frees the slug for a re-try).)
 2. Creates the `findajob_state` volume (8 GB, holds all your data).
 3. Prompts you for each secret you haven't already set (`OPENROUTER_API_KEY`, `RAPIDAPI_KEY`, `NTFY_TOPIC`, `FINDAJOB_AUTH_USER`, `FINDAJOB_AUTH_PASS`). Each is stored in Fly's encrypted secrets store, not in `fly.toml` or your shell history.
 4. Runs `fly deploy`. First build pulls the image (~1 GB; takes 2–4 minutes), then the machine boots and runs `ops/entrypoint.sh` — which materializes the data subdirectories under `/app/state/` and creates an empty `pipeline.db`.
@@ -136,13 +138,13 @@ Clicking Finalize writes your config files to the volume and kicks off initial c
 
 ![Gmail IMAP configuration page with field-by-field walkthrough](install-fly/05-gmail-config.png)
 
-See [`gmail.md`](gmail.md) for the 2FA + app-password procedure. Gmail ingestion is always opt-out — Greenhouse, Ashby, Lever, and RapidAPI LinkedIn search cover most volume without it.
+See [`gmail.md`](gmail.md) for the 2FA + app-password procedure. Gmail integration is off by default — Greenhouse, Ashby, Lever, and RapidAPI LinkedIn search cover most volume without it.
 
-**Step 3 — LinkedIn connections (optional).** The terminal step. Upload your `Connections.csv` from a LinkedIn data export. findajob uses it to find people in your network at companies that posted jobs, and drafts outreach. Skippable. On upload or Skip, you land on the dashboard:
+**Step 3 — LinkedIn connections (optional).** The final step. Upload your `Connections.csv` from a LinkedIn data export. findajob uses it to find people in your network at companies that posted jobs, and drafts outreach. Skippable. On upload or Skip, you land on the dashboard:
 
 ![Dashboard after onboarding — daily job feed begins populating overnight](install-fly/06-dashboard-post-onboarding.png)
 
-**Cost note for onboarding.** The interview itself runs ~$3–6 in OpenRouter spend even with prompt caching enabled (the system prompt is cached server-side at OpenRouter so subsequent turns are billed at ~10% of system tokens, but the cumulative chat history and voice-sample emission dominate the bill in long interviews).
+**Cost note for onboarding.** The interview itself runs **~$3–6 in OpenRouter spend** (system-prompt caching at OpenRouter keeps subsequent turns cheap; long interviews push the high end). Detail: [`cost.md`](cost.md).
 
 ## 7. Verify and wait for first triage
 
@@ -178,6 +180,8 @@ This page is the install runbook. Once you're up:
 ---
 
 ## Cost
+
+**You can cap monthly LLM spend at any dollar amount via `/settings/spend-ceiling/` in the web UI — the pipeline halts new LLM calls when the running monthly total crosses your cap.** Set this before your first triage if you want a hard ceiling. Below is the per-component breakdown for sizing your cap.
 
 Two cost categories, both controllable:
 
