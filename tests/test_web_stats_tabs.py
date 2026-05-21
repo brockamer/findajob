@@ -1,8 +1,8 @@
 """Stats sub-tab bar — full taxonomy visible from day one; deferred tabs disabled.
 
-14e (#63, #193, #194, #195). Funnel, Feedback, Scoring, and Rejections are
-active links; Throughput and Effectiveness render as disabled
-<span aria-disabled="true"> placeholders until #196/#197 ship.
+14e (#63, #193, #194, #195, #196). Funnel, Feedback, Scoring, Rejections, and
+Throughput are active links; Effectiveness renders as a disabled
+<span aria-disabled="true"> placeholder until #197 ships.
 """
 
 import sqlite3
@@ -14,8 +14,8 @@ from fastapi.testclient import TestClient
 from findajob.onboarding import mark_complete
 from findajob.web.app import create_app
 
-ENABLED = {"/stats/funnel", "/stats/feedback", "/stats/scoring", "/stats/rejections"}
-DISABLED_LABELS = ("Throughput", "Effectiveness")
+ENABLED = {"/stats/funnel", "/stats/feedback", "/stats/scoring", "/stats/rejections", "/stats/throughput"}
+DISABLED_LABELS = ("Effectiveness",)
 
 
 @pytest.fixture
@@ -99,6 +99,20 @@ def test_rejections_tab_active_marker(client: TestClient) -> None:
     r = client.get("/stats/rejections")
     assert r.status_code == 200
     idx = r.text.index('href="/stats/rejections"')
+    snippet = r.text[idx : idx + 400]
+    assert 'aria-current="page"' in snippet
+
+
+def test_throughput_tab_has_href(client: TestClient) -> None:
+    r = client.get("/stats/funnel")
+    assert r.status_code == 200
+    assert 'href="/stats/throughput"' in r.text
+
+
+def test_throughput_tab_active_marker(client: TestClient) -> None:
+    r = client.get("/stats/throughput")
+    assert r.status_code == 200
+    idx = r.text.index('href="/stats/throughput"')
     snippet = r.text[idx : idx + 400]
     assert 'aria-current="page"' in snippet
 

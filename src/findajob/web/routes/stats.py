@@ -66,6 +66,15 @@ _SCORING_WINDOW_DAYS = 30
 _REJECTIONS_TOP_COMPANIES = 5
 _REJECTION_STAGES: tuple[str, ...] = ("rejected", "not_selected")
 
+# /stats/throughput renders an all-time per-ISO-week count of stage transitions
+# into applied, interview, offer. Stacked-bar series — applied bottom, interview
+# middle, offer top — so a single bar reads as the per-week activity stack.
+# Source is audit_log, not jobs.stage, because we want event counts: a job that
+# moved applied → interview → offer contributes one tick to each series, and
+# moved → applied → rejected → reactivated → applied contributes two applied
+# ticks. The jobs table only carries the current stage.
+_THROUGHPUT_STAGES: tuple[str, ...] = ("applied", "interview", "offer")
+
 # Score columns charted on /stats/scoring. Tuple shape:
 #   (column_name, label, range_kind, slug)
 # range_kind drives bucketing in _bucketize_scores(): "int_1_10" → 10 integer
@@ -498,5 +507,73 @@ def rejections(
             "top_n": _REJECTIONS_TOP_COMPANIES,
             "global_chart_data_json": json.dumps(global_chart_data),
             "company_chart_data_json": json.dumps(company_chart_data),
+        },
+    )
+
+
+@router.get("/stats/throughput", response_class=HTMLResponse)
+def throughput(
+    request: Request,
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> HTMLResponse:
+    """Per-ISO-week stage-transition throughput — applied, interview, offer.
+
+    All-time view, no window — operator wants to read multi-month rhythm. ISO
+    week label format `YYYY-W##` from SQLite's `strftime('%Y-W%W', ...)`. The
+    `%W` token is Monday-based and close-enough to ISO 8601 for at-a-glance
+    weekly cadence; strict ISO week-numbering (`%V`) is not used because
+    SQLite doesn't expose it and the dashboard reads the same either way.
+
+    Source is audit_log (event counts), not jobs.stage (current state) — see
+    the `_THROUGHPUT_STAGES` comment above for the design rationale.
+    """
+    placeholders = ",".join("?" * len(_THROUGHPUT_STAGES))
+    rows = db.execute(
+        f"""
+        SELECT strftime('%Y-W%W', changed_at) AS week,
+               new_value AS stage,
+               COUNT(*) AS n
+        FROM audit_log
+        WHERE field_changed = 'stage'
+          AND new_value IN ({placeholders})
+          AND changed_at IS NOT NULL
+        GROUP BY week, stage
+        ORDER BY week ASC, stage
+        """,
+        _THROUGHPUT_STAGES,
+    ).fetchall()
+
+    weekly: dict[str, dict[str, int]] = {}
+    for row in rows:
+        week = row["week"] if isinstance(row, sqlite3.Row) else row[0]
+        stage = row["stage"] if isinstance(row, sqlite3.Row) else row[1]
+        n = row["n"] if isinstance(row, sqlite3.Row) else row[2]
+        if not week or stage not in _THROUGHPUT_STAGES:
+            continue
+        weekly.setdefault(week, dict.fromkeys(_THROUGHPUT_STAGES, 0))[stage] = n
+
+    weeks_sorted = sorted(weekly)
+    totals = {stage: sum(weekly[w][stage] for w in weekly) for stage in _THROUGHPUT_STAGES}
+    grand_total = sum(totals.values())
+
+    chart_data = {
+        "labels": weeks_sorted,
+        "datasets": [
+            {"label": stage, "data": [weekly[w][stage] for w in weeks_sorted]} for stage in _THROUGHPUT_STAGES
+        ],
+    }
+
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request=request,
+        name="stats/throughput.html",
+        context={
+            "tab": "throughput",
+            "stages": _THROUGHPUT_STAGES,
+            "weeks": weeks_sorted,
+            "weekly": weekly,
+            "totals": totals,
+            "grand_total": grand_total,
+            "chart_data_json": json.dumps(chart_data),
         },
     )

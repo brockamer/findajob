@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}Throughput — findajob stats{% endblock %}
+{% block main_classes %}w-full px-4 py-6{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-semibold mb-4">Application throughput — all time</h1>
+{% include "stats/_tabs.html" %}
+
+<p class="mb-4 text-sm text-slate-600">
+  Per-ISO-week count of transitions <em>into</em> <code>applied</code>,
+  <code>interview</code>, and <code>offer</code>. A job that moves
+  <code>scored → applied → interview → offer</code> contributes one tick to
+  each series, so each bar reads as a week's activity stack rather than as a
+  snapshot of where jobs currently sit. Companion to
+  <a href="/stats/funnel" class="text-blue-700 underline">/stats/funnel</a>,
+  which slices a 30-day window by day and includes the full stage set.
+  Total: <span class="font-semibold">{{ grand_total }}</span> transition{{ '' if grand_total == 1 else 's' }}.
+</p>
+
+<section class="mb-6">
+  <h2 class="text-lg font-semibold mb-2">All-time totals</h2>
+  <div class="grid grid-cols-3 gap-2 max-w-md">
+    {% for stage in stages %}
+      <div class="bg-white rounded border border-slate-200 px-3 py-2">
+        <div class="text-xs uppercase text-slate-500 tracking-wide">{{ stage }}</div>
+        <div class="text-xl font-semibold">{{ totals[stage] }}</div>
+      </div>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="mb-8">
+  <h2 class="text-lg font-semibold mb-2">Weekly transitions</h2>
+  {% if grand_total == 0 %}
+    <p class="text-sm text-slate-500">
+      No stage transitions to <code>applied</code>, <code>interview</code>, or
+      <code>offer</code> recorded yet. This chart populates as you mark jobs
+      Applied from the board.
+    </p>
+  {% else %}
+    <div class="bg-white rounded border border-slate-200 p-3">
+      <canvas id="throughput-chart" role="img" aria-label="Per-week stage-transition counts, stacked by stage" height="110"></canvas>
+      <noscript>
+        <p class="text-sm text-slate-600">Chart requires JavaScript. The table below has the same data.</p>
+      </noscript>
+    </div>
+  {% endif %}
+</section>
+
+{% if grand_total > 0 %}
+<section>
+  <h2 class="text-lg font-semibold mb-2">Data table</h2>
+  <div class="overflow-x-auto">
+    <table class="min-w-full bg-white shadow-sm rounded-sm text-sm">
+      <thead class="bg-slate-100 text-left text-xs uppercase tracking-wide text-slate-600">
+        <tr>
+          <th class="px-3 py-2">Week</th>
+          {% for stage in stages %}
+            <th class="px-3 py-2 text-right">{{ stage }}</th>
+          {% endfor %}
+          <th class="px-3 py-2 text-right">total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for week in weeks | reverse %}
+          <tr class="{% if loop.index0 % 2 %}bg-slate-50{% endif %}">
+            <td class="px-3 py-1 font-mono">{{ week }}</td>
+            {% for stage in stages %}
+              <td class="px-3 py-1 text-right {% if weekly[week][stage] == 0 %}text-slate-300{% endif %}">{{ weekly[week][stage] }}</td>
+            {% endfor %}
+            {% set row_total = weekly[week].values() | sum %}
+            <td class="px-3 py-1 text-right font-semibold">{{ row_total }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script id="throughput-data" type="application/json">{{ chart_data_json | safe }}</script>
+<script>
+  (function () {
+    const el = document.getElementById('throughput-chart');
+    if (!el) return;
+    const c = JSON.parse(document.getElementById('throughput-data').textContent);
+    // Matches the late-funnel slice of /stats/funnel's blue-to-green ramp —
+    // applied/interview/offer read as the same colors on both pages, so the
+    // operator's eye carries "applied = dark green" across views.
+    const colors = {
+      applied: '#059669',
+      interview: '#10b981',
+      offer: '#22c55e',
+    };
+    const datasets = c.datasets.map((ds) => ({
+      label: ds.label,
+      data: ds.data,
+      backgroundColor: colors[ds.label] || '#64748b',
+      borderWidth: 0,
+    }));
+    new Chart(el, {
+      type: 'bar',
+      data: { labels: c.labels, datasets: datasets },
+      options: {
+        responsive: true,
+        scales: {
+          x: { stacked: true, ticks: { maxRotation: 60, minRotation: 0, autoSkip: false } },
+          y: { stacked: true, beginAtZero: true, ticks: { precision: 0 } },
+        },
+        plugins: {
+          legend: { position: 'bottom', labels: { boxWidth: 16 } },
+          tooltip: { mode: 'index', intersect: false },
+        },
+      },
+    });
+  })();
+</script>
+{% endif %}
+{% endblock %}
