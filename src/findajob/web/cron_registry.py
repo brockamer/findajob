@@ -22,15 +22,16 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class CronTile:
-    slug: str
-    label: str
-    description: str
-    script_path: str  # relative to BASE; the dispatcher prepends sys.executable + BASE/.
-    enabled: bool
-    confirm_required: bool
-    gated_by_spend_ceiling: bool
-    max_runtime_minutes: int
-    cost_estimate_fn: Callable[[sqlite3.Connection], str] | None
+    slug: str = ""
+    label: str = ""
+    description: str = ""
+    script_path: str = ""  # relative to BASE; the dispatcher prepends sys.executable + BASE/.
+    args: tuple[str, ...] = ()  # extra argv after the script path (e.g. notify.py subcommand)
+    enabled: bool = True
+    confirm_required: bool = False
+    gated_by_spend_ceiling: bool = False
+    max_runtime_minutes: int = 10
+    cost_estimate_fn: Callable[[sqlite3.Connection], str] | None = None
 
 
 # Placeholder cost-estimate functions — return literal strings for v1.
@@ -83,7 +84,8 @@ CRON_TILES: list[CronTile] = [
         slug="notify-health",
         label="Send health-check ntfy",
         description="Backlog + silent-source warnings to your phone.",
-        script_path="scripts/notify.py health-check",
+        script_path="scripts/notify.py",
+        args=("health-check",),
         enabled=True,
         confirm_required=False,
         gated_by_spend_ceiling=False,
@@ -94,7 +96,8 @@ CRON_TILES: list[CronTile] = [
         slug="notify-stats",
         label="Send daily-stats ntfy",
         description="Preview today's stats push on demand.",
-        script_path="scripts/notify.py daily-stats",
+        script_path="scripts/notify.py",
+        args=("daily-stats",),
         enabled=True,
         confirm_required=False,
         gated_by_spend_ceiling=False,
@@ -116,7 +119,8 @@ CRON_TILES: list[CronTile] = [
         slug="notify-scoreboard",
         label="Send weekly scoreboard ntfy",
         description="Currently disabled in scheduled-jobs.yaml — re-enable there first.",
-        script_path="scripts/notify.py scoreboard",
+        script_path="scripts/notify.py",
+        args=("scoreboard",),
         enabled=False,
         confirm_required=False,
         gated_by_spend_ceiling=False,

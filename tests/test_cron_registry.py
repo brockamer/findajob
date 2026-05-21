@@ -63,3 +63,25 @@ def test_crontile_is_frozen() -> None:
     tile = CRON_TILES[0]
     with pytest.raises(dataclasses.FrozenInstanceError):
         tile.slug = "mutated"  # type: ignore[misc]
+
+
+def test_notify_tiles_use_args_field_not_script_path_concatenation() -> None:
+    """The subcommand belongs in `args`, not concatenated into `script_path`,
+    so the dispatcher doesn't have to .split() an ad-hoc combined string.
+    """
+    assert CRON_TILES_BY_SLUG["notify-health"].script_path == "scripts/notify.py"
+    assert CRON_TILES_BY_SLUG["notify-health"].args == ("health-check",)
+    assert CRON_TILES_BY_SLUG["notify-stats"].script_path == "scripts/notify.py"
+    assert CRON_TILES_BY_SLUG["notify-stats"].args == ("daily-stats",)
+    assert CRON_TILES_BY_SLUG["notify-scoreboard"].script_path == "scripts/notify.py"
+    assert CRON_TILES_BY_SLUG["notify-scoreboard"].args == ("scoreboard",)
+
+
+def test_non_notify_tiles_have_empty_args() -> None:
+    for slug in ("triage", "detect-rejections", "discover", "watchdog"):
+        assert CRON_TILES_BY_SLUG[slug].args == ()
+
+
+def test_cron_tiles_by_slug_mirrors_list_no_duplicates() -> None:
+    """No duplicate slugs in CRON_TILES; the by-slug dict is 1:1."""
+    assert len(CRON_TILES_BY_SLUG) == len(CRON_TILES)
