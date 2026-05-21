@@ -101,6 +101,29 @@ are editable through `/config/` like any other config file.
 
 ---
 
+## Operator controls at /tools/
+
+`/tools/` is the operator console. Two panels:
+
+**Run a job now.** Buttons for the six high-value cron jobs (triage, detect-rejections, discover, notify-health, notify-stats, watchdog), plus notify-scoreboard rendered disabled (it's `enabled: false` in `ops/scheduled-jobs.yaml` until #112 lands). Each tile shows when the cron last ran and whether one is in flight right now. Cost-bearing crons (triage, discover) ask you to confirm in the browser before launching, and refuse with a 402 page when the monthly LLM spend ceiling is reached.
+
+| Cron | When to fire manually |
+|---|---|
+| Triage | Morning after a scorer prompt change; after a JD-fetcher fix; when you want fresh data NOW instead of waiting for 00:00 PT. |
+| Detect rejections | A rejection email just landed and you want it surfaced in `/board/rejections-review/` immediately. |
+| Discover | Just edited `profile.md` or re-ran onboarding; want fresh `discovered_companies` without waiting for Sunday 02:00. |
+| Notify: health | Want to verify the health-check works before relying on the morning push. |
+| Notify: stats | Preview today's stats push on demand. |
+| Watchdog | Clear any prep job stuck in `prep_in_progress` immediately rather than wait up to 10 minutes for the next cron. |
+
+If a button is greyed out and shows "Running…", the cron is currently in flight (either fired by cron or by an earlier button click). Re-fire only after it finishes — the dispatcher will 409 a concurrent click anyway.
+
+**Pipeline log viewer** (`/tools/logs/pipeline/`). Tail of the last 200 events from `logs/pipeline.jsonl`, newest first. Replaces `ssh + tail -f` for the common case. Filter by event name via the dropdown (typeahead from observed names in the window). v1 limitations: no severity filter, no time-range filter, no auto-refresh, no rotated-file (`.gz`) traversal — refresh the page to pull new events.
+
+**Guided prompts** below the trigger panel is the original `/tools/` surface from #150 — unchanged. Use these when you want to chat with an external LLM (Claude.ai) about config edits that don't have a dedicated UI yet.
+
+---
+
 ## The Dashboard (`/board/dashboard`)
 
 The Dashboard shows every scored job worth your attention — usually `score >= 7` plus anything you've flagged manually. You'll spend more time here than anywhere else.
