@@ -162,3 +162,45 @@ def test_dispatch_subprocess_failure_500_and_emits_failed_event(
     failed_lines = [line for line in log_path.read_text().splitlines() if '"event": "web_cron_dispatch_failed"' in line]
     assert len(failed_lines) == 1
     assert '"cron": "notify-stats"' in failed_lines[0]
+
+
+def test_dispatch_subprocess_failure_releases_slug_via_cron_finished(
+    db: sqlite3.Connection, base_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Popen failure must emit cron_finished status=failed so the slug
+    is not bricked until max_runtime_minutes elapses.
+
+    Cross-task seam bug caught in the #650 whole-feature review: the
+    race-close pre-emit writes cron_started BEFORE Popen, so a Popen
+    failure without a paired cron_finished leaves is_currently_running
+    returning True for up to 120 min (triage's ceiling).
+    """
+    monkeypatch.setattr("findajob.web.cron_dispatch.is_currently_running", lambda slug, root: False)
+    monkeypatch.setattr("findajob.web.cron_dispatch.check_launch_gate", lambda conn: None)
+
+    from findajob.web.cron_registry import is_currently_running as real_is_running
+
+    log_path = base_root / "logs" / "pipeline.jsonl"
+    monkeypatch.setattr(audit, "LOG_PATH", str(log_path))
+
+    def _raise(*_args: object, **_kwargs: object) -> None:
+        raise OSError("simulated spawn failure")
+
+    monkeypatch.setattr("subprocess.Popen", _raise)
+    with pytest.raises(HTTPException) as exc:
+        dispatch_cron("notify-stats", db, base_root)
+    assert exc.value.status_code == 500
+
+    # The real (un-mocked) is_currently_running must see the slug as released —
+    # the dangling cron_started from the pre-emit was paired with cron_finished
+    # status=failed in the except branch.
+    assert real_is_running("notify-stats", base_root) is False
+
+    # And the log shows both events for traceability.
+    log_text = log_path.read_text()
+    finished_lines = [line for line in log_text.splitlines() if '"event": "cron_finished"' in line]
+    assert len(finished_lines) == 1
+    assert '"cron": "notify-stats"' in finished_lines[0]
+    assert '"status": "failed"' in finished_lines[0]
+    failed_lines = [line for line in log_text.splitlines() if '"event": "web_cron_dispatch_failed"' in line]
+    assert len(failed_lines) == 1

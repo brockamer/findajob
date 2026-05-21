@@ -72,6 +72,12 @@ def dispatch_cron(
     try:
         subprocess.Popen(argv, start_new_session=True, env={**os.environ})
     except Exception as exc:
+        # Race-close pre-emit (above) wrote cron_started; pair it with
+        # cron_finished status=failed so is_currently_running sees the slug
+        # as releasable. Without this, a dangling cron_started would brick
+        # the slug for max_runtime_minutes (120min triage, 15min watchdog,
+        # 10min discover/detect-rejections).
+        log_event("cron_finished", cron=slug, status="failed")
         log_event("web_cron_dispatch_failed", cron=slug, error=str(exc))
         raise HTTPException(status_code=500, detail=f"Failed to launch cron '{slug}': {exc}") from exc
 
