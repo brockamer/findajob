@@ -1,0 +1,37 @@
+{# src/findajob/web/templates/tools/_trigger_tile.html — per-trigger button #}
+<div class="border rounded-lg p-4 bg-white shadow-sm" data-cron-slug="{{ trigger.slug }}">
+  <div class="flex items-baseline justify-between mb-1">
+    <h3 class="font-semibold">{{ trigger.label }}</h3>
+    {% if not trigger.enabled %}
+      <span class="text-xs uppercase text-slate-400">Disabled</span>
+    {% elif trigger.running %}
+      <span class="text-xs uppercase text-amber-600">Running…</span>
+    {% endif %}
+  </div>
+  <p class="text-sm text-slate-600 mb-3">{{ trigger.description }}</p>
+  <dl class="text-xs text-slate-500 mb-3 space-y-0.5">
+    {% if trigger.last_run %}
+    <div><dt class="inline">Last run:</dt> <dd class="inline">{{ trigger.last_run }}</dd></div>
+    {% endif %}
+    {% if trigger.cost_label %}
+    <div><dt class="inline">Est. cost:</dt> <dd class="inline">{{ trigger.cost_label }}</dd></div>
+    {% endif %}
+  </dl>
+  {% if not trigger.enabled %}
+    <button type="button" disabled
+            class="px-3 py-1.5 text-sm rounded bg-slate-200 text-slate-400 cursor-not-allowed">
+      Disabled in scheduled-jobs.yaml
+    </button>
+  {% else %}
+    <form method="post" action="/tools/trigger-cron/{{ trigger.slug }}"
+          {% if trigger.confirm_required %}
+          onsubmit="return confirm('Run {{ trigger.label }} now? This spends real LLM credit.');"
+          {% endif %}>
+      <button type="submit"
+              {% if trigger.running %}disabled{% endif %}
+              class="px-3 py-1.5 text-sm rounded {% if trigger.running %}bg-slate-200 text-slate-400 cursor-not-allowed{% else %}bg-slate-800 text-white hover:bg-slate-700{% endif %}">
+        {% if trigger.running %}Running…{% else %}Run now{% endif %}
+      </button>
+    </form>
+  {% endif %}
+</div>

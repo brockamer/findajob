@@ -6,77 +6,104 @@
 <div class="max-w-4xl mx-auto p-6">
   <h1 class="text-2xl font-semibold mb-2">Tools</h1>
   <p class="text-sm text-slate-600 mb-6">
-    Guided prompts and direct-edit links for tuning your findajob setup.
-    Prompts open in your preferred chat LLM where you have a conversation
-    that produces config edits — then paste the result into the
-    <a href="/config/" class="text-blue-700 hover:underline">config editor</a>.
+    Operator console: run scheduled jobs on demand, watch the pipeline log,
+    and tune your findajob setup with guided prompts.
   </p>
 
-  <div class="space-y-4">
-  {% for tile in tiles %}
-    {% if tile.kind == "link" %}
-      <div class="border rounded bg-white p-4">
-        <a href="{{ tile.href }}" class="text-blue-700 hover:underline font-medium">{{ tile.title }}</a>
-        <p class="text-sm text-slate-600 mt-1">{{ tile.description }}</p>
-      </div>
-    {% else %}
-      {# Prompt body is loaded into Alpine state via a <script type="application/json">
-         block — avoids the double-quote-in-x-data escaping trap (see settings/reject_reasons.html). #}
-      <script id="prompt-body-{{ tile.slug }}" type="application/json">{{ tile.body | tojson }}</script>
-      <div class="border rounded bg-white p-4"
-           x-data="{
-             body: JSON.parse(document.getElementById('prompt-body-{{ tile.slug }}').textContent),
-             copied: false,
-             copyFailed: false,
-             copy() {
-               if (!navigator.clipboard) {
-                 this.copyFailed = true;
-                 setTimeout(() => { this.copyFailed = false; }, 3000);
-                 return;
-               }
-               navigator.clipboard.writeText(this.body).then(() => {
-                 this.copied = true;
-                 setTimeout(() => { this.copied = false; }, 1500);
-               }).catch(() => {
-                 this.copyFailed = true;
-                 setTimeout(() => { this.copyFailed = false; }, 3000);
-               });
-             }
-           }">
-        <div class="font-medium">{{ tile.title }}</div>
-        <p class="text-sm text-slate-600 mt-1 mb-3">{{ tile.description }}</p>
-        <div class="flex flex-wrap items-center gap-2">
-          <button type="button"
-                  data-action="copy-prompt"
-                  data-slug="{{ tile.slug }}"
-                  @click="copy()"
-                  class="px-3 py-1.5 text-sm rounded border border-slate-300 bg-white hover:bg-slate-50">
-            <span x-show="!copied && !copyFailed">Copy prompt</span>
-            <span x-show="copied">Copied ✓</span>
-            <span x-show="copyFailed" class="text-red-700">Copy failed — use Open in Claude</span>
-          </button>
-          {% if tile.claude_url %}
-            <a href="{{ tile.claude_url }}"
-               target="_blank"
-               rel="noopener noreferrer"
-               class="px-3 py-1.5 text-sm rounded border border-slate-300 bg-white hover:bg-slate-50">
-              Open in Claude ↗
-            </a>
-          {% else %}
-            <span class="text-xs text-slate-500">
-              prompt too long for URL transfer — use Copy instead
-            </span>
-          {% endif %}
-        </div>
-      </div>
-    {% endif %}
-  {% endfor %}
+  {% if triggered_slug %}
+  <div class="bg-emerald-50 border border-emerald-200 text-emerald-800 px-3 py-2 rounded mb-4 text-sm">
+    Started: <code>{{ triggered_slug }}</code> — check
+    <a href="/tools/logs/pipeline/?event=cron_started"
+       class="underline">/tools/logs/pipeline/</a> for progress.
   </div>
+  {% endif %}
 
-  <p class="text-xs text-slate-500 mt-6">
-    Prompt source lives in <code>config/tool_prompts/</code>. Edit a prompt via
-    the <a href="/config/" class="text-blue-700 hover:underline">/config/</a>
-    editor or directly on disk to refine it for your situation.
-  </p>
+  <section class="mb-8">
+    <div class="flex items-baseline justify-between mb-3">
+      <h2 class="text-lg font-semibold">Run a job now</h2>
+      <a href="/tools/logs/pipeline/" class="text-sm underline">Pipeline log →</a>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+      {% for trigger in triggers %}
+        {% include "tools/_trigger_tile.html" %}
+      {% endfor %}
+    </div>
+  </section>
+
+  <section>
+    <h2 class="text-lg font-semibold mb-3">Guided prompts</h2>
+    <p class="text-sm text-slate-600 mb-4">
+      Open a prompt in your preferred chat LLM where you have a conversation
+      that produces config edits — then paste the result into the
+      <a href="/config/" class="text-blue-700 hover:underline">config editor</a>.
+    </p>
+
+    <div class="space-y-4">
+    {% for tile in tiles %}
+      {% if tile.kind == "link" %}
+        <div class="border rounded bg-white p-4">
+          <a href="{{ tile.href }}" class="text-blue-700 hover:underline font-medium">{{ tile.title }}</a>
+          <p class="text-sm text-slate-600 mt-1">{{ tile.description }}</p>
+        </div>
+      {% else %}
+        {# Prompt body is loaded into Alpine state via a <script type="application/json">
+           block — avoids the double-quote-in-x-data escaping trap (see settings/reject_reasons.html). #}
+        <script id="prompt-body-{{ tile.slug }}" type="application/json">{{ tile.body | tojson }}</script>
+        <div class="border rounded bg-white p-4"
+             x-data="{
+               body: JSON.parse(document.getElementById('prompt-body-{{ tile.slug }}').textContent),
+               copied: false,
+               copyFailed: false,
+               copy() {
+                 if (!navigator.clipboard) {
+                   this.copyFailed = true;
+                   setTimeout(() => { this.copyFailed = false; }, 3000);
+                   return;
+                 }
+                 navigator.clipboard.writeText(this.body).then(() => {
+                   this.copied = true;
+                   setTimeout(() => { this.copied = false; }, 1500);
+                 }).catch(() => {
+                   this.copyFailed = true;
+                   setTimeout(() => { this.copyFailed = false; }, 3000);
+                 });
+               }
+             }">
+          <div class="font-medium">{{ tile.title }}</div>
+          <p class="text-sm text-slate-600 mt-1 mb-3">{{ tile.description }}</p>
+          <div class="flex flex-wrap items-center gap-2">
+            <button type="button"
+                    data-action="copy-prompt"
+                    data-slug="{{ tile.slug }}"
+                    @click="copy()"
+                    class="px-3 py-1.5 text-sm rounded border border-slate-300 bg-white hover:bg-slate-50">
+              <span x-show="!copied && !copyFailed">Copy prompt</span>
+              <span x-show="copied">Copied ✓</span>
+              <span x-show="copyFailed" class="text-red-700">Copy failed — use Open in Claude</span>
+            </button>
+            {% if tile.claude_url %}
+              <a href="{{ tile.claude_url }}"
+                 target="_blank"
+                 rel="noopener noreferrer"
+                 class="px-3 py-1.5 text-sm rounded border border-slate-300 bg-white hover:bg-slate-50">
+                Open in Claude ↗
+              </a>
+            {% else %}
+              <span class="text-xs text-slate-500">
+                prompt too long for URL transfer — use Copy instead
+              </span>
+            {% endif %}
+          </div>
+        </div>
+      {% endif %}
+    {% endfor %}
+    </div>
+
+    <p class="text-xs text-slate-500 mt-6">
+      Prompt source lives in <code>config/tool_prompts/</code>. Edit a prompt via
+      the <a href="/config/" class="text-blue-700 hover:underline">/config/</a>
+      editor or directly on disk to refine it for your situation.
+    </p>
+  </section>
 </div>
 {% endblock %}
