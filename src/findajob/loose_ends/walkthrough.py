@@ -130,12 +130,16 @@ class _HintParser(HTMLParser):
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         attr_dict = {k: (v or "") for k, v in attrs}
-        if tag in ("table", "ul", "ol", "div"):
+        if tag in ("table", "tbody", "ul", "ol", "div"):
             # Collection container if it has an id or a data-collection attribute.
+            # tbody included because findajob's board templates carry the id on
+            # <tbody id="rows"> rather than the parent <table> (#751 baseline
+            # discovered the rubric received empty collection_container_ids for
+            # every board tab because of this).
             collection_id = attr_dict.get("data-collection") or attr_dict.get("id")
             classes = attr_dict.get("class", "").split()
             if collection_id and (
-                tag in ("table", "ul", "ol") or "collection" in classes or "data-collection" in attr_dict
+                tag in ("table", "tbody", "ul", "ol") or "collection" in classes or "data-collection" in attr_dict
             ):
                 self.collection_container_ids.append(collection_id)
         if tag == "button":

@@ -244,6 +244,19 @@ def test_extract_hints_finds_collection_containers():
     assert set(hints["collection_container_ids"]) >= {"applied-jobs", "dashboard-list", "rejected"}
 
 
+def test_extract_hints_recognizes_tbody_id_as_collection():
+    # findajob's board templates put the id on <tbody>, not the parent <table>.
+    # Without this, the rubric receives an empty collection_container_ids list
+    # for every board tab and can't evaluate empty-state loose ends.
+    dom = """
+    <html><body>
+        <table class="min-w-full"><tbody id="rows"></tbody></table>
+    </body></html>
+    """
+    hints = extract_hints(dom=dom, current_url="/board/dashboard")
+    assert "rows" in hints["collection_container_ids"]
+
+
 def test_extract_hints_finds_form_targets():
     dom = """
     <html><body>

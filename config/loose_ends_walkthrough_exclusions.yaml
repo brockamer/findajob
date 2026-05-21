@@ -26,3 +26,18 @@ exclusions:
     route: /board/rejected
     rubric: empty_state_no_guidance
     rationale: NUX correctly has zero rejected jobs; emptiness is intentional.
+
+  # Wrong-rubric-for-the-concern: flow_without_exit correctly returns false
+  # because nav affordances (sidebar, stage dropdown) exist. The genuine
+  # loose-end here is "no action confirmation after the stage transition"
+  # — a different rubric category tracked in #779 (action_without_confirmation).
+  # When #779 lands, remove these and route the affected walkthroughs to the
+  # new rubric instead.
+  - persona: established_user
+    route: /board/applied
+    rubric: flow_without_exit
+    rationale: >
+      Rubric correctly returns is_loose_end=false; nav affordances are present.
+      Operator-intuition concern (no transition feedback / confirmation toast
+      after stage change) belongs to the action_without_confirmation rubric
+      category tracked in #779.

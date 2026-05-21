@@ -95,7 +95,13 @@ walkthroughs:
     persona: established_user
     target_category: 3
     steps:
-      - goto: /board/dashboard?col=__nonexistent__&col_min=99
+      # Use a recognized column (relevance_score) with an impossible threshold
+      # so the filter actually applies and produces empty-state UX. The prior
+      # ?col=__nonexistent__&col_min=99 URL was silently dropped by the
+      # findajob.web.filters parser (cols_clean filters out unknown column
+      # names), leaving the dashboard populated and defeating the empty-state
+      # rubric check. See #751 AC1.
+      - goto: /board/dashboard?relevance_score_min=99
       - evaluate_dom:
           category: 3
           rubric: empty_state_no_guidance
@@ -108,3 +114,32 @@ walkthroughs:
       - evaluate_dom:
           category: 3
           rubric: empty_state_no_guidance
+
+  # AC3 expansion — surfaces missing from the original 5 (#751)
+  - name: not_selected_default_view
+    persona: established_user
+    target_category: 3
+    steps:
+      - goto: /board/not-selected
+      - evaluate_dom:
+          category: 3
+          rubric: empty_state_no_guidance
+
+  - name: archive_default_view
+    persona: established_user
+    target_category: 3
+    steps:
+      - goto: /board/archive
+      - evaluate_dom:
+          category: 3
+          rubric: empty_state_no_guidance
+
+  - name: materials_index_browse
+    persona: established_user
+    target_category: 2
+    steps:
+      - goto: /materials/
+      - evaluate_dom:
+          category: 2
+          rubric: flow_without_exit
+          context_hint: "User opened the materials index to find a prep folder"

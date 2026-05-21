@@ -65,6 +65,26 @@ def _filter_walkthroughs(walkthroughs: list[Walkthrough], persona: str) -> list[
     return [w for w in walkthroughs if w.persona == persona]
 
 
+def _resolve_creds(secrets: dict[str, str], persona: str) -> tuple[str, str]:
+    """Pick basic-auth creds per persona, with FINDAJOB_TEST_* as legacy fallback.
+
+    Per-persona keys reflect the per-stack split (clean for nux, staging for
+    established); FINDAJOB_TEST_* predates the #565 findajob-test → findajob-clean
+    rename and is kept as a fallback so older ~/.secrets layouts keep working.
+    """
+    primary_user_key = {
+        "nux_user": "FINDAJOB_CLEAN_USER",
+        "established_user": "FINDAJOB_STAGING_USER",
+    }.get(persona, "FINDAJOB_TEST_USER")
+    primary_pass_key = {
+        "nux_user": "FINDAJOB_CLEAN_PASS",
+        "established_user": "FINDAJOB_STAGING_PASS",
+    }.get(persona, "FINDAJOB_TEST_PASS")
+    user = secrets.get(primary_user_key) or secrets.get("FINDAJOB_TEST_USER", "")
+    password = secrets.get(primary_pass_key) or secrets.get("FINDAJOB_TEST_PASS", "")
+    return user, password
+
+
 def _run_with_playwright(
     *,
     walkthroughs: list[Walkthrough],
@@ -72,6 +92,7 @@ def _run_with_playwright(
     secrets: dict[str, str],
     exclusions: dict[str, str],
     findings_jsonl: Path,
+    persona: str,
 ) -> tuple[float, int]:
     """Launch Playwright, run each walkthrough, write findings. Returns (cost, count)."""
     try:
@@ -85,8 +106,7 @@ def _run_with_playwright(
 
     total_cost = 0.0
     total_findings = 0
-    user = secrets.get("FINDAJOB_TEST_USER", "")
-    password = secrets.get("FINDAJOB_TEST_PASS", "")
+    user, password = _resolve_creds(secrets, persona)
     with sync_playwright() as pw:
         launch_kwargs: dict = {"headless": True}
         channel = secrets.get("PLAYWRIGHT_BROWSER_CHANNEL", "")
@@ -193,6 +213,7 @@ def main() -> int:
                     secrets=secrets,
                     exclusions=exclusions,
                     findings_jsonl=findings_jsonl,
+                    persona="nux_user",
                 )
                 total_cost += cost
                 total_findings += count
@@ -213,6 +234,7 @@ def main() -> int:
                     secrets=secrets,
                     exclusions=exclusions,
                     findings_jsonl=findings_jsonl,
+                    persona="established_user",
                 )
                 total_cost += cost
                 total_findings += count
