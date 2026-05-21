@@ -317,10 +317,22 @@ class TestLoadExcludedEmployers:
         with pytest.raises(ConfigError, match=r"invalid regex.*\(unclosed"):
             config_loader.load_excluded_employers()
 
-    def test_caches_result(self):
-        r1 = config_loader.load_excluded_employers()
-        r2 = config_loader.load_excluded_employers()
-        assert r1 is r2  # cache hit
+    def test_reads_per_call_so_settings_saves_take_effect(self, monkeypatch, tmp_path):
+        """#729 — loader is read-per-call (not cached) so /settings/excluded-employers/
+        saves take effect on the next request without process restart. Mirrors
+        load_reject_reasons (#490)."""
+        f = tmp_path / "excluded_employers.yaml"
+        f.write_text("exact:\n  - 'First'\n")
+        monkeypatch.setattr(config_loader, "_EXCLUDED_EMPLOYERS_PATH", f)
+        config_loader._reset_cache()
+
+        exact1, _ = config_loader.load_excluded_employers()
+        assert exact1 == frozenset({"first"})
+
+        # Simulate /settings/excluded-employers/ save: rewrite the file.
+        f.write_text("exact:\n  - 'Second'\n")
+        exact2, _ = config_loader.load_excluded_employers()
+        assert exact2 == frozenset({"second"})
 
 
 class TestLoadRejectReasons:

@@ -79,7 +79,10 @@ The pre-tag checklist becomes:
 | Pre-tag throwaway smoke (`scripts/test_container_integration.sh`) | ephemeral | Single full triage cycle on empty mounts; image boots cleanly |
 | Pre-tag `findajob-clean` structural pre-flight | persistent factory-fresh | Migration correctness, onboarding gate, app-boot |
 | Pre-tag `findajob-staging` behavioral soak | persistent populated | Triage / scoring / notify / M6-launcher behavior on populated DB |
+| Pre-tag parity matrix verification (minor-bump or higher, conditional) | Docker + Fly | Every user-visible surface behaves identically on both substrates — see [`release-parity-matrix.md`](release-parity-matrix.md) |
 | Cohort wave per-stack verification | tester + operator | Migration on real populated data, `verify_auth` |
+
+The first three rows are unconditional pre-tag gates on every release. The parity-matrix row is conditional — it gates *minor bumps* (the breaking-change tier under `0.x` semver per [§ Version scheme](#version-scheme)) and every *major* bump once `1.0` lands. Patch releases inherit the prior matrix state; if a patch touches a surface, only that row gets re-verified in the patch PR per the same-PR docs rule.
 
 ## Pre-release checklist
 
@@ -126,6 +129,14 @@ reference the new tag, the file is inconsistent — fix before cutting.
       ```
 
       Must exit 0 before tagging. On non-zero, investigate using the failure summary printed to stderr; either fix and re-run, or document the override justification in the release CHANGELOG entry.
+
+## Pre-tag parity matrix verification (minor-bump and major)
+
+This gate applies to every minor bump under `0.x` semver (the breaking-change tier per [§ Version scheme](#version-scheme) above) and to every major bump once `1.0` lands. Patch releases do not re-verify the matrix wholesale; they only re-verify rows the patch actually touched, in the same PR.
+
+When the gate applies, the parity matrix at [`release-parity-matrix.md`](release-parity-matrix.md) must be re-verified before tagging. The matrix asserts every user-visible feature surface behaves identically on Docker (`findajob-staging` reference) and Fly (operator's reference deploy).
+
+Each cell in the matrix must be either `✓ YYYY-MM-DD <sha>` against the release SHA, or `✗ #NNN` with a follow-up issue the operator has explicitly classified as release-acceptable. `(unverified)` cells block the tag.
 
 ## Pre-tag smoke check
 
