@@ -32,7 +32,7 @@ from typing import Any
 
 from rapidfuzz import fuzz
 
-from findajob.audit import log_event
+from findajob.audit import cron_event_span, log_event
 from findajob.db import connect
 from findajob.gmail_imap import (
     TestResult,
@@ -71,107 +71,108 @@ _CORROBORATION_MIN_COMPANY_LEN = 4
 
 
 def main() -> int:
-    config = load_config()
-    if config is None:
-        log_event("rejection_scan_skipped", reason="gmail_unconfigured")
-        return 0
+    with cron_event_span("detect-rejections"):
+        config = load_config()
+        if config is None:
+            log_event("rejection_scan_skipped", reason="gmail_unconfigured")
+            return 0
 
-    state = load_state()
-    is_backlog_run = not state.rejection_backlog_scan_complete
+        state = load_state()
+        is_backlog_run = not state.rejection_backlog_scan_complete
 
-    if is_backlog_run:
-        window = state.rejection_backlog_window_days or _DEFAULT_BACKLOG_WINDOW_DAYS
-        window = min(window, _MAX_BACKLOG_WINDOW_DAYS)
-        log_event("rejection_backlog_scan_started", days=window)
-        outcome = fetch_new_messages_for_rejection_scan(config, state, since_days=window)
-    else:
-        window = None
-        outcome = fetch_new_messages_for_rejection_scan(config, state)
+        if is_backlog_run:
+            window = state.rejection_backlog_window_days or _DEFAULT_BACKLOG_WINDOW_DAYS
+            window = min(window, _MAX_BACKLOG_WINDOW_DAYS)
+            log_event("rejection_backlog_scan_started", days=window)
+            outcome = fetch_new_messages_for_rejection_scan(config, state, since_days=window)
+        else:
+            window = None
+            outcome = fetch_new_messages_for_rejection_scan(config, state)
 
-    if outcome.result is not TestResult.SUCCESS:
-        log_event("rejection_scan_failed", reason=outcome.result.value)
-        return 0
+        if outcome.result is not TestResult.SUCCESS:
+            log_event("rejection_scan_failed", reason=outcome.result.value)
+            return 0
 
-    suggestions_created = 0
-    corroborated = 0
+        suggestions_created = 0
+        corroborated = 0
 
-    conn = connect(DB_PATH, timeout=30)
-    conn.row_factory = sqlite3.Row
-    try:
-        for _sender, raw in outcome.messages:
-            suggestion = classify_email(raw)
-            if suggestion is None:
-                continue
-
-            match = match_job(
-                conn,
-                suggestion.extracted_company,
-                suggestion.extracted_role,
-                suggestion.received_at,
-            )
-
-            if match.status == "unmatched":
-                handled_id = _find_corroborating_handled_job(conn, suggestion.extracted_company)
-                if handled_id is None:
-                    # Fallback (#586): extraction may have misfired entirely OR
-                    # captured a wrong token (e.g. a role string instead of the
-                    # company). The email's subject + body excerpt may still
-                    # mention a handled-stage company verbatim — scan for it
-                    # so already-resolved rejections don't leak through to the
-                    # review queue. Independent of `extracted_company`, so
-                    # robust to extraction-shape regressions we haven't seen.
-                    handled_id = _find_corroborating_handled_job_fallback(conn, suggestion)
-                if handled_id is not None:
-                    log_event(
-                        "rejection_email_corroborated",
-                        gmail_message_id=suggestion.gmail_message_id,
-                        matched_job_id=handled_id,
-                        confidence=suggestion.confidence,
-                        sender_domain=suggestion.sender.split("@", 1)[-1] if "@" in suggestion.sender else "",
-                    )
-                    corroborated += 1
+        conn = connect(DB_PATH, timeout=30)
+        conn.row_factory = sqlite3.Row
+        try:
+            for _sender, raw in outcome.messages:
+                suggestion = classify_email(raw)
+                if suggestion is None:
                     continue
 
-            if _persist_suggestion(conn, suggestion, match):
-                suggestions_created += 1
-    finally:
-        conn.close()
+                match = match_job(
+                    conn,
+                    suggestion.extracted_company,
+                    suggestion.extracted_role,
+                    suggestion.received_at,
+                )
 
-    state_changed = False
-    if outcome.new_uid is not None and outcome.new_uid > state.rejection_last_uid:
-        state = dataclasses.replace(state, rejection_last_uid=outcome.new_uid)
-        state_changed = True
-    if is_backlog_run and not state.rejection_backlog_scan_complete:
-        state = dataclasses.replace(state, rejection_backlog_scan_complete=True)
-        state_changed = True
-    if state_changed:
-        save_state(state)
+                if match.status == "unmatched":
+                    handled_id = _find_corroborating_handled_job(conn, suggestion.extracted_company)
+                    if handled_id is None:
+                        # Fallback (#586): extraction may have misfired entirely OR
+                        # captured a wrong token (e.g. a role string instead of the
+                        # company). The email's subject + body excerpt may still
+                        # mention a handled-stage company verbatim — scan for it
+                        # so already-resolved rejections don't leak through to the
+                        # review queue. Independent of `extracted_company`, so
+                        # robust to extraction-shape regressions we haven't seen.
+                        handled_id = _find_corroborating_handled_job_fallback(conn, suggestion)
+                    if handled_id is not None:
+                        log_event(
+                            "rejection_email_corroborated",
+                            gmail_message_id=suggestion.gmail_message_id,
+                            matched_job_id=handled_id,
+                            confidence=suggestion.confidence,
+                            sender_domain=suggestion.sender.split("@", 1)[-1] if "@" in suggestion.sender else "",
+                        )
+                        corroborated += 1
+                        continue
 
-    if suggestions_created > 0:
-        if is_backlog_run:
-            ntfy.send(
-                title="Rejection backlog scan complete",
-                body=(
-                    f"First-run backlog scan — {suggestions_created} rejection(s) detected "
-                    f"over prior {window} days. Review queue ready."
-                ),
-                cta_url="/board/rejections-review/",
-            )
-        else:
-            ntfy.send(
-                title="New rejection email(s) detected",
-                body=f"{suggestions_created} new rejection(s) — review queue updated.",
-                cta_url="/board/rejections-review/",
-            )
+                if _persist_suggestion(conn, suggestion, match):
+                    suggestions_created += 1
+        finally:
+            conn.close()
 
-    log_event(
-        "rejection_scan_completed",
-        scanned=len(outcome.messages),
-        suggestions_created=suggestions_created,
-        corroborated=corroborated,
-        is_backlog_run=is_backlog_run,
-    )
-    return 0
+        state_changed = False
+        if outcome.new_uid is not None and outcome.new_uid > state.rejection_last_uid:
+            state = dataclasses.replace(state, rejection_last_uid=outcome.new_uid)
+            state_changed = True
+        if is_backlog_run and not state.rejection_backlog_scan_complete:
+            state = dataclasses.replace(state, rejection_backlog_scan_complete=True)
+            state_changed = True
+        if state_changed:
+            save_state(state)
+
+        if suggestions_created > 0:
+            if is_backlog_run:
+                ntfy.send(
+                    title="Rejection backlog scan complete",
+                    body=(
+                        f"First-run backlog scan — {suggestions_created} rejection(s) detected "
+                        f"over prior {window} days. Review queue ready."
+                    ),
+                    cta_url="/board/rejections-review/",
+                )
+            else:
+                ntfy.send(
+                    title="New rejection email(s) detected",
+                    body=f"{suggestions_created} new rejection(s) — review queue updated.",
+                    cta_url="/board/rejections-review/",
+                )
+
+        log_event(
+            "rejection_scan_completed",
+            scanned=len(outcome.messages),
+            suggestions_created=suggestions_created,
+            corroborated=corroborated,
+            is_backlog_run=is_backlog_run,
+        )
+        return 0
 
 
 def _find_corroborating_handled_job_fallback(conn: sqlite3.Connection, suggestion: Any) -> str | None:
