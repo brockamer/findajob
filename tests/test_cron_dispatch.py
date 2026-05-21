@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi import HTTPException
 
+from findajob import audit
 from findajob.web.cron_dispatch import dispatch_cron
 
 
@@ -61,6 +62,7 @@ def test_dispatch_non_gated_cron_skips_spend_check(
 ) -> None:
     """watchdog isn't spend-gated; check_launch_gate must not be called."""
     monkeypatch.setattr("findajob.web.cron_dispatch.is_currently_running", lambda slug, root: False)
+    monkeypatch.setattr(audit, "LOG_PATH", str(base_root / "logs" / "pipeline.jsonl"))
     sentinel = MagicMock()
     monkeypatch.setattr("findajob.web.cron_dispatch.check_launch_gate", sentinel)
     with patch("subprocess.Popen") as popen:
@@ -74,6 +76,7 @@ def test_dispatch_happy_path_spawns_and_redirects(
 ) -> None:
     monkeypatch.setattr("findajob.web.cron_dispatch.is_currently_running", lambda slug, root: False)
     monkeypatch.setattr("findajob.web.cron_dispatch.check_launch_gate", lambda conn: None)
+    monkeypatch.setattr(audit, "LOG_PATH", str(base_root / "logs" / "pipeline.jsonl"))
     with patch("subprocess.Popen") as popen:
         resp = dispatch_cron("notify-stats", db, base_root)
     popen.assert_called_once()
@@ -87,6 +90,7 @@ def test_dispatch_honors_redirect_url_override(
     """The banner route at /board/trigger-triage passes a custom redirect_url."""
     monkeypatch.setattr("findajob.web.cron_dispatch.is_currently_running", lambda slug, root: False)
     monkeypatch.setattr("findajob.web.cron_dispatch.check_launch_gate", lambda conn: None)
+    monkeypatch.setattr(audit, "LOG_PATH", str(base_root / "logs" / "pipeline.jsonl"))
     with patch("subprocess.Popen"):
         resp = dispatch_cron(
             "triage",
@@ -104,9 +108,57 @@ def test_dispatch_appends_tile_args_to_argv(
     """notify-stats has script_path='scripts/notify.py' + args=('daily-stats',) — argv splat."""
     monkeypatch.setattr("findajob.web.cron_dispatch.is_currently_running", lambda slug, root: False)
     monkeypatch.setattr("findajob.web.cron_dispatch.check_launch_gate", lambda conn: None)
+    monkeypatch.setattr(audit, "LOG_PATH", str(base_root / "logs" / "pipeline.jsonl"))
     with patch("subprocess.Popen") as popen:
         dispatch_cron("notify-stats", db, base_root)
     argv = popen.call_args.args[0]
     # argv[0] = sys.executable, argv[1] ends with 'scripts/notify.py', argv[2] = 'daily-stats'
     assert argv[1].endswith("scripts/notify.py")
     assert argv[2] == "daily-stats"
+
+
+def test_dispatch_pre_emits_cron_started_to_close_race(
+    db: sqlite3.Connection, base_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The dispatcher emits cron_started itself BEFORE Popen so is_currently_running
+    sees the run during the ~100ms interpreter-startup window.
+    Race-close fix from #650 T5 reviewer follow-up."""
+    monkeypatch.setattr("findajob.web.cron_dispatch.is_currently_running", lambda slug, root: False)
+    monkeypatch.setattr("findajob.web.cron_dispatch.check_launch_gate", lambda conn: None)
+
+    log_path = base_root / "logs" / "pipeline.jsonl"
+    monkeypatch.setattr(audit, "LOG_PATH", str(log_path))
+
+    with patch("subprocess.Popen"):
+        dispatch_cron("notify-stats", db, base_root)
+
+    assert log_path.exists()
+    lines = log_path.read_text().splitlines()
+    events = [line for line in lines if '"event": "cron_started"' in line]
+    assert len(events) == 1
+    assert '"cron": "notify-stats"' in events[0]
+    assert '"source": "tools_panel"' in events[0]
+
+
+def test_dispatch_subprocess_failure_500_and_emits_failed_event(
+    db: sqlite3.Connection, base_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Popen raising → 500 + web_cron_dispatch_failed event."""
+    monkeypatch.setattr("findajob.web.cron_dispatch.is_currently_running", lambda slug, root: False)
+    monkeypatch.setattr("findajob.web.cron_dispatch.check_launch_gate", lambda conn: None)
+
+    log_path = base_root / "logs" / "pipeline.jsonl"
+    monkeypatch.setattr(audit, "LOG_PATH", str(log_path))
+
+    def _raise(*_args: object, **_kwargs: object) -> None:
+        raise OSError("simulated spawn failure")
+
+    monkeypatch.setattr("subprocess.Popen", _raise)
+    with pytest.raises(HTTPException) as exc:
+        dispatch_cron("notify-stats", db, base_root)
+    assert exc.value.status_code == 500
+    assert "simulated spawn failure" in exc.value.detail
+
+    failed_lines = [line for line in log_path.read_text().splitlines() if '"event": "web_cron_dispatch_failed"' in line]
+    assert len(failed_lines) == 1
+    assert '"cron": "notify-stats"' in failed_lines[0]
