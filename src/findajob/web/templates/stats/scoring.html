@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Score distributions — findajob stats{% endblock %}
+{% block main_classes %}w-full px-4 py-6{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-semibold mb-4">Score distributions — last {{ window_days }} days</h1>
+{% include "stats/_tabs.html" %}
+
+<p class="mb-4 text-sm text-slate-600">
+  Histograms of the four score columns the pipeline writes onto each scored job.
+  Scope: jobs that transitioned to <code>scored</code> in the window
+  {{ start_day }} → {{ end_day }} ({{ total_scored }} jobs). <code>relevance_score</code>
+  and <code>interview_likelihood</code> are written by the scorer on every job;
+  <code>fit_score</code> and <code>probability_score</code> are written only when a job
+  is promoted through prep Phase B and will be sparse for typical operator activity.
+</p>
+
+{% for col, label, kind, slug in columns %}
+  <section class="mb-6">
+    <div class="flex items-baseline justify-between mb-2">
+      <h2 class="text-lg font-semibold">{{ label }}</h2>
+      <span class="text-xs text-slate-500">
+        {{ coverage[slug].with_value }} of {{ total_scored }} scored jobs have a value
+      </span>
+    </div>
+    <div class="bg-white rounded border border-slate-200 p-3">
+      <canvas id="scoring-{{ slug }}-chart"
+              role="img"
+              aria-label="{{ label }} distribution"
+              height="80"></canvas>
+      <noscript>
+        <p class="text-sm text-slate-600">Chart requires JavaScript. The table below has the same data.</p>
+      </noscript>
+    </div>
+    <div class="overflow-x-auto mt-2">
+      <table class="min-w-full bg-white shadow-sm rounded-sm text-sm">
+        <thead class="bg-slate-100 text-left text-xs uppercase tracking-wide text-slate-600">
+          <tr>
+            <th class="px-3 py-2">Bucket</th>
+            <th class="px-3 py-2">Count</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for bucket in histograms[slug] %}
+            <tr class="{% if loop.index0 % 2 %}bg-slate-50{% endif %}">
+              <td class="px-3 py-1">{{ bucket.label }}</td>
+              <td class="px-3 py-1 {% if bucket.count == 0 %}text-slate-300{% endif %}">{{ bucket.count }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% endfor %}
+
+{% if total_scored == 0 %}
+  <p class="text-slate-500">No jobs transitioned to <code>scored</code> in this window.</p>
+{% endif %}
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script id="scoring-chart-data" type="application/json">{{ chart_data_json | safe }}</script>
+<script>
+  (function () {
+    const payload = JSON.parse(document.getElementById('scoring-chart-data').textContent);
+    const colors = {
+      relevance: '#1d4ed8',
+      interview: '#0891b2',
+      fit: '#059669',
+      probability: '#7c3aed',
+    };
+    for (const slug of Object.keys(payload)) {
+      const canvas = document.getElementById('scoring-' + slug + '-chart');
+      if (!canvas) continue;
+      const buckets = payload[slug];
+      new Chart(canvas, {
+        type: 'bar',
+        data: {
+          labels: buckets.map((b) => b.label),
+          datasets: [{
+            label: slug,
+            data: buckets.map((b) => b.count),
+            backgroundColor: colors[slug] || '#64748b',
+            borderWidth: 0,
+          }],
+        },
+        options: {
+          responsive: true,
+          scales: {
+            y: { beginAtZero: true, ticks: { precision: 0 } },
+            x: { ticks: { maxRotation: 0 } },
+          },
+          plugins: {
+            legend: { display: false },
+            tooltip: { callbacks: { title: (items) => 'Bucket ' + items[0].label } },
+          },
+        },
+      });
+    }
+  })();
+</script>
+{% endblock %}

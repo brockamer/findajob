@@ -1,8 +1,8 @@
-"""Stats tabs: /stats/, /stats/funnel, /stats/feedback (14e; #63, #193).
+"""Stats tabs: /stats/, /stats/funnel, /stats/feedback, /stats/scoring (14e).
 
 Infrastructure for the `/stats/*` web UI group. Deferred dashboards render as
 disabled tabs in stats/_tabs.html until their respective follow-ups ship
-(#194 scoring, #195 rejections, #196 throughput, #197 effectiveness).
+(#195 rejections, #196 throughput, #197 effectiveness).
 
 Data source: SQLite at request time. No materialized stats tables; pipeline.db
 is small enough that a 30-day audit_log scan is sub-10ms. The feedback
@@ -55,6 +55,24 @@ _FUNNEL_WINDOW_DAYS = 30
 
 _FEEDBACK_WINDOW_DAYS = 28
 _FEEDBACK_WEEK_DAYS = 7
+
+_SCORING_WINDOW_DAYS = 30
+
+# Score columns charted on /stats/scoring. Tuple shape:
+#   (column_name, label, range_kind, slug)
+# range_kind drives bucketing in _bucketize_scores(): "int_1_10" → 10 integer
+# buckets; "float_0_100" → 10 decile buckets ([0,10), [10,20), … [90,100]).
+# Coverage differs across columns: relevance_score and interview_likelihood are
+# written by the scorer on every job (universal); fit_score and
+# probability_score are written by prep Phase B only and are NULL for jobs
+# that haven't been promoted. The per-chart subtitle surfaces non-NULL count
+# so sparse coverage is a visible signal rather than an empty chart.
+SCORING_COLUMNS: tuple[tuple[str, str, str, str], ...] = (
+    ("relevance_score", "Relevance score (1-10)", "int_1_10", "relevance"),
+    ("interview_likelihood", "Interview likelihood (1-10)", "int_1_10", "interview"),
+    ("fit_score", "Fit score (0-100, Phase B only)", "float_0_100", "fit"),
+    ("probability_score", "Success probability (0-100, Phase B only)", "float_0_100", "probability"),
+)
 
 
 @router.get("/stats/", response_class=HTMLResponse)
@@ -254,3 +272,110 @@ def _build_reason_matrix(
         if day in matrix and reason in matrix[day]:
             matrix[day][reason] = n
     return matrix
+
+
+@router.get("/stats/scoring", response_class=HTMLResponse)
+def scoring(
+    request: Request,
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> HTMLResponse:
+    """Score-distribution histograms over the last _SCORING_WINDOW_DAYS.
+
+    Sourced from audit_log on stage→scored transitions in the window, joined
+    back to `jobs` to read the four score columns. AC #2 named `created_at`
+    as the window predicate but that is ingest time, not score time — using
+    audit_log scored-transition timestamps matches AC #1's "scored jobs"
+    intent.
+    """
+    today = datetime.now(UTC).date()
+    start_day = today - timedelta(days=_SCORING_WINDOW_DAYS - 1)
+
+    scored_id_rows = db.execute(
+        """
+        SELECT DISTINCT job_id
+        FROM audit_log
+        WHERE field_changed = 'stage'
+          AND new_value = 'scored'
+          AND date(changed_at) >= ?
+        """,
+        (start_day.isoformat(),),
+    ).fetchall()
+    scored_ids = [r["job_id"] if isinstance(r, sqlite3.Row) else r[0] for r in scored_id_rows]
+    total_scored = len(scored_ids)
+
+    histograms: dict[str, list[dict[str, int | str]]] = {}
+    coverage: dict[str, dict[str, int]] = {}
+
+    if scored_ids:
+        placeholders = ",".join("?" * len(scored_ids))
+        for col, _label, kind, slug in SCORING_COLUMNS:
+            rows = db.execute(
+                f"SELECT {col} AS v FROM jobs WHERE id IN ({placeholders}) AND {col} IS NOT NULL",
+                scored_ids,
+            ).fetchall()
+            values = [r["v"] if isinstance(r, sqlite3.Row) else r[0] for r in rows]
+            histograms[slug] = _bucketize_scores(values, kind)
+            coverage[slug] = {"with_value": len(values), "total_scored": total_scored}
+    else:
+        for _col, _label, kind, slug in SCORING_COLUMNS:
+            histograms[slug] = _bucketize_scores([], kind)
+            coverage[slug] = {"with_value": 0, "total_scored": 0}
+
+    chart_data = {slug: histograms[slug] for slug in (c[3] for c in SCORING_COLUMNS)}
+
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request=request,
+        name="stats/scoring.html",
+        context={
+            "tab": "scoring",
+            "window_days": _SCORING_WINDOW_DAYS,
+            "start_day": start_day.isoformat(),
+            "end_day": today.isoformat(),
+            "columns": SCORING_COLUMNS,
+            "histograms": histograms,
+            "coverage": coverage,
+            "total_scored": total_scored,
+            "chart_data_json": json.dumps(chart_data),
+        },
+    )
+
+
+def _bucketize_scores(values: list[int | float], kind: str) -> list[dict[str, int | str]]:
+    """Bucket score values into 10 fixed buckets.
+
+    kind="int_1_10": 10 integer buckets (1, 2, ..., 10).
+    kind="float_0_100": 10 decile buckets — [0,10), [10,20), ..., [90,100].
+        Value of exactly 100 falls into the last bucket.
+    """
+    if kind == "int_1_10":
+        buckets: list[dict[str, int | str]] = [{"label": str(i), "count": 0} for i in range(1, 11)]
+        for v in values:
+            iv = int(v)
+            if 1 <= iv <= 10:
+                buckets[iv - 1]["count"] += 1  # type: ignore[operator]
+        return buckets
+    if kind == "float_0_100":
+        labels = [
+            "0-9",
+            "10-19",
+            "20-29",
+            "30-39",
+            "40-49",
+            "50-59",
+            "60-69",
+            "70-79",
+            "80-89",
+            "90-100",
+        ]
+        buckets = [{"label": label, "count": 0} for label in labels]
+        for v in values:
+            if v == 100:
+                idx = 9
+            elif 0 <= v < 100:
+                idx = int(v // 10)
+            else:
+                continue
+            buckets[idx]["count"] += 1  # type: ignore[operator]
+        return buckets
+    return []

@@ -1,8 +1,8 @@
 """Stats sub-tab bar — full taxonomy visible from day one; deferred tabs disabled.
 
-14e (#63, #193). Funnel and Feedback are active links; the remaining four
-tabs render as disabled <span aria-disabled="true"> placeholders until their
-follow-up issues ship (#194–#197).
+14e (#63, #193, #194). Funnel, Feedback, and Scoring are active links; the
+remaining three tabs render as disabled <span aria-disabled="true">
+placeholders until their follow-up issues ship (#195–#197).
 """
 
 import sqlite3
@@ -14,15 +14,21 @@ from fastapi.testclient import TestClient
 from findajob.onboarding import mark_complete
 from findajob.web.app import create_app
 
-ENABLED = {"/stats/funnel", "/stats/feedback"}
-DISABLED_LABELS = ("Scoring", "Rejections", "Throughput", "Effectiveness")
+ENABLED = {"/stats/funnel", "/stats/feedback", "/stats/scoring"}
+DISABLED_LABELS = ("Rejections", "Throughput", "Effectiveness")
 
 
 @pytest.fixture
 def client(tmp_path: Path) -> TestClient:
     db = tmp_path / "pipeline.db"
     conn = sqlite3.connect(db)
-    conn.execute("CREATE TABLE jobs (id TEXT PRIMARY KEY, fingerprint TEXT, title TEXT, company TEXT, stage TEXT)")
+    conn.execute(
+        "CREATE TABLE jobs ("
+        "  id TEXT PRIMARY KEY, fingerprint TEXT, title TEXT, company TEXT, stage TEXT, "
+        "  relevance_score INTEGER, interview_likelihood INTEGER, "
+        "  fit_score REAL, probability_score REAL"
+        ")"
+    )
     conn.execute(
         "CREATE TABLE audit_log (id INTEGER PRIMARY KEY, job_id TEXT, field_changed TEXT, "
         "old_value TEXT, new_value TEXT, changed_at TEXT, changed_by TEXT)"
@@ -67,6 +73,20 @@ def test_feedback_tab_has_href(client: TestClient) -> None:
     r = client.get("/stats/funnel")
     assert r.status_code == 200
     assert 'href="/stats/feedback"' in r.text
+
+
+def test_scoring_tab_has_href(client: TestClient) -> None:
+    r = client.get("/stats/funnel")
+    assert r.status_code == 200
+    assert 'href="/stats/scoring"' in r.text
+
+
+def test_scoring_tab_active_marker(client: TestClient) -> None:
+    r = client.get("/stats/scoring")
+    assert r.status_code == 200
+    idx = r.text.index('href="/stats/scoring"')
+    snippet = r.text[idx : idx + 400]
+    assert 'aria-current="page"' in snippet
 
 
 @pytest.mark.parametrize("label", DISABLED_LABELS)
