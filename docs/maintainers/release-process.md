@@ -44,21 +44,21 @@ a genuine shift in when a job fires or what it does), or any change that forces
 existing users to edit their bind mounts or `.env` before pulling the new image.
 
 A **patch bump** (`0.1.0` → `0.1.1`) is for bugfixes and non-breaking additions.
-A user pinned to `:v0.1` can pull and restart without reading anything.
+A user on `:latest` can pull and restart without reading anything.
 
 The image tag taxonomy — which determines what a user pulling from GHCR actually gets
 — is set by [`build-image.yml`](../.github/workflows/build-image.yml):
 
 | Tag | Type | Who pushes | Purpose |
 |---|---|---|---|
-| `:latest` | moving | `build-image.yml` on every `main` push | dogfood track — bleeding edge, what the maintainer's `<deployment-host>` stack runs |
+| `:latest` | moving | `build-image.yml` on every `main` push | the recommended pin — every stack tracks it |
 | `:main-<sha>` | immutable | `build-image.yml` on every `main` push | bisecting, precise pinning for diagnosis |
-| `:v0.1.0` | immutable | `build-image.yml` on `v*.*.*` tag push | pinned release, never moves |
-| `:v0.1` | moving | `build-image.yml` on `v*.*.*` tag push | auto-advances to the latest `v0.1.x` — the recommended user pin |
+| `:vX.Y.Z` | immutable | `build-image.yml` on `v*.*.*` tag push | audit trail of what shipped under that tag |
+| `:vX.Y` | moving | `build-image.yml` on `v*.*.*` tag push | available for stacks that need to freeze on a specific minor |
 
-The recommended user pin is `:vMAJOR.MINOR` (e.g. `:v0.1`). It gets bugfixes
-automatically on `docker compose pull` and only moves to a potentially breaking
-version when Claude explicitly cuts a new minor.
+Every stack — operator, dogfood, staging, beta testers, Fly — runs `:latest`.
+A single `docker compose pull && up -d && verify_auth` per stack rolls every
+surface to the same image at deploy time.
 
 ## Three-gate dev pipeline (#565)
 
@@ -70,7 +70,9 @@ Three application tiers exist, each with a single clear purpose:
 | `findajob-staging` | Populated soak under realistic activity, pre-cohort gate | `:latest` | Minor cut + persona-fixture edit |
 | `<operator-stack>` | Production | `:latest` | n/a |
 
-Plus the 5 tester stacks pinned to `:vMAJOR.MINOR` (unchanged).
+Plus the 5 tester stacks, all on `:latest`. Tester stacks share the operator's
+release cadence — every deploy reaches every surface in the same operational
+pass.
 
 The pre-tag checklist becomes:
 
@@ -120,7 +122,7 @@ reference the new tag, the file is inconsistent — fix before cutting.
 
 - For releases that include any `migration-required` PR touching schema, onboarding, mounts, or the entrypoint: confirm a recent (≤ 1 release cycle) restore exercise has passed against a backup tarball produced by the current image. The procedure is documented in [`operations/restore.md`](operations/restore.md). If no recent exercise is on file, run one before tagging — a backup that has not been restored is not a backup, and a release that breaks restore must not ship.
 
-- [ ] **Bump `ops/fly.toml.example` image pin.** A new user following `install-fly.md` copies this template verbatim and is told not to change the image line for a first deploy. The template's `[build] image = ...` must therefore advance with each tagged release; otherwise a fresh Fly deploy ships outdated code. Edit the line to `ghcr.io/brockamer/findajob:vX.Y.Z` matching the tag being cut, in the same release PR (or as the CHANGELOG-pivot commit on `main`). No corresponding bump is needed for `ops/compose.yaml.example` because compose users set their image tag via the top-level `.env` (`FINDAJOB_IMAGE_TAG`), not the compose file itself.
+- **Install templates ship `:latest`.** `ops/fly.toml.example` and `ops/compose.yaml.example` (defaulted via `FINDAJOB_IMAGE_TAG=latest`) both point at `:latest`. Fresh users following `install-fly.md` or `install-docker.md` land on the same image every existing stack runs; no per-release template maintenance is required.
 
 - [ ] **Staging soak.** Ensure `findajob-staging` has been on `:latest` for at least one completed daily triage cycle. Run the green-check from `<deployment-host>`:
 
@@ -184,17 +186,6 @@ Actions is a meaningful security and ops decision orthogonal to the smoke
 itself. Until CI runs the smoke, Claude runs it locally before proposing each
 tag cut and reports the result to the user as part of the cut proposal.
 
-### Why no dogfood window
-
-The previous gate observed the operator's own stack for 24–48h. That validated
-whether the operator's legacy state kept working; it did not validate whether
-a fresh deploy worked. Shipping v0.1.0 under that gate produced #115, #116,
-#117, #118 — four fresh-install bugs, none of which the operator's own stack
-could have surfaced. The gate was guarding users who didn't exist yet while
-letting real install bugs through. The fresh-install smoke catches the bug
-class that matters. The 48h gate is not coming back for v0.1.x; if future
-scale or multi-tenancy (see #71) requires a multi-signal time-window gate, it
-will be redesigned to observe external-user signals, not operator-stack ones.
 
 ## migration-required label criteria
 
@@ -330,11 +321,12 @@ Actions UI or move to the rollback procedure in the next section.
 
 ## Cohort deploy
 
-Once the image is on GHCR and post-tag verification passes, every stack pinned
-to a moving alias (`:latest` for the operator's own stack and any in-house
-dogfood instances, `:vMAJOR.MINOR` for every tester) gets `pull && up -d` in a
-single operational pass. Per the `feedback_deploy_both_stacks` memory, no stack
-is left behind.
+Once the image is on GHCR and post-tag verification passes, every stack
+(operator's own stacks, `findajob-clean`, `findajob-staging`, every tester
+stack, and the operator's Fly stack) gets `pull && up -d` in a single
+operational pass. Every surface tracks `:latest`, so the cohort wave is one
+uniform operation per stack — no per-tester pin advancement and no `.env`
+edits. Per the `feedback_deploy_both_stacks` memory, no stack is left behind.
 
 For each stack on `<deployment-host>`:
 
@@ -365,23 +357,28 @@ a stale `.env` not picked up because the stack was `up -d` instead of full
 
 ## Rollback
 
-If post-tag verification fails or a regression is reported after the release is
-out in the wild, Claude rolls back by re-pointing the moving `:vMAJOR.MINOR`
-alias back to the prior immutable tag. Users pinned to `:v0.1` will then pull
-the prior image on their next `docker compose pull`.
+If post-tag verification fails or a regression is reported after the release
+is out in the wild, Claude rolls back by re-pointing `:latest` back to the
+prior immutable tag. Every stack pulls the prior image on its next
+`docker compose pull` (no per-tester reconfiguration; cohort discipline is
+uniform with deploy).
 
 1. Identify the last-known-good immutable tag, e.g. `v${VERSION_PREV}`.
 
-2. Re-point the moving alias. This requires being logged in to GHCR with a PAT
-   that has package-write scope:
+2. Re-point `:latest`. Requires being logged in to GHCR with a PAT that has
+   `write:packages` scope:
 
    **Prerequisite:** You must be logged into GHCR with a personal access token that has `write:packages` scope. If not already logged in, run `echo $GHCR_PAT | docker login ghcr.io -u brockamer --password-stdin` first.
 
    ```bash
    docker pull ghcr.io/brockamer/findajob:v${VERSION_PREV}
-   docker tag ghcr.io/brockamer/findajob:v${VERSION_PREV} ghcr.io/brockamer/findajob:v${MAJOR_MINOR}
-   docker push ghcr.io/brockamer/findajob:v${MAJOR_MINOR}
+   docker tag ghcr.io/brockamer/findajob:v${VERSION_PREV} ghcr.io/brockamer/findajob:latest
+   docker push ghcr.io/brockamer/findajob:latest
    ```
+
+   (Also re-point `:v${MAJOR_MINOR}` for any stack that has been individually
+   frozen on a specific minor — but the default cohort runs on `:latest`, so
+   the `:latest` repoint is the load-bearing step.)
 
 3. The immutable `:v${VERSION}` tag for the bad release stays pinned. Anyone who
    specifically pinned to it keeps the broken image — that's intentional, because

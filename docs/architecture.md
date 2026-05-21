@@ -211,7 +211,7 @@ known_contacts TEXT
 user_notes TEXT              -- free text set via Applied tab col I
 stage_updated TEXT           -- ISO timestamp of last stage change
 prep_folder_path TEXT        -- absolute path to companies/ subfolder
-gdrive_folder_url TEXT       -- legacy column (Drive sync removed; unused since v0.2)
+gdrive_folder_url TEXT       -- legacy column, unused (Drive sync retired)
 fit_score REAL               -- 0-100% avg from fit_analyst
 probability_score REAL       -- 0-100% avg from fit_analyst
 created_at TEXT

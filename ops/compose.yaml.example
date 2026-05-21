@@ -6,7 +6,7 @@
 
 services:
   scheduler:
-    image: ghcr.io/brockamer/findajob:${FINDAJOB_IMAGE_TAG:-v0.1}
+    image: ghcr.io/brockamer/findajob:${FINDAJOB_IMAGE_TAG:-latest}
     # Optional platform override. The image is multi-arch (linux/amd64 +
     # linux/arm64); Docker auto-selects the right one for your host. Force
     # a specific architecture only if you know you need it (e.g., you're on

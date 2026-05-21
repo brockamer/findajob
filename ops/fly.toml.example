@@ -16,12 +16,12 @@
 app = "REPLACE_WITH_FLY_APP_NAME"
 primary_region = "iad"
 
-# Pinned image tag. The image runs unchanged from the compose stack —
-# supercronic stays PID 1, uvicorn is a child process. Bump this string
-# when rolling to a new release and re-run ops/fly-deploy.sh (or just
-# `fly deploy --config ops/fly.toml`).
+# Image tag. The image runs unchanged from the compose stack — supercronic
+# stays PID 1, uvicorn is a child process. Pinned to `:latest`. Re-run
+# `ops/fly-deploy.sh` or `fly deploy --config ops/fly.toml` to pull the
+# current `:latest` digest.
 [build]
-  image = "ghcr.io/brockamer/findajob:v0.27.4"
+  image = "ghcr.io/brockamer/findajob:latest"
 
 # Non-secret env. Mirrors compose.yaml.example's environment block, with
 # one critical difference: JSP_BASE points at /app/state, not /app. Fly

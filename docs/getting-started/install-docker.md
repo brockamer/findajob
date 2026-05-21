@@ -54,7 +54,7 @@ curl -fsSL -o compose.yaml https://raw.githubusercontent.com/brockamer/findajob/
 curl -fsSL -o .env https://raw.githubusercontent.com/brockamer/findajob/main/ops/stack.env.example
 ```
 
-Edit `.env` to taste — at minimum set `FINDAJOB_TZ`, `FINDAJOB_MATERIALS_PORT`, and (if dogfooding) `FINDAJOB_IMAGE_TAG=latest`.
+Edit `.env` to taste — at minimum set `FINDAJOB_TZ` and `FINDAJOB_MATERIALS_PORT`. `FINDAJOB_IMAGE_TAG` defaults to `latest`, which is what every stack runs.
 
 ## 3. Populate `state/`
 
@@ -107,8 +107,8 @@ See [`../operations/internet-exposure.md`](../operations/internet-exposure.md) f
 
 ### What the entrypoint does automatically
 
-As of `:v0.1.1`, the container image's entrypoint handles these on every
-start — you do not run any of these commands manually:
+The container image's entrypoint handles these on every start — you do not
+run any of these commands manually:
 
 - Creates `state/data/pipeline.db` with the full schema if it's missing.
   Idempotent: no-op on populated DBs (#116, #117).
@@ -253,14 +253,13 @@ the DB in the same request — no polling delay.
 
 ## Tag pinning strategy
 
-`FINDAJOB_IMAGE_TAG` in your `.env` controls which image Docker Compose pulls. Pick based on how much change tolerance you want.
+`FINDAJOB_IMAGE_TAG` in your `.env` controls which image Docker Compose pulls. The default is `latest`, which is what every stack runs.
 
-| Value | Mutability | Recommended for |
+| Value | Mutability | Use when |
 |---|---|---|
-| `v0.23` (current minor — bump at each minor release) | moving (auto-advances to latest `v0.23.x` patch) | **Default.** Most users. Auto-accepts bugfixes; breaking changes require an explicit `.env` edit. |
-| `v0.23.0` (or any immutable `vX.Y.Z`) | immutable | Pin exactly when you need a known-good version and can't afford surprises (e.g., during an active job-hunt push). |
-| `latest` | moving (tip of `main`) | Dogfood track. The upstream maintainer runs this to exercise releases before tagging. May break. |
-| `main-<sha>` | immutable (one tag per commit on `main`) | Precise pinning or bisecting when diagnosing a regression. |
+| `latest` | moving (advances on every `main` push) | **Default.** Every stack tracks this; releases roll to all stacks together. |
+| `vX.Y.Z` (immutable) | immutable | You specifically want to freeze a stack on a known image (e.g., during an active job-hunt push where you can't afford surprises). |
+| `main-<sha>` | immutable (one per `main` commit) | Precise pinning or bisecting when diagnosing a regression. |
 
 Switching between tags is a one-line `.env` edit followed by `docker compose pull && docker compose up -d`.
 
@@ -370,64 +369,18 @@ Repeat for `RAPIDAPI_KEY` as needed. Stacks with legacy
 per-adapter vars (`JOBS_API14_KEY` / `JSEARCH_API_KEY`) can rotate those
 the same way — both still work as fallback (#414).
 
-### Adding the `.backups` bind mount (for stacks deployed before `:v0.10.0`)
+### API-key env vars
 
-Stacks deployed before `:v0.10.0` may be missing the `./state/.backups`
-bind mount. The injector writes pre-overwrite backups of `data/.env` and
-`candidate_context/` into `/app/.backups/{UTC-stamp}/`; without the bind
-mount, the path resolves inside the container and fails with
-`PermissionError` on finalize / key rotation.
+`RAPIDAPI_KEY` is the canonical RapidAPI key var. Legacy per-adapter names
+(`JOBS_API14_KEY`, `JSEARCH_API_KEY`) are still accepted as fallback (#414);
+renaming to `RAPIDAPI_KEY` is optional.
 
-**Symptom:** Finalize on `/onboarding/` crashes with
-`PermissionError: [Errno 13] Permission denied: '/app/.backups'` (or
-`EACCES` in the container logs); the rerun-onboarding "Save keys" path
-fails the same way.
+### Active sources
 
-**Fix:**
-
-1. SSH to the host and stop the stack:
-   ```
-   ssh <docker-host>
-   cd /opt/stacks/findajob-<handle>/
-   sudo docker compose down
-   ```
-2. Create the host directory:
-   ```
-   sudo mkdir -p state/.backups
-   sudo chown 1000:1000 state/.backups
-   ```
-3. Add the bind mount to `compose.yaml` under the `volumes:` block of the
-   `scheduler` service (matches the line in `compose.yaml.example`):
-   ```
-   - ./state/.backups:/app/.backups
-   ```
-4. Bring the stack back up:
-   ```
-   sudo docker compose up -d
-   ```
-5. Confirm with `sudo docker compose exec scheduler ls -la /app/.backups` —
-   should show an empty directory owned by uid 1000.
-
-Stacks deployed using `compose.yaml.example` from `:v0.10.0` onward
-already have this mount; no action needed.
-
-## Upgrading from v0.13
-
-No manual action needed. Whichever RapidAPI key var your `data/.env` holds
-(`RAPIDAPI_KEY`, `JOBS_API14_KEY`, or `JSEARCH_API_KEY`) keeps working — the
-adapter resolver tries `RAPIDAPI_KEY` first and falls back to the legacy
-per-adapter names (#414). Renaming an existing legacy var to the canonical
-`RAPIDAPI_KEY` is optional and only worthwhile for clarity.
-
-Stacks without `config/active_sources.txt` (i.e., stacks that pre-date the picker)
-default to **all pre-#410.5 unconditional adapters** (`jobs-api14`,
-`jobs-api14-indeed`, `jsearch`, `greenhouse`, `ashby`, `lever`, `gmail`),
-preserving the pre-#410.5 behavior automatically (`jobs-api14-bing` and
-post-#410.5 adapters like `workday-cxs` are opt-in only). To opt in or out
-of any adapter, visit `/settings/active-sources/` (#603) — the page reads
+`config/active_sources.txt` controls which adapters run on each pipeline
+cycle. Manage it from `/settings/active-sources/` — the page reads
 `REGISTERED_ADAPTERS` directly so newly-registered adapters appear
-automatically. The legacy `/onboarding/?mode=rerun` flow still works for
-re-collecting RapidAPI keys.
+automatically.
 
 ---
 
@@ -462,16 +415,17 @@ If a pull broke your stack and you need to get back to a working state immediate
 
 1. Edit `.env` to pin to a prior immutable tag, e.g.,
    ```
-   FINDAJOB_IMAGE_TAG=v0.1.0
+   FINDAJOB_IMAGE_TAG=vX.Y.Z
    ```
+   Available tags are listed at https://github.com/brockamer/findajob/releases.
 2. Re-deploy:
    ```bash
    docker compose pull
    docker compose up -d
    ```
-3. Report the regression via a GitHub issue so the shared `:v0.1` alias can be rolled back globally (the upstream maintainer's call — see [release-process.md Rollback section](../maintainers/release-process.md#rollback)).
+3. Report the regression via a GitHub issue so the shared `:latest` tag can be rolled back globally (the upstream maintainer's call — see [release-process.md Rollback section](../maintainers/release-process.md#rollback)).
 
-A local rollback via `.env` pin doesn't affect other users on `:v0.1`.
+A local rollback via `.env` pin doesn't affect other users on `:latest`.
 
 ## Troubleshooting
 

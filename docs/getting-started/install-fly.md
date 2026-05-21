@@ -199,10 +199,9 @@ You can cap monthly LLM spend at any dollar amount on the `/settings/spend-ceili
 
 ## Updating to a new release
 
-Two places to edit, then redeploy:
+`ops/fly.toml` ships pinned to `:latest`. To pull the current image:
 
 ```
-$EDITOR ops/fly.toml             # change `image = "ghcr.io/brockamer/findajob:vNEW.TAG"`
 fly deploy --config ops/fly.toml
 fly ssh console --app findajob-<your-handle> --command "python -m findajob.web.verify_auth"
 ```

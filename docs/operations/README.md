@@ -47,7 +47,7 @@ docker compose exec scheduler python3 scripts/manual_prep.py
 
 ### Inject a job manually
 
-Preferred: use the `/ingest/` web form at `http://<your-host>:${FINDAJOB_MATERIALS_PORT}/ingest/` to paste a URL + JD. The old Google Form + `ingest_form.py` path is retired (#62); the script remains in the image only to drain Form stragglers from pre-v0.2.0 installs.
+Preferred: use the `/ingest/` web form at `http://<your-host>:${FINDAJOB_MATERIALS_PORT}/ingest/` to paste a URL + JD.
 
 CLI fallback (same underlying code path as the web form):
 ```bash
