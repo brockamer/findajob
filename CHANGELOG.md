@@ -10,6 +10,8 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+## [0.27.6] — 2026-05-21
+
 ### Added
 
 - **#196 feat(web): /stats/throughput — per-ISO-week stacked-bar dashboard for applied/interview/offer transitions.** Flips the Throughput tab live in `templates/stats/_tabs.html`, ships the route + Jinja template + 8 unit tests. All-time view (no rolling window) — operator reads multi-month rhythm at a glance. Source is `audit_log` rows where `field_changed='stage'` AND `new_value IN ('applied','interview','offer')` so the dashboard measures *event throughput*, not currently-applied job count: a job that re-cycles applied→rejected→reactivated→applied contributes two applied ticks. Week label format `%Y-W##` from SQLite's `strftime('%Y-W%W', changed_at)`; `%W` is Monday-based and close-enough to ISO 8601 for at-a-glance cadence (strict ISO `%V` is not exposed by SQLite). Series colors `#059669/#10b981/#22c55e` match the late-funnel slice of `/stats/funnel`'s ramp so "applied = dark green" reads consistently across `/stats/*`. Empty-state guard renders informative copy ("No stage transitions to applied/interview/offer recorded yet") rather than an empty chart or 500. Negative-assertion test pins out-of-scope rows (`field_changed='user_notes'`, `new_value='scored'/'rejected'/'manual_review'`) excluded from the payload — protects against WHERE-clause regressions. Data-table row order is descending by week so recent activity reads at the top. **No `migration-required`** — purely additive route + template + tab flip + new tests; no schema, config, cron, mount, or compose changes.
@@ -1282,7 +1284,8 @@ from GHCR and deployed via Docker Compose on a shared Docker host.
 - Documentation cleanup — removing `sigoden/aichat` references in favor of
   `blob42/aichat-ng` — is tracked in #70
 
-[Unreleased]: https://github.com/brockamer/findajob/compare/v0.27.5...HEAD
+[Unreleased]: https://github.com/brockamer/findajob/compare/v0.27.6...HEAD
+[0.27.6]: https://github.com/brockamer/findajob/releases/tag/v0.27.6
 [0.27.5]: https://github.com/brockamer/findajob/releases/tag/v0.27.5
 [0.27.4]: https://github.com/brockamer/findajob/releases/tag/v0.27.4
 [0.27.3]: https://github.com/brockamer/findajob/releases/tag/v0.27.3
