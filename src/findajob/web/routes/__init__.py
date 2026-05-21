@@ -29,6 +29,7 @@ from findajob.web.routes import (
     speculative,
     stats,
     tools,
+    tools_actions,
 )
 
 _guard = [Depends(require_onboarding_complete)]
@@ -58,6 +59,7 @@ router.include_router(stats.router, dependencies=_guard)
 router.include_router(config.router)
 router.include_router(gmail_config.router)
 router.include_router(tools.router)
+router.include_router(tools_actions.router)
 router.include_router(onboarding.router)
 router.include_router(onboarding_feed_config.router)
 router.include_router(onboarding_gmail_config.router)
