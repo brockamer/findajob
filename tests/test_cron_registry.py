@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import dataclasses
+import json
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 
 from findajob.web.cron_registry import (
     CRON_TILES,
     CRON_TILES_BY_SLUG,
+    is_currently_running,
+    last_run_at,
 )
 
 
@@ -85,3 +90,71 @@ def test_non_notify_tiles_have_empty_args() -> None:
 def test_cron_tiles_by_slug_mirrors_list_no_duplicates() -> None:
     """No duplicate slugs in CRON_TILES; the by-slug dict is 1:1."""
     assert len(CRON_TILES_BY_SLUG) == len(CRON_TILES)
+
+
+def _write_jsonl(base_root: Path, events: list[dict]) -> None:
+    log_dir = base_root / "logs"
+    log_dir.mkdir(exist_ok=True)
+    with (log_dir / "pipeline.jsonl").open("w") as f:
+        for ev in events:
+            f.write(json.dumps(ev) + "\n")
+
+
+def _ts(minutes_ago: int) -> str:
+    """Mirror what `findajob.audit.log_event` writes — `datetime.now(UTC).isoformat()`."""
+    return (datetime.now(UTC) - timedelta(minutes=minutes_ago)).isoformat()
+
+
+def test_is_currently_running_false_when_log_missing(tmp_path: Path) -> None:
+    assert is_currently_running("triage", tmp_path) is False
+
+
+def test_is_currently_running_false_when_no_start_event(tmp_path: Path) -> None:
+    _write_jsonl(tmp_path, [{"ts": _ts(5), "event": "pipeline_complete"}])
+    assert is_currently_running("triage", tmp_path) is False
+
+
+def test_is_currently_running_true_for_unmatched_recent_start(tmp_path: Path) -> None:
+    _write_jsonl(tmp_path, [{"ts": _ts(5), "event": "cron_started", "cron": "triage"}])
+    assert is_currently_running("triage", tmp_path) is True
+
+
+def test_is_currently_running_false_after_matching_finished(tmp_path: Path) -> None:
+    _write_jsonl(
+        tmp_path,
+        [
+            {"ts": _ts(10), "event": "cron_started", "cron": "triage"},
+            {"ts": _ts(5), "event": "cron_finished", "cron": "triage", "status": "succeeded"},
+        ],
+    )
+    assert is_currently_running("triage", tmp_path) is False
+
+
+def test_is_currently_running_false_for_leaked_start_past_max_runtime(tmp_path: Path) -> None:
+    """triage max_runtime_minutes=120 — a cron_started 200 minutes ago is leaked."""
+    _write_jsonl(tmp_path, [{"ts": _ts(200), "event": "cron_started", "cron": "triage"}])
+    assert is_currently_running("triage", tmp_path) is False
+
+
+def test_is_currently_running_isolates_by_slug(tmp_path: Path) -> None:
+    """A running 'triage' doesn't make 'discover' look running."""
+    _write_jsonl(tmp_path, [{"ts": _ts(5), "event": "cron_started", "cron": "triage"}])
+    assert is_currently_running("triage", tmp_path) is True
+    assert is_currently_running("discover", tmp_path) is False
+
+
+def test_last_run_at_returns_most_recent_finished(tmp_path: Path) -> None:
+    older_ts = _ts(30)
+    newer_ts = _ts(10)
+    _write_jsonl(
+        tmp_path,
+        [
+            {"ts": older_ts, "event": "cron_finished", "cron": "triage", "status": "succeeded"},
+            {"ts": newer_ts, "event": "cron_finished", "cron": "triage", "status": "succeeded"},
+        ],
+    )
+    assert last_run_at("triage", tmp_path) == newer_ts
+
+
+def test_last_run_at_none_when_never_run(tmp_path: Path) -> None:
+    assert last_run_at("triage", tmp_path) is None

@@ -18,6 +18,10 @@ from __future__ import annotations
 import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+
+from findajob.admin.jsonl_tail import tail_events
 
 
 @dataclass(frozen=True)
@@ -131,3 +135,53 @@ CRON_TILES: list[CronTile] = [
 
 
 CRON_TILES_BY_SLUG: dict[str, CronTile] = {t.slug: t for t in CRON_TILES}
+
+
+def _log_path(base_root: Path) -> Path:
+    return base_root / "logs" / "pipeline.jsonl"
+
+
+def _parse_ts(raw: str) -> datetime | None:
+    """Parse an event timestamp. `findajob.audit.log_event` writes
+    `datetime.now(UTC).isoformat()` — fromisoformat (3.11+) accepts
+    both `+00:00` offsets and `Z` suffixes.
+    """
+    try:
+        return datetime.fromisoformat(raw)
+    except (ValueError, TypeError):
+        return None
+
+
+def is_currently_running(slug: str, base_root: Path) -> bool:
+    """True when a `cron_started` event for `slug` has no matching
+    `cron_finished` after it AND is within `max_runtime_minutes` for
+    that slug. See spec §4.3.
+    """
+    tile = CRON_TILES_BY_SLUG.get(slug)
+    if tile is None:
+        return False
+
+    # tail_events yields newest-first. Walk it: the first cron event we
+    # see for this slug determines state.
+    for ev in tail_events(_log_path(base_root)):
+        if ev.get("cron") != slug:
+            continue
+        if ev.get("event") == "cron_finished":
+            return False
+        if ev.get("event") == "cron_started":
+            ts = _parse_ts(ev.get("ts", ""))
+            if ts is None:
+                return False
+            age = datetime.now(UTC) - ts
+            return age < timedelta(minutes=tile.max_runtime_minutes)
+    return False
+
+
+def last_run_at(slug: str, base_root: Path) -> str | None:
+    """Timestamp of the most recent `cron_finished` event for `slug`,
+    or None when the cron has never finished.
+    """
+    for ev in tail_events(_log_path(base_root)):
+        if ev.get("event") == "cron_finished" and ev.get("cron") == slug:
+            return ev.get("ts")
+    return None
