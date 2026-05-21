@@ -148,19 +148,28 @@ Full runbook (15 minutes of reading + executing): [`docs/getting-started/install
 In short:
 
 ```bash
-# Install flyctl
-brew install flyctl                                    # macOS
-curl -L https://fly.io/install.sh | sh                 # Linux
+# 1. (macOS only) Install Homebrew if you don't have it — see https://brew.sh
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
-# Clone the repo (you'll only edit one config line)
+# 2. Install flyctl
+brew install flyctl                              # macOS
+curl -L https://fly.io/install.sh | sh           # Linux
+
+# 3. Clone the repo (creates a "findajob" folder in your current directory)
 git clone https://github.com/brockamer/findajob.git
 cd findajob
 
-# Sign in and deploy
+# 4. Sign in to Fly (opens a browser; signs you up if you don't have an account yet)
 fly auth login
+
+# 5. Pick your app name (becomes part of your URL)
 cp ops/fly.toml.example ops/fly.toml
-$EDITOR ops/fly.toml                                   # change `app = "findajob-<your-handle>"`
-bash ops/fly-deploy.sh                                 # prompts for API keys, creates app + volume, deploys
+open -e ops/fly.toml                             # macOS — opens in TextEdit
+nano ops/fly.toml                                # Linux — terminal editor
+# Change the line: app = "findajob-<your-handle>"
+
+# 6. Deploy (creates the app + 8GB volume, prompts for API keys, runs `fly deploy`)
+bash ops/fly-deploy.sh
 ```
 
 The script provisions the Fly app + 8 GB volume, stages your API keys as Fly secrets, runs `fly deploy`, and verifies the basic-auth gate post-deploy. On success it prints your URL: `https://findajob-<your-handle>.fly.dev/`.

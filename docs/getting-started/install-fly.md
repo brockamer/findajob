@@ -48,6 +48,8 @@ curl -L https://fly.io/install.sh | sh
 iwr https://fly.io/install.ps1 -useb | iex
 ```
 
+If you don't have Homebrew yet: see <https://brew.sh> — the install takes 5 minutes and asks for your Mac login password.
+
 The Fly installer page (<https://fly.io/docs/flyctl/install/>) has alternative installers and PATH-troubleshooting tips if any of the above don't work. After installing:
 
 ```
@@ -67,6 +69,8 @@ git clone https://github.com/brockamer/findajob.git
 cd findajob
 ```
 
+If you don't have git: on macOS, run `git --version` and accept the Command Line Tools install prompt. On Linux, `sudo apt install git` (Debian/Ubuntu) or `sudo dnf install git` (Fedora/RHEL).
+
 You won't edit pipeline code — only the `ops/fly.toml` config to set your app name.
 
 ## 3. Configure your app name
@@ -75,7 +79,8 @@ Copy the example fly.toml and pick a handle. The handle is the leftmost label of
 
 ```
 cp ops/fly.toml.example ops/fly.toml
-$EDITOR ops/fly.toml
+open -e ops/fly.toml      # macOS — opens in TextEdit
+nano ops/fly.toml         # Linux — terminal editor
 ```
 
 Change one line:
@@ -216,7 +221,8 @@ If a deploy goes bad:
 
 ```
 fly releases --app findajob-<your-handle>      # find your prior version
-$EDITOR ops/fly.toml                            # set image to that prior tag
+open -e ops/fly.toml                            # macOS — set image to that prior tag in TextEdit
+nano ops/fly.toml                               # Linux — set image to that prior tag in nano
 fly deploy --config ops/fly.toml
 fly ssh console --app findajob-<your-handle> --command "python -m findajob.web.verify_auth"
 ```
