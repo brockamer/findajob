@@ -149,7 +149,9 @@ Sign-up walkthroughs: [`docs/getting-started/api-keys.md`](docs/getting-started/
 
 ### Deploy — Fly.io (hosted)
 
-Full runbook (15 minutes of reading + executing): [`docs/getting-started/install-fly.md`](docs/getting-started/install-fly.md). What it'll cost per month, all-in: [`docs/getting-started/cost.md`](docs/getting-started/cost.md).
+**If you're not comfortable with the command line, start at [`docs/getting-started/start-here-fly.md`](docs/getting-started/start-here-fly.md)** — a step-by-step walkthrough with screenshots at every UI decision point and inline troubleshooting branches, paced for first-timers.
+
+If you've deployed to a PaaS before and just want the dense version: full runbook at [`docs/getting-started/install-fly.md`](docs/getting-started/install-fly.md). What it'll cost per month, all-in: [`docs/getting-started/cost.md`](docs/getting-started/cost.md).
 
 In short:
 

@@ -14,7 +14,8 @@ What you need to have before touching the stack: a Linux host, Docker + Compose,
 
 Two supported install paths. Pick the one that matches how you want to run the pipeline; both reach the same dashboard.
 
-- **[`install-fly.md`](install-fly.md)** — hosted on [Fly.io](https://fly.io/) (~$3–5/mo). One Fly app per person. No server to operate. ~20 minutes from `fly auth login` to the first onboarding screen. Recommended for most people.
+- **[`start-here-fly.md`](start-here-fly.md)** — **start here if you're not comfortable with the command line.** Same Fly.io install as the runbook below, but paced for first-timers with screenshots at every UI decision point and inline "what to do if this didn't work" branches. Recommended starting point for most non-engineers.
+- **[`install-fly.md`](install-fly.md)** — denser runbook for the same Fly.io install (~$3–5/mo). One Fly app per person. No server to operate. ~20 minutes from `fly auth login` to the first onboarding screen.
 - **[`install-docker.md`](install-docker.md)** — self-host with docker-compose on a Linux box you own. Free if you already have the box; more knobs, more responsibility. Good if you already operate Linux servers.
 
 ## 3. Configure → in-app interview (or manual)
