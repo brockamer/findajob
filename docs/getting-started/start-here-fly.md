@@ -205,9 +205,7 @@ Each value is stored in Fly's encrypted secrets store — not in any file on you
 
 Click the URL the deploy script printed (or paste it into your browser).
 
-**What you should see:** your browser pops up a username/password dialog. Type the `FINDAJOB_AUTH_USER` + `FINDAJOB_AUTH_PASS` you set in Step 8.
-
-<!-- TODO #762: screenshot — browser basic-auth dialog -->
+**What you should see:** your browser pops up a username/password dialog (it looks slightly different in Chrome / Safari / Firefox, but always asks for the same two fields). Type the `FINDAJOB_AUTH_USER` + `FINDAJOB_AUTH_PASS` you set in Step 8.
 
 After signing in, the dashboard immediately redirects to `/onboarding/` because your stack has no profile yet.
 
@@ -217,7 +215,7 @@ After signing in, the dashboard immediately redirects to `/onboarding/` because 
 
 The first onboarding screen detects the API keys you set in Step 8 and shows the last 4 characters of each as confirmation.
 
-<!-- TODO #762: screenshot — Step 1 API keys screen showing last-4 + Use detected keys button -->
+![Step 1 of onboarding: detected OpenRouter and RapidAPI keys with last-4 confirmation and a Use detected keys button](install-fly/07-step1-api-keys.png)
 
 **What you should see:** "Detected: OpenRouter key ending …xxxx, RapidAPI key ending …xxxx" with a green **Use detected keys** button.
 
@@ -257,7 +255,7 @@ Click **Finalize**. findajob writes your config files to disk and kicks off a on
 
 This is the single biggest cost-anxiety defuse in findajob — a hard cap on your monthly LLM spend.
 
-<!-- TODO #762: screenshot — spend-ceiling onboarding gate -->
+![Spend-ceiling settings page — the onboarding gate is a simpler version of the same UI, with just the cap-setter affordance](install-fly/08-spend-ceiling.png)
 
 **Pick a dollar amount that won't make you nervous.** $30/mo is typical for a moderate user (daily triage + a few preps a week). The pipeline halts new LLM calls when the running monthly total crosses this cap. You can change it later at `/settings/spend-ceiling/`.
 
@@ -281,7 +279,7 @@ To wire it up: see [`gmail.md`](gmail.md) for the 2FA + Gmail app-password proce
 
 findajob uses your LinkedIn network to find people at companies that posted jobs you're applying to, and drafts outreach to them.
 
-<!-- TODO #762: screenshot — LinkedIn connections upload screen -->
+![LinkedIn connections upload page — file picker plus inline instructions for requesting the Connections.csv export from LinkedIn](install-fly/09-connections.png)
 
 1. In LinkedIn (on the web): **Settings → Data privacy → Get a copy of your data → Connections**. The CSV downloads after a few minutes.
 2. On this onboarding step, click **Choose file** and select the downloaded `Connections.csv`.
@@ -300,9 +298,7 @@ findajob uses your LinkedIn network to find people at companies that posted jobs
 
 You're now on the dashboard. The job table is empty — no jobs have been triaged yet.
 
-<!-- TODO #762: screenshot — empty dashboard with blue "Trigger triage now" banner -->
-
-**What you should see:** a blue banner above the (empty) table with text like "Next scheduled triage runs at 00:00 (your timezone). **Trigger triage now**."
+**What you should see:** a blue banner above the (empty) job table with text like *"Your first triage hasn't run yet — next scheduled run is at 00:00 (your timezone)"* and a prominent **Trigger triage now** button below it.
 
 Click **Trigger triage now** to start the pipeline immediately instead of waiting until midnight.
 
