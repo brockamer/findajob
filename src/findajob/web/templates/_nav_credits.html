@@ -1,7 +1,13 @@
-{# Nav-bar spend chip — current calendar-month LLM spend in USD (#671).
-   Sourced from `cost_log.cost_usd` (OpenRouter `response.usage.cost`).
-   3-state palette: normal (slate) / warn ≥90% (amber) / crossed ≥100% (rose).
-   When no ceiling is configured, renders identically to the old single-state chip. #}
+{# Nav-bar chips for cost visibility.
+
+   1. Spend chip — current calendar-month LLM spend in USD (#671).
+      Sourced from `cost_log.cost_usd` (OpenRouter `response.usage.cost`).
+      3-state palette: normal (slate) / warn ≥90% (amber) / crossed ≥100% (rose).
+      When no ceiling is configured, renders identically to the old single-state chip.
+
+   2. Credit-remaining chip — OpenRouter key's `limit_remaining` (#665).
+      Sourced from a live `GET /api/v1/auth/key` call, 5-min server-side cache.
+      Hidden silently when the call fails or the key has no limit configured. #}
 {% if spend_chip_context_for_template is defined %}
   {% set ctx = spend_chip_context_for_template() %}
   {% set state_cls = {
@@ -21,4 +27,20 @@
       ${{ '%.2f' | format(ctx.spent) }} this month
     </span>
   </li>
+{% endif %}
+{% if openrouter_credit_remaining is defined %}
+  {% set credit = openrouter_credit_remaining() %}
+  {% if credit is not none %}
+    {% set credit_cls = {
+         "normal": "bg-slate-700/40 border-slate-500/40 text-slate-100",
+         "amber":  "bg-amber-600/40 border-amber-400/40 text-amber-100",
+         "red":    "bg-rose-700/40 border-rose-400/40 text-rose-100",
+    }[credit.state] %}
+    <li id="nav-credit-remaining">
+      <span class="text-xs px-2 py-1 rounded border font-mono {{ credit_cls }}"
+            title="OpenRouter credit remaining — live from /api/v1/auth/key, cached 5 min.">
+        ${{ '%.2f' | format(credit.remaining_usd) }} left
+      </span>
+    </li>
+  {% endif %}
 {% endif %}

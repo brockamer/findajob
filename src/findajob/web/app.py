@@ -91,6 +91,19 @@ def create_app(
         return {"spent": spent, "ceiling": ceiling, "ratio": ratio, "state": state}
 
     templates.env.globals["spend_chip_context_for_template"] = spend_chip_context_for_template
+
+    # Nav chip — OpenRouter remaining credit (#665). Sibling to the spend chip;
+    # answers "when will I run out of credit?" rather than "am I spending too
+    # fast." Failure-open: helper returns None on any error → template hides.
+    # Deferred-import wrapper (mirroring the spend-chip pattern above) so tests
+    # can patch openrouter_credits.credit_remaining at module level and have
+    # the change visible to the template.
+    def openrouter_credit_remaining_for_template():
+        from findajob.openrouter_credits import credit_remaining
+
+        return credit_remaining()
+
+    templates.env.globals["openrouter_credit_remaining"] = openrouter_credit_remaining_for_template
     templates.env.globals["onboarding_complete"] = onboarding_complete
 
     static_dir = Path(__file__).parent / "static"
