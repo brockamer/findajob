@@ -3,7 +3,18 @@
 {% block title %}Onboarding interview — findajob{% endblock %}
 
 {% block content %}
-<div class="max-w-3xl mx-auto p-6 space-y-4" data-session-id="{{ session_id }}">
+{# #755: data-kickoff-message exposes the server-authoritative kickoff text
+   (defined as _KICKOFF_USER_MESSAGE in the route module) to the JS
+   auto-fire handler. data-kickoff-pending is rendered ONLY when history is
+   empty — its presence is the signal for the JS to POST the kickoff turn
+   against /turn-stream on page load. Together they keep the kickoff
+   message a single source of truth (Python constant → template attr → JS
+   read), no JS-side duplicate to drift. #}
+<div class="max-w-3xl mx-auto p-6 space-y-4"
+     data-session-id="{{ session_id }}"
+     data-kickoff-message="{{ kickoff_message }}"
+     {% if not history %}data-kickoff-pending="true"{% endif %}>
+
   <div class="flex items-baseline justify-between">
     <h1 class="text-2xl font-semibold">Onboarding interview</h1>
     <a href="/onboarding/" class="text-sm text-slate-600 underline">Back to onboarding</a>

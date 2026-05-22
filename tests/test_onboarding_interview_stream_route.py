@@ -308,8 +308,16 @@ def test_captured_blocks_updated(client: TestClient, base_root: Path, monkeypatc
 
 
 def test_length_finish_reason_emits_error(client: TestClient, base_root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """finish_reason='length' → SSE error event, no append_turn."""
+    """finish_reason='length' on a post-kickoff turn → SSE error with
+    ``kind='length'``, no append_turn.
+
+    Empty-history sessions get the ``kickoff_failed`` discriminator instead
+    (covered by ``test_kickoff_failed_kind_on_length_finish_when_history_empty``);
+    seed one turn pair here so the original generic-length assertion holds.
+    """
     sid = _create_session(base_root)
+    _seed_history(base_root, sid, pairs=1)  # post-kickoff state
+
     _stub_complete_stream(
         monkeypatch,
         [
@@ -335,10 +343,10 @@ def test_length_finish_reason_emits_error(client: TestClient, base_root: Path, m
     assert error_ev["data"]["kind"] == "length"
     assert "max_tokens" in error_ev["data"]["message"].lower() or "trim" in error_ev["data"]["message"].lower()
 
-    # History must be unchanged — no append_turn called
+    # History unchanged — the seeded turn pair stays, no new pair appended.
     row = _read_session_row(base_root, sid)
     history = json.loads(row["history_json"])
-    assert history == []
+    assert len(history) == 2
 
 
 # ── Test 8: Mid-stream error passes through ───────────────────────────────────
@@ -454,3 +462,164 @@ def test_clear_error_called_on_success(client: TestClient, base_root: Path, monk
 
     row = _read_session_row(base_root, sid)
     assert row["error_state"] is None
+
+
+# ── #755 kickoff slice: server-side guard + kind='kickoff_failed' discriminator ──
+
+
+def _seed_history(base_root: Path, session_id: str, *, pairs: int = 1) -> None:
+    """Append ``pairs`` user/assistant turn pairs onto the session history.
+
+    Used to set up the "history is non-empty" state for the kickoff-replay
+    guard tests. Bypasses /turn so the session_id parameter is honored.
+    """
+    from findajob.onboarding.session_store import append_turn
+
+    conn = sqlite3.connect(base_root / "data" / "pipeline.db")
+    try:
+        for i in range(pairs):
+            append_turn(conn, session_id, "user", f"seed-user-{i}")
+            append_turn(conn, session_id, "assistant", f"seed-assistant-{i}")
+    finally:
+        conn.close()
+
+
+def test_kickoff_replay_guard_refuses_when_history_non_empty(
+    client: TestClient, base_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#755 server-side idempotency guard: a second POST of the kickoff
+    message (e.g. user navigates back/forward to the chat page, or two tabs
+    auto-fire concurrently) MUST NOT trigger a second LLM call.
+
+    The session row's history is the lock — if it already carries a turn pair,
+    the kickoff has already fired and the second attempt is a replay. Refuse
+    via an SSE error event with ``kind='kickoff_replay'``.
+    """
+    from findajob.web.routes.onboarding_interview import _KICKOFF_USER_MESSAGE
+
+    sid = _create_session(base_root)
+    _seed_history(base_root, sid, pairs=1)  # history is now non-empty
+
+    def _explode(**_kwargs):
+        raise AssertionError("complete_stream must NOT be called when kickoff is replayed against non-empty history")
+        yield  # pragma: no cover — make this a generator for monkeypatch shape
+
+    monkeypatch.setattr("findajob.web.routes.onboarding_interview.complete_stream", _explode)
+
+    resp = _post_stream(client, sid, message=_KICKOFF_USER_MESSAGE)
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/event-stream")
+
+    events = _parse_sse(resp.text)
+    types = [e["event"] for e in events]
+    assert "error" in types, f"expected error event, got events={events}"
+    assert "finish" not in types
+
+    error_ev = next(e for e in events if e["event"] == "error")
+    assert error_ev["data"]["kind"] == "kickoff_replay", f"expected kind='kickoff_replay', got {error_ev['data']!r}"
+
+    # History must be unchanged (no second user/assistant pair appended).
+    row = _read_session_row(base_root, sid)
+    history = json.loads(row["history_json"])
+    assert len(history) == 2, f"history grew unexpectedly: {history!r}"
+
+
+def test_kickoff_failed_kind_on_length_finish_when_history_empty(
+    client: TestClient, base_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#755 error-kind discriminator: when the kickoff LLM call fails via
+    ``finish_reason='length'``, the SSE error event's ``kind`` is
+    ``'kickoff_failed'`` (not ``'length'``) so the JS handler can render a
+    "Retry greeting" affordance instead of a generic banner.
+
+    The original error kind is preserved as ``original_kind`` for the UI
+    to surface the actual cause inside the retry affordance.
+    """
+    from findajob.web.routes.onboarding_interview import _KICKOFF_USER_MESSAGE
+
+    sid = _create_session(base_root)
+    # History intentionally NOT seeded — this IS the kickoff turn.
+
+    _stub_complete_stream(
+        monkeypatch,
+        [
+            StreamFinish(
+                type="finish",
+                text="truncated greeting...",
+                finish_reason="length",
+                usage=_make_usage(),
+                generation_id=None,
+            ),
+        ],
+    )
+
+    resp = _post_stream(client, sid, message=_KICKOFF_USER_MESSAGE)
+    assert resp.status_code == 200
+
+    events = _parse_sse(resp.text)
+    error_ev = next((e for e in events if e["event"] == "error"), None)
+    assert error_ev is not None, f"expected error event, got events={events}"
+
+    assert error_ev["data"]["kind"] == "kickoff_failed", f"kind discriminator missing: {error_ev['data']!r}"
+    assert error_ev["data"]["original_kind"] == "length", f"original_kind not preserved: {error_ev['data']!r}"
+
+
+def test_kickoff_failed_kind_on_mid_stream_error_when_history_empty(
+    client: TestClient, base_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#755 error-kind discriminator: mid-stream error during the kickoff
+    call also gets the ``kickoff_failed`` kind, with the underlying upstream
+    kind preserved as ``original_kind``.
+    """
+    from findajob.web.routes.onboarding_interview import _KICKOFF_USER_MESSAGE
+
+    sid = _create_session(base_root)
+
+    _stub_complete_stream(
+        monkeypatch,
+        [
+            StreamError(type="error", kind="network", message="connection reset"),
+        ],
+    )
+
+    resp = _post_stream(client, sid, message=_KICKOFF_USER_MESSAGE)
+    assert resp.status_code == 200
+
+    events = _parse_sse(resp.text)
+    error_ev = next((e for e in events if e["event"] == "error"), None)
+    assert error_ev is not None, f"expected error event, got events={events}"
+
+    assert error_ev["data"]["kind"] == "kickoff_failed"
+    assert error_ev["data"]["original_kind"] == "network"
+
+
+def test_post_kickoff_error_keeps_original_kind_when_history_non_empty(
+    client: TestClient, base_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#755 negative control: a real chat turn failing mid-stream keeps the
+    original error kind. The ``kickoff_failed`` discriminator must NOT leak
+    into post-kickoff turns — otherwise the JS would render a "Retry
+    greeting" affordance on every error throughout the interview.
+    """
+    sid = _create_session(base_root)
+    _seed_history(base_root, sid, pairs=1)  # post-kickoff state
+
+    _stub_complete_stream(
+        monkeypatch,
+        [
+            StreamError(type="error", kind="network", message="connection reset"),
+        ],
+    )
+
+    # Note: not the kickoff message — a real user-typed turn.
+    resp = _post_stream(client, sid, message="follow-up question")
+    assert resp.status_code == 200
+
+    events = _parse_sse(resp.text)
+    error_ev = next((e for e in events if e["event"] == "error"), None)
+    assert error_ev is not None
+    # Kind must NOT be promoted to kickoff_failed when history is non-empty.
+    assert error_ev["data"]["kind"] == "network", f"non-kickoff turn got promoted kind: {error_ev['data']!r}"
+    assert "original_kind" not in error_ev["data"], (
+        f"non-kickoff turn carries spurious original_kind: {error_ev['data']!r}"
+    )

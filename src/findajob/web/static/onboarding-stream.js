@@ -1,6 +1,6 @@
 // src/findajob/web/static/onboarding-stream.js
 //
-// SSE consumer for the onboarding interview chat (#740).
+// SSE consumer for the onboarding interview chat (#740, extended #755).
 //
 // Replaces HTMX's request/response cycle for /onboarding/interview/turn with
 // a streaming fetch that consumes Server-Sent Events from
@@ -9,6 +9,18 @@
 // "captured" event and renders a transient chip in #stream-progress; the
 // final "finish" event delivers the rendered assistant bubble plus the
 // progress-row + finalize-block data.
+//
+// #755 kickoff path: when the chat container carries
+// data-kickoff-pending="true" (server-rendered when history is empty), the
+// init() handler auto-fires a POST to /turn-stream with the kickoff message
+// read from data-kickoff-message. The kickoff turn flows through the same
+// consumeStream / handleFinish path as a user turn — same persistence,
+// same UI updates. Error paths discriminate on data.kind:
+//   - kickoff_failed → render a "Retry greeting" affordance (not the
+//     generic banner) so the user has a clear recovery action
+//   - kickoff_replay → silently reload (the kickoff already fired in
+//     another tab; the page's GET handler now renders the greeting from
+//     persisted history)
 //
 // XSS posture: every string-interpolated value passes through escapeHtml(),
 // encodeURIComponent(), or Number()-coercion. The only raw HTML accepted is
@@ -103,6 +115,23 @@
       +   '<p class="font-medium">Something went wrong</p>'
       +   '<p class="text-sm mt-1 whitespace-pre-wrap">' + escapeHtml(message) + '</p>'
       +   '<p class="text-xs mt-2 text-red-700">You can keep typing to retry — the previous turn is preserved.</p>'
+      + '</div>';
+  }
+
+  // #755: kickoff-specific failure UX. Distinct from renderErrorBanner so
+  // the user has an explicit recovery action (button) rather than a hint
+  // to "keep typing" (which doesn't apply when there's no greeting yet to
+  // continue from). Amber styling instead of red — less alarming for what
+  // is often a transient cold-model issue.
+  function renderKickoffRetry(message) {
+    return ''
+      + '<div class="border border-amber-300 bg-amber-50 text-amber-900 px-4 py-3 rounded">'
+      +   '<p class="font-medium">Could not start the interview</p>'
+      +   '<p class="text-sm mt-1 whitespace-pre-wrap">' + escapeHtml(message) + '</p>'
+      +   '<button type="button" data-kickoff-retry'
+      +     ' class="mt-2 px-3 py-1 bg-amber-600 text-white rounded hover:bg-amber-700 disabled:opacity-60 text-sm">'
+      +     'Retry greeting'
+      +   '</button>'
       + '</div>';
   }
 
@@ -272,6 +301,28 @@
   }
 
   function handleError(data, ctx) {
+    var kind = data && data.kind;
+
+    if (kind === 'kickoff_replay') {
+      // #755: the kickoff was already fired (e.g. another tab won the
+      // race, or the user navigated back/forward mid-stream). The page's
+      // GET handler will now render the greeting from persisted history;
+      // silent reload is the simplest path to the correct state.
+      window.location.reload();
+      return;
+    }
+
+    if (kind === 'kickoff_failed') {
+      // #755: the kickoff LLM call errored. Show the retry-greeting
+      // affordance instead of the generic "keep typing" banner —
+      // there's no greeting yet to continue from.
+      replaceHtml(ctx.errorSlotEl, renderKickoffRetry(data.message || 'Greeting failed.'));
+      clearEl(ctx.streamProgressEl);
+      if (ctx.thinkingEl) ctx.thinkingEl.style.display = 'none';
+      if (ctx.form) setFormDisabled(ctx.form, false);
+      return;
+    }
+
     replaceHtml(ctx.errorSlotEl, renderErrorBanner(data.message || 'The turn failed.'));
     clearEl(ctx.streamProgressEl);
     if (ctx.thinkingEl) ctx.thinkingEl.style.display = 'none';
@@ -279,9 +330,88 @@
     setFormDisabled(ctx.form, false);
   }
 
+  // #755: auto-fire the kickoff turn against /turn-stream when the chat
+  // page loads with data-kickoff-pending="true". Reuses consumeStream +
+  // handleFinish so the kickoff renders identically to a user turn (user
+  // bubble "Begin the interview." + assistant greeting). The server-side
+  // /turn-stream guard catches the rare second-tab race; the kickoff_failed
+  // discriminator in the SSE error event routes us to the retry affordance.
+  function autoFireKickoff() {
+    var container = document.querySelector('[data-kickoff-pending="true"]');
+    if (!container) return;
+
+    var sessionId = container.getAttribute('data-session-id');
+    var kickoffMessage = container.getAttribute('data-kickoff-message');
+    if (!sessionId || !kickoffMessage) return;
+
+    var messagesEl = document.getElementById('messages');
+    var streamProgressEl = document.getElementById('stream-progress');
+    var progressRowEl = document.getElementById('progress-row');
+    var finalizeEl = document.getElementById('finalize-block');
+    var errorSlotEl = document.getElementById('error-slot');
+    var thinkingEl = document.getElementById('turn-thinking');
+    // Reuse the user-turn form for disabled-state semantics: if the user
+    // tries to submit a real turn while the kickoff is in flight, the form
+    // is already disabled and a textarea/button race is avoided.
+    var form = document.querySelector('form[data-stream-endpoint]');
+
+    clearEl(streamProgressEl);
+    clearEl(errorSlotEl);
+    if (thinkingEl) thinkingEl.style.display = 'flex';
+    if (form) setFormDisabled(form, true);
+
+    var fd = new FormData();
+    fd.append('session_id', sessionId);
+    fd.append('message', kickoffMessage);
+
+    fetch('/onboarding/interview/turn-stream', { method: 'POST', body: fd, credentials: 'same-origin' })
+      .then(function (resp) {
+        if (!resp.ok) {
+          return resp.json().then(function (j) {
+            throw new Error((j && j.detail) || ('HTTP ' + resp.status));
+          }, function () {
+            throw new Error('HTTP ' + resp.status);
+          });
+        }
+        return consumeStream(resp.body, {
+          form: form,
+          textarea: form ? form.querySelector('textarea[name="message"]') : null,
+          sessionId: sessionId,
+          message: kickoffMessage,
+          messagesEl: messagesEl,
+          streamProgressEl: streamProgressEl,
+          progressRowEl: progressRowEl,
+          finalizeEl: finalizeEl,
+          errorSlotEl: errorSlotEl,
+          thinkingEl: thinkingEl,
+        });
+      })
+      .catch(function (err) {
+        if (thinkingEl) thinkingEl.style.display = 'none';
+        clearEl(streamProgressEl);
+        // Pre-stream HTTP errors (502/503/network) — treat as kickoff_failed
+        // since the user is still in the kickoff phase. The retry button
+        // re-fires through this same function.
+        replaceHtml(errorSlotEl, renderKickoffRetry((err && err.message) || 'Kickoff failed.'));
+        if (form) setFormDisabled(form, false);
+      });
+  }
+
+  function attachKickoffRetryHandler() {
+    document.addEventListener('click', function (e) {
+      var btn = e.target && e.target.closest ? e.target.closest('[data-kickoff-retry]') : null;
+      if (!btn) return;
+      e.preventDefault();
+      btn.disabled = true;
+      autoFireKickoff();
+    });
+  }
+
   function init() {
     var forms = document.querySelectorAll('form[data-stream-endpoint]');
     Array.prototype.forEach.call(forms, attachHandler);
+    attachKickoffRetryHandler();
+    autoFireKickoff();
   }
 
   if (document.readyState === 'loading') {

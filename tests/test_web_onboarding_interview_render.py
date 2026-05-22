@@ -517,3 +517,55 @@ def test_resume_page_file_block_shows_badge_not_raw_delimiter(client_with_key: T
 # The onboarding-cost nav chip OOB swap was retired in #87 and the credits
 # chip itself was retired in #472 (v0.20.0). The nav now shows current-month
 # spend from cost_log directly — no per-turn OOB swap needed.
+
+
+# ── #755 kickoff-pending markers on the chat page ─────────────────────────
+
+
+def test_interview_page_carries_kickoff_pending_markers_when_history_empty(
+    client_with_key: TestClient, base_root: Path
+) -> None:
+    """#755: the chat page exposes ``data-kickoff-pending="true"`` and
+    ``data-kickoff-message="…"`` on the chat container when history is
+    empty. The JS auto-fire handler reads these to know it should POST to
+    /turn-stream with the kickoff message instead of waiting for the user's
+    first submit.
+
+    Server-authoritative source of truth: the kickoff message lives as a
+    Python constant in the route module and is rendered into the page —
+    no JS-side copy that could drift.
+    """
+    sid = _create_session_with_history(base_root, [])
+
+    resp = client_with_key.get(f"/onboarding/interview/{sid}")
+    assert resp.status_code == 200
+    body = resp.text
+
+    assert 'data-kickoff-pending="true"' in body, "kickoff-pending marker missing on empty-history chat page"
+    assert 'data-kickoff-message="Begin the interview."' in body, "kickoff-message attribute missing or wrong text"
+
+
+def test_interview_page_omits_kickoff_pending_marker_when_history_non_empty(
+    client_with_key: TestClient, base_root: Path
+) -> None:
+    """#755 negative control: once the kickoff has fired (history has any
+    turn), the JS must NOT re-fire on subsequent page loads. The server
+    omits ``data-kickoff-pending`` so the JS auto-fire branch is skipped.
+
+    The ``data-kickoff-message`` attribute may still be present (the
+    constant doesn't change) but the JS only acts on it when paired with
+    the ``data-kickoff-pending`` marker.
+    """
+    sid = _create_session_with_history(
+        base_root,
+        [
+            {"role": "user", "content": "Begin the interview."},
+            {"role": "assistant", "content": "Welcome — what role are you targeting?"},
+        ],
+    )
+
+    resp = client_with_key.get(f"/onboarding/interview/{sid}")
+    assert resp.status_code == 200
+    body = resp.text
+
+    assert "data-kickoff-pending" not in body, "kickoff-pending marker must not appear when history is non-empty"

@@ -228,106 +228,44 @@ def _render_chat(
             "openrouter_last4": openrouter_last4,
             "cumulative_cost_usd": cumulative_cost_usd,
             "error": error,
+            # #755: the chat page's JS auto-fires this kickoff message
+            # against /turn-stream when history is empty. Constant lives in
+            # this module (server-authoritative) and is exposed via
+            # data-kickoff-message on the chat container — no JS copy.
+            "kickoff_message": _KICKOFF_USER_MESSAGE,
         },
         status_code=status_code,
     )
 
 
 @router.post("/onboarding/interview/start", response_model=None)
-def start_interview(request: Request) -> HTMLResponse | RedirectResponse:
-    """Create a session, run the synthetic kickoff turn, redirect to the chat page.
+def start_interview(request: Request) -> RedirectResponse:
+    """Promote the credentials-only session into an interview, redirect to chat.
 
-    Step 1 (API key collection at ``/onboarding/keys``) is required before
-    starting — promote that credentials-only session row into the active
-    interview rather than creating a fresh one. If no credentials row
-    exists, 503 back to /onboarding/.
+    #755: the greeting LLM call is deferred to ``/turn-stream`` — auto-fired
+    by the chat page on load. ``/start`` is now a fast session-resolve + 303
+    (<1s) instead of blocking on the synchronous run_turn() that previously
+    generated the first assistant message (~25-28s cold-model latency).
+
+    Step 1 (API-key collection at ``/onboarding/keys``) is still mandatory:
+    if no session with credentials exists, 503 back to /onboarding/.
     """
     conn = _conn(request)
     try:
-        # Re-clicking "Start interview" while an interview is already in flight
-        # (e.g. user came back to /onboarding/ on a different tab) should land
-        # them on the existing chat, not 503 because there's no longer a
-        # credentials-only row to promote. Note: a credentials-only row also
-        # satisfies find_active() (no completed_at, recent last_turn_at), so
-        # only redirect when the row has at least one turn already.
-        existing_active = find_active(conn)
-        if existing_active is not None and existing_active.history:
-            return RedirectResponse(
-                url=f"/onboarding/interview/{existing_active.id}",
-                status_code=303,
-            )
-
-        cred_session = find_credentials_only(conn)
-        if cred_session is None:
+        # find_active matches sessions with OR without history (an empty-history
+        # row created by Step 1 satisfies it too); find_credentials_only is the
+        # fallback for first-/start when last_turn_at predates the 24h window.
+        # Both shapes converge to "redirect to the same session id" — there's
+        # no separate "promote" step now that we don't write turns here.
+        session = find_active(conn) or find_credentials_only(conn)
+        if session is None:
             raise _unavailable_503()
-        session_id = cred_session.id
-
-        chat_key = _resolved_chat_key(conn, session_id)
-        if not chat_key:
+        # Validate credentials resolve here so /start 503s instead of
+        # redirecting to a chat page that would immediately fail when
+        # /turn-stream tries to use the same key.
+        if not _resolved_chat_key(conn, session.id):
             raise _unavailable_503()
-        keys_collected, openrouter_last4 = _keys_collected_for(conn, session_id)
-
-        try:
-            assistant_text, usage = run_turn(
-                api_key=chat_key,
-                history=[],
-                user_message=_KICKOFF_USER_MESSAGE,
-            )
-        except InterviewRunnerError as e:
-            set_error(conn, session_id, e.user_message)
-            _log_runner_error(session_id=session_id, route="start", err=e)
-            # /start is the very first turn — no chat to splice an error
-            # bubble into yet, so render the full chat page seeded with
-            # the error banner. /turn renders the OOB partial instead.
-            return _render_chat(
-                request,
-                session_id=session_id,
-                history=[],
-                captured={},
-                keys_collected=keys_collected,
-                openrouter_last4=openrouter_last4,
-                error=e.user_message,
-                status_code=200,
-            )
-
-        # #623: a prior /start attempt on this same credentials-only row may
-        # have persisted error_state; clear it so /resume doesn't re-render
-        # the stale banner alongside a now-working interview.
-        clear_error(conn, session_id)
-        add_turn_cost(conn, session_id, usage)
-        # Write cost_log row — subsumes #463 for onboarding turns.
-        try:
-            log_call(
-                conn,
-                job_id=None,
-                operation="onboarding_interviewer",
-                model=_INTERVIEWER_MODEL,
-                input_text=_KICKOFF_USER_MESSAGE,
-                output_text=assistant_text,
-                latency_ms=None,
-                success=True,
-                cost_usd_override=float(usage.get("cost") or 0.0),
-                input_tokens_override=int(usage.get("prompt_tokens") or 0),
-                output_tokens_override=int(usage.get("completion_tokens") or 0),
-            )
-            conn.commit()
-        except Exception as e:  # noqa: BLE001
-            log_event(
-                "cost_log_failed",
-                operation="onboarding_interviewer",
-                route="start",
-                error=f"{type(e).__name__}: {e}",
-            )
-        append_turn(conn, session_id, "user", _KICKOFF_USER_MESSAGE)
-        append_turn(conn, session_id, "assistant", assistant_text)
-        captured = _captured_from_history(
-            [
-                {"role": "user", "content": _KICKOFF_USER_MESSAGE},
-                {"role": "assistant", "content": assistant_text},
-            ]
-        )
-        if captured:
-            update_captured_blocks(conn, session_id, captured)
+        session_id = session.id
     finally:
         conn.close()
 
@@ -442,6 +380,24 @@ def _sse_event(event_type: str, data: dict) -> bytes:
     return f"event: {event_type}\ndata: {json.dumps(data, separators=(',', ':'))}\n\n".encode()
 
 
+def _kickoff_error_kind(was_kickoff: bool, original_kind: str) -> dict[str, str]:
+    """Return the kind discriminator fields for an SSE error event.
+
+    #755: when the kickoff turn (the very first /turn-stream call against an
+    empty-history session — auto-fired by the chat page on load) errors out,
+    the SSE ``kind`` is promoted to ``'kickoff_failed'`` so the JS handler
+    can render a "Retry greeting" affordance instead of a generic banner.
+    The underlying cause is preserved as ``original_kind`` for the UI to
+    surface inside the retry affordance.
+
+    For post-kickoff turns, ``kind`` is the original error kind and
+    ``original_kind`` is omitted (no semantic content for the JS).
+    """
+    if was_kickoff:
+        return {"kind": "kickoff_failed", "original_kind": original_kind}
+    return {"kind": original_kind}
+
+
 def _stream_turn(
     *,
     db_path: Path,
@@ -478,8 +434,36 @@ def _stream_turn(
     conn = connect(db_path, timeout=30)
     conn.row_factory = sqlite3.Row
     saw_terminal = False
+    # #755 kickoff discriminator: an LLM call against an empty-history session
+    # IS the kickoff turn (the chat page auto-fires this on load). Any error
+    # path below promotes its SSE ``kind`` to ``'kickoff_failed'`` so the JS
+    # can render a "Retry greeting" affordance. Captured once before the
+    # complete_stream loop so persistence below (which mutates history)
+    # doesn't flip the meaning mid-stream.
+    was_kickoff = not sess_history
     try:
         try:
+            # #755 kickoff-replay guard: defense-in-depth idempotency check
+            # for the chat page's auto-fire kickoff. The page only auto-fires
+            # when history is empty, but a concurrent second-tab fire (or
+            # back/forward nav mid-stream) can race past that client-side
+            # check. The session row's history is the canonical lock — if
+            # it already carries turns, the kickoff has already fired and
+            # the second attempt is a replay. Refuse without touching the
+            # LLM or persisting anything; the existing greeting is already
+            # in history and will re-render on the next page load.
+            if message == _KICKOFF_USER_MESSAGE and sess_history:
+                saw_terminal = True
+                yield _sse_event(
+                    "error",
+                    {
+                        "kind": "kickoff_replay",
+                        "user_message": message,
+                        "message": "The interview has already begun.",
+                    },
+                )
+                return
+
             for chunk in complete_stream(
                 role="onboarding_interviewer",
                 prompt=message,
@@ -511,7 +495,7 @@ def _stream_turn(
                         yield _sse_event(
                             "error",
                             {
-                                "kind": "length",
+                                **_kickoff_error_kind(was_kickoff, "length"),
                                 "user_message": message,
                                 "message": err.user_message,
                             },
@@ -598,7 +582,7 @@ def _stream_turn(
                     yield _sse_event(
                         "error",
                         {
-                            "kind": translated.kind,
+                            **_kickoff_error_kind(was_kickoff, translated.kind),
                             "user_message": message,
                             "message": translated.user_message,
                         },
@@ -613,7 +597,7 @@ def _stream_turn(
             yield _sse_event(
                 "error",
                 {
-                    "kind": translated.kind,
+                    **_kickoff_error_kind(was_kickoff, translated.kind),
                     "user_message": message,
                     "message": translated.user_message,
                 },

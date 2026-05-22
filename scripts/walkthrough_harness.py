@@ -613,28 +613,41 @@ def run_walkthrough(
         # Use page.click(selector) — auto-waits for visible+enabled and
         # re-evaluates the selector each retry, surviving DOM re-attachment.
         #
-        # `no_wait_after=True` is load-bearing: POST /onboarding/interview/start
-        # makes a synchronous LLM call inline to generate the initial assistant
-        # greeting, taking ~25-28s on a freshly-reset stack (cold model).
-        # Playwright's default implicit nav-wait after a submit-button click is
-        # 30s; Alpine hydration retry overhead pushes the click's dispatch
-        # forward by ~5s, so the nav lands at ~30s and races the timeout. With
-        # `no_wait_after=True` the click returns immediately and the explicit
-        # `wait_for_url` below owns the nav-wait budget. Don't remove this flag
-        # without also re-tuning the route to defer the LLM call (#754).
+        # `no_wait_after=True` is still useful as defensive control over the
+        # nav-wait budget — Alpine hydration can slow click dispatch by a few
+        # seconds, and we'd rather own the post-click wait explicitly than
+        # rely on Playwright's implicit 30s nav-wait. Post-#755 the /start
+        # POST returns 303 in <1s (the greeting LLM call moved to the chat
+        # page's auto-fire via /turn-stream), so the redirect itself is fast;
+        # the streaming greeting is awaited explicitly below.
         page.click(
             'form[action*="/onboarding/interview/start"] button[type="submit"]',
             timeout=60_000,
             no_wait_after=True,
         )
 
-        # Wait for redirect to /onboarding/interview/{sid}. 120s budget covers
-        # the cold-start LLM call inside the start route plus headroom.
+        # Wait for redirect to /onboarding/interview/{sid}. /start no longer
+        # blocks on the LLM (#755) so 30s budget is comfortable headroom
+        # over the actual <1s redirect.
         try:
-            page.wait_for_url(re.compile(r"/onboarding/interview/[^/]+$"), timeout=120_000)
+            page.wait_for_url(re.compile(r"/onboarding/interview/[^/]+$"), timeout=30_000)
         except PWTimeout:
             page.wait_for_load_state("networkidle")
         snapshot("turn-01-interview-start")
+
+        # #755: after the redirect lands, the chat page's JS auto-fires the
+        # kickoff turn against /turn-stream. The assistant greeting arrives
+        # via SSE — same ~25-28s cold-model latency that used to block
+        # /start. Wait for the greeting bubble before entering the turn
+        # loop so the harness's first-turn corpus matching doesn't race
+        # against an empty chat. 60s budget covers the cold-start case
+        # with comfortable headroom.
+        print("[harness] Waiting for kickoff greeting to stream in...")
+        try:
+            page.wait_for_selector("[data-role='assistant']", timeout=60_000)
+        except PWTimeout:
+            print("[harness] Kickoff greeting did not arrive within 60s — proceeding; turn loop will surface the gap.")
+        snapshot("turn-01-after-kickoff-greeting")
 
         # ── Interview loop ────────────────────────────────────────────────────
         turn_idx = 0

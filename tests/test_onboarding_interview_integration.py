@@ -129,12 +129,17 @@ def test_full_interview_flow_writes_all_files_and_sentinel(
     base_root: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Drive a real flow: /start → /turn → /turn → /finalize.
+    """Drive a real flow: /start → /turn (kickoff) → /turn → /turn → /finalize.
 
-    Mock urlopen so each call returns a canned LLM reply. The two /turn
-    calls between them emit every block — verifies that the cumulative
-    transcript parser picks up blocks regardless of which turn produced
-    them, and that finalize writes every destination file."""
+    Mock urlopen so each call returns a canned LLM reply.
+
+    #755 deferred /start's synchronous LLM call out of the route — /start
+    is now a fast session-resolve + 303 with no LLM hit. The kickoff turn
+    is driven from the chat page on load (production: /turn-stream
+    auto-fire; this integration test simulates the same outcome via /turn
+    since the inject path under test is downstream of the streaming/sync
+    transport choice — both routes append the same shape of turns to the
+    session row)."""
     from findajob.onboarding.parser import ALLOWED_FILENAMES
 
     blob = (_FIXTURE_DIR / "alice-doe-clean-emission.txt").read_text(encoding="utf-8")
@@ -147,7 +152,8 @@ def test_full_interview_flow_writes_all_files_and_sentinel(
     assert not combined_parse.missing, f"fixture split lost blocks: {combined_parse.missing}"
 
     canned_responses = [
-        # Response to /start's synthetic kickoff turn — orientation prose.
+        # Response to the kickoff /turn — orientation prose (post-#755 this
+        # turn is auto-fired by the chat page; pre-#755 it came from /start).
         "Welcome to the findajob onboarding interview. I'll ask you a few "
         "questions to set up your pipeline. First — what role are you targeting?",
         # Response to /turn #1 — first half of the emission blocks.
@@ -184,9 +190,20 @@ def test_full_interview_flow_writes_all_files_and_sentinel(
     resp = client.post("/onboarding/interview/start")
     assert resp.status_code == 303, resp.text
     sid = resp.headers["location"].rsplit("/", 1)[-1]
-    # /start promotes the credentials-only row, so the chat session id
-    # should equal the credentials-only id (same row, history attached).
+    # /start resolves the credentials-only row, so the chat session id
+    # should equal the credentials-only id (same row, history attached
+    # below by the kickoff /turn).
     assert sid == creds_sid
+
+    # ── Kickoff /turn ─────────────────────────────────────────────────
+    # Post-#755 the kickoff turn is driven from the chat page on load
+    # (production: /turn-stream auto-fire). Simulating via /turn here —
+    # same session-store writes, same urlopen mock catches the LLM call.
+    resp_kickoff = client.post(
+        "/onboarding/interview/turn",
+        data={"session_id": sid, "message": "Begin the interview."},
+    )
+    assert resp_kickoff.status_code == 200, resp_kickoff.text
 
     # ── /turn × 2 ─────────────────────────────────────────────────────
     resp1 = client.post(

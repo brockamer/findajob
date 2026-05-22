@@ -198,23 +198,6 @@ def test_routes_register_but_503_when_no_credentials(client: TestClient) -> None
     assert "onboarding" in resp.text.lower()
 
 
-def test_start_uses_tester_credentials(
-    client: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
-    base_root: Path,
-) -> None:
-    """Self-deploy: tester credentials collected — chat runs on the
-    tester's own OpenRouter key. There is no operator-funded fallback
-    after the #401 revert."""
-    _plant_credentials(base_root, openrouter="sk-or-v1-tester-self-deploy")
-
-    calls = _stub_run_turn(monkeypatch, "Hi! What's your name?")
-    resp = client.post("/onboarding/interview/start")
-    assert resp.status_code == 303
-    assert len(calls) == 1
-    assert calls[0]["api_key"] == "sk-or-v1-tester-self-deploy"
-
-
 def test_start_503_when_no_credentials_collected(
     client: TestClient,
 ) -> None:
@@ -228,62 +211,41 @@ def test_start_503_when_no_credentials_collected(
 # ── /start ────────────────────────────────────────────────────────────────
 
 
-def test_start_creates_session_and_runs_first_turn(
+def test_start_creates_session_does_not_call_llm(
     client_with_key: TestClient,
     base_root: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """#755: /start defers the greeting LLM call to /turn-stream — auto-fired
+    by the chat page on load. /start is now a fast session-promote + 303 so
+    first-click NUX drops from ~25-28s to <1s.
+
+    Before #755: /start blocked on a synchronous ``run_turn()`` to generate
+    the assistant greeting before redirecting. After: /start returns 303
+    immediately; the kickoff turn is fired by the chat page's auto-load
+    handler against ``/onboarding/interview/turn-stream``.
+    """
     _plant_credentials(base_root)
-    calls = _stub_run_turn(monkeypatch, "hello — what's your full name?")
+    calls = _stub_run_turn(monkeypatch, "should-not-be-called")
+
     resp = client_with_key.post("/onboarding/interview/start")
 
-    assert resp.status_code == 303  # redirect to GET /interview/{sid}
+    assert resp.status_code == 303
     location = resp.headers["location"]
     assert location.startswith("/onboarding/interview/")
     sid = location.rsplit("/", 1)[-1]
 
-    # run_turn was called exactly once with the tester's key + empty history + kickoff message.
-    # Phase 2: system_prompt is no longer passed (the wrapper reads the role file directly).
-    assert len(calls) == 1
-    assert calls[0]["api_key"] == _USER_KEY
-    assert calls[0]["history"] == []
-    assert calls[0]["user_message"]  # synthetic kickoff non-empty
+    # /start MUST NOT call the LLM — the whole point of #755.
+    assert calls == [], f"/start unexpectedly called run_turn: {calls}"
 
-    # Session row has both turns persisted
+    # Session row exists with empty history (no kickoff turn persisted yet).
     history_json, _captured_json, completed_at, error_state = _read_session(base_root, sid)
     import json as _json
 
     history = _json.loads(history_json)
-    assert len(history) == 2
-    assert history[0]["role"] == "user"
-    assert history[1]["role"] == "assistant"
-    assert history[1]["content"] == "hello — what's your full name?"
+    assert history == []
     assert completed_at is None
     assert error_state is None
-
-
-def test_start_handles_runner_error(
-    client_with_key: TestClient, base_root: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _plant_credentials(base_root)
-    _stub_run_turn_error(monkeypatch, "OpenRouter rejected the operator key (401 Unauthorized).")
-    resp = client_with_key.post("/onboarding/interview/start")
-
-    # Error responses render in-page rather than redirecting (so the user sees the banner)
-    assert resp.status_code in (200, 502)
-    assert "401" in resp.text or "OpenRouter" in resp.text
-
-    # Session was created and error_state captured (so the operator can debug from the DB)
-    conn = sqlite3.connect(base_root / "data" / "pipeline.db")
-    try:
-        row = conn.execute(
-            "SELECT id, error_state FROM onboarding_sessions ORDER BY started_at DESC LIMIT 1"
-        ).fetchone()
-    finally:
-        conn.close()
-    assert row is not None
-    assert row[1] is not None
-    assert "401" in row[1] or "OpenRouter" in row[1]
 
 
 # ── /turn ─────────────────────────────────────────────────────────────────
@@ -820,26 +782,6 @@ def test_error_emits_log_event(
     _json.dumps(err_events[0])
 
 
-def test_start_error_emits_log_event(
-    client_with_key: TestClient, base_root: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """/start errors also log via the same channel — different route value."""
-    _plant_credentials(base_root)
-    log_calls: list[dict[str, object]] = []
-    monkeypatch.setattr(
-        "findajob.web.routes.onboarding_interview.log_event",
-        lambda evt, **kwargs: log_calls.append({"event": evt, **kwargs}),
-    )
-    _stub_run_turn_error(monkeypatch, "boom", kind="upstream", status_code=503)
-    client_with_key.post("/onboarding/interview/start")
-
-    err_events = [c for c in log_calls if c["event"] == "onboarding_interview_error"]
-    assert len(err_events) == 1
-    assert err_events[0]["route"] == "start"
-    assert err_events[0]["error_kind"] == "upstream"
-    assert err_events[0]["status_code"] == 503
-
-
 # ── Tab-close-resume (#336 Task 8) ────────────────────────────────────────
 
 
@@ -965,27 +907,6 @@ def _read_cost_log_rows(base_root: Path) -> list[tuple]:
     return rows
 
 
-def test_start_writes_cost_log_row(
-    client_with_key: TestClient, base_root: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Successful /start turn must produce a cost_log row with the API-authoritative
-    cost+token trio (not heuristic estimates). Pins #463 closure."""
-    _plant_credentials(base_root)
-    _stub_run_turn(monkeypatch, "Hello — what's your name?")
-
-    resp = client_with_key.post("/onboarding/interview/start")
-    assert resp.status_code == 303  # redirect means success
-
-    rows = _read_cost_log_rows(base_root)
-    assert len(rows) == 1, f"expected 1 cost_log row, got {len(rows)}"
-    operation, model, input_tokens, output_tokens, cost_usd = rows[0]
-    assert operation == "onboarding_interviewer"
-    assert model != "unknown"  # role file must have a model: frontmatter line
-    assert input_tokens == 10
-    assert output_tokens == 20
-    assert abs(cost_usd - 0.000123) < 1e-9, f"cost_usd mismatch: {cost_usd}"
-
-
 def test_turn_writes_cost_log_row(
     client_with_key: TestClient, base_root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1046,37 +967,6 @@ def test_turn_clears_error_state_on_success(
     assert 'id="error-slot"' in resp.text
     assert 'hx-swap-oob="true"' in resp.text
     assert "Something went wrong" not in resp.text
-
-
-def test_start_clears_error_state_on_success_retry(
-    client_with_key: TestClient, base_root: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """#623: a /start that previously failed and persisted error_state must
-    clear it when a retried /start succeeds (advisor-flagged scope: same
-    bug class as /turn — the credentials-only row carries error_state
-    across the retry)."""
-    _plant_credentials(base_root)
-
-    _stub_run_turn_error(monkeypatch, "OpenRouter credit exhausted (402).", kind="payment", status_code=402)
-    resp_err = client_with_key.post("/onboarding/interview/start")
-    assert resp_err.status_code in (200, 502)
-
-    conn = sqlite3.connect(base_root / "data" / "pipeline.db")
-    try:
-        row = conn.execute(
-            "SELECT id, error_state FROM onboarding_sessions ORDER BY started_at DESC LIMIT 1"
-        ).fetchone()
-    finally:
-        conn.close()
-    sid, error_state_before = row
-    assert error_state_before is not None
-
-    _stub_run_turn(monkeypatch, "Hi! What's your name?")
-    resp_ok = client_with_key.post("/onboarding/interview/start")
-    assert resp_ok.status_code == 303
-
-    _, _, _, error_state_after = _read_session(base_root, sid)
-    assert error_state_after is None, "error_state must be cleared on successful /start retry"
 
 
 def test_resume_renders_banner_when_error_state_set_and_omits_when_cleared(
