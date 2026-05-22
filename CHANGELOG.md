@@ -10,6 +10,8 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+## [0.27.7] — 2026-05-22
+
 ### Added
 
 - **#665 feat(web): nav-bar chip showing OpenRouter key's remaining credit.** Sibling to the existing spend chip; answers "when will I run out of credit?" rather than "am I spending too fast?". Reads `limit_remaining` directly from `GET /api/v1/auth/key` rather than computing `limit - usage` as the original issue body proposed — the API has a dedicated field, and for keys with periodic resets (`limit_reset='weekly'`/`monthly`) the `limit - usage` formula collapses because `usage` is lifetime cumulative while `limit` is per-period. New module `findajob.openrouter_credits` with 5-min in-process cache (single-worker uvicorn, restart resets); failure-open contract: missing key, blank key, HTTP 4xx/5xx, network failure, schema drift, and free-tier/no-limit keys (`limit_remaining=null`) all return `None` → template hides the chip silently. Threshold colors via `OPENROUTER_CREDIT_AMBER_USD` (default $5) and `OPENROUTER_CREDIT_RED_USD` (default $1). Per-stack: each stack queries its own `OPENROUTER_API_KEY` from `data/.env`. 15 unit tests + 5 integration tests through the real Jinja template render path — visual three-state confirmation via local uvicorn + Playwright at 1400px viewport. **No `migration-required`** — purely additive helper + template extension + Jinja global; no schema, config, cron, mount, or compose changes. No new dependencies — uses stdlib `urllib.request` matching `findajob.llm.openrouter`.
@@ -1298,7 +1300,8 @@ from GHCR and deployed via Docker Compose on a shared Docker host.
 - Documentation cleanup — removing `sigoden/aichat` references in favor of
   `blob42/aichat-ng` — is tracked in #70
 
-[Unreleased]: https://github.com/brockamer/findajob/compare/v0.27.6...HEAD
+[Unreleased]: https://github.com/brockamer/findajob/compare/v0.27.7...HEAD
+[0.27.7]: https://github.com/brockamer/findajob/releases/tag/v0.27.7
 [0.27.6]: https://github.com/brockamer/findajob/releases/tag/v0.27.6
 [0.27.5]: https://github.com/brockamer/findajob/releases/tag/v0.27.5
 [0.27.4]: https://github.com/brockamer/findajob/releases/tag/v0.27.4
