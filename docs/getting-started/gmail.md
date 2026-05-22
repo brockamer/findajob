@@ -19,12 +19,52 @@ test mechanic are identical.
 
 ## What findajob will and won't access
 
-<!-- gmail-disclosure-sync -->
+> ⓘ **What findajob does — and doesn't do — with your Gmail.**
 
-(The above marker is replaced with the disclosure language at render
-time. The single source of truth for that text is the Jinja partial at
-`src/findajob/web/templates/_gmail_disclosure.html`. Editing it changes
-both this page and the `/config/gmail/` page in lockstep.)
+findajob reads job-alert emails from senders you list (LinkedIn by
+default) so it can score them and surface them on your board. It
+**does not** read other mail, send mail, modify labels, or move
+messages. Your app password lives only on this stack — never on a
+server we control.
+
+findajob is open source. You can audit the exact code that touches
+your mailbox before granting access:
+
+- [`src/findajob/gmail_imap.py`](https://github.com/brockamer/findajob/blob/main/src/findajob/gmail_imap.py) — IMAP client
+- [`src/findajob/fetchers/adapters/gmail.py:GmailLinkedInAdapter`](https://github.com/brockamer/findajob/blob/main/src/findajob/fetchers/adapters/gmail.py)
+
+<details>
+<summary>Show full disclosure</summary>
+
+### 1. Exact scope (what we touch)
+
+- IMAP `LOGIN` to `imap.gmail.com:993`
+- IMAP `SEARCH (FROM "<sender>")` for each allowlisted sender, with `UID > <last seen>`
+- IMAP `FETCH (BODY.PEEK[])` of message bodies
+- IMAP `LOGOUT`
+
+That is the entire wire protocol. No `STORE`, no `COPY`, no `EXPUNGE`, no `APPEND`, no folder traversal beyond INBOX.
+
+### 2. What we can't do
+
+- findajob has no SMTP code path. It cannot send mail.
+- findajob never calls `STORE`/`MOVE`/`EXPUNGE`. It cannot modify, label, or delete your messages.
+- findajob never reads outside your allowlisted senders. The `SEARCH FROM` filter is applied server-side by Gmail before anything is fetched.
+
+### 3. Where your credentials live
+
+- `config/gmail.json` on this stack only (chmod 600). Bind-mounted to the host filesystem at `state/config/gmail.json`. Never transmitted off this machine. Never logged. Never sent to any LLM, scoring service, or external API.
+- Both `config/gmail.json` and `config/gmail_state.json` are gitignored — they cannot be accidentally committed.
+
+### 4. How to revoke access
+
+- **At Google (instant, total revocation):** [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) — revoke the app password labeled `findajob-<your-handle>`.
+- **In findajob (instant, this stack only):** click *Disconnect Gmail integration* on `/config/gmail/`. Wipes both config files. Google-side app password remains valid until separately revoked there.
+- **Recommendation:** revoke at Google for any "I want this to stop now" scenario.
+
+</details>
+
+The single source of truth for this text is `src/findajob/web/templates/_gmail_disclosure.html` (the Jinja partial used by `/config/gmail/` and the onboarding gate). The CI test in `tests/test_gmail_disclosure_sync.py` asserts the text above stays in sync with that partial — edits must touch both files.
 
 ## Step-by-step setup
 
@@ -85,8 +125,7 @@ ingestion volume).
 
 ## How to revoke access
 
-See the **How to revoke access** section of the disclosure above. Two
-surfaces:
+See **§4 How to revoke access** in the disclosure above. Two surfaces:
 
 1. **At Google** — instant, total revocation:
    <https://myaccount.google.com/apppasswords>.

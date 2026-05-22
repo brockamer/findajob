@@ -7,7 +7,6 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
-from findajob.web import constants
 from findajob.web.markdown import render_markdown
 
 router = APIRouter()
@@ -89,13 +88,6 @@ def docs_page(slug: str, request: Request) -> HTMLResponse:
     body = path.read_text(encoding="utf-8", errors="replace")
     templates = request.app.state.templates
     rendered_md = render_markdown(body, source=rel)
-    if slug == "getting-started/gmail":
-        _MARKER = "<!-- gmail-disclosure-sync -->"
-        if _MARKER in rendered_md:
-            partial_html = templates.get_template("_gmail_disclosure.html").render(
-                {"github_blob_url": constants.github_blob_url}
-            )
-            rendered_md = rendered_md.replace(_MARKER, partial_html, 1)
     return templates.TemplateResponse(
         request=request,
         name="docs/page.html",
