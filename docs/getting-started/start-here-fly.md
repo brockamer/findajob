@@ -53,7 +53,7 @@ OpenRouter is the service that handles every AI call findajob makes (job scoring
 RapidAPI lets findajob ingest LinkedIn / Indeed / Bing job postings. Skipping this means findajob only ingests from direct ATS feeds (Greenhouse, Ashby, Lever, Workday) at companies you name during onboarding. **Most users want LinkedIn too** — it catches roles the direct feeds miss.
 
 1. Go to <https://rapidapi.com/> and sign up (no credit card required for the free plan).
-2. Visit the [jobs-api14 endpoint page](https://rapidapi.com/letscrape-6bRBa3QguO5/api/jobs-api14) and click **Subscribe to Test**. Pick the **BASIC** plan (150 free requests/month, no card).
+2. Visit the [jobs-api14 endpoint page](https://rapidapi.com/Pat92/api/jobs-api14) and click **Subscribe to Test**. Pick the **BASIC** plan (150 free requests/month, no card).
 3. On the same page, find your **X-RapidAPI-Key** in the right-hand code samples. Copy that value.
 
 **What you should see:** an active jobs-api14 subscription on the BASIC plan, and an API key starting with a long alphanumeric string saved somewhere you can find it.
@@ -80,7 +80,7 @@ The next four steps happen in a terminal app on your laptop. If you've never ope
 
 - **macOS:** open the **Terminal** app from Applications → Utilities (or Spotlight-search for "terminal").
 - **Linux:** your distribution's terminal emulator (usually called Terminal, Konsole, or xterm).
-- **Windows:** use **Windows Terminal** (built in to Windows 11) or PowerShell. Note that findajob's deploy script assumes a Unix-like shell; if you're on Windows, the cleanest path is [WSL2 with Ubuntu](https://learn.microsoft.com/en-us/windows/wsl/install) — install that, then follow the Linux instructions in the steps below.
+- **Windows:** use **Windows Terminal** (built in to Windows 11) or PowerShell. Note that findajob's deploy script assumes a Unix-like shell; if you're on Windows, the cleanest path is [WSL2 with Ubuntu](https://learn.microsoft.com/en-us/windows/wsl/install) — install that, then follow the Linux instructions in the steps below. After installing WSL2 with Ubuntu, open the WSL2 terminal (in the Start menu, type "Ubuntu" and hit Enter). The Linux commands in the steps below apply once that terminal is open.
 
 Once your terminal is open, you'll see a blinking cursor with a `$` prompt. That's where you'll paste each command. **Press Enter after pasting** to run it.
 
@@ -156,9 +156,9 @@ cd findajob
 Open the config file in a text editor:
 
 ```
-cp ops/fly.toml.example ops/fly.toml
-open -e ops/fly.toml      # macOS — opens in TextEdit
-nano ops/fly.toml         # Linux — opens in the nano terminal editor
+cp ops/fly.toml.example ops/fly.toml   # make a copy you can edit
+open -e ops/fly.toml                   # macOS — opens in TextEdit
+nano ops/fly.toml                      # Linux — opens in the nano terminal editor
 ```
 
 Change the line `app = "findajob-<your-handle>"` to your chosen name. **Save and close** (TextEdit: Cmd-S then Cmd-W; nano: Ctrl-O then Enter then Ctrl-X).

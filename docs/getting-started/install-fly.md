@@ -2,7 +2,7 @@
 
 The hosted path: findajob runs as one app per person on [Fly.io](https://fly.io/), reachable at a `findajob-<your-handle>.fly.dev` URL with HTTPS terminated by Fly. You don't operate a Linux server. You pay Fly directly for the machine + 8 GB volume, and your LLM provider directly for AI calls — no middleman.
 
-**Time to value: ~20 minutes to first onboarding screen, ~2 hours total to a populated dashboard.** Setup + deploy takes ~20 minutes from `fly auth login` through to the auth gate. The in-app onboarding interview that follows takes 60–90 minutes (one-time, ~$3–6 of OpenRouter spend — make sure you've topped up at least $10 before starting). Your dashboard fills overnight when the daily triage runs at midnight in your timezone.
+**Time to value: ~20 minutes to first onboarding screen, ~2 hours total to a populated dashboard.** Setup + deploy takes ~20 minutes from `fly auth login` through to the auth gate. The in-app onboarding interview that follows takes 60–90 minutes (one-time, ~$3–6 of OpenRouter spend — make sure you've added at least $10 of credit to your OpenRouter wallet before starting; OpenRouter is pay-as-you-go, so you're funding a balance the system draws from). Your dashboard fills overnight when the daily triage runs at midnight in your timezone.
 
 This page is for someone who has never deployed anything to Fly before. If you operate Linux servers and would rather run a docker-compose stack on a host you own, see [`install-docker.md`](install-docker.md) instead. Both paths run the same image and reach the same dashboard.
 
@@ -27,7 +27,7 @@ Collected before you run the deploy script (it'll prompt for each):
 2. **An OpenRouter API key** for LLM calls. Pay-as-you-go from $0 (no monthly minimum). Sign-up walkthrough: [`api-keys.md`](api-keys.md#openrouter).
 3. **A RapidAPI key** (optional, for LinkedIn / Indeed / Bing search ingestion). BASIC plan is 150 requests/month free, no credit card. Skipping it means LinkedIn / Indeed search is inactive — Greenhouse / Ashby / Lever and Gmail alerts still work. Walkthrough: [`api-keys.md`](api-keys.md#rapidapi).
 4. **An ntfy topic for push notifications.** findajob uses [ntfy.sh](https://ntfy.sh/) — a free notification service — to send alerts to your phone for things like "new high-score job found" or "monthly LLM spend ceiling reached." Install the free ntfy app on Android or iOS, then pick a "topic name" that only you and findajob will know (e.g. `findajob-jane-2026-19`). The topic acts as the channel ID; anyone who knows or guesses the name can subscribe to and read your alerts, so use something hard to guess. **You can skip this** and configure ntfy later — see [`notifications.md`](notifications.md) for the post-deploy setup.
-5. **A basic-auth username and password.** Anyone with this credential can reach your dashboard and reconfigure the pipeline. The deploy script generates the password if you let it (`openssl rand -base64 32`); pick a short username like your first name.
+5. **A basic-auth username and password.** Anyone with this credential can reach your dashboard and reconfigure the pipeline. The deploy script generates a strong random password if you let it; pick a short username like your first name.
 
 A handful of these (OpenRouter + RapidAPI + ntfy + auth) are collected at deploy time so the first browser visit lands on the auth gate, not a half-configured screen.
 
@@ -80,9 +80,9 @@ You won't edit pipeline code — only the `ops/fly.toml` config to set your app 
 Copy the example fly.toml and pick a handle. The handle is the leftmost label of your URL — `findajob-jane.fly.dev` if your handle is `jane`:
 
 ```
-cp ops/fly.toml.example ops/fly.toml
-open -e ops/fly.toml      # macOS — opens in TextEdit
-nano ops/fly.toml         # Linux — terminal editor
+cp ops/fly.toml.example ops/fly.toml   # make a copy you can edit
+open -e ops/fly.toml                   # macOS — opens in TextEdit
+nano ops/fly.toml                      # Linux — terminal editor
 ```
 
 Change one line:
@@ -109,7 +109,7 @@ The script is idempotent — safe to re-run. On a clean run it:
 2. Creates the `findajob_state` volume (8 GB, holds all your data).
 3. Prompts you for each secret you haven't already set (`OPENROUTER_API_KEY`, `RAPIDAPI_KEY`, `NTFY_TOPIC`, `FINDAJOB_AUTH_USER`, `FINDAJOB_AUTH_PASS`). Each is stored in Fly's encrypted secrets store, not in `fly.toml` or your shell history.
 4. Runs `fly deploy`. First build pulls the image (~1 GB; takes 2–4 minutes), then the machine boots and runs `ops/entrypoint.sh` — which materializes the data subdirectories under `/app/state/` and creates an empty `pipeline.db`.
-5. Verifies the basic-auth gate is wired correctly by SSH-ing into the machine and running `python -m findajob.web.verify_auth`. Non-zero exit means the auth gate is misconfigured — the script prints debugging commands and exits without claiming success.
+5. Verifies the basic-auth gate is wired correctly by SSH-ing into the machine and running `python -m findajob.web.verify_auth` (it confirms the password gate is correctly protecting your dashboard, so anonymous visitors can't reach it). Non-zero exit means the auth gate is misconfigured — the script prints debugging commands and exits without claiming success.
 
 On success, the script prints your URL: `https://findajob-<your-handle>.fly.dev/`.
 

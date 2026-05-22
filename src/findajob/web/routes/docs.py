@@ -22,7 +22,6 @@ _PAGES: dict[str, str] = {
     "usage/expanding-sources": "usage/expanding-sources.md",
     "troubleshooting": "troubleshooting.md",
     "getting-started": "getting-started/README.md",
-    "getting-started/prerequisites": "getting-started/prerequisites.md",
     "getting-started/install-docker": "getting-started/install-docker.md",
     "getting-started/install-fly": "getting-started/install-fly.md",
     "getting-started/start-here-fly": "getting-started/start-here-fly.md",

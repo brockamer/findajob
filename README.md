@@ -4,7 +4,7 @@
 
 The modern job search grinds people down — hundreds of listings per day, most irrelevant; the same cover letter rewritten at midnight; black-hole rejections that tell you nothing about whether you targeted wrong, wrote wrong, or got unlucky. findajob absorbs the triage, the tailoring, and the tracking so your attention goes to the few applications actually worth sending.
 
-A pre-1.0 personal project — used daily by the operator and a small wave of beta testers, not a polished product yet.
+Built and operated daily; pre-1.0 means active development.
 
 ---
 
@@ -139,7 +139,7 @@ Both paths run the same image, complete the same onboarding interview, and reach
 
 One required API key (both paths):
 
-- **OpenRouter** — funds every LLM call (triage scoring, materials writing, in-app onboarding interview). Pay-as-you-go from $0; the one-time onboarding interview runs ~$2–6 in spend, then ~$0.50/day for triage-only and ~$1 per fully-prepped job (full breakdown: [`docs/getting-started/cost.md`](docs/getting-started/cost.md)). **Top up at least $10 before you start the interview.**
+- **OpenRouter** — funds every LLM call (triage scoring, materials writing, in-app onboarding interview). Pay-as-you-go from $0; the one-time onboarding interview runs ~$2–6 in spend, then ~$0.50/day for triage-only and ~$1 per fully-prepped job (full breakdown: [`docs/getting-started/cost.md`](docs/getting-started/cost.md)). **Add at least $10 of credit to your OpenRouter wallet before you start the interview** (pay-as-you-go funding — you add a balance, the system draws from it).
 
 One optional API key (both paths):
 
@@ -220,7 +220,7 @@ Open your stack URL. A fresh deploy redirects to `/onboarding/`:
 
 1. **Step 1 — API keys.** OpenRouter (required) + RapidAPI (optional). The OpenRouter key is smoke-checked against the live API before being saved. On Fly, the keys you set via `fly secrets` during deploy are pre-detected and you can click *Use detected keys* to skip re-typing.
 2. **Step 2 — Onboarding interview.** A chat surface inside findajob walks you through a 60–90 minute conversation about your background, target role, exclusions, and writing voice. Five phases, with file-block "📄 captured" chips streaming live as each section locks in. The session is server-side persistent — close the tab anytime and a *Resume* button surfaces on return. Cost: **~$1.50–$3 per interview** with prompt caching enabled.
-3. **Spend-ceiling gate.** Optional monthly LLM cap; the pipeline halts at the cap. Skippable; configure later at `/settings/spend-ceiling/`.
+3. **Spend-ceiling gate.** *A safety net is built in.* Cap monthly LLM spend at any dollar amount; the pipeline halts new LLM calls when the running monthly total crosses your cap. Set whatever number won't make you nervous — skippable here, configurable any time at `/settings/spend-ceiling/`.
 4. **Gmail config gate** *(optional)*. Wire up IMAP + an app password for LinkedIn job-alert ingestion and ATS rejection-email detection. Skippable; configure later at `/config/gmail/`.
 5. **LinkedIn Connections.csv** *(optional)*. Drop in your LinkedIn data export so outreach drafts can name real contacts at target companies. Skippable; upload later at `/onboarding/connections/`.
 

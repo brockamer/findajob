@@ -202,9 +202,10 @@ generate outreach drafts during prep.
 
 - **Optional.** If the file is absent, `find_contacts()` returns no matches silently
   — no error is logged and prep runs normally without the outreach step.
-- To enable, follow the export steps in
-  [`prerequisites.md`](prerequisites.md#linkedin-connections-export-optional-but-recommended)
-  and save the file to `data/connections.csv`.
+- To enable, export your LinkedIn connections via **Settings → Data privacy → Get a
+  copy of your data → Connections** on LinkedIn, then save the resulting CSV to
+  `data/connections.csv`. Onboarding's LinkedIn step walks the same procedure
+  inside the in-app flow.
 
 ---
 

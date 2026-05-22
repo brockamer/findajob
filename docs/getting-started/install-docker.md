@@ -22,7 +22,6 @@ If you want to run findajob on a Mac or Windows machine, host it inside a **Linu
 
 - Docker Engine 24+ and Docker Compose v2
 - (Optional) A Gmail account, if you want to ingest LinkedIn and other job-alert emails. See [gmail.md](gmail.md) for the post-deploy walkthrough.
-- A Google Sheet and service account for the jobs dashboard (see [prerequisites.md](prerequisites.md))
 
 ## Prerequisites for your Claude Code helper (for the admin)
 

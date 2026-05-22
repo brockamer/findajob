@@ -47,10 +47,10 @@ once you close the dialog.
 
 ### 3. Configure findajob
 
-Open `/config/gmail/` on your findajob stack. Paste your Gmail address
-and the 16-character app password. Click **Save**, then **Test
-connection**. Within ~3 seconds the status pill should change to
-**● Authorized**.
+(After your stack is deployed:) open `/config/gmail/` on your findajob
+stack. Paste your Gmail address and the 16-character app password.
+Click **Save**, then **Test connection**. Within ~3 seconds the status
+pill should change to **● Authorized**.
 
 ### 4. (Optional) Add other senders
 

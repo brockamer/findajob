@@ -6,9 +6,14 @@ Allow 45–90 minutes end-to-end. Most of that is waiting for API key approvals.
 
 ---
 
-## 1. Prerequisites → [`prerequisites.md`](prerequisites.md)
+## 1. Pick your install path
 
-What you need to have before touching the stack: a Linux host, Docker + Compose, a handful of API keys (LLM providers, RapidAPI for LinkedIn + Indeed, Gmail OAuth if you want job alerts ingested), and an ntfy topic for push notifications. The linked doc walks through each one with the sign-up URL and the minimum plan/quota you'll need.
+Two supported install paths, each with its own prerequisites bundle:
+
+- **Fly.io (hosted)** — see [`install-fly.md`](install-fly.md). Prerequisites: a Fly.io account with billing enabled, an OpenRouter API key, optionally a RapidAPI key + an ntfy topic. ~$3–5/mo for Fly + LLM API spend.
+- **Docker Compose (self-host)** — see [`install-docker.md`](install-docker.md). Prerequisites: a Linux Docker host (24+ with Compose v2), the same API keys. Free if you already have the box.
+
+Both paths walk through the API keys they need; you don't have to pick those up first.
 
 ## 2. Install — pick one path
 
@@ -40,7 +45,15 @@ Once onboarding is done, the web UI unlocks `/board/`, `/materials/`, `/stats/`,
 
 ## 4. Verify
 
-Run the health check from inside the container:
+Run the health check against your running stack.
+
+**If you deployed to Fly.io:**
+
+```bash
+fly ssh console --app findajob-<your-handle> --command "python3 /app/scripts/notify.py health-check"
+```
+
+**If you deployed via Docker Compose:**
 
 ```bash
 docker compose exec scheduler /app/scripts/notify.py health-check

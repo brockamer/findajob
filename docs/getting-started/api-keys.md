@@ -39,7 +39,8 @@ bill instead of holding direct accounts with five vendors.
    profile.
 4. Create an API key at <https://openrouter.ai/settings/keys>. Give it
    a name like "findajob" so you can find it later. Copy the key — it
-   starts with `sk-or-v1-` and is shown to you only once.
+   starts with `sk-or-v1-` and is shown to you only once. (If you lose
+   it, just create a new one at the same URL — keys are free to mint.)
 5. Paste it into findajob's onboarding page in the **OpenRouter API key**
    field.
 
@@ -117,7 +118,7 @@ curated allowlist) and recommends per-field based on your interview.
 
 The env-var name for all four is `RAPIDAPI_KEY`. Legacy per-adapter
 fallbacks (`JOBS_API14_KEY`, `JSEARCH_API_KEY`) still work for stacks
-that haven't migrated (#414).
+that haven't migrated.
 
 > **Adapter names matter.** The values in the "Adapter name" column go
 > in `config/active_sources.txt`, one per line. Stacks without that
@@ -133,10 +134,9 @@ that haven't migrated (#414).
 > together (PRO: 20,000 req/month shared).
 
 > **Note (Bing — no allowlist initially).** Unlike Indeed, Bing ships
-> with no title-allowlist post-filter; #422 / #601 track the empirical
-> decision after one triage-day measurement. Until that lands, all
-> titles flow through. 18 jobs per page (vs Indeed's 20, LinkedIn's 10)
-> on the same shared quota.
+> with no title-allowlist post-filter — all titles flow through
+> currently. 18 jobs per page (vs Indeed's 20, LinkedIn's 10) on the
+> same shared quota.
 
 ### What happens during onboarding
 
@@ -160,7 +160,8 @@ If you'd rather walk this manually (or you skipped onboarding entirely),
 the same form is reachable at `/onboarding/feed-config/` on a running
 stack.
 
-### Pagination tuning (PRO-tier)
+<details>
+<summary>Pagination tuning (PRO-tier only — skip on the free BASIC plan)</summary>
 
 Both jobs-api14 and JSearch let you trade quota for yield via per-stack
 env vars. Each additional page is one billed RapidAPI request (per-call
@@ -192,6 +193,8 @@ Restart the stack after editing `data/.env`. Live-test in
 `/onboarding/feed-config/` stays single-page for both adapters
 regardless of these settings — it's a connectivity check, not a yield
 benchmark.
+
+</details>
 
 ### Skipping RapidAPI entirely
 
@@ -231,10 +234,12 @@ To rotate any key:
 The pipeline picks up the new key on its next scheduled run; no
 restart needed for keys read at request time.
 
-If the operator manages your stack and you want them to rotate a key
-on your behalf, they can edit `data/.env` directly via SSH —
-documented in `docs/getting-started/install-docker.md` under "Operating an
-existing stack."
+If you're running your own stack (e.g. self-hosting via docker-compose
+or deploying to Fly), you ARE the operator — both options above work
+for you. If a separate person manages your stack on your behalf, they
+can edit `data/.env` directly via SSH — documented in
+`docs/getting-started/install-docker.md` under "Operating an existing
+stack."
 
 ---
 
