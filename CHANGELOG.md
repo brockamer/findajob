@@ -10,6 +10,8 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+## [0.27.8] — 2026-05-22
+
 ### Removed
 
 - **#799 remove(feedback-widget): rip out the in-app feedback widget.** The floating "Feedback" button at the bottom-right of every page POSTed to `api.github.com/repos/{repo}/issues` via a `GITHUB_FEEDBACK_PAT` configured per-stack — a model that doesn't generalize beyond the operator's stacks. For an unaffiliated Fly.io deployer the widget rendered → click returned `503 "Feedback isn't configured on this stack."` with no documented fix path; the two routes to make it work (hosted gateway endpoint vs asking each deployer to mint their own PAT) both contradicted the "works without operator involvement" goal of the Fly.io Public Launch milestone. GitHub Issues + Discussions already exist as the primary feedback channels and are cited in `README.md` § "Privacy and contributing" and in `docs/getting-started/start-here-fly.md` § "Now what?". Removed code: `src/findajob/web/routes/feedback.py`, `src/findajob/web/templates/_feedback_widget.html`, `src/findajob/web/templates/_feedback_result.html`, `tests/test_web_feedback.py`; removed the `feedback` import + `include_router(feedback.router)` line in `src/findajob/web/routes/__init__.py`; removed the `{% include "_feedback_widget.html" %}` line from `src/findajob/web/templates/base.html`. Doc surfaces updated: `README.md` § "Privacy and contributing" bullet removed; `docs/getting-started/start-here-fly.md` "If you get stuck" line now points at GitHub Issues only; `docs/architecture/file-map.md` row removed; `docs/maintainers/release-parity-matrix.md` row + pass-4 narrative bullet removed. Historical `docs/roadmap.md` decision-log entry (referencing the prior #620 widget-500 bug) left intact as dated record. **`migration-required`** — operators with stacks already deployed should remove `GITHUB_FEEDBACK_PAT` and `FEEDBACK_STACK_LABEL` lines from each stack's state-volume `.env` (no longer read by anything in `findajob.*`); leaving them in place is harmless but stale.
@@ -1308,7 +1310,8 @@ from GHCR and deployed via Docker Compose on a shared Docker host.
 - Documentation cleanup — removing `sigoden/aichat` references in favor of
   `blob42/aichat-ng` — is tracked in #70
 
-[Unreleased]: https://github.com/brockamer/findajob/compare/v0.27.7...HEAD
+[Unreleased]: https://github.com/brockamer/findajob/compare/v0.27.8...HEAD
+[0.27.8]: https://github.com/brockamer/findajob/releases/tag/v0.27.8
 [0.27.7]: https://github.com/brockamer/findajob/releases/tag/v0.27.7
 [0.27.6]: https://github.com/brockamer/findajob/releases/tag/v0.27.6
 [0.27.5]: https://github.com/brockamer/findajob/releases/tag/v0.27.5
