@@ -48,6 +48,7 @@ def run_role(
             cached_prefix=cached_prefix,
             pin_provider=pin_provider,
             timeout_s=timeout,
+            job_id=job_id,
         )
     except LLMSpendCeilingExceeded:
         raise
@@ -56,19 +57,11 @@ def run_role(
         return ""
     latency_ms = int((time.time() - start) * 1000)
 
-    # Reasoning models burn output tokens on reasoning before content. When
-    # max_tokens caps the output, the caller still gets a non-empty string —
-    # silently truncated. Surface it so pipeline.jsonl shows the regression
-    # instead of leaving the operator to feel it as quality drift (see #666
-    # interview_prep, #639 fit_analyst — same root cause, same fix shape).
-    if result.finish_reason == "length":
-        log_event(
-            "openrouter_truncated",
-            role=role,
-            job_id=job_id,
-            completion_tokens=result.completion_tokens,
-            content_chars=len(result.text),
-        )
+    # #737: openrouter_truncated emission moved into the wrapper so every
+    # direct-complete() caller (run_role, discoverer, future probes) gets the
+    # diagnostic uniformly. The wrapper fires the event for us when
+    # result.finish_reason == "length"; the job_id we passed above is on the
+    # event payload.
 
     text = re.sub(r"<think>.*?</think>", "", result.text, flags=re.DOTALL).strip()
 

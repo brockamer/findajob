@@ -34,6 +34,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, TypedDict
 
+from findajob.audit import log_event
 from findajob.paths import BASE
 
 
@@ -94,6 +95,13 @@ class OpenRouterError(Exception):
     in the OpenRouter response. Callers can detect a budget-exhausted truncation
     via ``e.finish_reason == "length"`` instead of grepping ``str(e)`` for the
     same substring (which is brittle to message-format drift). #678.
+
+    ``completion_tokens`` is parsed from ``response.usage.completion_tokens``
+    before the not-isinstance-check that raises this error, so the wrapper-
+    level :func:`complete` can emit a consistent ``openrouter_truncated``
+    event payload regardless of which branch (partial truncation vs
+    null-content + length) fires. ``None`` means usage was unavailable on
+    the response (e.g. parse failed before reaching the usage extract). #737.
     """
 
     def __init__(
@@ -103,11 +111,13 @@ class OpenRouterError(Exception):
         kind: str = "unknown",
         status_code: int | None = None,
         finish_reason: str | None = None,
+        completion_tokens: int | None = None,
     ) -> None:
         super().__init__(message)
         self.kind = kind
         self.status_code = status_code
         self.finish_reason = finish_reason
+        self.completion_tokens = completion_tokens
 
 
 class LLMSpendCeilingExceeded(Exception):
@@ -135,6 +145,7 @@ def complete(
     roles_dir: Path | None = None,
     api_key: str | None = None,
     timeout_s: int = DEFAULT_TIMEOUT_S,
+    job_id: str | None = None,
     **overrides: object,
 ) -> CompletionResult:
     """Submit a chat-completion request to OpenRouter and return the result.
@@ -163,6 +174,10 @@ def complete(
         roles_dir: Override for tests; production callers omit.
         api_key: Override; default reads ``OPENROUTER_API_KEY`` env.
         timeout_s: Per-attempt HTTP timeout. Default 120s.
+        job_id: Optional job-scoped context for the ``openrouter_truncated``
+            event payload (#737). Job-scoped callers (prep, interview_prep,
+            fit_analyst) pass the canonical job fingerprint; direct callers
+            without job context (e.g. discoverer) pass ``None``.
         **overrides: ``model``, ``temperature``, ``max_tokens`` overrides
             (frontmatter values used otherwise).
 
@@ -178,6 +193,21 @@ def complete(
         raise on the first failure with no retry. Synchronous callers
         whose UX depends on quick failure (loading spinners, chat turns)
         should account for this added perceived latency.
+
+    Emits ``openrouter_truncated`` (#737):
+        On any ``finish_reason == "length"`` outcome — both the partial-
+        truncation success path (where ``CompletionResult`` returns with
+        text content) and the null-content + length failure path (where
+        :class:`OpenRouterError` is raised). Event schema is consistent
+        across both branches: ``role``, ``job_id``, ``completion_tokens``
+        (always ``int``), ``content_chars`` (``int``; ``0`` on the null-
+        content branch). Operators distinguish the two states via
+        ``content_chars > 0`` (partial) vs ``content_chars == 0``
+        (hard truncation). Previously this emission lived in
+        ``role_runner.run_role`` and ``discoverer.runner.run``; centralizing
+        it here means every direct ``complete()`` caller (current and
+        future) inherits the diagnostic uniformly. #639 #666 #678 had
+        identical fix shapes pre-centralization.
 
     Raises:
         OpenRouterError: every non-success path. ``.kind`` classifies.
@@ -268,7 +298,20 @@ def complete(
         try:
             with urllib.request.urlopen(req, timeout=timeout_s) as resp:  # noqa: S310
                 raw = resp.read().decode("utf-8")
-            return _parse_response(raw)
+            result = _parse_response(raw)
+            # #737: partial-truncation success path — content present but
+            # finish_reason=length. Emit BEFORE returning so a downstream
+            # consumer that fails on the truncated text still leaves the
+            # diagnostic in pipeline.jsonl.
+            if result.finish_reason == "length":
+                log_event(
+                    "openrouter_truncated",
+                    role=role,
+                    job_id=job_id,
+                    completion_tokens=result.completion_tokens,
+                    content_chars=len(result.text),
+                )
+            return result
         except urllib.error.HTTPError as e:
             try:
                 _raise_for_http_error(e)
@@ -279,9 +322,21 @@ def complete(
                 f"Could not reach OpenRouter ({e.reason}).",
                 kind="network",
             )
-        except OpenRouterError:
+        except OpenRouterError as oe:
             # _parse_response can raise OpenRouterError directly (malformed/etc).
-            # Don't retry those; re-raise.
+            # #737: null-content + length failure path — content was null but
+            # finish_reason=length on the response. _parse_response stashes
+            # completion_tokens on the exception so the emission schema
+            # matches the success path. Emit BEFORE re-raising so the
+            # diagnostic survives the caller's catch.
+            if oe.finish_reason == "length":
+                log_event(
+                    "openrouter_truncated",
+                    role=role,
+                    job_id=job_id,
+                    completion_tokens=oe.completion_tokens or 0,
+                    content_chars=0,
+                )
             raise
         except Exception as e:  # noqa: BLE001
             raise OpenRouterError(
@@ -752,6 +807,16 @@ def _parse_response(raw: str) -> CompletionResult:
             f"Could not parse content: {raw[:200]}",
             kind="malformed",
         ) from e
+    # #737: extract usage BEFORE the not-isinstance check so the null-content
+    # branch can pass completion_tokens through to the OpenRouterError. The
+    # wrapper-level openrouter_truncated emitter reads it back off the
+    # exception to keep the event schema consistent across paths.
+    usage = data.get("usage") or {}
+    # OpenRouter nests cached_tokens under usage.prompt_tokens_details.cached_tokens
+    # (matches Anthropic's native shape). A top-level usage.cached_tokens does not
+    # exist in real responses — only the nested form returns from production.
+    ptd = usage.get("prompt_tokens_details") or {}
+    completion_tokens = int(usage.get("completion_tokens", 0))
     if not isinstance(text, str):
         # Surface finish_reason in the error so pipeline.jsonl shows what
         # actually went wrong. "Content not a string: NoneType;
@@ -768,12 +833,8 @@ def _parse_response(raw: str) -> CompletionResult:
             f"Content not a string: {type(text).__name__}; finish_reason={finish_reason_for_err}",
             kind="malformed",
             finish_reason=finish_reason_for_err,
+            completion_tokens=completion_tokens,
         )
-    usage = data.get("usage") or {}
-    # OpenRouter nests cached_tokens under usage.prompt_tokens_details.cached_tokens
-    # (matches Anthropic's native shape). A top-level usage.cached_tokens does not
-    # exist in real responses — only the nested form returns from production.
-    ptd = usage.get("prompt_tokens_details") or {}
     # #632: finish_reason lives at choices[0].finish_reason in the OpenAI/
     # OpenRouter shape. ``"length"`` signals the response was capped by
     # max_tokens — the caller decides how to handle (interview_runner
@@ -782,7 +843,7 @@ def _parse_response(raw: str) -> CompletionResult:
     return CompletionResult(
         text=text,
         prompt_tokens=int(usage.get("prompt_tokens", 0)),
-        completion_tokens=int(usage.get("completion_tokens", 0)),
+        completion_tokens=completion_tokens,
         cached_tokens=int(ptd.get("cached_tokens", 0)),
         cost_usd=float(usage.get("cost", 0.0)),
         generation_id=data.get("id"),

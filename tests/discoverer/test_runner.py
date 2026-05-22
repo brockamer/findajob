@@ -187,14 +187,23 @@ def test_run_openrouter_error_returns_failure(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# #678: openrouter_truncated event coverage on both success + failure paths
+# #737: discoverer.runner no longer emits openrouter_truncated directly.
+# The wrapper does (tests/test_openrouter_truncation_log.py covers the
+# wrapper-level emission). The tests below guard the runner-side contract:
+# (1) the runner module no longer emits openrouter_truncated under any
+# finish_reason, and (2) the wrapper's emission survives the runner's
+# OpenRouterError catch — i.e. discovery_failed still fires alongside.
 # ---------------------------------------------------------------------------
 
 
-def test_logs_openrouter_truncated_when_finish_reason_length(tmp_path: Path) -> None:
-    """Partial-truncation success path: CompletionResult.finish_reason == 'length'
-    must fire openrouter_truncated BEFORE downstream parse runs, so a truncated
-    response that subsequently fails parsing still emits the truncation diagnostic.
+def test_runner_does_not_emit_truncated_on_finish_reason_length(tmp_path: Path) -> None:
+    """Regression guard against #678-shape duplicate-emission resurfacing.
+
+    Pre-#737 the runner emitted openrouter_truncated locally on
+    finish_reason='length'. After centralization the wrapper owns the
+    emission and the runner must not duplicate it — mocking complete()
+    bypasses the wrapper, so any openrouter_truncated event captured here
+    would mean the local emission has been re-added by mistake.
     """
     _setup_profile(tmp_path)
     events: list[tuple[str, dict]] = []
@@ -211,46 +220,32 @@ def test_logs_openrouter_truncated_when_finish_reason_length(tmp_path: Path) -> 
     ):
         run(tmp_path, ntfy_enabled=False)
 
-    truncated = [(e, kw) for e, kw in events if e == "openrouter_truncated"]
-    assert len(truncated) == 1
-    _, kw = truncated[0]
-    assert kw["role"] == "company_discoverer"
-    assert kw["completion_tokens"] == 200
-    assert kw["content_chars"] > 0
-
-
-def test_does_not_log_truncated_when_finish_reason_stop(tmp_path: Path) -> None:
-    """Negative: finish_reason='stop' (normal completion) must not fire the event."""
-    _setup_profile(tmp_path)
-    events: list[tuple[str, dict]] = []
-
-    def _capture(event: str, **kw):
-        events.append((event, kw))
-
-    with (
-        patch(
-            "findajob.discoverer.runner.complete",
-            _stub_complete(finish_reason="stop"),
-        ),
-        patch("findajob.discoverer.runner.log_event", side_effect=_capture),
-    ):
-        run(tmp_path, ntfy_enabled=False)
-
+    # The runner module must not produce this event itself anymore.
     truncated = [e for e, _ in events if e == "openrouter_truncated"]
-    assert truncated == []
+    assert truncated == [], (
+        "discoverer.runner must not emit openrouter_truncated directly after #737 — "
+        "the wrapper owns the emission. Local emission resurfaced?"
+    )
 
 
-def test_logs_openrouter_truncated_via_http_boundary_on_null_content(tmp_path: Path) -> None:
-    """Production failure shape regression: content=null + finish_reason='length'
-    drives the wrapper to raise OpenRouterError with `finish_reason` attribute set,
-    runner catches and emits openrouter_truncated BEFORE the existing discovery_failed.
+def test_runner_emits_via_wrapper_on_http_boundary_null_content(tmp_path: Path) -> None:
+    """End-to-end shape regression for the centralized emission (#737).
 
-    This is the exact shape captured in the pipeline.jsonl event in #678:
+    Drives the REAL wrapper boundary (urlopen) — no complete() mock — so the
+    full chain runs: HTTP body → _parse_response → OpenRouterError raise →
+    wrapper-side openrouter_truncated emit → runner-side catch →
+    discovery_failed.
+
+    Two patch sites: ``findajob.discoverer.runner.log_event`` to capture
+    discovery_failed, and ``findajob.llm.openrouter.log_event`` to capture
+    the centralized openrouter_truncated. Both feed the same list so order
+    is preserved. Without the openrouter-side patch the wrapper's emission
+    would silently fall through to the real log_event (and pollute
+    ``logs/pipeline.jsonl`` during the test run).
+
+    This is the same production-shape fixture captured in the pipeline.jsonl
+    event in #678:
         {"event": "discovery_failed", "message": "Content not a string: NoneType; finish_reason=length"}
-
-    AC #4: "regression test exercising the role's full output path against a
-    recorded fixture" — drives the real wrapper boundary (urlopen), not a
-    runner-level mock, so the wrapper→runner signal chain is what's under test.
     """
     _setup_profile(tmp_path)
     body = json.dumps(
@@ -289,21 +284,34 @@ def test_logs_openrouter_truncated_via_http_boundary_on_null_content(tmp_path: P
     with (
         patch.dict(os.environ, _FAKE_API_KEY),
         patch("findajob.llm.openrouter.urllib.request.urlopen", return_value=_Resp()),
+        # #737: patch BOTH module bindings of log_event. The wrapper imports
+        # log_event into findajob.llm.openrouter; the runner imports it into
+        # findajob.discoverer.runner. After the move, openrouter_truncated
+        # fires from the openrouter module, discovery_failed from the runner.
+        patch("findajob.llm.openrouter.log_event", side_effect=_capture),
         patch("findajob.discoverer.runner.log_event", side_effect=_capture),
+        patch("findajob.llm.openrouter._check_call_gate", return_value=None),
     ):
         result = run(tmp_path, ntfy_enabled=False)
 
-    # Both events must fire, in order: truncated first (diagnostic), then
-    # discovery_failed (the run-result fact). They describe different facts and
-    # neither replaces the other.
+    # Both events must fire, in order: truncated first (from the wrapper,
+    # before the OpenRouterError is re-raised), then discovery_failed
+    # (from the runner's catch).
     event_names = [e for e, _ in events]
-    assert "openrouter_truncated" in event_names
+    assert "openrouter_truncated" in event_names, (
+        "wrapper-side openrouter_truncated did not fire on null-content + length response; "
+        "centralized emission may be broken"
+    )
     assert "discovery_failed" in event_names
     assert event_names.index("openrouter_truncated") < event_names.index("discovery_failed")
 
     truncated = next((kw for e, kw in events if e == "openrouter_truncated"), None)
     assert truncated is not None
     assert truncated["role"] == "company_discoverer"
+    # #737 schema fix: completion_tokens is now int (was null pre-#737 on the
+    # discoverer's null-content branch). Reads from response.usage.
+    assert truncated["completion_tokens"] == 4096
+    assert truncated["content_chars"] == 0  # null-content discriminator
 
     assert result.success is False
 
