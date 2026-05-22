@@ -10,6 +10,10 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Changed
+
+- **#787 docs(release-process): drop stale "writable Google Sheet" claim from pre-tag smoke prerequisites.** `scripts/test_container_integration.sh` has not depended on a Google Sheet since the form-ingest retirement (#62) — the script's prereqs are live API keys plus a candidate-profile fixture, no sheet read or write. `release-process.md` §"Pre-tag smoke check" still claimed "9 live API keys + a writable Google Sheet" in the deferred-CI-wiring paragraph; trimmed to match reality. No code change (script was already clean); pure docs trim. **No `migration-required`** — documentation only.
+
 ## [0.27.6] — 2026-05-21
 
 ### Added

@@ -181,10 +181,10 @@ config layout, or entrypoint. Procedure is operator-private; see
 `CLAUDE.local.md` for the per-operator stack name and reset script path.
 
 CI wiring for this smoke is deferred to a follow-up issue: the script depends
-on 9 live API keys + a writable Google Sheet, and wiring that into GitHub
-Actions is a meaningful security and ops decision orthogonal to the smoke
-itself. Until CI runs the smoke, Claude runs it locally before proposing each
-tag cut and reports the result to the user as part of the cut proposal.
+on live API keys, and wiring those into GitHub Actions is a meaningful
+security and ops decision orthogonal to the smoke itself. Until CI runs the
+smoke, Claude runs it locally before proposing each tag cut and reports the
+result to the user as part of the cut proposal.
 
 
 ## migration-required label criteria
