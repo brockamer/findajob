@@ -603,3 +603,100 @@ def test_corroboration_fallback_no_match_persists_suggestion(harness):
     count = conn.execute("SELECT COUNT(*) FROM rejection_suggestions").fetchone()[0]
     conn.close()
     assert count == 1  # suggestion persisted; operator handles manually
+
+
+# ─── #804: --since-days one-shot historical rescan ──────────────────────────
+
+
+def test_since_days_triggers_oneshot_rescan(harness):
+    """``main(since_days=30)`` → IMAP fetch called with since_days=30, distinguishing event emitted."""
+    _write_config(harness)
+    _make_db(harness)
+
+    # Steady state (backlog already complete) — the realistic invocation context.
+    initial_state = gmail_imap.GmailState(
+        rejection_backlog_scan_complete=True,
+        rejection_last_uid=500,
+    )
+    gmail_imap.save_state(initial_state)
+
+    empty_outcome = FetchOutcome(
+        result=_RESULT_SUCCESS,
+        messages=[],
+        new_uid=500,  # equal to current — no advance expected
+        new_uidvalidity=42,
+    )
+
+    with patch.object(
+        detect_rejections,
+        "fetch_new_messages_for_rejection_scan",
+        return_value=empty_outcome,
+    ) as fake_fetch:
+        rc = detect_rejections.main(since_days=30)
+
+    assert rc == 0
+
+    _, kwargs = fake_fetch.call_args
+    assert kwargs.get("since_days") == 30
+
+    events = _read_events(harness)
+    event_types = [e["event"] for e in events]
+    assert "rejection_oneshot_rescan_started" in event_types
+    started = next(e for e in events if e["event"] == "rejection_oneshot_rescan_started")
+    assert started["days"] == 30
+
+    completed = next(e for e in events if e["event"] == "rejection_scan_completed")
+    assert completed["is_backlog_run"] is False
+    assert completed["is_oneshot_rescan"] is True
+
+    # Sentinel must not be touched by one-shot mode.
+    state_after = gmail_imap.load_state()
+    assert state_after.rejection_backlog_scan_complete is True
+
+
+def test_since_days_capped_at_max_backlog_window(harness):
+    """``since_days`` over the cap is clamped to ``_MAX_BACKLOG_WINDOW_DAYS``.
+
+    IMAP date-windowed SEARCH gets expensive with arbitrarily large windows;
+    the same cap that governs the first-run backlog scan applies to the
+    one-shot rescan path.
+    """
+    _write_config(harness)
+    _make_db(harness)
+    gmail_imap.save_state(gmail_imap.GmailState(rejection_backlog_scan_complete=True, rejection_last_uid=0))
+
+    empty_outcome = FetchOutcome(result=_RESULT_SUCCESS, messages=[], new_uid=0, new_uidvalidity=42)
+
+    with patch.object(
+        detect_rejections,
+        "fetch_new_messages_for_rejection_scan",
+        return_value=empty_outcome,
+    ) as fake_fetch:
+        detect_rejections.main(since_days=999)
+
+    _, kwargs = fake_fetch.call_args
+    assert kwargs.get("since_days") == detect_rejections._MAX_BACKLOG_WINDOW_DAYS
+
+
+def test_since_days_does_not_advance_uid_checkpoint_backward(harness):
+    """One-shot rescan with historical UIDs must not roll the checkpoint backward.
+
+    The existing ``new_uid > current`` guard handles this — covered here
+    explicitly so a future refactor that drops the guard fails loudly.
+    """
+    _write_config(harness)
+    _make_db(harness)
+    gmail_imap.save_state(gmail_imap.GmailState(rejection_backlog_scan_complete=True, rejection_last_uid=100_000))
+
+    # Rescanning historical mail surfaces UIDs below the current checkpoint.
+    historical_outcome = FetchOutcome(result=_RESULT_SUCCESS, messages=[], new_uid=50_000, new_uidvalidity=42)
+
+    with patch.object(
+        detect_rejections,
+        "fetch_new_messages_for_rejection_scan",
+        return_value=historical_outcome,
+    ):
+        detect_rejections.main(since_days=30)
+
+    state_after = gmail_imap.load_state()
+    assert state_after.rejection_last_uid == 100_000  # unchanged

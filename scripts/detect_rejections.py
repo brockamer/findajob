@@ -24,6 +24,7 @@ Spec: ``docs/superpowers/specs/2026-05-01-362-rejection-detection-design.md``
 
 from __future__ import annotations
 
+import argparse
 import dataclasses
 import re
 import sqlite3
@@ -70,7 +71,24 @@ _CORROBORATION_FUZZ_THRESHOLD = 80
 _CORROBORATION_MIN_COMPANY_LEN = 4
 
 
-def main() -> int:
+def main(since_days: int | None = None) -> int:
+    """Run one detect-rejections cycle.
+
+    ``since_days`` (None by default — supplied via the ``--since-days N`` CLI
+    flag from the ``__main__`` block) triggers a one-shot historical rescan
+    that bypasses the UID checkpoint and date-windows the IMAP search to the
+    prior ``N`` days. Use case: an operator adds a sender to the allowlist
+    after a rejection email has already been delivered, and needs the
+    historical message resurfaced (#804). The flag is bounded by
+    ``_MAX_BACKLOG_WINDOW_DAYS`` to keep IMAP search cost predictable.
+
+    One-shot mode does NOT mutate ``rejection_backlog_scan_complete`` — that
+    sentinel governs the first-run automatic backlog scan, which is a
+    separate cycle the operator has presumably already crossed. The
+    ``rejection_last_uid`` checkpoint is governed by the existing
+    ``new_uid > current`` guard, so historical UIDs won't roll the
+    checkpoint backward.
+    """
     with cron_event_span("detect-rejections"):
         config = load_config()
         if config is None:
@@ -79,8 +97,13 @@ def main() -> int:
 
         state = load_state()
         is_backlog_run = not state.rejection_backlog_scan_complete
+        is_oneshot_rescan = since_days is not None
 
-        if is_backlog_run:
+        if since_days is not None:
+            window = min(since_days, _MAX_BACKLOG_WINDOW_DAYS)
+            log_event("rejection_oneshot_rescan_started", days=window)
+            outcome = fetch_new_messages_for_rejection_scan(config, state, since_days=window)
+        elif is_backlog_run:
             window = state.rejection_backlog_window_days or _DEFAULT_BACKLOG_WINDOW_DAYS
             window = min(window, _MAX_BACKLOG_WINDOW_DAYS)
             log_event("rejection_backlog_scan_started", days=window)
@@ -149,7 +172,16 @@ def main() -> int:
             save_state(state)
 
         if suggestions_created > 0:
-            if is_backlog_run:
+            if is_oneshot_rescan:
+                ntfy.send(
+                    title="Rejection rescan complete",
+                    body=(
+                        f"One-shot rescan — {suggestions_created} rejection(s) detected "
+                        f"over prior {window} days. Review queue updated."
+                    ),
+                    cta_url="/board/rejections-review/",
+                )
+            elif is_backlog_run:
                 ntfy.send(
                     title="Rejection backlog scan complete",
                     body=(
@@ -171,6 +203,7 @@ def main() -> int:
             suggestions_created=suggestions_created,
             corroborated=corroborated,
             is_backlog_run=is_backlog_run,
+            is_oneshot_rescan=is_oneshot_rescan,
         )
         return 0
 
@@ -277,5 +310,26 @@ def _persist_suggestion(conn: sqlite3.Connection, suggestion: Any, match: Any) -
     return cur.rowcount > 0
 
 
+def _parse_argv(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--since-days",
+        type=int,
+        default=None,
+        metavar="N",
+        help=(
+            "One-shot historical rescan: bypass the UID checkpoint and "
+            "date-window the IMAP search to the prior N days. Used after "
+            "adding a sender to the allowlist to resurface emails that "
+            f"arrived before the addition. Capped at {_MAX_BACKLOG_WINDOW_DAYS}."
+        ),
+    )
+    args = parser.parse_args(argv)
+    if args.since_days is not None and args.since_days < 1:
+        parser.error("--since-days must be >= 1")
+    return args
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    args = _parse_argv()
+    sys.exit(main(since_days=args.since_days))

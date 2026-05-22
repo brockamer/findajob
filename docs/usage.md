@@ -320,6 +320,7 @@ cobot: collaborative robotics
 
 - Steady-state: every 30 minutes via supercronic (`detect-rejections` job in `ops/scheduled-jobs.yaml`). Per-stack timeout override via `FINDAJOB_DETECT_REJECTIONS_TIMEOUT` in `data/.env`.
 - First run on a stack: a backlog sweep over the prior 30 days (capped at 60) so existing inbox rejections aren't lost. Sentinel `gmail_state.json:rejection_backlog_scan_complete` flips on success.
+- One-shot historical rescan: `docker exec -u 1000 <container> python scripts/detect_rejections.py --since-days N` bypasses the UID checkpoint and date-windows the IMAP search to the prior `N` days (capped at 60). Use after adding a sender to the allowlist to resurface emails that arrived before the addition. The `-u 1000` is required — bare `docker exec` runs as root and would write a root-owned `gmail_state.json`, breaking subsequent cron ticks. Does not mutate the backlog sentinel or roll the UID checkpoint backward; `INSERT OR IGNORE` on `gmail_message_id` makes the operation safe to re-run.
 - A single ntfy notification fires when new suggestions land — opens directly to the review queue.
 
 **Caveats:**

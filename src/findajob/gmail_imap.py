@@ -58,6 +58,7 @@ DEFAULT_REJECTION_ALLOWLIST: tuple[str, ...] = (
     "smartrecruiters.com",
     "email.careers.microsoft.com",
     "oracle.com",
+    "tesla.com",
 )
 
 

@@ -22,6 +22,7 @@ FIXTURES = Path(__file__).parent / "fixtures" / "rejection_emails"
         FIXTURES / "smartrecruiters" / "rejection.eml",
         FIXTURES / "microsoft" / "rejection.eml",
         FIXTURES / "oracle" / "rejection.eml",
+        FIXTURES / "tesla" / "rejection.eml",
     ],
 )
 def test_layer1_high_confidence_rejection(fixture: Path) -> None:
@@ -175,6 +176,24 @@ def test_as_the_next_step_continuation_terminates_company() -> None:
     assert suggestion.extracted_company is not None
     assert "AcmeRoboCo" in suggestion.extracted_company
     assert "as the next step" not in suggestion.extracted_company
+
+
+def test_firstname_prefix_subject_extracts_company() -> None:
+    """Subject 'Jane Thank you for your interest in COMPANY' must extract COMPANY.
+
+    Regression: Tesla's rejection template prefixes the recipient first name
+    to the subject ('John Thank you for your interest in Tesla'). Extraction
+    must remain ``re.search``-anchored (not ``re.match``) so the leading
+    name token doesn't break the regex — the #804 root cause was an
+    allowlist gap, but the subject shape is novel enough to pin against
+    future tightening of ``_INTEREST_RE``.
+    """
+    raw = (FIXTURES / "tesla" / "rejection.eml").read_bytes()
+    suggestion = classify_email(raw)
+    assert suggestion is not None
+    assert suggestion.confidence == "high"
+    assert suggestion.extracted_company is not None
+    assert "ExampleCo" in suggestion.extracted_company
 
 
 def test_for_our_role_extracts_role() -> None:

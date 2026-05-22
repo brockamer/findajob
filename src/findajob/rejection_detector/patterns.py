@@ -18,6 +18,7 @@ SENDER_FINGERPRINTS: dict[str, str] = {
     "smartrecruiters.com": "smartrecruiters",
     "email.careers.microsoft.com": "microsoft",
     "oracle.com": "oracle",
+    "tesla.com": "tesla",
 }
 
 
