@@ -143,7 +143,7 @@ One required API key (both paths):
 
 One optional API key (both paths):
 
-- **RapidAPI (jobs-api14 or JSearch)** — LinkedIn / Indeed / Bing search ingestion. BASIC plans are free with no credit card: 150 req/month on jobs-api14, 200 req/month on JSearch. The onboarding picker chooses one per stack (both share the same `RAPIDAPI_KEY`); you can flip later at `/settings/active-sources/`. Skipping it means findajob ingests only from the direct ATS feeds (Greenhouse, Ashby, Lever, Workday) at the companies you named in onboarding, plus your Gmail job alerts. Most users want LinkedIn too — it catches roles the direct feeds miss.
+- **RapidAPI (jobs-api14 or JSearch)** — LinkedIn / Indeed search ingestion. BASIC plans are free with no credit card: 150 req/month on jobs-api14, 200 req/month on JSearch. The onboarding picker chooses one per stack (both share the same `RAPIDAPI_KEY`); you can flip later at `/settings/active-sources/`. Skipping it means findajob ingests only from the direct ATS feeds (Greenhouse, Ashby, Lever, Workday) at the companies you named in onboarding, plus your Gmail job alerts. Most users want LinkedIn too — it catches roles the direct feeds miss.
 
 Sign-up walkthroughs: [`docs/getting-started/api-keys.md`](docs/getting-started/api-keys.md). Both keys get pasted into the in-app onboarding form once your stack is up.
 
