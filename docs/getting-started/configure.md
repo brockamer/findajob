@@ -51,6 +51,12 @@ The resume tailor selects and reorders content from this file — it doesn't add
 > onboarding overwrites them, but backs up the prior content under
 > `.backups/{UTC-stamp}/`.
 
+> **Activating JSearch.** This file's queries only run if `jsearch` is
+> listed in `config/active_sources.txt`. The onboarding picker writes
+> that for new stacks; to flip JSearch on or off later, tick the
+> checkbox at `/settings/active-sources/`. Stacks shipping the default
+> `['jobs-api14']` need this step before any queries here are used.
+
 LinkedIn and Indeed search queries. One per line. Blank lines and `#` comments ignored.
 
 **Critical rules:**

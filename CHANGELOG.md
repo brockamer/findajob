@@ -10,6 +10,10 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Changed
+
+- **#805 docs(readme): surface JSearch alongside jobs-api14 in setup sections.** Documentation drift from #408 (curated RapidAPI feed picker, shipped 2026-04-09): the picker treats jobs-api14 and JSearch as peers (both written by the onboarding interview to `config/active_sources.txt`, both sharing `RAPIDAPI_KEY`), and `docs/getting-started/api-keys.md` + `docs/getting-started/install-docker.md` document them that way — but the README's §Pre-Deploy Requirements still listed only "RapidAPI (jobs-api14)" as if it were the sole option. New users hitting jobs-api14's 150 req/mo cap had no signpost to JSearch's 200 req/mo BASIC tier as an alternative. README §Pre-Deploy now names both with parallel quota framing and points at `/settings/active-sources/` for the flip; `docs/getting-started/configure.md`'s `## config/jsearch_queries.txt` section gains a one-paragraph activation note pointing at the same UI surface. README §Step 1 left unchanged: the generic "RapidAPI (optional)" already covers both adapters since they share a key. **No `migration-required`** — documentation only.
+
 ## [0.27.7] — 2026-05-22
 
 ### Added
