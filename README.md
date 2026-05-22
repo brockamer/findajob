@@ -10,23 +10,27 @@ A pre-1.0 personal project — used daily by the operator and a small wave of be
 
 ## What it does
 
-The pipeline narrows the funnel at every step where a human would otherwise waste attention — LLM triage on the way in, human triage on the way to prep, prep only for jobs worth applying to. Thirty days on the operator's instance looks like this:
+Despite the role labels you'll see in the architecture diagram below, you only need accounts at two services: **OpenRouter** (handles every AI call findajob makes) and **RapidAPI** (optional — for LinkedIn / Indeed search ingestion). Typical all-in cost is **~$20–50/mo** plus a one-time ~$2–6 onboarding interview. Full breakdown: [`docs/getting-started/cost.md`](docs/getting-started/cost.md).
+
+The pipeline narrows the funnel at every step where a human would otherwise waste attention — LLM triage on the way in, human triage on the way to prep, prep only for jobs worth applying to. Thirty days on the operator's instance:
 
 ```
-Listings ingested                12,824   ──────────────────────────────
-LLM-scored ≥7 (worth a look)        393   ▓                              3.1%
-Operator flagged for prep           160   ▓▓▓▓▓▓▓▓▓▓                    41% of scored
-Applications submitted               60   ▓▓▓▓▓▓▓▓▓                     38% of prepped
-Interviews (lifetime)                  6
+Listings ingested                8,309   ── 30-day window
+LLM-scored ≥7 (worth a look)       202      2.4%
+Operator flagged for prep          105      52% of scored
+Applications submitted              69      66% of flagged
+Interviews from those 69 apps       12      17%
 ```
 
-12,824 listings narrowed to 60 applications. Every rejection along the way is recorded with a reason — *Skills Mismatch*, *Too Senior*, *Comp Too Low*, *Geography/Onsite* — and those reasons feed back into tomorrow's scorer as negative examples. The system gets better at *your* search every week.
+> Lifetime since the operator started using findajob (~45 days): 110 applications → **17 distinct jobs reached an interview stage** (8 still in interview now). Job-search interview rates are unpredictable; the system shrinks the application volume needed to get them.
+
+8,309 listings narrowed to 69 applications in 30 days. Every rejection along the way is recorded with a reason — *Skills Mismatch*, *Too Senior*, *Comp Too Low*, *Geography/Onsite* — and those reasons feed back into tomorrow's scorer as negative examples. The system gets better at *your* search every week.
 
 ---
 
 ## How it works
 
-**1. Daily triage** (00:00, scheduler-driven) — pulls 100–500 listings from LinkedIn (via RapidAPI), Indeed, direct ATS feeds (Greenhouse, Ashby, Lever, Workday), and your Gmail job alerts; cleans, deduplicates, enriches with job-description text; scores each against your candidate profile using DeepSeek v3.2.
+**1. Daily triage** (00:00, scheduler-driven) — pulls 100–500 listings from LinkedIn (via RapidAPI), Indeed, direct ATS feeds (Greenhouse, Ashby, Lever, Workday), and your Gmail job alerts; cleans, deduplicates, enriches with job-description text; scores each against your candidate profile.
 
 **2. Dashboard triage** — the web UI shows every scored job that cleared the threshold with relevance/fit/probability scores, known contacts from your LinkedIn export, and the LLM's notes on why it scored where it did. You flag the ones worth prepping.
 
@@ -34,7 +38,7 @@ Interviews (lifetime)                  6
 
 *Fictional demo data spanning data-center ops, social services, and K-12 education — the same pipeline works for every field, only `profile.md` changes.*
 
-**3. Prep** (one click) — generates a per-job folder containing a tailored resume, cover letter, deep-research company briefing, recruiter-perspective critique, and outreach drafts for known contacts. Claude Opus does the writing; Perplexity does the company research. ~$1–2 of LLM spend per prep run, in 5-10 minutes.
+**3. Prep** (one click) — generates a per-job folder containing a tailored resume, cover letter, deep-research company briefing, recruiter-perspective critique, and outreach drafts for known contacts. ~$1 of LLM spend per prep run, in 5–10 minutes (full breakdown in [`docs/getting-started/cost.md`](docs/getting-started/cost.md)).
 
 **4. Apply and track** — submit the application, mark *Applied*. The Applied tab color-codes rows by days-since-submission so silent applications surface at a glance.
 
@@ -54,7 +58,7 @@ The "one click → folder full of tailored materials" in step 3 is **seven seque
 
 ```
    company_researcher  ─►  briefing_writer  ─►  fit_analyst
-   (Perplexity)            (Opus 4.7)            (Perplexity)
+   (web research)          (writing)             (web research)
                                                       │
                                           fit spliced INTO briefing
                                           BEFORE Overall Recommendation
@@ -63,34 +67,34 @@ The "one click → folder full of tailored materials" in step 3 is **seven seque
                                                       │
                                                       ▼
                                           resume_tailor
-                                          (Opus 4.7)
+                                          (writing)
                                                       │
                               ┌───────────────────────┴────────────────┐
                               ▼                                        ▼
                   resume_change_reviewer                    cover_letter_writer
-                  (Gemini Flash — diff vs                   (Opus 4.7 —
-                   master, no Opus tokens                    consumes briefing + tailored
+                  (cheap diff vs master,                    (writing — consumes
+                   no premium tokens                         briefing + tailored
                    spent on cheap work)                      resume)
                                                                        │
                                                                        ▼
                                                              recruiter_critic
-                                                             (Opus 4.7 — sees ONLY
+                                                             (writing — sees ONLY
                                                               JD + resume + cover;
                                                               simulates a reader who
                                                               hasn't researched the
                                                               candidate)
 
-   sidecar:  find_contacts  ─►  outreach_drafter (Opus 4.7)
+   sidecar:  find_contacts  ─►  outreach_drafter (writing)
              reads LinkedIn connections.csv, drafts personalized notes
 ```
 
 Three architectural choices make the outputs feel like they were written by someone who actually researched the company:
 
 - **Explicit context chaining, not RAG.** Each stage's output is structured markdown that becomes literal input to the next stage. No vector embeddings, no similarity-retrieval guesses, no "the model couldn't find the relevant chunk." When prep produces a bad cover letter, you can read the briefing it was given and see why.
-- **An asymmetric DAG, not a uniform pipeline.** `recruiter_critic` deliberately doesn't see the briefing or fit analysis — its job is to simulate a recruiter who hasn't researched the candidate, so giving it that context would defeat the purpose. The other Opus stages share a `cached_prefix` (profile + master resume + JD) for Anthropic prompt-caching across the run.
-- **Per-role model judgment, not one model for everything.** Opus 4.7 where voice matters (briefing, resume, cover, critique, outreach). Perplexity where web grounding matters (`company_researcher`, `fit_analyst`). Gemini Flash for the cheap diff (`resume_change_reviewer`). DeepSeek v3.2 for the high-volume scorer that runs 100–500× a day.
+- **An asymmetric DAG, not a uniform pipeline.** `recruiter_critic` deliberately doesn't see the briefing or fit analysis — its job is to simulate a recruiter who hasn't researched the candidate, so giving it that context would defeat the purpose. The other writing stages share a `cached_prefix` (profile + master resume + JD) so the provider can cache and discount the repeated input across the run.
+- **Per-role model judgment, not one model for everything.** A high-quality model where voice matters (briefing, resume, cover, critique, outreach). A web-grounded model where web grounding matters (`company_researcher`, `fit_analyst`). A cheap fast model for the diff review (`resume_change_reviewer`). A volume-tuned model for the high-frequency scorer that runs 100–500× a day. Specific model picks: [`docs/architecture.md`](docs/architecture.md).
 
-Inline retry gates on Stages 2 and 3 catch malformed model output (missing `## Overall Recommendation`, empty fit analysis from Perplexity's intermittent `content=null`) before it propagates downstream.
+Inline retry gates on Stages 2 and 3 catch malformed model output (missing `## Overall Recommendation`, empty fit analysis from the web-grounded model's intermittent `content=null`) before it propagates downstream.
 
 Full DAG + per-stage I/O contracts + failure handling: [`docs/architecture.md`](docs/architecture.md).
 
@@ -109,14 +113,16 @@ Full DAG + per-stage I/O contracts + failure handling: [`docs/architecture.md`](
 
 | Component | Choice |
 |---|---|
-| Triage scoring | DeepSeek v3.2 via OpenRouter |
-| Materials writing | Claude Opus 4.7 + Sonnet 4.6 via OpenRouter (prompt caching enabled) |
-| Company research | Perplexity Sonar Pro |
+| Triage scoring | volume-tuned LLM via OpenRouter |
+| Materials writing | high-quality LLM via OpenRouter (prompt caching enabled) |
+| Company research | web-grounded LLM via OpenRouter |
 | Job sources | RapidAPI (LinkedIn, Indeed, Bing, JSearch), direct ATS feeds (Greenhouse, Ashby, Lever, Workday CXS), Gmail IMAP — opt-in per source at `/settings/active-sources/` |
 | Storage | SQLite |
 | Web UI | FastAPI + HTMX + Tailwind + Chart.js |
 | Push notifications | [ntfy.sh](https://ntfy.sh) |
 | Scheduler | supercronic (in-container) |
+
+Specific model picks per stage: [`docs/architecture.md`](docs/architecture.md).
 
 ---
 
@@ -133,11 +139,11 @@ Both paths run the same image, complete the same onboarding interview, and reach
 
 One required API key (both paths):
 
-- **OpenRouter** — funds every LLM call (triage scoring, materials writing, in-app onboarding interview). Pay-as-you-go from $0; the one-time onboarding interview runs ~$2–6 in spend, then ~$0.50/day for triage-only and ~$1–2 per fully-prepped job. **Top up at least $10 before you start the interview.**
+- **OpenRouter** — funds every LLM call (triage scoring, materials writing, in-app onboarding interview). Pay-as-you-go from $0; the one-time onboarding interview runs ~$2–6 in spend, then ~$0.50/day for triage-only and ~$1 per fully-prepped job (full breakdown: [`docs/getting-started/cost.md`](docs/getting-started/cost.md)). **Top up at least $10 before you start the interview.**
 
 One optional API key (both paths):
 
-- **RapidAPI (jobs-api14)** — LinkedIn/Indeed/Bing search ingestion. BASIC plan is 150 req/month free, no credit card. Skipping it means LinkedIn/Indeed search is inactive, but Greenhouse/Ashby/Lever feeds and Gmail alerts still work.
+- **RapidAPI (jobs-api14)** — LinkedIn / Indeed / Bing search ingestion. BASIC plan is 150 req/month free, no credit card. Skipping it means findajob ingests only from the direct ATS feeds (Greenhouse, Ashby, Lever, Workday) at the companies you named in onboarding, plus your Gmail job alerts. Most users want LinkedIn too — it catches roles the direct feeds miss.
 
 Sign-up walkthroughs: [`docs/getting-started/api-keys.md`](docs/getting-started/api-keys.md). Both keys get pasted into the in-app onboarding form once your stack is up.
 
@@ -233,14 +239,15 @@ Live status of every issue and milestone: **[project board](https://github.com/u
 
 ## What it costs
 
-Real-world per-day usage on the operator's instance, ~10k jobs/month scored:
+Real-world per-call rates on the operator's instance (sourced from `cost_log`, last 30 days):
 
-| Item | Typical day |
+| Item | Typical |
 |---|---|
-| Scoring (DeepSeek) | $0.10–0.30 |
-| Per prepped job (briefing + resume + cover + critique + outreach) | $1.00 avg, $2.15 max |
+| Scoring (~100 listings/day) | $0.10–$0.40 |
+| Per fully-prepped job (Phase A + B + sidecar) | ~$1.10 avg |
+| Per interview-prep run | ~$0.30 avg |
 
-Total: ~$0.50/day triage-only; ~$5–15 on days you prep several applications.
+**Typical user: ~$20–50/mo all-in.** The operator's instance runs at the higher end — high listing volume (4 sources, 20+ target companies) and 15–30 preps/month. Full breakdown across cadences: [`docs/getting-started/cost.md`](docs/getting-started/cost.md).
 
 ---
 
