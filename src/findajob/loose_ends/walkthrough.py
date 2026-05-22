@@ -10,6 +10,7 @@ LLM is only called at evaluate_dom steps to judge what's rendered.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from pathlib import Path
@@ -185,6 +186,35 @@ def extract_hints(*, dom: str, current_url: str) -> dict:
     }
 
 
+_PAGE_TOP_BUDGET = 8000
+_PER_CONTAINER_BUDGET = 4000
+
+
+def build_cat3_dom_snippet(*, dom: str, container_ids: list[str]) -> str:
+    """Page-top excerpt plus a slice around each named collection container.
+
+    Cat-3's `empty_state_no_guidance` rubric is asked to judge whether a
+    specific container is empty + unaccompanied by guidance. The hint pipeline
+    already knows which containers (`collection_container_ids`) are in scope,
+    but board templates render filter UI first and tables last — a uniform
+    `dom[:N]` slice systematically truncates the container the rubric was
+    told to look at. This builder appends each container's neighborhood after
+    the page-top base so the snippet and the hint metadata stay self-consistent.
+    """
+    parts = [dom[:_PAGE_TOP_BUDGET]]
+    for cid in container_ids:
+        pattern = (
+            rf"<(?:table|tbody|ul|ol|div)[^>]*"
+            rf'\b(?:id|data-collection)=["\']?{re.escape(cid)}["\']?'
+        )
+        m = re.search(pattern, dom)
+        if m is None:
+            continue
+        start = m.start()
+        parts.append(f"<!-- container: {cid} -->\n{dom[start : start + _PER_CONTAINER_BUDGET]}")
+    return "\n".join(parts)
+
+
 def _url_path(url: object) -> str:
     """Extract just the path component (e.g. 'https://x.com/foo?a=1' → '/foo')."""
     parsed = urlparse(str(url))
@@ -244,7 +274,10 @@ def dispatch_step(
                 current_url=current_url,
                 collection_container_ids=hints["collection_container_ids"],
                 visible_button_labels=hints["visible_button_labels"],
-                dom_snippet=dom[:8000],
+                dom_snippet=build_cat3_dom_snippet(
+                    dom=dom,
+                    container_ids=hints["collection_container_ids"],
+                ),
                 exclusions=exclusions,
             )
         raise ValueError(f"unsupported evaluate_dom category: {step.category}")

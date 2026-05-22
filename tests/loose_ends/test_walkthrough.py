@@ -23,6 +23,7 @@ from findajob.loose_ends.walkthrough import (
     PickFirstRowStep,
     SelectOptionStep,
     Walkthrough,
+    build_cat3_dom_snippet,
     dispatch_step,
     extract_hints,
     load_walkthroughs,
@@ -275,6 +276,57 @@ def test_extract_hints_stable_for_fixed_dom():
     h1 = extract_hints(dom=dom, current_url="/x")
     h2 = extract_hints(dom=dom, current_url="/x")
     assert h1 == h2
+
+
+def test_build_cat3_dom_snippet_includes_container_past_truncation_boundary():
+    """#778 regression: on a page large enough that collection containers sit past
+    byte 8000, the cat-3 snippet must still contain them. Without this, the
+    `empty_state_no_guidance` rubric can't observe the very element the hint
+    metadata told it to judge — exactly the failure that surfaced in the
+    2026-05-21 v3 audit on `/board/dashboard`.
+    """
+    padding = "<div>" + ("x" * 80 + "</div><div>") * 400 + "</div>"
+    dom = f'<html><body>{padding}<table><tbody id="rows"></tbody></table></body></html>'
+    assert dom.index('<tbody id="rows">') > 8000  # fixture precondition
+
+    snippet = build_cat3_dom_snippet(dom=dom, container_ids=["rows"])
+
+    assert '<tbody id="rows">' in snippet
+    assert "<!-- container: rows -->" in snippet
+
+
+def test_build_cat3_dom_snippet_preserves_page_top_base():
+    """Additive contract: the page-top excerpt remains the prefix, so any
+    page-top signal (header, nav, top-of-page CTA) the rubric currently
+    relies on stays intact."""
+    head = "<html><head><title>Top</title></head><body><nav>Home</nav>"
+    dom = head + ("<p>filler</p>" * 1000) + '<tbody id="rows"></tbody></body></html>'
+
+    snippet = build_cat3_dom_snippet(dom=dom, container_ids=["rows"])
+
+    assert snippet.startswith(head)
+
+
+def test_build_cat3_dom_snippet_skips_missing_container():
+    """Defensive: if `_HintParser` reported an id that regex can't relocate
+    (e.g., unusual quoting), skip it silently rather than crash."""
+    dom = '<html><body><tbody id="rows"></tbody></body></html>'
+
+    snippet = build_cat3_dom_snippet(dom=dom, container_ids=["rows", "ghost-id"])
+
+    assert "<!-- container: rows -->" in snippet
+    assert "<!-- container: ghost-id -->" not in snippet
+
+
+def test_build_cat3_dom_snippet_empty_container_ids_is_just_page_top():
+    """When the hint parser found no collection containers, the snippet
+    degrades to the original `dom[:8000]` page-top behavior — no markers."""
+    dom = "<html><body>" + ("a" * 10000) + "</body></html>"
+
+    snippet = build_cat3_dom_snippet(dom=dom, container_ids=[])
+
+    assert snippet == dom[:8000]
+    assert "<!-- container:" not in snippet
 
 
 def test_dispatch_goto_calls_page_goto():
