@@ -82,3 +82,75 @@ def test_meta_rule_forbids_bullets() -> None:
         text,
         re.IGNORECASE,
     ), "meta-rule must explicitly forbid digits and bullets to prevent drift; see #621"
+
+
+# ── #753: opaque-token confirmation must echo the full value verbatim ────
+
+
+def test_opaque_token_rule_present() -> None:
+    """The general Phase-5 opaque-token rule must be present.
+
+    The bug shape (#753): during the live #672 walkthrough, the interviewer
+    confirmed the user's just-provided ntfy topic by showing "last 4 chars"
+    — and hallucinated the substring by one character. Storage was correct,
+    but the chat reflection was wrong. The fix is a prompt-level rule
+    requiring full-string echo in backticks for any non-language token,
+    plus an explicit anti-pattern against partial-character extraction.
+
+    Both pieces must be present together — the positive rule alone passes
+    a soft contains-check that wouldn't catch the bug class, and the
+    anti-pattern alone gives the LLM no positive instruction to follow.
+    """
+    text = _read_role()
+    # Positive rule: full-value echo in backticks. Heading match anchors the
+    # rule's location in Phase 5 so a future doc-restructure that displaces
+    # the rule fails loudly instead of quietly losing it.
+    assert "Confirming opaque tokens" in text, "Phase-5 'Confirming opaque tokens' rule heading missing; see #753"
+    assert re.search(
+        r"full\s+value\s+verbatim",
+        text,
+        re.IGNORECASE,
+    ), "opaque-token rule must instruct full-value verbatim echo; see #753"
+
+    # Anti-pattern: explicit prohibition against last-N-characters or substring
+    # reflection. The bare positive rule is too soft — LLMs route around it.
+    assert re.search(
+        r"Do NOT show only\s+(?:the\s+)?`?last\s+N\s+characters`?",
+        text,
+    ), "opaque-token rule must explicitly forbid 'last N characters' reflection; see #753"
+    assert re.search(
+        r"\bsubstring\b",
+        text,
+        re.IGNORECASE,
+    ), "opaque-token rule must explicitly forbid substring reflection; see #753"
+
+
+def test_ntfy_topic_section_references_opaque_token_rule() -> None:
+    """The ntfy_topic.txt section was the documented failure site in #753;
+    its 'Confirm before emitting' line must point at the opaque-token rule
+    AND restate the anti-pattern locally. Both are required so the LLM
+    hits the rule on the actual emission path, not just in the general
+    Phase-5 preamble it may have lost focus on by Group 1 turn-45+.
+    """
+    text = _read_role()
+    # Pull the ntfy_topic.txt block — between its enumerator and the next
+    # blank-line-bounded section. Generous regex; anchor on the label.
+    match = re.search(
+        r"5\.\s+`ntfy_topic\.txt`.*?(?=\n\nGroup 2)",
+        text,
+        re.DOTALL,
+    )
+    assert match is not None, "could not locate ntfy_topic.txt section; prompt structure changed?"
+    section = match.group(0)
+    assert "Confirming opaque tokens" in section, (
+        "ntfy_topic.txt section must reference the 'Confirming opaque tokens' rule; see #753"
+    )
+    assert re.search(
+        r"full\s+value\s+verbatim",
+        section,
+        re.IGNORECASE,
+    ), "ntfy_topic.txt section must restate the full-value-verbatim instruction locally; see #753"
+    assert re.search(
+        r"Do NOT show only\s+(?:the\s+)?`?last\s+N\s+characters`?",
+        section,
+    ), "ntfy_topic.txt section must restate the last-N-characters anti-pattern locally; see #753"
