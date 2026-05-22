@@ -259,7 +259,6 @@ The repo contains zero personal data. All candidate content (resume, profile, wr
 
 - **[Issues](https://github.com/brockamer/findajob/issues)** — file a bug, request a feature
 - **[Discussions](https://github.com/brockamer/findajob/discussions)** — "how do I…" or "have you considered…"
-- **In-app Feedback widget** — floating button on every page files a GitHub issue directly from the web UI
 - **Security** — please don't file public issues for security-relevant bugs; see [`SECURITY.md`](SECURITY.md)
 
 Contributions welcome. Start at [`CONTRIBUTING.md`](CONTRIBUTING.md) — dev setup, commit conventions, the `migration-required` label, and the architectural invariants the code enforces.

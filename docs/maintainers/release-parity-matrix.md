@@ -252,7 +252,6 @@ First-run sentinel `data/.onboarding-complete` redirects to `/onboarding/` until
 | `GET /docs/{slug}` (allowlisted: see `_PAGES` in `routes/docs.py`) | ✓ 2026-05-20 `6f5e317` (16/16 slugs return 200) | ✓ 2026-05-21 `a0c4ac5` (Fly post-#772 IMAGE_ROOT fix; 9/9 slugs return 200 via in-container curl: usage, troubleshooting, getting-started, operations, getting-started/{install-fly,install-docker,configure,prerequisites}, operations/internet-exposure) |
 | `GET /tools/` (LLM-prompt tile gallery) | ✓ 2026-05-20 `6f5e317` | ✓ 2026-05-21 (Fly post-redeploy to current `:latest`) |
 | `GET /healthz` (container liveness probe) | ✓ 2026-05-20 `6f5e317` | ✓ 2026-05-21 (Fly post-redeploy to current `:latest`) |
-| `POST /feedback/submit` (anonymous feedback form) | ✓ 2026-05-20 `6f5e317` (staging: 503 with graceful "not configured" message; pydantic 422 on missing `text` field — route + validation working) | ✓ 2026-05-21 (Fly post-redeploy to current `:latest`) |
 
 ---
 
@@ -384,7 +383,6 @@ Three threads this pass:
 - **Safe POST smokes** on staging:
   - `POST /config/gmail/test` → 200, returns Gmail config card HTML with unconfigured-stack status. Route + validation working.
   - `POST /notifications/mark-all-read` → 303 redirect; post-call DB query shows 0 unread (was at least 1 from pass-1 test ntfy). Idempotent, expected behavior.
-  - `POST /feedback/submit` with empty body → pydantic 422; with `text=...` → 503 graceful "not configured" error. Both validation and unconfigured-stack handling verified.
 
 Pass-4 raises Docker-leg ✓ count to ~80. Remaining gaps are the un-*/reverse-flow POSTs that need either DOM exercise, route-fire with careful rollback, or operator-managed exercise (speculative approve/regenerate/trash, all `/onboarding/*` POSTs, `/trigger-triage`).
 

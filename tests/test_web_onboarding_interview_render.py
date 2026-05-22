@@ -232,7 +232,7 @@ def test_interview_page_streaming_form_contains_submit_button_for_harness(
     body = resp.text
 
     # Slice out the streaming form's full HTML so the submit-button assertion
-    # can't be satisfied by a sibling form (e.g. /feedback/submit).
+    # can't be satisfied by any other form that might live on the same page.
     endpoint_idx = body.find('data-stream-endpoint="/onboarding/interview/turn-stream"')
     assert endpoint_idx != -1, "streaming form (data-stream-endpoint) not found in page"
     form_open = body.rfind("<form", 0, endpoint_idx)

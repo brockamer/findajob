@@ -344,4 +344,4 @@ From here, your daily workflow is the **Dashboard tab** in your web UI:
 
 **Ongoing operations** (update to a new release, rollback a bad deploy) live in [`install-fly.md`](install-fly.md) under the **Updating to a new release** and **Rollback** sections.
 
-**If you get stuck:** open an issue at <https://github.com/brockamer/findajob/issues>, or use the **Feedback** button at the bottom-right of every web UI page.
+**If you get stuck:** open an issue at <https://github.com/brockamer/findajob/issues>.

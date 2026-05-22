@@ -8,7 +8,6 @@ from findajob.web.routes import (
     board_actions,
     config,
     docs,
-    feedback,
     gmail_config,
     healthz,
     ingest,
@@ -68,5 +67,4 @@ router.include_router(onboarding_gmail_config.router)
 router.include_router(onboarding_connections.router)
 router.include_router(onboarding_spend_ceiling.router)
 router.include_router(docs.router)
-router.include_router(feedback.router)
 router.include_router(notifications.router, dependencies=_guard)
