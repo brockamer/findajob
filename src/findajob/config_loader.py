@@ -26,6 +26,7 @@ _TARGET_COMPANIES_PATH = Path(BASE) / "config" / "target_companies.md"
 _EXCLUDED_EMPLOYERS_PATH = Path(BASE) / "config" / "excluded_employers.yaml"
 _REJECT_REASONS_PATH = Path(BASE) / "config" / "reject_reasons.yaml"
 _SPEND_CEILING_PATH = Path(BASE) / "config" / "spend_ceiling.txt"
+_PROFILE_PATH = Path(BASE) / "candidate_context" / "profile.md"
 
 # Field-agnostic fallback used when `config/reject_reasons.yaml` is missing or
 # `reasons:` is empty. Operator stacks override via the file (interview-emitted
@@ -470,6 +471,167 @@ def save_excluded_employers(exact: tuple[str, ...], regex: tuple[str, ...]) -> N
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
             fh.write(body)
         os.replace(tmp_name, _EXCLUDED_EMPLOYERS_PATH)
+    except Exception:
+        if os.path.exists(tmp_name):
+            os.unlink(tmp_name)
+        raise
+
+
+def add_prefilter_title_pattern(pattern: str, category: str = "operator_added") -> None:
+    """Append a single title regex to `hard_rejects[category]` in prefilter_rules.yaml (#653).
+
+    Append-one semantics (not replace-all): the per-row 'Add exclusion rule'
+    affordance commits exactly one new pattern. Loading the whole file just to
+    round-trip through `save_excluded_employers`-style replace would be churn.
+
+    Validation:
+      - pattern: non-empty after strip
+      - pattern compiles via re.compile
+      - pattern not already present in the target category (case-sensitive — regex)
+
+    Preserves other categories and context_suppressors. Creates the file (and
+    the category) if absent. Atomic write — on os.replace failure the original
+    file is left intact.
+
+    YAML `#` comments in the file are not preserved across writes (same as
+    `save_excluded_employers` — yaml.safe_load + hand-rolled emit). The first
+    save will drop the guidance comments in `prefilter_rules.yaml.example`.
+    """
+    import os
+    import tempfile
+
+    cleaned = pattern.strip()
+    if not cleaned:
+        raise ConfigError("prefilter_rules: pattern must be non-empty")
+    try:
+        re.compile(cleaned)
+    except re.error as e:
+        raise ConfigError(f"prefilter_rules: invalid regex {cleaned!r} — {e}") from e
+
+    if _RULES_PATH.exists():
+        try:
+            data = yaml.safe_load(_RULES_PATH.read_text()) or {}
+        except yaml.YAMLError as e:
+            raise ConfigError(f"prefilter_rules.yaml: YAML parse error: {e}") from e
+        if not isinstance(data, dict):
+            raise ConfigError(f"prefilter_rules.yaml: top-level must be a mapping, got {type(data).__name__}")
+    else:
+        data = {}
+
+    hard_rejects = data.get("hard_rejects") or {}
+    if not isinstance(hard_rejects, dict):
+        raise ConfigError(f"prefilter_rules.yaml: 'hard_rejects' must be a mapping, got {type(hard_rejects).__name__}")
+    cat_list = hard_rejects.get(category) or []
+    if not isinstance(cat_list, list):
+        raise ConfigError(
+            f"prefilter_rules.yaml: hard_rejects['{category}'] must be a list, got {type(cat_list).__name__}"
+        )
+    if cleaned in cat_list:
+        raise ConfigError(f"prefilter_rules: duplicate pattern {cleaned!r} in category '{category}'")
+    new_cat_list = list(cat_list) + [cleaned]
+    new_hard_rejects = {**hard_rejects, category: new_cat_list}
+
+    context_suppressors = data.get("context_suppressors") or []
+    if not isinstance(context_suppressors, list):
+        raise ConfigError(
+            f"prefilter_rules.yaml: 'context_suppressors' must be a list, got {type(context_suppressors).__name__}"
+        )
+
+    lines: list[str] = []
+    if new_hard_rejects:
+        lines.append("hard_rejects:")
+        for cat_name, patterns in new_hard_rejects.items():
+            lines.append(f"  {cat_name}:")
+            for p in patterns:
+                lines.append(f"    - {_yaml_scalar(p)}")
+    if context_suppressors:
+        lines.append("context_suppressors:")
+        for p in context_suppressors:
+            lines.append(f"  - {_yaml_scalar(p)}")
+    body = "\n".join(lines) + "\n"
+
+    _RULES_PATH.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=_RULES_PATH.name + ".",
+        suffix=".tmp",
+        dir=str(_RULES_PATH.parent),
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
+            fh.write(body)
+        os.replace(tmp_name, _RULES_PATH)
+    except Exception:
+        if os.path.exists(tmp_name):
+            os.unlink(tmp_name)
+        raise
+
+
+def append_profile_excluded_category(entry: str) -> None:
+    """Append a prose entry to the ## Excluded Categories section of profile.md (#653).
+
+    The section is the JD-content-signal destination for the per-row 'Add
+    exclusion rule' affordance. New entries land at the end of the section
+    (immediately before the next ## H2 or EOF), separated by a blank line from
+    existing content. Atomic write.
+
+    Validation:
+      - entry: non-empty after strip
+      - profile.md exists (operator has completed onboarding)
+      - ## Excluded Categories section is present in profile.md
+      - entry text not already present in the section (substring match)
+    """
+    import os
+    import tempfile
+
+    cleaned = entry.strip()
+    if not cleaned:
+        raise ConfigError("profile excluded_categories: entry must be non-empty")
+    if not _PROFILE_PATH.exists():
+        raise ConfigError(f"profile.md not found at {_PROFILE_PATH}")
+
+    text = _PROFILE_PATH.read_text()
+    lines = text.split("\n")
+
+    start: int | None = None
+    for i, line in enumerate(lines):
+        if line.rstrip() == "## Excluded Categories":
+            start = i
+            break
+    if start is None:
+        raise ConfigError("profile.md: '## Excluded Categories' section not found")
+
+    end = len(lines)
+    for i in range(start + 1, len(lines)):
+        if lines[i].startswith("## "):
+            end = i
+            break
+
+    section_body = "\n".join(lines[start + 1 : end])
+    if cleaned in section_body:
+        raise ConfigError(f"profile excluded_categories: entry already present (duplicate): {cleaned!r}")
+
+    body_lines = lines[start + 1 : end]
+    while body_lines and body_lines[-1].strip() == "":
+        body_lines.pop()
+
+    new_body = body_lines + ["", cleaned] if body_lines else ["", cleaned]
+    if end < len(lines):
+        new_body.append("")
+
+    new_lines = lines[: start + 1] + new_body + lines[end:]
+    new_text = "\n".join(new_lines)
+    if text.endswith("\n") and not new_text.endswith("\n"):
+        new_text += "\n"
+
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=_PROFILE_PATH.name + ".",
+        suffix=".tmp",
+        dir=str(_PROFILE_PATH.parent),
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
+            fh.write(new_text)
+        os.replace(tmp_name, _PROFILE_PATH)
     except Exception:
         if os.path.exists(tmp_name):
             os.unlink(tmp_name)

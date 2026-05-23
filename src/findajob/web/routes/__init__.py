@@ -8,6 +8,7 @@ from findajob.web.routes import (
     board_actions,
     config,
     docs,
+    exclusion_rule,
     gmail_config,
     healthz,
     ingest,
@@ -47,6 +48,7 @@ router.include_router(healthz.router)
 router.include_router(landing.router, dependencies=_guard)
 router.include_router(board.router, dependencies=_guard)
 router.include_router(board_actions.router, dependencies=_guard)
+router.include_router(exclusion_rule.router, dependencies=_guard)
 router.include_router(ingest.router)
 router.include_router(settings_reject_reasons.router, dependencies=_guard)
 router.include_router(settings_active_sources.router, dependencies=_guard)

@@ -481,3 +481,187 @@ class TestSaveRejectReasons:
         reasons, title_signal = config_loader.load_reject_reasons()
         assert reasons == ("Padded",)
         assert title_signal == frozenset({"Padded"})
+
+
+class TestAddPrefilterTitlePattern:
+    """#653 — append a single title regex to `config/prefilter_rules.yaml`.
+
+    Used by the per-row 'Add exclusion rule' affordance (POST /board/jobs/{fp}/exclude
+    with locus=title). Append-one semantics (not replace-all) because the route
+    has exactly one new pattern to commit; loading the existing file just to pass
+    the full list back through `save_excluded_employers` would be churn.
+    """
+
+    def test_creates_file_when_missing(self, monkeypatch, tmp_path):
+        f = tmp_path / "prefilter_rules.yaml"
+        monkeypatch.setattr(config_loader, "_RULES_PATH", f)
+        config_loader.add_prefilter_title_pattern(r"\bsales\s+engineer\b")
+        import yaml as _yaml
+
+        data = _yaml.safe_load(f.read_text())
+        assert data["hard_rejects"]["operator_added"] == [r"\bsales\s+engineer\b"]
+
+    def test_appends_to_existing_category(self, monkeypatch, tmp_path):
+        f = tmp_path / "prefilter_rules.yaml"
+        f.write_text("hard_rejects:\n  operator_added:\n    - '\\bfoo\\b'\n")
+        monkeypatch.setattr(config_loader, "_RULES_PATH", f)
+        config_loader.add_prefilter_title_pattern(r"\bbar\b")
+        import yaml as _yaml
+
+        data = _yaml.safe_load(f.read_text())
+        assert data["hard_rejects"]["operator_added"] == [r"\bfoo\b", r"\bbar\b"]
+
+    def test_preserves_other_categories(self, monkeypatch, tmp_path):
+        f = tmp_path / "prefilter_rules.yaml"
+        f.write_text(
+            "hard_rejects:\n"
+            "  spam:\n"
+            "    - '\\bjoin our talent network\\b'\n"
+            "  sales_bd:\n"
+            "    - '\\baccount executive\\b'\n"
+            "context_suppressors:\n"
+            "  - '\\bsuppress me\\b'\n"
+        )
+        monkeypatch.setattr(config_loader, "_RULES_PATH", f)
+        config_loader.add_prefilter_title_pattern(r"\bnew pattern\b")
+        import yaml as _yaml
+
+        data = _yaml.safe_load(f.read_text())
+        assert data["hard_rejects"]["spam"] == [r"\bjoin our talent network\b"]
+        assert data["hard_rejects"]["sales_bd"] == [r"\baccount executive\b"]
+        assert data["hard_rejects"]["operator_added"] == [r"\bnew pattern\b"]
+        assert data["context_suppressors"] == [r"\bsuppress me\b"]
+
+    def test_rejects_empty_pattern(self, monkeypatch, tmp_path):
+        f = tmp_path / "prefilter_rules.yaml"
+        monkeypatch.setattr(config_loader, "_RULES_PATH", f)
+        with pytest.raises(ConfigError, match="non-empty|empty"):
+            config_loader.add_prefilter_title_pattern("   ")
+
+    def test_rejects_uncompilable_regex(self, monkeypatch, tmp_path):
+        f = tmp_path / "prefilter_rules.yaml"
+        monkeypatch.setattr(config_loader, "_RULES_PATH", f)
+        with pytest.raises(ConfigError, match="invalid regex"):
+            config_loader.add_prefilter_title_pattern("[unclosed")
+
+    def test_rejects_duplicate_in_same_category(self, monkeypatch, tmp_path):
+        f = tmp_path / "prefilter_rules.yaml"
+        f.write_text("hard_rejects:\n  operator_added:\n    - '\\bfoo\\b'\n")
+        monkeypatch.setattr(config_loader, "_RULES_PATH", f)
+        with pytest.raises(ConfigError, match="duplicate"):
+            config_loader.add_prefilter_title_pattern(r"\bfoo\b")
+
+    def test_strips_whitespace(self, monkeypatch, tmp_path):
+        f = tmp_path / "prefilter_rules.yaml"
+        monkeypatch.setattr(config_loader, "_RULES_PATH", f)
+        config_loader.add_prefilter_title_pattern(r"  \bfoo\b  ")
+        import yaml as _yaml
+
+        data = _yaml.safe_load(f.read_text())
+        assert data["hard_rejects"]["operator_added"] == [r"\bfoo\b"]
+
+    def test_custom_category(self, monkeypatch, tmp_path):
+        f = tmp_path / "prefilter_rules.yaml"
+        monkeypatch.setattr(config_loader, "_RULES_PATH", f)
+        config_loader.add_prefilter_title_pattern(r"\bfoo\b", category="custom")
+        import yaml as _yaml
+
+        data = _yaml.safe_load(f.read_text())
+        assert data["hard_rejects"]["custom"] == [r"\bfoo\b"]
+        assert "operator_added" not in data["hard_rejects"]
+
+    def test_atomic_no_partial_write_on_failure(self, monkeypatch, tmp_path):
+        f = tmp_path / "prefilter_rules.yaml"
+        f.write_text("hard_rejects:\n  operator_added:\n    - '\\boriginal\\b'\n")
+        monkeypatch.setattr(config_loader, "_RULES_PATH", f)
+
+        def boom(*a, **kw):
+            raise OSError("simulated failure")
+
+        monkeypatch.setattr("os.replace", boom)
+        with pytest.raises(OSError):
+            config_loader.add_prefilter_title_pattern(r"\bnew\b")
+        assert "original" in f.read_text()
+
+
+class TestAppendProfileExcludedCategory:
+    """#653 — append a prose entry to the ## Excluded Categories section of profile.md.
+
+    Used by the per-row 'Add exclusion rule' affordance with locus=jd. Each call
+    appends a new paragraph (blank-line separated) at the end of the section,
+    immediately before the next ## H2 header.
+    """
+
+    def test_appends_paragraph_to_section(self, monkeypatch, tmp_path):
+        f = tmp_path / "profile.md"
+        f.write_text("## Identity\nA person.\n\n## Excluded Categories\nExisting content.\n\n## Next Section\nTail.\n")
+        monkeypatch.setattr(config_loader, "_PROFILE_PATH", f)
+        config_loader.append_profile_excluded_category("Reject roles that require X.")
+        text = f.read_text()
+        assert "## Excluded Categories\nExisting content.\n\nReject roles that require X.\n\n## Next Section" in text
+
+    def test_appends_when_section_at_end_of_file(self, monkeypatch, tmp_path):
+        f = tmp_path / "profile.md"
+        f.write_text("## Identity\nA person.\n\n## Excluded Categories\nExisting content.\n")
+        monkeypatch.setattr(config_loader, "_PROFILE_PATH", f)
+        config_loader.append_profile_excluded_category("New rule.")
+        text = f.read_text()
+        assert text.endswith("Existing content.\n\nNew rule.\n")
+
+    def test_appends_when_section_empty(self, monkeypatch, tmp_path):
+        f = tmp_path / "profile.md"
+        f.write_text("## Excluded Categories\n\n## Next Section\nTail.\n")
+        monkeypatch.setattr(config_loader, "_PROFILE_PATH", f)
+        config_loader.append_profile_excluded_category("First entry.")
+        text = f.read_text()
+        assert "## Excluded Categories\n\nFirst entry.\n\n## Next Section" in text
+
+    def test_rejects_empty_entry(self, monkeypatch, tmp_path):
+        f = tmp_path / "profile.md"
+        f.write_text("## Excluded Categories\n\n")
+        monkeypatch.setattr(config_loader, "_PROFILE_PATH", f)
+        with pytest.raises(ConfigError, match="non-empty|empty"):
+            config_loader.append_profile_excluded_category("   ")
+
+    def test_rejects_when_profile_missing(self, monkeypatch, tmp_path):
+        f = tmp_path / "profile.md"
+        monkeypatch.setattr(config_loader, "_PROFILE_PATH", f)
+        with pytest.raises(ConfigError, match="not found|missing|does not exist"):
+            config_loader.append_profile_excluded_category("anything")
+
+    def test_rejects_when_section_missing(self, monkeypatch, tmp_path):
+        f = tmp_path / "profile.md"
+        f.write_text("## Identity\nA person.\n")
+        monkeypatch.setattr(config_loader, "_PROFILE_PATH", f)
+        with pytest.raises(ConfigError, match="section"):
+            config_loader.append_profile_excluded_category("anything")
+
+    def test_strips_whitespace(self, monkeypatch, tmp_path):
+        f = tmp_path / "profile.md"
+        f.write_text("## Excluded Categories\n\n")
+        monkeypatch.setattr(config_loader, "_PROFILE_PATH", f)
+        config_loader.append_profile_excluded_category("   Padded entry.   ")
+        text = f.read_text()
+        assert "Padded entry." in text
+        assert "   Padded entry." not in text
+
+    def test_rejects_duplicate_entry(self, monkeypatch, tmp_path):
+        f = tmp_path / "profile.md"
+        f.write_text("## Excluded Categories\n\nAlready here.\n")
+        monkeypatch.setattr(config_loader, "_PROFILE_PATH", f)
+        with pytest.raises(ConfigError, match="duplicate|already"):
+            config_loader.append_profile_excluded_category("Already here.")
+
+    def test_atomic_no_partial_write_on_failure(self, monkeypatch, tmp_path):
+        f = tmp_path / "profile.md"
+        f.write_text("## Excluded Categories\n\nOriginal content.\n")
+        monkeypatch.setattr(config_loader, "_PROFILE_PATH", f)
+
+        def boom(*a, **kw):
+            raise OSError("simulated failure")
+
+        monkeypatch.setattr("os.replace", boom)
+        with pytest.raises(OSError):
+            config_loader.append_profile_excluded_category("Will not commit.")
+        assert "Original content." in f.read_text()
+        assert "Will not commit." not in f.read_text()

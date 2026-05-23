@@ -1,0 +1,31 @@
+{#
+  #653 — per-row 'Add exclusion rule' icon cell.
+
+  Resting state for the per-row exclusion-rule affordance. Clicking the icon
+  GETs /board/jobs/{fp}/exclude/modal which swaps the cell with a form cell
+  (_exclude_modal.html). Successful save returns this cell back via the POST
+  response. Cancel restores it via /board/jobs/{fp}/exclude/cell.
+
+  Inputs:
+    row   — sqlite3.Row with .fingerprint, .title, .company
+    error — optional string; if set, render an inline error banner above the
+            icon button so the operator sees what went wrong without losing
+            their place
+#}
+{% set fp = row.fingerprint %}
+<td class="px-3 py-1 align-top text-sm whitespace-nowrap">
+  {% if error %}
+    <div class="mb-1 rounded border border-rose-300 bg-rose-50 px-2 py-1 text-[11px] text-rose-900">
+      {{ error }}
+    </div>
+  {% endif %}
+  <button type="button"
+          title="Add exclusion rule from this row"
+          aria-label="Add exclusion rule from this row"
+          hx-get="/board/jobs/{{ fp }}/exclude/modal"
+          hx-target="closest td"
+          hx-swap="outerHTML"
+          class="px-1.5 py-0.5 text-base leading-none text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded">
+    🚫
+  </button>
+</td>

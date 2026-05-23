@@ -1,0 +1,74 @@
+{#
+  #653 — per-row 'Add exclusion rule' form cell.
+
+  Cell-swap modal rendered into the row's exclude cell. The operator picks
+  the locus (title-only vs JD-content), edits the suggested pattern/entry,
+  and submits. Submit POSTs to /board/jobs/{fp}/exclude; Cancel restores the
+  icon cell via /board/jobs/{fp}/exclude/cell.
+
+  The two text inputs are mutually exclusive but both rendered — Alpine.js
+  toggles visibility based on the locus radio. Submit sends both fields; the
+  POST handler dispatches by locus and ignores the unused field. Simpler than
+  swapping the field via HTMX on every radio click.
+
+  Inputs:
+    row            — sqlite3.Row with .fingerprint, .title, .company
+    draft_pattern  — suggested word-boundary regex pre-populating the title field
+#}
+{% set fp = row.fingerprint %}
+<td class="px-3 py-1 align-top text-sm" x-data="{ locus: 'title' }">
+  <div class="rounded border border-rose-300 bg-rose-50 p-2">
+    <p class="text-[11px] text-rose-900 mb-1">
+      Add an exclusion rule to prevent matches like
+      <span class="font-medium">{{ row.title }}</span> @ {{ row.company }}.
+    </p>
+    <form hx-post="/board/jobs/{{ fp }}/exclude"
+          hx-target="closest td"
+          hx-swap="outerHTML"
+          class="space-y-1">
+      <fieldset class="space-y-0.5">
+        <legend class="text-[11px] text-rose-700">What does this signal?</legend>
+        <label class="flex items-start gap-1 text-[11px]">
+          <input type="radio" name="locus" value="title" x-model="locus"
+                 class="mt-0.5 border-rose-300">
+          <span><span class="font-medium">Title only</span> — block this title pattern before the LLM scorer runs.</span>
+        </label>
+        <label class="flex items-start gap-1 text-[11px]">
+          <input type="radio" name="locus" value="jd" x-model="locus"
+                 class="mt-0.5 border-rose-300">
+          <span><span class="font-medium">Content in the JD</span> — add prose to profile so the LLM scorer learns the pattern.</span>
+        </label>
+      </fieldset>
+      <div x-show="locus === 'title'">
+        <label class="block">
+          <span class="text-[11px] text-rose-700">Title regex (word-boundary, case-insensitive):</span>
+          <textarea name="pattern"
+                    rows="2"
+                    class="block w-full rounded border-rose-300 bg-white px-2 py-1 text-xs font-mono">{{ draft_pattern }}</textarea>
+        </label>
+      </div>
+      <div x-show="locus === 'jd'" x-cloak>
+        <label class="block">
+          <span class="text-[11px] text-rose-700">Prose entry for ## Excluded Categories:</span>
+          <textarea name="entry"
+                    rows="3"
+                    placeholder="e.g. Reject roles requiring on-call rotation."
+                    class="block w-full rounded border-rose-300 bg-white px-2 py-1 text-xs"></textarea>
+        </label>
+      </div>
+      <div class="flex gap-1">
+        <button type="submit"
+                class="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-xs">
+          Save
+        </button>
+        <button type="button"
+                hx-get="/board/jobs/{{ fp }}/exclude/cell"
+                hx-target="closest td"
+                hx-swap="outerHTML"
+                class="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-xs">
+          Cancel
+        </button>
+      </div>
+    </form>
+  </div>
+</td>
