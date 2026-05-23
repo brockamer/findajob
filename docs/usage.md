@@ -28,12 +28,17 @@ section is a post-onboarding reference for what each source does and
 how to tune it.
 
 ### Paid job-search service (RapidAPI feed — pluggable)
-The pipeline supports multiple RapidAPI-flavored job feeds (jobs-api14,
-JSearch, with more coming). During onboarding, **Section 3h** reads the
-operator-curated feed table and recommends the best feed for your field.
-Your choice is stored in `config/active_sources.txt`; the
-`/onboarding/feed-config/` form collects the per-feed API key and runs a
-live connection test.
+The pipeline supports multiple RapidAPI-flavored job feeds (jobs-api14
+for LinkedIn, jobs-api14-indeed for Indeed, jobs-api14-bing for Bing,
+and JSearch — all share the same `RAPIDAPI_KEY`). During onboarding,
+**Section 3h** reads the operator-curated feed table and recommends a
+default feed for your field; the picker writes one slug to
+`config/active_sources.txt`. The `/onboarding/feed-config/` form
+collects the per-feed API key and runs a live connection test.
+
+Additional adapters (Indeed, Bing) are opt-in after install via
+`/settings/active-sources/` — they share the jobs-api14 RapidAPI key
+so no extra credential is required to flip them on.
 
 The active feed is called daily with the queries in
 `config/jsearch_queries.txt`. Free tiers cover ~150–200 calls/month.

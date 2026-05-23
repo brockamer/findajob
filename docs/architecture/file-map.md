@@ -74,7 +74,7 @@ When this map drifts from the actual code (renamed file, new route module, retir
 <repo>/config/scoring_schema.json           # JSON schema for LLM scorer output validation
 <repo>/config/rapidapi_feeds.yaml            # operator-curated feed table (gitignored; see rapidapi_feeds.yaml.example)
 <repo>/config/active_sources.txt           # per-stack active adapter list (gitignored; interview-emitted via 3h picker)
-<repo>/config/jsearch_queries.txt          # LinkedIn/Indeed search queries (gitignored; interview-emitted, conditional on 3g 'a' selection)
+<repo>/config/jsearch_queries.txt          # LinkedIn/Indeed/Bing search queries (gitignored; interview-emitted, conditional on 3g 'a' selection)
 <repo>/config/feed_urls.txt                 # Greenhouse / Lever / Ashby career-page feed URLs (gitignored; interview-emitted, conditional on 3g 'b' selection)
 <repo>/candidate_context/linkedin-alerts.md # LinkedIn-alerts setup checklist (interview-emitted, conditional on 3g 'c' selection)
 <repo>/config/gmail.json                    # Gmail IMAP/app-password config (gitignored, chmod 600)

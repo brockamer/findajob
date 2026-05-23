@@ -10,6 +10,8 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+## [0.27.10] — 2026-05-23
+
 ### Fixed
 
 - **#765 follow-up: `JobsApi14BingAdapter._compose_row` unwraps `/v2/bing/get`'s top-level `data` envelope (was reading fields directly off the response).** First-pass fix shipped under the original #765 entry below assumed the get-response was flat (`detail["applyUrl"]`); live capture against the operator's stack 2026-05-23 showed it's actually nested (`detail["data"]["applyUrl"]`, alongside `_links`, `errors`, `warnings`, `hasError`, `hasWarning`). Synthetic unit-test fixtures matched the flat assumption, so CI was green; production triage on the operator's stack produced zero rows across 5 queries (52 search rows → 0 composed). `_compose_row` now reads from `detail.get("data") or {}` with the `companyName` / `applyUrl` / `description` keys looked up on the unwrapped record. A separate defensive guard in `_call_with_retry` catches responses missing the `data` envelope (e.g. the `{"message": "...exceeded the rate limit per second..."}` shape captured during a transient PRO-tier burst) and emits `jobsapi_bing_unrecognized_response` log events with a body excerpt rather than passing through silently — the original #601/#765 silent-zero-rows failure class is exactly "unexpected response shape produces empty rows", and the loud-log makes the next variant immediately visible in `pipeline.jsonl`. Test suite gains three guards: `test_fetch_handles_recorded_real_get_response_shape` uses an inline recorded fixture (`_REAL_GET_RESPONSE_2026_05_23`) capturing the full envelope including `_links`/`errors`/`warnings`/`descriptionHtml` so a future "let me simplify the fixture" cleanup can't drift back to the flat-shape assumption; `test_fetch_logs_unrecognized_response_when_envelope_missing` exercises the `{"message": ...}` rate-limit shape and asserts both the empty-row outcome AND the loud-log emission with the rate-limit phrase preserved in the body excerpt; `test_recorded_get_response_is_real_envelope_shape` is a structural sanity-check that locks the recorded-fixture's outer keys (`data`, `hasError`, `errors`, `warnings`, `_links`, `hasWarning`) so the fixture itself stays representative. Also helper-extracts `_get_envelope(record, has_error=...)` so the remaining unit-test fixtures wrap their records under `data` automatically — keeps the test code readable while pinning the real shape. Module docstring updated with a "Response envelope" section pointing at the live-capture date. **No `migration-required`** — same internal-adapter-shape category as the original #765 fix; adapter remains opt-in-default-off.
@@ -1330,7 +1332,8 @@ from GHCR and deployed via Docker Compose on a shared Docker host.
 - Documentation cleanup — removing `sigoden/aichat` references in favor of
   `blob42/aichat-ng` — is tracked in #70
 
-[Unreleased]: https://github.com/brockamer/findajob/compare/v0.27.9...HEAD
+[Unreleased]: https://github.com/brockamer/findajob/compare/v0.27.10...HEAD
+[0.27.10]: https://github.com/brockamer/findajob/releases/tag/v0.27.10
 [0.27.9]: https://github.com/brockamer/findajob/releases/tag/v0.27.9
 [0.27.8]: https://github.com/brockamer/findajob/releases/tag/v0.27.8
 [0.27.7]: https://github.com/brockamer/findajob/releases/tag/v0.27.7
