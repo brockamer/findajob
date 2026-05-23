@@ -9,6 +9,7 @@ import pytest
 import yaml
 
 from findajob.loose_ends.rubrics import (
+    evaluate_action_without_confirmation,
     evaluate_empty_state_no_guidance,
     evaluate_flow_without_exit,
     exclusion_key,
@@ -238,3 +239,149 @@ def test_evaluate_empty_state_returns_excluded_without_llm():
     assert f.excluded is True
     assert f.exclusion_key == "nux_user::/board/applied::empty_state_no_guidance"
     assert cost == 0.0
+
+
+# ─── action_without_confirmation (cat 4, #779) ────────────────────────────────
+
+
+_STAGE_SWAP_DOM_NO_FEEDBACK = """
+<html>
+  <body>
+    <div id="undo-toast"></div>
+    <table>
+      <tr class="stage-interview" data-fingerprint="abc" data-stage="interview">
+        <td><select><option value="">— Change status —</option></select></td>
+        <td>Acme Corp</td>
+        <td>Senior PM</td>
+      </tr>
+    </table>
+  </body>
+</html>
+"""
+
+
+_STAGE_SWAP_DOM_WITH_TOAST = """
+<html>
+  <body>
+    <div id="undo-toast">
+      <span>Applied. Folder moved and snapshot saved.</span>
+      <button>Undo (30s)</button>
+    </div>
+    <table>
+      <tr data-stage="applied"><td>...</td></tr>
+    </table>
+  </body>
+</html>
+"""
+
+
+def test_evaluate_action_without_confirmation_flags_when_no_feedback():
+    """Negative case: stage transitioned, but only CSS class + invisible
+    data-stage changed. No toast, no human-readable state text — loose end.
+    """
+    fake_llm = MagicMock()
+    fake_llm.text = (
+        '{"is_loose_end": true, "confidence": "high", '
+        '"rationale": "Row data-stage updated but no visible toast, banner, '
+        'or cell text naming the new state.", '
+        '"suggested_surface": "Toast: \'Stage changed to Interviewing\' with Undo"}'
+    )
+    fake_llm.cost_usd = 0.02
+    with patch(
+        "findajob.loose_ends.rubrics.openrouter.complete",
+        return_value=fake_llm,
+    ) as mock_complete:
+        f, cost = evaluate_action_without_confirmation(
+            persona="established_user",
+            walkthrough_name="applied_to_interviewing_undo",
+            current_url="/board/applied",
+            context_hint="User just transitioned applied → interviewing",
+            visible_button_labels=["Filter", "Reset"],
+            dom_snippet=_STAGE_SWAP_DOM_NO_FEEDBACK,
+            exclusions={},
+        )
+    assert mock_complete.called
+    # Verify the call routed to the right role prompt and carried the action context.
+    call_kwargs = mock_complete.call_args.kwargs
+    assert call_kwargs["role"] == "loose_ends_action_without_confirmation"
+    # json.dumps escapes non-ASCII by default; check the parts that survive.
+    assert "applied" in call_kwargs["prompt"]
+    assert "interviewing" in call_kwargs["prompt"]
+    assert f.is_loose_end is True
+    assert f.confidence == "high"
+    assert f.category == 4
+    assert f.excluded is False
+    assert f.exclusion_key is None
+    assert cost == 0.02
+
+
+def test_evaluate_action_without_confirmation_clears_when_toast_present():
+    """Positive case: /apply path renders an undo toast with action-naming
+    text — rubric should return is_loose_end=false.
+    """
+    fake_llm = MagicMock()
+    fake_llm.text = (
+        '{"is_loose_end": false, "confidence": "high", '
+        '"rationale": "Undo toast announces \'Applied. Folder moved and snapshot saved.\'", '
+        '"suggested_surface": ""}'
+    )
+    fake_llm.cost_usd = 0.02
+    with patch(
+        "findajob.loose_ends.rubrics.openrouter.complete",
+        return_value=fake_llm,
+    ):
+        f, _ = evaluate_action_without_confirmation(
+            persona="established_user",
+            walkthrough_name="applied_to_interviewing_undo",
+            current_url="/board/dashboard",
+            context_hint="User just applied to a job",
+            visible_button_labels=["Undo"],
+            dom_snippet=_STAGE_SWAP_DOM_WITH_TOAST,
+            exclusions={},
+        )
+    assert f.is_loose_end is False
+    assert f.category == 4
+
+
+def test_evaluate_action_without_confirmation_returns_excluded_without_llm():
+    """Exclusions filtered BEFORE LLM call, same as the other rubrics."""
+    exclusions = {
+        "established_user::/admin/stacks/::action_without_confirmation": "Operator-only.",
+    }
+    with patch("findajob.loose_ends.rubrics.openrouter.complete") as mock_complete:
+        f, cost = evaluate_action_without_confirmation(
+            persona="established_user",
+            walkthrough_name="x",
+            current_url="/admin/stacks/",
+            context_hint="",
+            visible_button_labels=[],
+            dom_snippet="",
+            exclusions=exclusions,
+        )
+    mock_complete.assert_not_called()
+    assert f.excluded is True
+    assert f.exclusion_key == "established_user::/admin/stacks/::action_without_confirmation"
+    assert f.is_loose_end is False
+    assert f.category == 4
+    assert cost == 0.0
+
+
+def test_evaluate_action_without_confirmation_low_confidence_on_bad_json():
+    fake_llm = MagicMock()
+    fake_llm.text = "not json"
+    fake_llm.cost_usd = 0.01
+    with patch(
+        "findajob.loose_ends.rubrics.openrouter.complete",
+        return_value=fake_llm,
+    ):
+        f, _ = evaluate_action_without_confirmation(
+            persona="established_user",
+            walkthrough_name="x",
+            current_url="/",
+            context_hint="",
+            visible_button_labels=[],
+            dom_snippet="",
+            exclusions={},
+        )
+    assert f.confidence == "low"
+    assert f.category == 4

@@ -29,15 +29,16 @@ exclusions:
 
   # Wrong-rubric-for-the-concern: flow_without_exit correctly returns false
   # because nav affordances (sidebar, stage dropdown) exist. The genuine
-  # loose-end here is "no action confirmation after the stage transition"
-  # — a different rubric category tracked in #779 (action_without_confirmation).
-  # When #779 lands, remove these and route the affected walkthroughs to the
-  # new rubric instead.
+  # loose-end concern — "no visible feedback after the stage transition" —
+  # is the action_without_confirmation rubric (cat 4, #779). The motivating
+  # walkthroughs now carry TWO evaluate_dom steps each (flow_without_exit
+  # then action_without_confirmation) on the same rendered DOM; this
+  # exclusion keeps the first pass quiet while the second pass surfaces the
+  # real signal.
   - persona: established_user
     route: /board/applied
     rubric: flow_without_exit
     rationale: >
       Rubric correctly returns is_loose_end=false; nav affordances are present.
-      Operator-intuition concern (no transition feedback / confirmation toast
-      after stage change) belongs to the action_without_confirmation rubric
-      category tracked in #779.
+      The transition-feedback concern is caught by action_without_confirmation
+      (cat 4, #779) in the same walkthrough's second evaluate_dom step.

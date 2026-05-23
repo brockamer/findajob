@@ -413,6 +413,33 @@ def test_dispatch_evaluate_dom_routes_to_flow_without_exit_for_cat2():
     mock_eval.assert_called_once()
 
 
+def test_dispatch_evaluate_dom_routes_to_action_without_confirmation_for_cat4():
+    page = MagicMock()
+    page.content.return_value = "<html><body><button>Undo</button></body></html>"
+    page.url = "https://example.com/board/applied"
+    with patch(
+        "findajob.loose_ends.walkthrough.evaluate_action_without_confirmation",
+        return_value=(MagicMock(), 0.02),
+    ) as mock_eval:
+        dispatch_step(
+            page=page,
+            step=EvaluateDomStep(
+                category=4,
+                rubric="action_without_confirmation",
+                context_hint="User just transitioned applied → interviewing",
+            ),
+            base_url="https://example.com",
+            persona="established_user",
+            walkthrough_name="applied_to_interviewing_undo",
+            exclusions={},
+        )
+    mock_eval.assert_called_once()
+    kwargs = mock_eval.call_args.kwargs
+    assert kwargs["context_hint"] == "User just transitioned applied → interviewing"
+    assert kwargs["current_url"] == "/board/applied"
+    assert "Undo" in kwargs["visible_button_labels"]
+
+
 def test_dispatch_assert_present_succeeds_when_selector_resolves():
     page = MagicMock()
     page.locator.return_value.count.return_value = 1

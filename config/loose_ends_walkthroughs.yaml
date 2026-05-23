@@ -63,6 +63,14 @@ walkthroughs:
           category: 2
           rubric: flow_without_exit
           context_hint: "User just transitioned applied → interviewing"
+      # #779: second pass on the same rendered DOM with the action-without-
+      # confirmation rubric. flow_without_exit correctly returns false (nav
+      # exists); action_without_confirmation is the rubric that catches the
+      # operator-intuition concern (no visible feedback after stage change).
+      - evaluate_dom:
+          category: 4
+          rubric: action_without_confirmation
+          context_hint: "User just transitioned applied → interviewing"
 
   - name: interviewing_to_offer_path
     persona: established_user
@@ -76,6 +84,11 @@ walkthroughs:
       - evaluate_dom:
           category: 2
           rubric: flow_without_exit
+          context_hint: "User just transitioned interviewing → offer"
+      # #779: second pass — see applied_to_interviewing_undo comment.
+      - evaluate_dom:
+          category: 4
+          rubric: action_without_confirmation
           context_hint: "User just transitioned interviewing → offer"
 
   - name: waitlist_then_reactivate

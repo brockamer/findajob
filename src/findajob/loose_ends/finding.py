@@ -24,7 +24,7 @@ class Finding:
     persona: str  # "nux_user" | "established_user"
     walkthrough_name: str  # matches config/loose_ends_walkthroughs.yaml
     current_url: str  # path the walker was on when it evaluated
-    category: int  # 2 or 3
+    category: int  # 2, 3, or 4
     is_loose_end: bool  # LLM's judgment (false if excluded)
     confidence: str  # "high" | "medium" | "low" | "review"
     rationale: str

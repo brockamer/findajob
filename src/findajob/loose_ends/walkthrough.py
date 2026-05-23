@@ -21,7 +21,11 @@ from playwright.sync_api import Error as PWError
 from playwright.sync_api import TimeoutError as PWTimeout
 
 from findajob.loose_ends.finding import Finding
-from findajob.loose_ends.rubrics import evaluate_empty_state_no_guidance, evaluate_flow_without_exit
+from findajob.loose_ends.rubrics import (
+    evaluate_action_without_confirmation,
+    evaluate_empty_state_no_guidance,
+    evaluate_flow_without_exit,
+)
 
 _VALID_PERSONAS = {"nux_user", "established_user"}
 
@@ -278,6 +282,22 @@ def dispatch_step(
                     dom=dom,
                     container_ids=hints["collection_container_ids"],
                 ),
+                exclusions=exclusions,
+            )
+        if step.category == 4:
+            # dom[:8000] mirrors cat-2's slice — the toast region lives near the
+            # top of base.html so it sits well within the first 8000 chars. If
+            # a future walkthrough targets a row deeper in a long table and the
+            # rubric mis-reads "no human-readable state text" because the row
+            # was truncated, switch to a container-aware builder (see #778 /
+            # build_cat3_dom_snippet for the precedent).
+            return evaluate_action_without_confirmation(
+                persona=persona,
+                walkthrough_name=walkthrough_name,
+                current_url=current_url,
+                context_hint=step.context_hint,
+                visible_button_labels=hints["visible_button_labels"],
+                dom_snippet=dom[:8000],
                 exclusions=exclusions,
             )
         raise ValueError(f"unsupported evaluate_dom category: {step.category}")
