@@ -17,6 +17,7 @@ Two surfaces:
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,6 +27,12 @@ from findajob.cost_rollups import spend_this_month
 from findajob.db import connect
 from findajob.llm.openrouter import LLMSpendCeilingExceeded
 from findajob.paths import BASE
+
+
+def _stack_tz() -> str:
+    """IANA tz for month-boundary math. Mirrors ``landing.py:42`` convention."""
+    return os.environ.get("TZ") or "UTC"
+
 
 _DB_PATH = Path(BASE) / "data" / "pipeline.db"
 
@@ -53,7 +60,7 @@ def check_call_gate() -> None:
 
     conn = connect(_DB_PATH)
     try:
-        current = spend_this_month(conn)
+        current = spend_this_month(conn, tz=_stack_tz())
     finally:
         conn.close()
 
@@ -71,7 +78,7 @@ def check_launch_gate(conn: sqlite3.Connection) -> LaunchGateRefusal | None:
     if ceiling is None:
         return None
 
-    current = spend_this_month(conn)
+    current = spend_this_month(conn, tz=_stack_tz())
     if current >= ceiling:
         return LaunchGateRefusal(ceiling_usd=ceiling, current_sum_usd=current)
 
