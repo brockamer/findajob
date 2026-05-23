@@ -1,8 +1,10 @@
-"""Finding aggregation + two-section markdown report writer (#572 Phase 2).
+"""Finding aggregation + three-section markdown report writer (#572 Phase 2).
 
 Reads findings.jsonl, groups by confidence (high/medium/low) and persona,
 optionally calls the prose-writer LLM (temp=0) for the ## Findings prose,
-deterministically renders the ## Exclusions fired this run section.
+deterministically renders ## Walker errors (REVIEW-confidence findings —
+Playwright timeouts and assertion misses, so errored walks don't read as
+audit-clean) and ## Exclusions fired this run.
 """
 
 from __future__ import annotations
@@ -41,6 +43,15 @@ def exclusions_fired(
     return [(key, exclusions[key]) for key in sorted(used_keys) if key in exclusions]
 
 
+def walker_errors(findings: list[Finding]) -> list[Finding]:
+    """Return REVIEW-confidence findings — Playwright timeouts and assertion
+    misses recorded by run_walkthrough when a step blew up. Not loose-ends;
+    walker-health signal the operator must see so errored walks don't
+    masquerade as 'audit clean'.
+    """
+    return [f for f in findings if f.confidence == "review" and not f.excluded]
+
+
 def write_report(
     *,
     findings_jsonl: Path,
@@ -48,12 +59,16 @@ def write_report(
     output_dir: Path,
     today: date | None = None,
 ) -> tuple[Path, float]:
-    """Render findings + exclusions-fired into a dated markdown report.
+    """Render findings + walker errors + exclusions-fired into a dated markdown report.
 
-    Uses the walkthrough prose-writer LLM (temp=0) for the ## Findings
-    section. Returns (report_path, prose_cost_usd). REVIEW-confidence
-    findings (walker timeouts) cluster in their own subsection inside
-    the prose-writer output.
+    Three sections, in order:
+      - ## Findings           LLM prose (walkthrough prose-writer, temp=0)
+      - ## Walker errors      deterministic, no LLM cost; lists REVIEW findings
+                              (Playwright timeouts / assertion misses) so errored
+                              walks don't read as audit-clean
+      - ## Exclusions fired   deterministic, no LLM cost
+
+    Returns (report_path, prose_cost_usd).
     """
     today = today or date.today()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -86,6 +101,17 @@ def write_report(
     findings_section = prose_result.text.strip()
     prose_cost = float(getattr(prose_result, "cost_usd", 0.0) or 0.0)
 
+    # Walker errors section: deterministic. REVIEW findings = Playwright
+    # timeouts / assertion misses from run_walkthrough; rendering them here
+    # ensures an errored walk doesn't masquerade as "audit clean."
+    errors = walker_errors(all_findings)
+    if errors:
+        walker_errors_section = "\n".join(
+            f"- [{f.persona}/{f.walkthrough_name}] at `{f.current_url}` — {f.rationale}" for f in errors
+        )
+    else:
+        walker_errors_section = "_No walker errors this run._"
+
     # Exclusions-fired section: deterministic.
     fired = exclusions_fired(findings=all_findings, exclusions=exclusions)
     if fired:
@@ -96,6 +122,7 @@ def write_report(
     body = (
         f"# Dynamic UX walkthrough audit — {today.isoformat()}\n\n"
         f"## Findings\n\n{findings_section}\n\n"
+        f"## Walker errors\n\n{walker_errors_section}\n\n"
         f"## Exclusions fired this run\n\n{exclusions_section}\n"
     )
     report_path.write_text(body, encoding="utf-8")

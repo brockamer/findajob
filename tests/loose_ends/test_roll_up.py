@@ -10,6 +10,7 @@ from findajob.loose_ends.finding import Finding, write_finding
 from findajob.loose_ends.roll_up import (
     aggregate_findings,
     exclusions_fired,
+    walker_errors,
     write_report,
 )
 
@@ -129,3 +130,69 @@ def test_write_report_renders_no_exclusions_fired_placeholder(tmp_path: Path):
         )
     body = report_path.read_text(encoding="utf-8")
     assert "_No exclusions matched any walkthrough this run._" in body
+
+
+def test_walker_errors_returns_review_confidence_only():
+    findings = [
+        _make_finding(confidence="high"),
+        _make_finding(confidence="review", is_loose_end=False, rationale="walker TimeoutError at step 2"),
+        _make_finding(confidence="medium"),
+        _make_finding(confidence="review", is_loose_end=False, excluded=True),  # excluded REVIEWs drop out
+    ]
+    errs = walker_errors(findings)
+    assert len(errs) == 1
+    assert errs[0].rationale == "walker TimeoutError at step 2"
+
+
+def test_write_report_renders_walker_errors_section(tmp_path: Path):
+    findings_jsonl = tmp_path / "findings.jsonl"
+    write_finding(findings_jsonl, _make_finding(confidence="high", rationale="dashboard empty"))
+    write_finding(
+        findings_jsonl,
+        _make_finding(
+            confidence="review",
+            is_loose_end=False,
+            persona="nux_user",
+            walkthrough_name="dashboard_first_load",
+            current_url="/board/dashboard",
+            rationale="walker TimeoutError at step 3 (Click): timeout 30000ms exceeded",
+        ),
+    )
+
+    fake_llm = MagicMock()
+    fake_llm.text = "### High\n\n- [nux_user] dashboard empty"
+    fake_llm.cost_usd = 0.0
+    with patch("findajob.loose_ends.roll_up.openrouter.complete", return_value=fake_llm):
+        report_path, _ = write_report(
+            findings_jsonl=findings_jsonl,
+            exclusions={},
+            output_dir=tmp_path,
+            today=date(2026, 5, 22),
+        )
+    body = report_path.read_text(encoding="utf-8")
+    assert "## Walker errors" in body
+    assert "[nux_user/dashboard_first_load] at `/board/dashboard`" in body
+    assert "walker TimeoutError at step 3" in body
+    # Walker errors must NOT leak into the LLM-prose Findings section payload —
+    # is_loose_end=False already filters them out of aggregate_findings.
+    # Order: Findings → Walker errors → Exclusions fired this run.
+    assert body.index("## Findings") < body.index("## Walker errors") < body.index("## Exclusions fired")
+
+
+def test_write_report_renders_no_walker_errors_placeholder(tmp_path: Path):
+    findings_jsonl = tmp_path / "findings.jsonl"
+    write_finding(findings_jsonl, _make_finding(confidence="high"))
+
+    fake_llm = MagicMock()
+    fake_llm.text = "### High\n_None._"
+    fake_llm.cost_usd = 0.0
+    with patch("findajob.loose_ends.roll_up.openrouter.complete", return_value=fake_llm):
+        report_path, _ = write_report(
+            findings_jsonl=findings_jsonl,
+            exclusions={},
+            output_dir=tmp_path,
+            today=date(2026, 5, 22),
+        )
+    body = report_path.read_text(encoding="utf-8")
+    assert "## Walker errors" in body
+    assert "_No walker errors this run._" in body
