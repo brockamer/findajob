@@ -216,6 +216,34 @@ def _render_applied_row(request: Request, row: sqlite3.Row) -> HTMLResponse:
     )
 
 
+_STAGE_LABELS = {
+    "applied": "Applied",
+    "interview": "Interviewing",
+    "offer": "Offer",
+    "withdrawn": "Withdrawn",
+    "not_selected": "Not Selected",
+}
+
+
+def _stage_change_toast_html(request: Request, new_stage: str) -> str:
+    """Render the stage-change toast partial (#830) as a string for OOB swap."""
+    label = _STAGE_LABELS.get(new_stage, new_stage)
+    templates = request.app.state.templates
+    return templates.get_template("board/_stage_change_toast.html").render({"message": f"Stage changed to {label}."})
+
+
+def _applied_row_with_stage_toast(request: Request, row: sqlite3.Row, new_stage: str) -> HTMLResponse:
+    """Render the Applied-tab row plus an OOB stage-change toast (#830).
+
+    Used by /interview and /offer where the row stays on the Applied tab
+    after the transition — HTMX needs both the primary <tr> swap and the
+    OOB toast in one response. HTMX strips OOB elements before applying
+    the primary swap, so concatenation order doesn't matter.
+    """
+    row_html = bytes(_render_applied_row(request, row).body).decode()
+    return HTMLResponse(row_html + _stage_change_toast_html(request, new_stage))
+
+
 def _transition_stage(
     db: sqlite3.Connection,
     job: sqlite3.Row,
@@ -651,7 +679,7 @@ def interview(
     _launch_interview_prep_subprocess(db, job)
     updated = _fetch_applied_row(db, fingerprint)
     assert updated is not None
-    return _render_applied_row(request, updated)
+    return _applied_row_with_stage_toast(request, updated, "interview")
 
 
 @router.post("/board/jobs/{fingerprint}/offer", response_class=HTMLResponse)
@@ -667,16 +695,17 @@ def offer(
         _transition_stage(db, job, "offer", event_name="web_offer")
     updated = _fetch_applied_row(db, fingerprint)
     assert updated is not None
-    return _render_applied_row(request, updated)
+    return _applied_row_with_stage_toast(request, updated, "offer")
 
 
 @router.post("/board/jobs/{fingerprint}/withdraw", response_class=HTMLResponse)
 def withdraw(
     fingerprint: str,
-    request: Request,  # noqa: ARG001
+    request: Request,
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
 ) -> HTMLResponse:
-    """Withdraw from the application. Returns empty — row drops off Applied."""
+    """Withdraw from the application. Row drops off Applied; OOB stage-change
+    toast confirms the transition (#830)."""
     job = _fetch_job(db, fingerprint)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -684,7 +713,7 @@ def withdraw(
         return HTMLResponse("")
     _transition_stage(db, job, "withdrawn", event_name="web_withdrawn")
     notify_waitlist_resurface(db, job["company"])
-    return HTMLResponse("")
+    return HTMLResponse(_stage_change_toast_html(request, "withdrawn"))
 
 
 @router.post("/board/jobs/{fingerprint}/waitlist", response_class=HTMLResponse)
@@ -1003,13 +1032,14 @@ def reject(
 @router.post("/board/jobs/{fingerprint}/not-selected", response_class=HTMLResponse)
 def not_selected(
     fingerprint: str,
-    request: Request,  # noqa: ARG001
+    request: Request,
     reason: str = Form(""),
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
 ) -> HTMLResponse:
     """Mark that the company rejected the application. Drops a marker file in
     the existing _applied/ folder. Does NOT write feedback_log — company
-    rejections must not contaminate the scorer. Fires notify_waitlist_resurface."""
+    rejections must not contaminate the scorer. Fires notify_waitlist_resurface.
+    Row drops off the source tab; OOB stage-change toast confirms (#830)."""
     job = _fetch_rejection_job(db, fingerprint)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -1028,7 +1058,7 @@ def not_selected(
         reason=(reason or "").strip() or "Company passed",
         prior_stage=job["stage"],
     )
-    return HTMLResponse("")
+    return HTMLResponse(_stage_change_toast_html(request, "not_selected"))
 
 
 def _fetch_not_selected_row(db: sqlite3.Connection, fingerprint: str) -> sqlite3.Row | None:
@@ -1043,20 +1073,21 @@ def _fetch_not_selected_row(db: sqlite3.Connection, fingerprint: str) -> sqlite3
 @router.post("/board/jobs/{fingerprint}/un-not-selected", response_class=HTMLResponse)
 def un_not_selected(
     fingerprint: str,
-    request: Request,  # noqa: ARG001
+    request: Request,
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
 ) -> HTMLResponse:
     """Reverse a company-not-selected stage. Restores the prior stage from
     audit_log (fallback 'applied'), deletes NOT_SELECTED_*.txt markers from
-    the job's _applied/ folder. Returns empty — row drops off Not Selected tab.
+    the job's _applied/ folder. Row drops off Not Selected tab; OOB
+    stage-change toast names the restored stage (#830).
     """
     job = _fetch_not_selected_row(db, fingerprint)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
     if job["stage"] != "not_selected":
         raise HTTPException(status_code=409, detail="Only not_selected jobs can be un-not-selected")
-    un_not_selected_job(db, job)
-    return HTMLResponse("")
+    restored_stage = un_not_selected_job(db, job)
+    return HTMLResponse(_stage_change_toast_html(request, restored_stage))
 
 
 @router.post("/board/jobs/{fingerprint}/change-not-selected-reason", response_class=HTMLResponse)
@@ -1196,13 +1227,13 @@ def notes_history(
 @router.post("/board/jobs/{fingerprint}/un-withdraw", response_class=HTMLResponse)
 def un_withdraw(
     fingerprint: str,
-    request: Request,  # noqa: ARG001
+    request: Request,
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
 ) -> HTMLResponse:
     """Reverse a withdraw stage transition. Restores prior stage from
-    audit_log (fallback 'applied'). Returns empty — row vanishes from
-    Archive's withdraw-filter view; remains visible in unfiltered Archive
-    until next page navigation."""
+    audit_log (fallback 'applied'). Row vanishes from Archive's
+    withdraw-filter view; OOB stage-change toast names the restored
+    stage (#830)."""
     row = db.execute(
         "SELECT id, fingerprint, title, company, stage FROM jobs WHERE fingerprint=?",
         (fingerprint,),
@@ -1211,8 +1242,8 @@ def un_withdraw(
         raise HTTPException(status_code=404, detail="Job not found")
     if row["stage"] != "withdrawn":
         raise HTTPException(status_code=409, detail="Only withdrawn jobs can be un-withdrawn")
-    un_withdraw_job(db, row)
-    return HTMLResponse("")
+    restored_stage = un_withdraw_job(db, row)
+    return HTMLResponse(_stage_change_toast_html(request, restored_stage))
 
 
 @router.get("/board/jobs/{fingerprint}/reattribute/modal", response_class=HTMLResponse)

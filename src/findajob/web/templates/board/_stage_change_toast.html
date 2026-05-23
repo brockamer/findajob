@@ -1,0 +1,37 @@
+{#
+  Stage-change confirmation toast (#830, follows #779 rubric guidance).
+  Rendered as an HTMX out-of-band swap from the /interview, /offer,
+  /withdraw, /not-selected, /un-withdraw, /un-not-selected responses —
+  replaces the empty <div id="undo-toast"> placeholder in base.html.
+
+  Inputs:
+    message — human-readable confirmation text
+             (e.g. "Stage changed to Interviewing.")
+
+  Behavior:
+    - Alpine x-data tracks a 30s visibility window.
+    - x-init starts a setTimeout that fades the toast after 30000ms.
+    - Manual dismiss via the ✕ button.
+    - No Undo button: forward routes have no 30s-window inverse; the
+      reverse routes (/un-withdraw, /un-not-selected) restore from
+      audit_log which is a different operation than a 30s undo.
+      The existing per-tab "Un-withdraw" / "Un-not-selected" buttons
+      cover that recovery path.
+
+  Targets the same #undo-toast placeholder as _undo_toast.html — only
+  one toast can be visible at a time, which is the right ceiling for
+  rapid clicks (last action wins).
+#}
+<div id="undo-toast"
+     hx-swap-oob="true"
+     x-data="{ visible: true }"
+     x-init="setTimeout(() => visible = false, 30000)"
+     x-show="visible"
+     x-transition.opacity.duration.300ms
+     class="fixed top-4 right-4 z-50 max-w-sm rounded bg-slate-900 px-4 py-3 text-sm text-white shadow-lg flex items-center gap-3">
+  <span>{{ message }}</span>
+  <button type="button"
+          @click="visible = false"
+          aria-label="Dismiss"
+          class="text-white/70 hover:text-white text-base leading-none">✕</button>
+</div>

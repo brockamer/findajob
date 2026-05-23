@@ -372,7 +372,10 @@ class TestNotSelected:
         )
 
         assert response.status_code == 200
-        assert response.text == ""
+        # Response is now just the OOB stage-change toast (#830);
+        # row drops off the source tab via empty primary swap.
+        assert 'id="undo-toast"' in response.text
+        assert "Stage changed to Not Selected." in response.text
         assert _fetch_stage(client, "fp_applied") == "not_selected"
 
         # Folder stays in _applied/ with a NOT_SELECTED_ marker
@@ -1370,11 +1373,14 @@ class TestWithdraw:
         conn.commit()
         conn.close()
 
-    def test_happy_path_empties_response(self, client: TestClient):
+    def test_happy_path_returns_stage_change_toast(self, client: TestClient):
         response = client.post("/board/jobs/fp_applied/withdraw")
 
         assert response.status_code == 200
-        assert response.text == ""
+        # Response is now the OOB stage-change toast (#830);
+        # row drops off the source tab via empty primary swap.
+        assert 'id="undo-toast"' in response.text
+        assert "Stage changed to Withdrawn." in response.text
         assert _fetch_stage(client, "fp_applied") == "withdrawn"
 
         audit = _fetch_audit(client, "fp_applied")
@@ -1840,13 +1846,15 @@ def _seed_not_selected_with_audit(
 
 class TestUnNotSelected:
     def test_happy_path_restores_applied_from_audit(self, client: TestClient):
-        """Prior stage 'applied' restored from audit_log; empty body returned."""
+        """Prior stage 'applied' restored from audit_log; OOB stage-change
+        toast names the restored stage (#830)."""
         _seed_not_selected_with_audit(client, "fp_not_sel_ua")
 
         response = client.post("/board/jobs/fp_not_sel_ua/un-not-selected")
 
         assert response.status_code == 200
-        assert response.text == ""
+        assert 'id="undo-toast"' in response.text
+        assert "Stage changed to Applied." in response.text
         assert _fetch_stage(client, "fp_not_sel_ua") == "applied"
 
         audit = _fetch_audit(client, "fp_not_sel_ua")
@@ -2061,13 +2069,15 @@ def _seed_withdrawn_with_audit(
 
 class TestUnWithdraw:
     def test_happy_path_restores_applied_from_audit(self, client: TestClient):
-        """Prior stage 'applied' restored from audit_log; empty body returned."""
+        """Prior stage 'applied' restored from audit_log; OOB stage-change
+        toast names the restored stage (#830)."""
         _seed_withdrawn_with_audit(client, "fp_withdrawn_ua")
 
         response = client.post("/board/jobs/fp_withdrawn_ua/un-withdraw")
 
         assert response.status_code == 200
-        assert response.text == ""
+        assert 'id="undo-toast"' in response.text
+        assert "Stage changed to Applied." in response.text
         assert _fetch_stage(client, "fp_withdrawn_ua") == "applied"
 
         audit = _fetch_audit(client, "fp_withdrawn_ua")
@@ -2806,3 +2816,170 @@ class TestApplyToastOOB:
         assert response.status_code == 200
         assert 'id="undo-toast"' in response.text
         assert 'hx-post="/board/jobs/fp_drafted/un-apply"' in response.text
+
+
+class TestStageChangeToastOOB:
+    """OOB stage-change toast plumbing for the six post-applied transitions
+    + their inverses (#830). Closes the #779 action_without_confirmation rubric
+    on the Applied-tab walkthroughs.
+
+    Six routes, two response shapes:
+      - /interview, /offer   → row HTML + OOB toast (row re-renders in place)
+      - /withdraw, /not-selected, /un-withdraw, /un-not-selected
+                             → just OOB toast (row drops off source tab)
+    """
+
+    # --- /interview ----------------------------------------------------------
+
+    def test_interview_response_includes_row_and_oob_toast(
+        self, client: TestClient, popen_calls
+    ):
+        response = client.post("/board/jobs/fp_applied/interview")
+        assert response.status_code == 200
+        text = response.text
+        # Row swap: <tr> for the applied-tab row
+        assert "<tr" in text
+        assert 'data-fingerprint="fp_applied"' in text
+        # OOB toast with stage label
+        assert 'id="undo-toast"' in text
+        assert 'hx-swap-oob="true"' in text
+        assert "Stage changed to Interviewing." in text
+        # Negative: no Undo button (the /apply precedent has one; this toast doesn't)
+        assert "/un-apply" not in text
+        assert "Undo" not in text
+
+    # --- /offer --------------------------------------------------------------
+
+    def test_offer_response_includes_row_and_oob_toast(self, client: TestClient):
+        response = client.post("/board/jobs/fp_interview/offer")
+        assert response.status_code == 200
+        text = response.text
+        assert "<tr" in text
+        assert 'data-fingerprint="fp_interview"' in text
+        assert 'id="undo-toast"' in text
+        assert 'hx-swap-oob="true"' in text
+        assert "Stage changed to Offer." in text
+        assert "Undo" not in text
+
+    # --- /withdraw -----------------------------------------------------------
+
+    def test_withdraw_response_is_just_oob_toast(self, client: TestClient):
+        response = client.post("/board/jobs/fp_applied/withdraw")
+        assert response.status_code == 200
+        text = response.text
+        assert 'id="undo-toast"' in text
+        assert 'hx-swap-oob="true"' in text
+        assert "Stage changed to Withdrawn." in text
+        # No <tr> — row drops off source tab
+        assert "<tr" not in text
+        assert "Undo" not in text
+
+    def test_withdraw_idempotent_returns_empty_no_toast(self, client: TestClient):
+        """Re-clicking on an already-withdrawn row returns empty (matches the
+        prior contract: no double-toast on idempotent re-clicks)."""
+        conn = sqlite3.connect(client._db_path)
+        conn.execute("UPDATE jobs SET stage='withdrawn' WHERE fingerprint='fp_applied'")
+        conn.commit()
+        conn.close()
+
+        response = client.post("/board/jobs/fp_applied/withdraw")
+        assert response.status_code == 200
+        assert response.text == ""
+
+    # --- /not-selected -------------------------------------------------------
+
+    def test_not_selected_response_is_just_oob_toast(self, client: TestClient):
+        response = client.post(
+            "/board/jobs/fp_applied/not-selected",
+            data={"reason": "Company passed"},
+        )
+        assert response.status_code == 200
+        text = response.text
+        assert 'id="undo-toast"' in text
+        assert 'hx-swap-oob="true"' in text
+        assert "Stage changed to Not Selected." in text
+        assert "<tr" not in text
+        assert "Undo" not in text
+
+    def test_not_selected_idempotent_returns_empty_no_toast(self, client: TestClient):
+        conn = sqlite3.connect(client._db_path)
+        conn.execute("UPDATE jobs SET stage='not_selected' WHERE fingerprint='fp_applied'")
+        conn.commit()
+        conn.close()
+
+        response = client.post(
+            "/board/jobs/fp_applied/not-selected", data={"reason": "Company passed"}
+        )
+        assert response.status_code == 200
+        assert response.text == ""
+
+    # --- /un-withdraw --------------------------------------------------------
+
+    def test_un_withdraw_response_is_oob_toast_with_restored_stage(
+        self, client: TestClient
+    ):
+        """un_withdraw_job's audit_log lookup reads the most recent
+        '* → withdrawn' row; seed one explicitly so the helper has a prior
+        stage to restore to."""
+        conn = sqlite3.connect(client._db_path)
+        # Move the row to withdrawn + write the audit row that records the
+        # prior stage. Both pieces are required: row stage gates the route,
+        # audit_log drives the restore.
+        conn.execute("UPDATE jobs SET stage='withdrawn' WHERE fingerprint='fp_applied'")
+        conn.execute(
+            "INSERT INTO audit_log (job_id, field_changed, old_value, new_value) "
+            "VALUES ('id_applied', 'stage', 'interview', 'withdrawn')"
+        )
+        conn.commit()
+        conn.close()
+
+        response = client.post("/board/jobs/fp_applied/un-withdraw")
+        assert response.status_code == 200
+        text = response.text
+        assert 'id="undo-toast"' in text
+        assert 'hx-swap-oob="true"' in text
+        # Restored stage reflected in the toast (audit_log seed → 'interview')
+        assert "Stage changed to Interviewing." in text
+        assert "<tr" not in text
+
+    # --- /un-not-selected ----------------------------------------------------
+
+    def test_un_not_selected_response_is_oob_toast_with_restored_stage(
+        self, client: TestClient
+    ):
+        conn = sqlite3.connect(client._db_path)
+        conn.execute("UPDATE jobs SET stage='not_selected' WHERE fingerprint='fp_applied'")
+        conn.execute(
+            "INSERT INTO audit_log (job_id, field_changed, old_value, new_value) "
+            "VALUES ('id_applied', 'stage', 'offer', 'not_selected')"
+        )
+        conn.commit()
+        conn.close()
+
+        response = client.post("/board/jobs/fp_applied/un-not-selected")
+        assert response.status_code == 200
+        text = response.text
+        assert 'id="undo-toast"' in text
+        assert 'hx-swap-oob="true"' in text
+        assert "Stage changed to Offer." in text
+        assert "<tr" not in text
+
+    # --- 404 paths ------------------------------------------------------------
+
+    def test_404_routes_do_not_render_toast(self, client: TestClient):
+        """All six routes raise 404 on unknown fingerprint without rendering
+        the toast partial (failure should not flash a misleading confirmation)."""
+        for route in (
+            "interview",
+            "offer",
+            "withdraw",
+            "not-selected",
+            "un-withdraw",
+            "un-not-selected",
+        ):
+            response = client.post(
+                f"/board/jobs/fp_does_not_exist/{route}",
+                data={"reason": "x"} if route == "not-selected" else None,
+            )
+            assert response.status_code == 404, f"{route} should 404 on unknown fp"
+            assert "undo-toast" not in response.text, f"{route} leaked toast on 404"
