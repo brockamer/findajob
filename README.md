@@ -249,7 +249,7 @@ Real-world per-call rates on the operator's instance (sourced from `cost_log`, l
 | Per fully-prepped job (Phase A + B + sidecar) | ~$1.10 avg |
 | Per interview-prep run | ~$0.30 avg |
 
-**Typical user: ~$20–50/mo in API spend.** Add ~$5/mo if hosted on Fly.io. The operator's instance runs at the higher end — high listing volume (4 sources, 20+ target companies) and 15–30 preps/month. Full breakdown across cadences: [`docs/getting-started/cost.md`](docs/getting-started/cost.md).
+**Typical user: ~$20–50/mo in API spend.** Add ~$5/mo if hosted on Fly.io. The operator's instance runs at the higher end — high listing volume (4 sources, 20+ target companies) and 15–30 preps/month. Sprint mode (3 preps/day) runs $82–$130/mo; see [Monthly scenarios](docs/getting-started/cost.md#monthly-scenarios) for the full cadence table.
 
 ---
 

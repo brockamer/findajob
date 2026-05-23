@@ -85,6 +85,9 @@ LLM cost depends almost entirely on **how much you use findajob to prep applicat
 | Triage + 1 prep / week | $9–$21 | ~$4 | $13–$25 |
 | Triage + 3 preps / week | $9–$21 | ~$12 | $21–$33 |
 | Triage + daily prep + 2 interview preps / month | $9–$21 | ~$30 + ~$0.6 | $40–$52 |
+| Triage + 3 preps / day + 4 interview preps / month (sprint mode) | $9–$21 | ~$72–$108 + ~$1.2 | $82–$130 |
+
+Sprint mode is sustainable for a few weeks during active search; not a steady-state cadence.
 
 **Onboarding** is a one-time charge of **$3–$6** for the in-app interview. It runs once when you first deploy. Re-running onboarding (rare) would charge again.
 
@@ -112,6 +115,7 @@ The Settings page shows a suggested ceiling based on your expected weekly prep c
 - 1 prep / week → ~$22
 - 3 preps / week → ~$32
 - 1 prep / day → ~$69
+- 3 preps / day (sprint mode) → ~$170
 - Heavier than that → either set a ceiling near the upper bound of your scenario row, or disable the cap and watch the cost chip in the top nav
 
 You can change the cap any time; resetting it doesn't lose state. If you'd rather not have a hard cap at all, the cost chip in the top nav shows running month-to-date spend regardless.
