@@ -47,33 +47,51 @@ with a `DirtyWalError`.
 ### 2. Export the state
 
 The exporter runs inside the source stack's container (which has the
-`findajob.migrate` module installed) against the bind-mount root:
+`findajob.migrate` module installed) against the bind-mount root.
+`--user 1000:1000` is critical — `--entrypoint python` bypasses
+`entrypoint.sh`'s `gosu findajob` drop, so without it the container
+runs as root and the tarball lands root-owned in the lad-owned bind
+mount (the next step's transfer will then fail).
 
 ```
-ssh <deployment-host> 'cd /opt/stacks/findajob-<handle> && sudo docker compose run --rm --entrypoint python scheduler -m findajob.migrate export --state-dir /app/state --tarball /app/state/.export.tar.gz --stack-tag findajob-<handle>'
+ssh <deployment-host> 'cd /opt/stacks/findajob-<handle> && sudo docker compose run --rm --user 1000:1000 --entrypoint python scheduler -m findajob.migrate export --state-dir /app/state --tarball /app/state/.export.tar.gz --stack-tag findajob-<handle>'
 ```
 
-This produces `/opt/stacks/findajob-<handle>/state/.export.tar.gz` on
-the deployment host. The exporter writes a `manifest.json` into the
-tarball with per-table row counts, the SHA-256 of `pipeline.db`, and
-file-count / total-size figures for `companies/` and
-`candidate_context/`. Skipped on purpose: `aichat_ng/` (regenerable
-LLM chat state — historical interview chat replay does **not** survive
-migration) and `logs/` (rebuildable from pipeline events).
+This produces `/opt/stacks/findajob-<handle>/state/.export.tar.gz`
+owned `lad:lad` (uid/gid 1000) on the deployment host. The exporter
+embeds a `manifest.json` at the top of the tarball with per-table row
+counts, the SHA-256 of `pipeline.db`, and file-count / total-size
+figures for `companies/` and `candidate_context/`. Skipped on purpose:
 
-Pull the tarball back to the operator's box:
+- `data/.env` (credentials — handled separately via `fly secrets
+  import` in step 4; findajob's runtime reads only from env vars, so
+  a copy of `.env` on the Fly volume would be dormant + a secrets-
+  at-rest hazard).
+- `aichat_ng/` (regenerable LLM chat state — historical interview
+  chat replay does **not** survive migration).
+- `logs/` (rebuildable from pipeline events; inflates the tarball).
+
+Pull the tarball back to the operator's box. The tarball is lad-owned
+and not readable by the SSH user, so a plain `scp` fails — use
+`ssh sudo cat | local-redirect` instead:
 
 ```
-scp -q <deployment-host>:/opt/stacks/findajob-<handle>/state/.export.tar.gz /tmp/findajob-<handle>-migration.tar.gz
+ssh <deployment-host> 'sudo cat /opt/stacks/findajob-<handle>/state/.export.tar.gz' > /tmp/findajob-<handle>-migration.tar.gz
 ```
 
-Verify size and that `manifest.json` is present:
+Verify size and that `manifest.json` is present at the top:
 
 ```
 tar -tzf /tmp/findajob-<handle>-migration.tar.gz | head -5
 ```
 
 (Expected first member: `manifest.json`.)
+
+Clean up the deployment-host copy once the transfer is verified:
+
+```
+ssh <deployment-host> 'sudo rm /opt/stacks/findajob-<handle>/state/.export.tar.gz'
+```
 
 ### 3. Restart the source stack
 

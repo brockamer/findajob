@@ -13,16 +13,21 @@ Operator-side preconditions (NOT enforced here, enforced by the
 The tarball layout mirrors the state directory:
 
     manifest.json
-    data/...           (SQLite + sentinels + .env — secrets are NOT in the
-                        tarball at the runtime layer; the operator hands
-                        them off via ``fly secrets import`` per the
-                        runbook, but the source-side ``.env`` is tarred
-                        for backup completeness)
+    data/...           (SQLite + sentinels — ``.env`` is NOT in the
+                        tarball; the operator hands credentials off
+                        separately via ``fly secrets import`` against
+                        the SOURCE ``data/.env`` per the runbook.
+                        findajob's runtime reads credentials from env
+                        vars only (no ``load_dotenv`` calls), so a
+                        copy of ``.env`` on the Fly volume would be
+                        dormant — putting it in the tarball is just
+                        a secrets-at-rest hazard.)
     companies/...
     candidate_context/...
 
-Explicitly excluded: ``aichat_ng/`` (regenerable LLM chat state) and
-``logs/`` (rebuildable from pipeline events; would inflate the tarball).
+Explicitly excluded: ``data/.env`` (secrets, see above), ``aichat_ng/``
+(regenerable LLM chat state), ``logs/`` (rebuildable from pipeline
+events; would inflate the tarball).
 """
 
 from __future__ import annotations
@@ -40,6 +45,11 @@ from findajob.migrate import wal
 
 INCLUDED_SUBDIRS = ("data", "companies", "candidate_context")
 EXCLUDED_SUBDIRS = ("aichat_ng", "logs")
+# Specific files within INCLUDED_SUBDIRS that must be filtered out.
+# Paths are relative to the state-dir root. ``data/.env`` carries
+# OpenRouter / RapidAPI / Gmail IMAP credentials and is handled
+# separately via ``fly secrets import`` per the runbook.
+EXCLUDED_FILES = frozenset({"data/.env"})
 
 # Tables we track in the manifest. Other tables exist (notes_history,
 # view_prefs, onboarding_sessions, ...) but these four are the
@@ -170,7 +180,16 @@ def _write_tarball(state_dir: Path, tarball_path: Path, manifest: mf.Manifest) -
             src = state_dir / sub
             if not src.exists():
                 continue
-            tar.add(src, arcname=sub, recursive=True)
+            tar.add(src, arcname=sub, recursive=True, filter=_exclude_filter)
+
+
+def _exclude_filter(tarinfo: tarfile.TarInfo) -> tarfile.TarInfo | None:
+    """tar.add(filter=...) callback — returns ``None`` to drop the
+    member, or the unchanged tarinfo to keep it. Used to skip
+    :data:`EXCLUDED_FILES` from inside included subdirs."""
+    if tarinfo.name in EXCLUDED_FILES:
+        return None
+    return tarinfo
 
 
 def _findajob_version() -> str:

@@ -94,9 +94,14 @@ def test_tarball_skips_aichat_ng_and_logs(tmp_path: Path) -> None:
     assert not any("logs/" in n for n in names), f"logs/ leaked: {names}"
 
 
-def test_tarball_includes_dotfiles_in_data(tmp_path: Path) -> None:
-    """data/.onboarding-complete and data/.env must be included (the
-    onboarding sentinel is what flags a stack as already-onboarded)."""
+def test_tarball_includes_onboarding_sentinel_but_excludes_env(tmp_path: Path) -> None:
+    """data/.onboarding-complete must be included — it's what flags a
+    stack as already-onboarded so the migrated Fly app skips the
+    onboarding gate. data/.env must NOT be included — credentials
+    are handed off separately via `fly secrets import` per the
+    runbook, and findajob's runtime reads credentials from env vars
+    only (no load_dotenv), so a copy of .env on the Fly volume would
+    be dormant + a secrets-at-rest hazard."""
     state = tmp_path / "state"
     out = tmp_path / "stack.tar.gz"
     _build_fake_stack(state)
@@ -106,7 +111,8 @@ def test_tarball_includes_dotfiles_in_data(tmp_path: Path) -> None:
     with tarfile.open(out, "r:gz") as tar:
         names = tar.getnames()
     assert any(n.endswith(".onboarding-complete") for n in names), names
-    assert any(n.endswith(".env") for n in names), names
+    # data/.env is explicitly filtered out — see EXCLUDED_FILES in exporter.py
+    assert not any(n.endswith("data/.env") for n in names), f".env leaked into tarball: {names}"
 
 
 def test_manifest_inside_tarball_is_consistent(tmp_path: Path) -> None:
