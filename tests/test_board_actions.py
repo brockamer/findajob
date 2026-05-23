@@ -2831,9 +2831,7 @@ class TestStageChangeToastOOB:
 
     # --- /interview ----------------------------------------------------------
 
-    def test_interview_response_includes_row_and_oob_toast(
-        self, client: TestClient, popen_calls
-    ):
+    def test_interview_response_includes_row_and_oob_toast(self, client: TestClient, popen_calls):
         response = client.post("/board/jobs/fp_applied/interview")
         assert response.status_code == 200
         text = response.text
@@ -2907,17 +2905,13 @@ class TestStageChangeToastOOB:
         conn.commit()
         conn.close()
 
-        response = client.post(
-            "/board/jobs/fp_applied/not-selected", data={"reason": "Company passed"}
-        )
+        response = client.post("/board/jobs/fp_applied/not-selected", data={"reason": "Company passed"})
         assert response.status_code == 200
         assert response.text == ""
 
     # --- /un-withdraw --------------------------------------------------------
 
-    def test_un_withdraw_response_is_oob_toast_with_restored_stage(
-        self, client: TestClient
-    ):
+    def test_un_withdraw_response_is_oob_toast_with_restored_stage(self, client: TestClient):
         """un_withdraw_job's audit_log lookup reads the most recent
         '* → withdrawn' row; seed one explicitly so the helper has a prior
         stage to restore to."""
@@ -2944,9 +2938,7 @@ class TestStageChangeToastOOB:
 
     # --- /un-not-selected ----------------------------------------------------
 
-    def test_un_not_selected_response_is_oob_toast_with_restored_stage(
-        self, client: TestClient
-    ):
+    def test_un_not_selected_response_is_oob_toast_with_restored_stage(self, client: TestClient):
         conn = sqlite3.connect(client._db_path)
         conn.execute("UPDATE jobs SET stage='not_selected' WHERE fingerprint='fp_applied'")
         conn.execute(
