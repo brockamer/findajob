@@ -26,13 +26,19 @@ ALLOWED_TABS: frozenset[str] = frozenset(
 )
 
 
-def serialize(parsed: ParsedFilters) -> str:
+def serialize(parsed: ParsedFilters, *, default_cols: tuple[str, ...] | None = None) -> str:
     """Rebuild a canonical, allowlisted query string from ParsedFilters.
 
     Only emits keys produced by the per-column filter framework — sort,
     desc (only when False, since True is the default), text, numeric
     range (_min/_max), enum, date range (_from/_to), cols. Anything
     outside this set is filtered by construction.
+
+    When ``default_cols`` is provided and ``parsed.cols`` equals it
+    (set-equal, ordering ignored), the ``cols=`` clause is dropped.
+    Persisting "cols=<defaults>" would cause the redirect-on-cold-load
+    cascade to bring back a no-op clause and render the chip-strip's
+    cols pill on what the operator perceives as a default view (#844).
 
     Ordering is deterministic so byte-equal input yields byte-equal
     output.
@@ -56,7 +62,7 @@ def serialize(parsed: ParsedFilters) -> str:
             pairs.append((f"{name}_from", d_from))
         if d_to is not None:
             pairs.append((f"{name}_to", d_to))
-    if parsed.cols:
+    if parsed.cols and (default_cols is None or set(parsed.cols) != set(default_cols)):
         pairs.append(("cols", ",".join(parsed.cols)))
     return urlencode(pairs)
 

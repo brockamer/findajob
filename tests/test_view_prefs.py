@@ -78,6 +78,53 @@ def test_serialize_composite_order_is_deterministic() -> None:
     assert result == "sort=relevance_score&company=Meta&relevance_score_min=5&cols=title%2Ccompany"
 
 
+# ── default_cols suppression (#844) ─────────────────────────────────────
+
+
+def test_serialize_drops_cols_when_matches_default_cols() -> None:
+    """cols=<defaults> is a no-op — persisting it brings back the cols
+    pill on what the operator sees as a default view (#844)."""
+    parsed = ParsedFilters(cols=("title", "company"))
+    assert view_prefs.serialize(parsed, default_cols=("title", "company")) == ""
+
+
+def test_serialize_drops_cols_when_set_equal_regardless_of_order() -> None:
+    """Order ignored — operators toggle checkboxes in arbitrary order."""
+    parsed = ParsedFilters(cols=("company", "title"))
+    assert view_prefs.serialize(parsed, default_cols=("title", "company")) == ""
+
+
+def test_serialize_keeps_cols_when_subset_of_defaults() -> None:
+    """A strict subset is a customization — operator hid columns."""
+    parsed = ParsedFilters(cols=("title",))
+    assert view_prefs.serialize(parsed, default_cols=("title", "company")) == "cols=title"
+
+
+def test_serialize_keeps_cols_when_superset_of_defaults() -> None:
+    """A strict superset is a customization — operator surfaced a hidden column."""
+    parsed = ParsedFilters(cols=("title", "company", "stage"))
+    result = view_prefs.serialize(parsed, default_cols=("title", "company"))
+    assert result == "cols=title%2Ccompany%2Cstage"
+
+
+def test_serialize_without_default_cols_kwarg_preserves_legacy_behavior() -> None:
+    """Default-cols argument is opt-in; callers that don't pass it keep
+    the old emit-cols-when-present behavior. Critical for any caller
+    that hasn't been updated (test fixtures, etc)."""
+    parsed = ParsedFilters(cols=("title", "company"))
+    assert view_prefs.serialize(parsed) == "cols=title%2Ccompany"
+
+
+def test_serialize_combines_default_cols_drop_with_other_filters() -> None:
+    """Other filters survive the cols-default drop."""
+    parsed = ParsedFilters(
+        text={"company": "Meta"},
+        cols=("title", "company"),
+    )
+    result = view_prefs.serialize(parsed, default_cols=("title", "company"))
+    assert result == "company=Meta"
+
+
 # ── has_filter_state ────────────────────────────────────────────────────
 
 

@@ -73,8 +73,33 @@ def _persist_view(db: sqlite3.Connection, tab: str, parsed: ParsedFilters) -> No
     Inlined into page + /rows GETs so every filter mutation updates the
     per-tab pref. Empty parsed state is a no-op — use the reset
     endpoint to explicitly clear persistence.
+
+    ``cols`` matching the tab's ``ColumnSpec.default_visible`` set is
+    dropped from the persisted string (#844). Persisting a no-op cols
+    clause causes the cold-load redirect to render the cols pill on
+    the operator's perceived default view.
     """
-    view_prefs.save(db, tab, view_prefs.serialize(parsed))
+    default_cols = _default_cols_for_storage_tab(tab)
+    view_prefs.save(db, tab, view_prefs.serialize(parsed, default_cols=default_cols))
+
+
+def _default_cols_for_storage_tab(tab: str) -> tuple[str, ...]:
+    """Return the spec-defined default-visible column names for a tab."""
+    specs = _STORAGE_TAB_SPECS.get(tab)
+    if specs is None:
+        return ()
+    return tuple(s.name for s in specs if s.default_visible)
+
+
+_STORAGE_TAB_SPECS: dict[str, tuple[ColumnSpec, ...]] = {
+    "dashboard": filter_registry.DASHBOARD_COLUMNS,
+    "applied": filter_registry.APPLIED_COLUMNS,
+    "review": filter_registry.REVIEW_COLUMNS,
+    "waitlist": filter_registry.WAITLIST_COLUMNS,
+    "rejected": filter_registry.REJECTED_COLUMNS,
+    "not_selected": filter_registry.NOT_SELECTED_COLUMNS,
+    "archive": filter_registry.ARCHIVE_COLUMNS,
+}
 
 
 _DASHBOARD_DEFAULT_SORT = "relevance_score"
@@ -936,13 +961,78 @@ def reset_view(
 ) -> RedirectResponse:
     """Clear the per-tab persisted filter / sort / cols state.
 
-    The Reset-to-defaults link in ``_filters.html`` POSTs here. 303
-    redirects to the bare ``/board/{tab}`` URL so the page renders
-    with no querystring — the cascade then falls through to
+    The Reset-to-defaults link in ``_filters.html`` and the "Clear all"
+    link in ``_active_filters.html`` both POST here. 303 redirects to
+    the bare ``/board/{tab}`` URL so the page renders with no
+    querystring — the cascade then falls through to
     ``ColumnSpec.default_visible``.
     """
     storage_tab = _URL_TAB_TO_STORAGE.get(tab)
     if storage_tab is None:
         raise HTTPException(status_code=404, detail=f"unknown tab: {tab}")
+    view_prefs.reset(db, storage_tab)
+    return RedirectResponse(url=f"/board/{tab}", status_code=303)
+
+
+@router.post("/board/{tab}/reset-filter/{name}")
+def reset_filter(
+    tab: str,
+    name: str,
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> RedirectResponse:
+    """Drop a single named filter (or ``cols``/``sort``) from persisted state.
+
+    Backs the ✕ buttons on the chip strip in ``_active_filters.html``
+    (#844). The previous GET-anchor approach landed in
+    ``_maybe_redirect_to_persisted``'s cold-load branch when the chip
+    was the last filter, silently snapping the user back to the
+    persisted state. POST + explicit reset + redirect to the bare or
+    filtered URL avoids the loop entirely.
+
+    Semantics:
+    - Reads the persisted query string for the tab (source of truth
+      after every URL settle — auto-saved on every page + /rows GET).
+    - Removes the named key from a parsed copy of that state. ``name``
+      may be a column name (text / numeric_range / enum / date_range),
+      the literal ``cols``, or the literal ``sort``.
+    - Re-serializes (with ``default_cols`` so cols-matching-defaults
+      stays dropped).
+    - Empty result -> ``view_prefs.reset`` + 303 to bare ``/board/{tab}``.
+    - Non-empty result -> ``view_prefs.save`` + 303 to
+      ``/board/{tab}?{new_qs}`` so the URL explicitly carries the
+      remaining state.
+
+    Unknown ``name`` is a no-op (404 would be hostile — operators
+    upgrading mid-session may hit a stale form). Unknown ``tab`` is
+    a 404.
+    """
+    from dataclasses import replace
+    from urllib.parse import parse_qsl
+
+    from findajob.web.filters import parse_filter_params
+
+    storage_tab = _URL_TAB_TO_STORAGE.get(tab)
+    if storage_tab is None:
+        raise HTTPException(status_code=404, detail=f"unknown tab: {tab}")
+    specs = _STORAGE_TAB_SPECS[storage_tab]
+
+    persisted = view_prefs.load(db, storage_tab) or ""
+    parsed = parse_filter_params(specs, dict(parse_qsl(persisted, keep_blank_values=False)))
+
+    new_parsed = replace(
+        parsed,
+        text={k: v for k, v in parsed.text.items() if k != name},
+        numeric_range={k: v for k, v in parsed.numeric_range.items() if k != name},
+        enum={k: v for k, v in parsed.enum.items() if k != name},
+        date_range={k: v for k, v in parsed.date_range.items() if k != name},
+        cols=None if name == "cols" else parsed.cols,
+        sort=None if name == "sort" else parsed.sort,
+    )
+
+    default_cols = _default_cols_for_storage_tab(storage_tab)
+    new_qs = view_prefs.serialize(new_parsed, default_cols=default_cols)
+    if new_qs:
+        view_prefs.save(db, storage_tab, new_qs)
+        return RedirectResponse(url=f"/board/{tab}?{new_qs}", status_code=303)
     view_prefs.reset(db, storage_tab)
     return RedirectResponse(url=f"/board/{tab}", status_code=303)

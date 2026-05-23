@@ -1,8 +1,21 @@
 {# src/findajob/web/templates/_active_filters.html
    Inputs:
      parsed       — ParsedFilters
-     specs        — sequence of ColumnSpec for the current tab (label lookup)
+     specs        — sequence of ColumnSpec for the current tab (label lookup
+                    + default-visible comparison for the cols pill)
+     tab          — storage tab id (mapped to URL form for the reset POST
+                    actions, mirroring _filters.html's url_tab pattern)
    Renders the chip strip + Clear-all link + Copy-link button.
+
+   ✕ buttons and "Clear all" are POST forms (not anchors). GET anchors
+   used to land in routes/board._maybe_redirect_to_persisted's cold-load
+   branch and snap back to persisted state when the chip was the last
+   filter (#844). POST + dedicated reset routes break the loop class
+   for every filter type, not just cols.
+
+   The cols pill renders only when parsed.cols differs from the spec's
+   default_visible set — a "cols=<defaults>" clause is a no-op the
+   operator perceives as a default view.
 
    Hidden inputs that mirror every active filter live HERE so HTMX
    hx-include="[data-filter-input]" picks them up. The popover form fields
@@ -10,46 +23,59 @@
 #}
 {% set spec_label = {} %}
 {% for s in specs %}{% if spec_label.update({s.name: s.label}) %}{% endif %}{% endfor %}
-{% if not parsed.is_empty() or parsed.cols or parsed.sort %}
+{% set url_tab = tab | replace('_', '-') %}
+{% set default_cols_set = specs | selectattr('default_visible') | map(attribute='name') | list %}
+{% set cols_off_default = parsed.cols and (parsed.cols | sort) != (default_cols_set | sort) %}
+{% if not parsed.is_empty() or cols_off_default or parsed.sort %}
 <div class="mt-2 mb-3 flex items-center gap-2 flex-wrap text-xs">
   {% for name, val in parsed.text.items() %}
     <span class="inline-flex items-center gap-1 px-2 py-1 bg-slate-100 rounded">
       <span class="font-semibold">{{ spec_label.get(name, name) }}:</span>
       <span>{{ val }}</span>
-      <a href="?{{ filter_remove_qs(parsed, name) }}" class="text-slate-500 hover:text-slate-900" title="Clear">✕</a>
+      <form method="post" action="/board/{{ url_tab }}/reset-filter/{{ name }}" class="inline">
+        <button type="submit" class="text-slate-500 hover:text-slate-900 bg-transparent border-0 p-0 cursor-pointer" title="Clear">✕</button>
+      </form>
     </span>
   {% endfor %}
   {% for name, (lo, hi) in parsed.numeric_range.items() %}
     <span class="inline-flex items-center gap-1 px-2 py-1 bg-slate-100 rounded">
       <span class="font-semibold">{{ spec_label.get(name, name) }}:</span>
       <span>{{ lo if lo is not none else '−∞' }}–{{ hi if hi is not none else '+∞' }}</span>
-      <a href="?{{ filter_remove_qs(parsed, name) }}" class="text-slate-500 hover:text-slate-900" title="Clear">✕</a>
+      <form method="post" action="/board/{{ url_tab }}/reset-filter/{{ name }}" class="inline">
+        <button type="submit" class="text-slate-500 hover:text-slate-900 bg-transparent border-0 p-0 cursor-pointer" title="Clear">✕</button>
+      </form>
     </span>
   {% endfor %}
   {% for name, picks in parsed.enum.items() %}
     <span class="inline-flex items-center gap-1 px-2 py-1 bg-slate-100 rounded">
       <span class="font-semibold">{{ spec_label.get(name, name) }}:</span>
       <span>{{ picks | join(', ') }}</span>
-      <a href="?{{ filter_remove_qs(parsed, name) }}" class="text-slate-500 hover:text-slate-900" title="Clear">✕</a>
+      <form method="post" action="/board/{{ url_tab }}/reset-filter/{{ name }}" class="inline">
+        <button type="submit" class="text-slate-500 hover:text-slate-900 bg-transparent border-0 p-0 cursor-pointer" title="Clear">✕</button>
+      </form>
     </span>
   {% endfor %}
   {% for name, (d_from, d_to) in parsed.date_range.items() %}
     <span class="inline-flex items-center gap-1 px-2 py-1 bg-slate-100 rounded">
       <span class="font-semibold">{{ spec_label.get(name, name) }}:</span>
       <span>{{ d_from or '…' }} → {{ d_to or '…' }}</span>
-      <a href="?{{ filter_remove_qs(parsed, name) }}" class="text-slate-500 hover:text-slate-900" title="Clear">✕</a>
+      <form method="post" action="/board/{{ url_tab }}/reset-filter/{{ name }}" class="inline">
+        <button type="submit" class="text-slate-500 hover:text-slate-900 bg-transparent border-0 p-0 cursor-pointer" title="Clear">✕</button>
+      </form>
     </span>
   {% endfor %}
-  {% if parsed.cols %}
+  {% if cols_off_default %}
     <span class="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-800 rounded">
       <span class="font-semibold">cols:</span>
       <span>{{ parsed.cols | join(', ') }}</span>
-      <a href="?{{ filter_remove_qs(parsed, 'cols') }}" class="hover:text-blue-900" title="Reset to default columns">✕</a>
+      <form method="post" action="/board/{{ url_tab }}/reset-filter/cols" class="inline">
+        <button type="submit" class="hover:text-blue-900 bg-transparent border-0 p-0 cursor-pointer" title="Reset to default columns">✕</button>
+      </form>
     </span>
   {% endif %}
-  {% if not parsed.is_empty() or parsed.cols %}
-    <a href="{{ request.url.path }}" class="text-slate-600 hover:text-slate-900 underline">Clear all</a>
-  {% endif %}
+  <form method="post" action="/board/{{ url_tab }}/reset-view" class="inline">
+    <button type="submit" class="text-slate-600 hover:text-slate-900 underline bg-transparent border-0 p-0 cursor-pointer">Clear all</button>
+  </form>
   <button type="button"
           data-copy-link
           class="ml-auto text-slate-600 hover:text-slate-900 px-2 py-1 border border-slate-300 rounded">

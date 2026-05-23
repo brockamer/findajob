@@ -21,7 +21,6 @@ from findajob.web.constants import FOLDER_STAGES
 from findajob.web.helpers import (
     applied_age_bucket,
     filter_qs_with,
-    filter_remove_qs,
     remote_cell_class,
     stage_row_class,
 )
@@ -45,7 +44,6 @@ def create_app(
     templates.env.globals["applied_age_bucket"] = applied_age_bucket
     templates.env.globals["remote_cell_class"] = remote_cell_class
     templates.env.globals["stage_row_class"] = stage_row_class
-    templates.env.globals["filter_remove_qs"] = filter_remove_qs
     templates.env.globals["filter_qs_with"] = filter_qs_with
     templates.env.globals["operator_mode"] = os.environ.get("FINDAJOB_OPERATOR_MODE") == "1"
 

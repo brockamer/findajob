@@ -5,8 +5,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from urllib.parse import urlencode
 
-from findajob.web.filters import ParsedFilters
-
 
 def applied_age_bucket(applied_date_iso: str | None) -> str:
     """Return the CSS class name for an Applied row's age bucket.
@@ -66,39 +64,4 @@ def filter_qs_with(existing: str, key: str, value: str) -> str:
 
     pairs = [(k, v) for (k, v) in parse_qsl(existing, keep_blank_values=False) if k != key]
     pairs.append((key, value))
-    return urlencode(pairs)
-
-
-def filter_remove_qs(parsed: ParsedFilters, drop_name: str) -> str:
-    """Re-encode parsed filters as a querystring with `drop_name` removed.
-
-    Used by the chip-strip ✕ links to drop a single filter without losing the
-    others. `drop_name` may be a column name OR the literal "cols" sentinel.
-    """
-    pairs: list[tuple[str, str]] = []
-    for name, val in parsed.text.items():
-        if name != drop_name:
-            pairs.append((name, val))
-    for name, (lo, hi) in parsed.numeric_range.items():
-        if name == drop_name:
-            continue
-        if lo is not None:
-            pairs.append((f"{name}_min", str(lo)))
-        if hi is not None:
-            pairs.append((f"{name}_max", str(hi)))
-    for name, picks in parsed.enum.items():
-        if name != drop_name:
-            pairs.append((name, ",".join(picks)))
-    for name, (d_from, d_to) in parsed.date_range.items():
-        if name == drop_name:
-            continue
-        if d_from is not None:
-            pairs.append((f"{name}_from", d_from))
-        if d_to is not None:
-            pairs.append((f"{name}_to", d_to))
-    if parsed.cols and drop_name != "cols":
-        pairs.append(("cols", ",".join(parsed.cols)))
-    if parsed.sort:
-        pairs.append(("sort", parsed.sort))
-        pairs.append(("desc", "1" if parsed.desc else "0"))
     return urlencode(pairs)
