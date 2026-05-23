@@ -96,12 +96,12 @@ findajob has a built-in **monthly spend ceiling** you can configure in the web U
 
 When the running monthly OpenRouter total crosses your configured cap:
 
-- **Triage continues to ingest; scoring halts.** New jobs keep landing in your database from every configured source — ingest itself makes no LLM calls. But every score call fails until the cap is raised or the UTC-month resets. Unscored jobs sit at `enriched` stage and re-enter the scoring queue automatically on the next triage after LLM calls resume. No data loss, but no scored shortlist either until then.
-- **New prep, interview-prep, and speculative-ingest requests are refused** with an HTTP 402 PaymentRequired response. The "Flag for Prep" button shows a friendly error pointing you at `/settings/spend-ceiling/` to adjust the cap or wait until the next calendar month (UTC).
+- **Triage continues to ingest; scoring halts.** New jobs keep landing in your database from every configured source — ingest itself makes no LLM calls. But every score call fails until the cap is raised or the month resets. Unscored jobs sit at `enriched` stage and re-enter the scoring queue automatically on the next triage after LLM calls resume. No data loss, but no scored shortlist either until then.
+- **New prep, interview-prep, and speculative-ingest requests are refused** with an HTTP 402 PaymentRequired response. The "Flag for Prep" button shows a friendly error pointing you at `/settings/spend-ceiling/` to adjust the cap or wait until the next calendar month.
 - **An in-flight prep that crosses the cap mid-run is aborted.** A full prep is a sequence of 6+ LLM calls; if the cap is crossed between calls, the next call raises and the prep stops. The job's stage stays at `prep_in_progress` until the next watchdog cycle (≤60 min) rolls it back to `scored` — within that window, clicking "Flag for Prep" again will be refused by the handler's idempotency guard. Once the watchdog reaps, you can re-flag the job after raising the cap or when the next month rolls over. Partial artifacts (whatever was generated before the cap was hit) remain on disk in the prep folder under `companies/` and are cleaned up automatically the next time you flag the same job for prep.
 - The top-nav cost chip turns amber at ≥90% of cap, rose at ≥100%.
 
-Reset is automatic at the start of each UTC calendar month — no action required.
+Reset is automatic at the start of each calendar month in your stack's local timezone — no action required.
 
 The cap acts on the *next* LLM call: brief overshoots are possible (a call already in flight when the threshold is crossed completes and gets billed). Set the cap with a small buffer below your true budget if you want headroom for those overshoots.
 

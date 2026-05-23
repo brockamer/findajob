@@ -187,18 +187,66 @@ def projected_monthly(conn: sqlite3.Connection) -> ProjectedMonthly:
     )
 
 
-def spend_this_month(conn: sqlite3.Connection) -> float:
+def _month_anchors_utc(now_local: datetime) -> tuple[str, str]:
+    """Return ``(this_month_start_utc, next_month_start_utc)`` as
+    ``"%Y-%m-%d %H:%M:%S"`` strings matching ``cost_log.logged_at`` storage.
+
+    Boundaries are local-month-start (taken from ``now_local.tzinfo``),
+    converted to UTC via ``astimezone(UTC)`` — DST-correct since each anchor's
+    offset is resolved against the local datetime it represents. Mirrors
+    :func:`_week_anchors_utc`'s pattern for monthly cadence.
+
+    ``now_local`` must be a tz-aware datetime. Production callers pass
+    ``datetime.now(ZoneInfo(tz))``; tests pass frozen tz-aware datetimes.
+    """
+    if now_local.tzinfo is None:
+        raise ValueError("now_local must be tz-aware")
+    this_month_local = now_local.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    if this_month_local.month == 12:
+        next_month_local = this_month_local.replace(year=this_month_local.year + 1, month=1)
+    else:
+        next_month_local = this_month_local.replace(month=this_month_local.month + 1)
+    return (
+        this_month_local.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S"),
+        next_month_local.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S"),
+    )
+
+
+def spend_this_month(
+    conn: sqlite3.Connection,
+    tz: str = "UTC",
+    *,
+    now: datetime | None = None,
+) -> float:
     """Current calendar-month spend in USD. Returns 0.0 if no rows.
 
-    Used by the nav chip. UTC month boundary, matches the rest of the
-    cost rollups.
+    Used by the nav chip and the spend-ceiling gates. The month boundary is
+    resolved in the given IANA timezone — operators in PT, JST, etc. see
+    the counter reset at their local month boundary rather than UTC's
+    (the difference can be up to 14h depending on offset). Default ``"UTC"``
+    preserves pre-#823 behavior for callers that don't pass a tz.
+
+    Callers read ``os.environ.get("TZ") or "UTC"`` and pass it through,
+    matching :func:`weekly_spend` and the codebase precedent at
+    ``findajob/web/routes/landing.py:42``.
+
+    Args:
+        conn: SQLite connection.
+        tz: IANA timezone name (default ``"UTC"``).
+        now: Test seam — a tz-aware datetime used in place of
+            ``datetime.now(ZoneInfo(tz))``. If passed, its tzinfo wins
+            (tests should pass datetimes whose tz matches the ``tz`` arg).
     """
+    now_local = now if now is not None else datetime.now(ZoneInfo(tz))
+    start_utc, end_utc = _month_anchors_utc(now_local)
     row = conn.execute(
         """SELECT SUM(cost_usd) AS total
            FROM cost_log
            WHERE cost_usd IS NOT NULL
              AND logged_at IS NOT NULL
-             AND strftime('%Y-%m', logged_at) = strftime('%Y-%m', 'now')"""
+             AND logged_at >= ?
+             AND logged_at <  ?""",
+        (start_utc, end_utc),
     ).fetchone()
     total = _get(row, 0, "total")
     return float(total) if total is not None else 0.0

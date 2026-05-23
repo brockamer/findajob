@@ -218,3 +218,191 @@ def test_spend_this_month_zero_when_empty(db: sqlite3.Connection) -> None:
     from findajob.cost_rollups import spend_this_month
 
     assert spend_this_month(db) == 0.0
+
+
+# ---------------------------------------------------------------------------
+# #823: TZ-aware monthly reset boundary
+# ---------------------------------------------------------------------------
+
+
+def test_month_anchors_utc_anchors_at_local_midnight_utc_tz() -> None:
+    """UTC tz: local-month-start equals UTC-month-start; no offset."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from findajob.cost_rollups import _month_anchors_utc
+
+    now = datetime(2026, 5, 22, 18, 45, tzinfo=ZoneInfo("UTC"))
+    start_utc, end_utc = _month_anchors_utc(now)
+    assert start_utc == "2026-05-01 00:00:00"
+    assert end_utc == "2026-06-01 00:00:00"
+
+
+def test_month_anchors_utc_shifts_for_la_pdt() -> None:
+    """America/Los_Angeles in May (PDT, UTC-7): local May 1 00:00 PT = May 1 07:00 UTC.
+
+    The June bound also lands in UTC at 07:00, not 00:00 — both endpoints
+    shift, so a row at UTC 06:30 on June 1 (= 23:30 PT on May 31) correctly
+    counts toward May's spend.
+    """
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from findajob.cost_rollups import _month_anchors_utc
+
+    now = datetime(2026, 5, 22, 11, 45, tzinfo=ZoneInfo("America/Los_Angeles"))
+    start_utc, end_utc = _month_anchors_utc(now)
+    assert start_utc == "2026-05-01 07:00:00"
+    assert end_utc == "2026-06-01 07:00:00"
+
+
+def test_month_anchors_utc_shifts_for_tokyo() -> None:
+    """Asia/Tokyo (JST, UTC+9, no DST): local May 1 00:00 JST = April 30 15:00 UTC.
+
+    The local month starts BEFORE the UTC calendar-month boundary by 9 hours.
+    """
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from findajob.cost_rollups import _month_anchors_utc
+
+    now = datetime(2026, 5, 22, 14, 0, tzinfo=ZoneInfo("Asia/Tokyo"))
+    start_utc, end_utc = _month_anchors_utc(now)
+    assert start_utc == "2026-04-30 15:00:00"
+    assert end_utc == "2026-05-31 15:00:00"
+
+
+def test_month_anchors_utc_handles_half_hour_offset_kolkata() -> None:
+    """Asia/Kolkata (IST, UTC+5:30, no DST): local May 1 00:00 IST = April 30 18:30 UTC.
+
+    Half-hour offset is a non-issue for ``strftime("%Y-%m-%d %H:%M:%S")`` —
+    the produced string carries the 30-minute increment cleanly. This is the
+    body's explicitly-flagged edge case.
+    """
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from findajob.cost_rollups import _month_anchors_utc
+
+    now = datetime(2026, 5, 22, 10, 0, tzinfo=ZoneInfo("Asia/Kolkata"))
+    start_utc, end_utc = _month_anchors_utc(now)
+    assert start_utc == "2026-04-30 18:30:00"
+    assert end_utc == "2026-05-31 18:30:00"
+
+
+def test_month_anchors_utc_handles_dst_transition_la_march() -> None:
+    """PT shifts UTC-8 → UTC-7 on 2026-03-08. A 'now' on March 22 is post-DST.
+
+    Local March 1 00:00 PT happened BEFORE the DST transition (still PST, UTC-8),
+    so local March 1 00:00 PT = March 1 08:00 UTC. Local April 1 00:00 PT is
+    POST-DST (PDT, UTC-7), so April 1 00:00 PT = April 1 07:00 UTC. The interval
+    is one hour SHORTER than 31 calendar days — that's the right answer:
+    DST "lost" an hour mid-month.
+    """
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from findajob.cost_rollups import _month_anchors_utc
+
+    now = datetime(2026, 3, 22, 11, 0, tzinfo=ZoneInfo("America/Los_Angeles"))
+    start_utc, end_utc = _month_anchors_utc(now)
+    assert start_utc == "2026-03-01 08:00:00"  # PST
+    assert end_utc == "2026-04-01 07:00:00"  # PDT
+
+
+def test_month_anchors_utc_handles_year_rollover() -> None:
+    """December → January boundary increments the year."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from findajob.cost_rollups import _month_anchors_utc
+
+    now = datetime(2026, 12, 15, 12, 0, tzinfo=ZoneInfo("UTC"))
+    start_utc, end_utc = _month_anchors_utc(now)
+    assert start_utc == "2026-12-01 00:00:00"
+    assert end_utc == "2027-01-01 00:00:00"
+
+
+def test_month_anchors_utc_rejects_naive_datetime() -> None:
+    """Naive datetime (no tzinfo) is a precondition violation."""
+    from datetime import datetime
+
+    from findajob.cost_rollups import _month_anchors_utc
+
+    with pytest.raises(ValueError, match="tz-aware"):
+        _month_anchors_utc(datetime(2026, 5, 22, 12, 0))
+
+
+def test_spend_this_month_pt_includes_row_in_local_month_but_not_utc(db: sqlite3.Connection) -> None:
+    """A row logged at 2026-06-01 04:30 UTC = 2026-05-31 21:30 PT.
+
+    In UTC's month-view it belongs to June; in PT's month-view it belongs to May.
+    Asserting that `spend_this_month(tz="America/Los_Angeles", now=<June 5 PT>)`
+    EXCLUDES this row demonstrates the boundary shift is correct.
+    """
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from findajob.cost_rollups import spend_this_month
+
+    # Boundary row: 2026-06-01 04:30 UTC ≡ 2026-05-31 21:30 PT.
+    _insert_job_with_costs(db, "job-pt-boundary", [])
+    db.execute(
+        """INSERT INTO cost_log (job_id, operation, model, cost_usd, success, logged_at)
+           VALUES ('job-pt-boundary', 'briefing', 'g/m', 9.99, 1, '2026-06-01 04:30:00')"""
+    )
+    # And one clearly-June-everywhere row.
+    db.execute(
+        """INSERT INTO cost_log (job_id, operation, model, cost_usd, success, logged_at)
+           VALUES ('job-pt-boundary', 'briefing', 'g/m', 1.00, 1, '2026-06-15 12:00:00')"""
+    )
+    db.commit()
+
+    now_pt = datetime(2026, 6, 5, 10, 0, tzinfo=ZoneInfo("America/Los_Angeles"))
+    now_utc = datetime(2026, 6, 5, 17, 0, tzinfo=ZoneInfo("UTC"))
+
+    # PT view of June 2026: only the mid-June row counts ($1.00).
+    assert spend_this_month(db, tz="America/Los_Angeles", now=now_pt) == pytest.approx(1.00, rel=1e-3)
+    # UTC view of June 2026: both rows count ($10.99).
+    assert spend_this_month(db, tz="UTC", now=now_utc) == pytest.approx(10.99, rel=1e-3)
+
+
+def test_spend_this_month_tokyo_includes_row_in_local_month_but_not_utc(db: sqlite3.Connection) -> None:
+    """JST is ahead of UTC: local June 1 starts at 2026-05-31 15:00 UTC.
+
+    A row at 2026-05-31 16:00 UTC ≡ 2026-06-01 01:00 JST. UTC's May; JST's June.
+    """
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from findajob.cost_rollups import spend_this_month
+
+    _insert_job_with_costs(db, "job-tk-boundary", [])
+    db.execute(
+        """INSERT INTO cost_log (job_id, operation, model, cost_usd, success, logged_at)
+           VALUES ('job-tk-boundary', 'briefing', 'g/m', 4.40, 1, '2026-05-31 16:00:00')"""
+    )
+    db.commit()
+
+    now_jst = datetime(2026, 6, 5, 10, 0, tzinfo=ZoneInfo("Asia/Tokyo"))
+    now_utc = datetime(2026, 6, 5, 1, 0, tzinfo=ZoneInfo("UTC"))
+
+    # JST view of June 2026: the boundary row counts.
+    assert spend_this_month(db, tz="Asia/Tokyo", now=now_jst) == pytest.approx(4.40, rel=1e-3)
+    # UTC view of June 2026: the row is in May, excluded.
+    assert spend_this_month(db, tz="UTC", now=now_utc) == 0.0
+
+
+def test_spend_this_month_default_tz_is_utc(db: sqlite3.Connection) -> None:
+    """Default ``tz`` is ``"UTC"`` — preserves pre-#823 behavior for callers
+    that don't pass a tz. Callers (spend_ceiling, web/app.py) read ``TZ`` env
+    and pass it through, matching the ``weekly_spend`` pattern.
+    """
+    from findajob.cost_rollups import spend_this_month
+
+    db.execute(
+        """INSERT INTO cost_log (job_id, operation, model, cost_usd, success, logged_at)
+           VALUES (NULL, 'briefing', 'g/m', 2.50, 1, datetime('now'))"""
+    )
+    db.commit()
+    assert spend_this_month(db) == pytest.approx(2.50, rel=1e-3)
