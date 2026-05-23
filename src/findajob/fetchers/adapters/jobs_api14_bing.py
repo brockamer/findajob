@@ -9,6 +9,14 @@ only comes back from `/v2/bing/get?id=<base64_id>`. `fetch()` does the
 fan-out inline so the adapter returns fully-formed rows to the ingest
 layer.
 
+**Response envelope.** Both endpoints wrap the payload under a top-level
+`data` key (verified via live capture 2026-05-23 — see #765 follow-up).
+Search returns `{"data": [<summary>, ...], "hasError": false, ...}`; get
+returns `{"data": {<record>}, "hasError": false, ...}`. Unrecognized
+envelopes (e.g. `{"message": "...rate limit..."}` seen on transient PRO-
+tier bursts) emit a distinct `jobsapi_bing_unrecognized_response` log
+event rather than silently passing through as empty rows.
+
 Adapter cousins for context:
 - Indeed has `applyUrl` + `description` inline from a single search call.
 - LinkedIn returns its URL inline; the LinkedIn get-call exists too but
@@ -234,6 +242,19 @@ class JobsApi14BingAdapter:
             if data.get("hasError"):
                 log_event("jobsapi_bing_error", query=query, errors=data.get("errors"))
                 return None
+            if "data" not in data:
+                # Unrecognized envelope (e.g. {"message": "...rate limit..."}
+                # observed on transient PRO-tier bursts). Don't silently treat
+                # as success — the #601 bug class is exactly "unexpected shape
+                # passes through as an empty row". Surface it loudly in the
+                # log so the next variant is visible.
+                log_event(
+                    "jobsapi_bing_unrecognized_response",
+                    query=query,
+                    status=response.status_code,
+                    body_excerpt=str(data)[:300],
+                )
+                return None
             return data
         except requests.RequestException as e:
             log_event("jobsapi_bing_error", query=query, error=str(e))
@@ -261,13 +282,20 @@ class JobsApi14BingAdapter:
         return self._call_with_retry(self._GET_ENDPOINT, headers, {"id": job_id}, query)
 
     def _compose_row(self, hint: dict, detail: dict, query: str) -> dict | None:
-        # Use the `companyName` key from /v2/bing/get — NOT `company`. The
-        # `company` key only exists on /v2/bing/search responses and using
-        # it here was the silent-zero-rows bug from #601/#765.
-        url = detail.get("applyUrl", "")
+        # /v2/bing/get wraps the actual record under a top-level `data` key
+        # (confirmed via #765 follow-up live capture against the operator's
+        # stack 2026-05-23). The first-pass fix shipped under #765 read the
+        # fields off `detail` directly, matching the synthetic test fixture
+        # shape but not the real API shape — every row dropped at intake.
+        # `data` is the unwrap point; `companyName` (NOT `company`, which
+        # only appears on /v2/bing/search) is the canonical key.
+        record = detail.get("data") or {}
+        if not isinstance(record, dict):
+            return None
+        url = record.get("applyUrl", "")
         if not url:
             return None
-        company = clean_company(detail.get("companyName", ""))
+        company = clean_company(record.get("companyName", ""))
         return {
             "title": hint["title"],
             "company": company,
@@ -276,5 +304,5 @@ class JobsApi14BingAdapter:
             "api_id": hint["id"],
             "source": self.source_label,
             "query": query,
-            "description": detail.get("description", ""),
+            "description": record.get("description", ""),
         }

@@ -11,9 +11,15 @@ Sibling of `JobsApi14IndeedAdapter`. Differences from Indeed:
 
 Two-call shape (#765): `/v2/bing/search` returns lightweight summary rows
 with `id` + `title` + `location`. `applyUrl` + `description` + `companyName`
-only come back from `/v2/bing/get?id=<base64_id>`. Fixtures below mirror
-that real response shape, validated against the operator's stack in the
-post-fix re-run of #601.
+only come back from `/v2/bing/get?id=<base64_id>`.
+
+**Response envelope** (#765 follow-up, live-captured 2026-05-23): both
+endpoints wrap their payload under a top-level `data` key alongside
+`hasError`, `errors`, `_links`, etc. The fixtures in this file mirror
+that real shape. The original #765 fixtures used a flat shape (synthetic
+guess) and passed CI while the adapter produced zero rows in production
+— see `_REAL_GET_RESPONSE_2026_05_23` below for a recorded sample that
+locks in the real envelope.
 
 Shares JOBS_API14_KEY / RAPIDAPI_KEY with the LinkedIn + Indeed
 adapters via the resolver (#414).
@@ -21,6 +27,7 @@ adapters via the resolver (#414).
 
 from __future__ import annotations
 
+import json
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -52,9 +59,51 @@ def _ok_response(payload: dict) -> MagicMock:
     return response
 
 
+def _get_envelope(record: dict | None = None, *, has_error: bool = False) -> dict:
+    """Wrap a /v2/bing/get record in its real top-level envelope.
+
+    Real shape: ``{"data": {...record...}, "hasError": false, "_links":
+    {...}, "errors": [], "warnings": [], "hasWarning": false}``. Tests
+    only care about `data` + `hasError`, so the helper ships those two
+    and lets the rest stay absent — `_call_with_retry` and `_compose_row`
+    both treat unspecified keys as missing, mirroring the real adapter's
+    `.get(...)` contract.
+    """
+    if has_error:
+        return {"hasError": True, "errors": [{"message": "boom"}], "data": None}
+    return {"hasError": False, "data": (record or {})}
+
+
+# Recorded /v2/bing/get response from a live call against the operator's
+# stack on 2026-05-23, lightly redacted for length. Locks in the real
+# envelope shape so a future test rewrite can't drift back to a flat
+# guess. See module docstring + jobs_api14_bing.py module docstring.
+_REAL_GET_RESPONSE_2026_05_23: dict = {
+    "data": {
+        "applyUrl": "https://www.linkedin.com/jobs/view/data-center-technician-united-states-chicago-on-site-at-reboot-monkey-4382621468?trk=bingjobs",
+        "companyName": "Rebootmonkey",
+        "description": (
+            "Job descriptionAbout The Role\nJoin our team as a Data Center Technician in Chicago, United States..."
+        ),
+        "descriptionHtml": '<div class="jbpnl_descrt_label"><h3>Job description</h3></div>...',
+        "employmentType": "Full-time",
+        "id": "LTc3ODMxMjEzNS5SZXRybw==",
+        "location": "Chicago, IL",
+        "postedTimeAgo": "March 7",
+        "title": "Data Center Technician - United States - Chicago - On-Site",
+    },
+    "_links": {"self": {"href": "/v2/bing/get?id=LTc3ODMxMjEzNS5SZXRybw=="}},
+    "errors": [],
+    "warnings": [],
+    "hasError": False,
+    "hasWarning": False,
+}
+
+
 def _two_call_side_effect(search_payload: dict, detail_by_id: dict[str, dict]) -> Any:
     """Route `requests.get` calls to /v2/bing/search or /v2/bing/get based
-    on the URL argument. Detail responses keyed by `params['id']`."""
+    on the URL argument. Detail responses keyed by `params['id']` — fixtures
+    are full envelopes (use `_get_envelope` to build them)."""
 
     def _side_effect(
         url: str,
@@ -66,7 +115,7 @@ def _two_call_side_effect(search_payload: dict, detail_by_id: dict[str, dict]) -
             return _ok_response(search_payload)
         if url.endswith("/v2/bing/get"):
             assert params is not None and "id" in params, "get-call must pass id"
-            payload = detail_by_id.get(params["id"], {"hasError": True, "errors": [{"message": "no fixture"}]})
+            payload = detail_by_id.get(params["id"], _get_envelope(has_error=True))
             return _ok_response(payload)
         raise AssertionError(f"unexpected URL: {url}")
 
@@ -134,7 +183,8 @@ def test_fetch_hits_search_endpoint_first(monkeypatch: pytest.MonkeyPatch) -> No
 def test_fetch_stitches_search_and_get_into_full_row(monkeypatch: pytest.MonkeyPatch) -> None:
     """AC #1 + #2: fetch() calls /v2/bing/get?id=<id> per search row,
     populates applyUrl → url, description, and companyName from the get
-    response. Search-only fields (title, location, id) come from search."""
+    response's nested `data` envelope. Search-only fields (title, location,
+    id) come from search."""
     monkeypatch.setenv("JOBS_API14_KEY", "test-key")
     search_payload = {
         "hasError": False,
@@ -142,20 +192,21 @@ def test_fetch_stitches_search_and_get_into_full_row(monkeypatch: pytest.MonkeyP
             {
                 "id": "bing-001",
                 "title": "Data Center Engineer",
-                "company": {"name": "Acme (search-only, should NOT be used)"},
+                "company": "Acme (search-only, should NOT be used)",
                 "location": {"country": "United States", "location": "Reston, VA"},
             },
         ],
     }
     detail_by_id = {
-        "bing-001": {
-            "hasError": False,
-            "id": "bing-001",
-            "title": "Data Center Engineer",
-            "companyName": "Acme Corp",
-            "applyUrl": "https://example.com/bing-apply/001",
-            "description": "Bing-sourced JD body...",
-        },
+        "bing-001": _get_envelope(
+            {
+                "id": "bing-001",
+                "title": "Data Center Engineer",
+                "companyName": "Acme Corp",
+                "applyUrl": "https://example.com/bing-apply/001",
+                "description": "Bing-sourced JD body...",
+            },
+        ),
     }
 
     with patch(
@@ -179,10 +230,44 @@ def test_fetch_stitches_search_and_get_into_full_row(monkeypatch: pytest.MonkeyP
     assert row["api_id"] == "bing-001"
     assert row["source"] == "jobsapi_bing"
     assert row["query"] == "data center"
-    # canonical fields come from /v2/bing/get
+    # canonical fields come from /v2/bing/get's `data` envelope
     assert row["url"] == "https://example.com/bing-apply/001"
     assert row["description"] == "Bing-sourced JD body..."
     assert row["company"] == "Acme Corp"
+
+
+def test_fetch_handles_recorded_real_get_response_shape(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Regression: locked-in real-shape fixture. The recorded response
+    has the full envelope (`_links`, `errors`, `warnings`, `descriptionHtml`,
+    `hasError`, `hasWarning`) alongside the canonical fields. If a future
+    refactor breaks the unwrap (e.g. moves `applyUrl` lookup back to the
+    top level), THIS test fails first — synthetic-shape tests pass against
+    the regression but reality doesn't (the original #765 failure mode)."""
+    monkeypatch.setenv("JOBS_API14_KEY", "test-key")
+    search_payload = {
+        "hasError": False,
+        "data": [
+            {
+                "id": "LTc3ODMxMjEzNS5SZXRybw==",
+                "title": "Data Center Technician - United States - Chicago - On-Site",
+                "location": "Chicago, IL",
+            },
+        ],
+    }
+    detail_by_id = {"LTc3ODMxMjEzNS5SZXRybw==": _REAL_GET_RESPONSE_2026_05_23}
+
+    with patch(
+        "findajob.fetchers.adapters.jobs_api14_bing.requests.get",
+        side_effect=_two_call_side_effect(search_payload, detail_by_id),
+    ):
+        rows = JobsApi14BingAdapter().fetch(["data center"])
+
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["company"] == "Rebootmonkey"
+    assert row["url"].startswith("https://www.linkedin.com/jobs/view/")
+    assert "Data Center Technician" in row["description"]
+    assert row["api_id"] == "LTc3ODMxMjEzNS5SZXRybw=="
 
 
 def test_fetch_uses_companyName_not_company_key(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -200,18 +285,15 @@ def test_fetch_uses_companyName_not_company_key(monkeypatch: pytest.MonkeyPatch)
                 "location": {"location": "Anywhere"},
                 # NOTE: this `company` key is present on the search response
                 # but the adapter must NOT consume it — companyName from
-                # /v2/bing/get is the canonical field.
-                "company": {"name": "WRONG-KEY-VALUE"},
+                # /v2/bing/get's `data` envelope is the canonical field.
+                "company": "WRONG-KEY-VALUE",
             },
         ],
     }
     detail_by_id = {
-        "bing-001": {
-            "hasError": False,
-            "companyName": "Right Co",
-            "applyUrl": "https://example.com/u",
-            "description": "JD",
-        },
+        "bing-001": _get_envelope(
+            {"companyName": "Right Co", "applyUrl": "https://example.com/u", "description": "JD"},
+        ),
     }
 
     with patch(
@@ -227,8 +309,8 @@ def test_fetch_uses_companyName_not_company_key(monkeypatch: pytest.MonkeyPatch)
 def test_fetch_drops_row_when_get_response_omits_applyUrl(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """If /v2/bing/get returns the record without applyUrl, the row must
-    be dropped — the ingest orchestrator would discard it at intake
+    """If /v2/bing/get returns the `data` envelope without applyUrl, the row
+    must be dropped — the ingest orchestrator would discard it at intake
     anyway, and surfacing partial rows would be misleading."""
     monkeypatch.setenv("JOBS_API14_KEY", "test-key")
     search_payload = {
@@ -239,18 +321,12 @@ def test_fetch_drops_row_when_get_response_omits_applyUrl(
         ],
     }
     detail_by_id = {
-        "with-url": {
-            "hasError": False,
-            "companyName": "A",
-            "applyUrl": "https://example.com/u",
-            "description": "d",
-        },
-        "no-url": {
-            "hasError": False,
-            "companyName": "B",
-            "applyUrl": "",  # missing — drop
-            "description": "d",
-        },
+        "with-url": _get_envelope(
+            {"companyName": "A", "applyUrl": "https://example.com/u", "description": "d"},
+        ),
+        "no-url": _get_envelope(
+            {"companyName": "B", "applyUrl": "", "description": "d"},
+        ),
     }
 
     with patch(
@@ -272,18 +348,15 @@ def test_fetch_drops_rows_with_no_title_or_id_from_search(
     search_payload = {
         "hasError": False,
         "data": [
-            {"id": "", "title": "Engineer", "location": {"location": "X"}},  # no id
-            {"id": "y", "title": "", "location": {"location": "X"}},  # no title
-            {"id": "z", "title": "Engineer", "location": {"location": "X"}},  # keeper
+            {"id": "", "title": "Engineer", "location": {"location": "X"}},
+            {"id": "y", "title": "", "location": {"location": "X"}},
+            {"id": "z", "title": "Engineer", "location": {"location": "X"}},
         ],
     }
     detail_by_id = {
-        "z": {
-            "hasError": False,
-            "companyName": "A",
-            "applyUrl": "https://example.com/u",
-            "description": "d",
-        },
+        "z": _get_envelope(
+            {"companyName": "A", "applyUrl": "https://example.com/u", "description": "d"},
+        ),
     }
 
     with patch(
@@ -311,9 +384,9 @@ def test_fetch_continues_when_one_get_call_fails(monkeypatch: pytest.MonkeyPatch
         ],
     }
     detail_by_id = {
-        "ok-1": {"hasError": False, "companyName": "A", "applyUrl": "u1", "description": "d"},
-        "bad": {"hasError": True, "errors": [{"message": "boom"}]},
-        "ok-2": {"hasError": False, "companyName": "C", "applyUrl": "u2", "description": "d"},
+        "ok-1": _get_envelope({"companyName": "A", "applyUrl": "u1", "description": "d"}),
+        "bad": _get_envelope(has_error=True),
+        "ok-2": _get_envelope({"companyName": "C", "applyUrl": "u2", "description": "d"}),
     }
 
     with patch(
@@ -323,6 +396,44 @@ def test_fetch_continues_when_one_get_call_fails(monkeypatch: pytest.MonkeyPatch
         rows = JobsApi14BingAdapter().fetch(["q"])
 
     assert {r["api_id"] for r in rows} == {"ok-1", "ok-2"}
+
+
+def test_fetch_logs_unrecognized_response_when_envelope_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When /v2/bing/get returns a body with no `data` key (e.g. the rate-
+    limit shape ``{"message": "...exceeded the rate limit per second..."}``
+    captured on the operator's stack 2026-05-23), _call_with_retry must
+    emit a `jobsapi_bing_unrecognized_response` event AND return None — not
+    silently pass through as an empty row (the #601/#765 silent-zero-rows
+    failure class)."""
+    monkeypatch.setenv("JOBS_API14_KEY", "test-key")
+    search_payload = {
+        "hasError": False,
+        "data": [{"id": "rate-limited-id", "title": "Engineer", "location": {"location": "X"}}],
+    }
+    # The real shape observed on a per-second rate-limit burst: no `data`
+    # envelope, no `hasError`, just a flat `message`.
+    rate_limit_body = {"message": "You have exceeded the rate limit per second for your plan, PRO, by the API provider"}
+    detail_by_id = {"rate-limited-id": rate_limit_body}
+
+    _mod = "findajob.fetchers.adapters.jobs_api14_bing"
+    with (
+        patch(f"{_mod}.requests.get", side_effect=_two_call_side_effect(search_payload, detail_by_id)),
+        patch(f"{_mod}.log_event") as mock_log,
+    ):
+        rows = JobsApi14BingAdapter().fetch(["q"])
+
+    assert rows == [], "unrecognized envelope must not produce phantom rows"
+    # At least one log call with event=jobsapi_bing_unrecognized_response
+    events = [c.args[0] for c in mock_log.call_args_list if c.args]
+    assert "jobsapi_bing_unrecognized_response" in events, f"missing loud log for unknown envelope; got events={events}"
+    # And the body excerpt must include the rate-limit phrase so the next
+    # variant of this shape surfaces with diagnosable context.
+    unrecognized_calls = [
+        c for c in mock_log.call_args_list if c.args and c.args[0] == "jobsapi_bing_unrecognized_response"
+    ]
+    assert any("rate limit" in c.kwargs.get("body_excerpt", "").lower() for c in unrecognized_calls)
 
 
 def test_fetch_passes_all_titles_through_when_no_allowlist(
@@ -344,9 +455,9 @@ def test_fetch_passes_all_titles_through_when_no_allowlist(
         ],
     }
     detail_by_id = {
-        "1": {"hasError": False, "companyName": "A", "applyUrl": "u1", "description": "d"},
-        "2": {"hasError": False, "companyName": "B", "applyUrl": "u2", "description": "d"},
-        "3": {"hasError": False, "companyName": "C", "applyUrl": "u3", "description": "d"},
+        "1": _get_envelope({"companyName": "A", "applyUrl": "u1", "description": "d"}),
+        "2": _get_envelope({"companyName": "B", "applyUrl": "u2", "description": "d"}),
+        "3": _get_envelope({"companyName": "C", "applyUrl": "u3", "description": "d"}),
     }
 
     with patch(
@@ -376,7 +487,7 @@ def test_fetch_paces_get_calls_with_sleep(monkeypatch: pytest.MonkeyPatch) -> No
         ],
     }
     detail_by_id = {
-        i: {"hasError": False, "companyName": "A", "applyUrl": f"u{i}", "description": "d"} for i in ("1", "2", "3")
+        i: _get_envelope({"companyName": "A", "applyUrl": f"u{i}", "description": "d"}) for i in ("1", "2", "3")
     }
     _mod = "findajob.fetchers.adapters.jobs_api14_bing"
     with (
@@ -445,3 +556,18 @@ def test_live_test_success_counts_search_rows(monkeypatch: pytest.MonkeyPatch) -
     assert result.bucket == "success"
     assert len(result.per_query) == 1
     assert result.per_query[0].count == 1
+
+
+def test_recorded_get_response_is_real_envelope_shape() -> None:
+    """Sanity-check that the recorded fixture preserves the real envelope's
+    structural invariants. If someone trims `_links` or `hasWarning` from
+    the recorded shape thinking they're noise, the recorded-shape regression
+    test stops being a regression test. Keep it whole."""
+    keys = set(_REAL_GET_RESPONSE_2026_05_23.keys())
+    assert {"data", "hasError", "errors", "warnings", "_links", "hasWarning"} <= keys
+    record = _REAL_GET_RESPONSE_2026_05_23["data"]
+    assert isinstance(record, dict)
+    assert {"applyUrl", "companyName", "description"} <= set(record.keys())
+    # And confirm the fixture is JSON-serializable (catches accidental
+    # MagicMock or non-JSON values that would diverge from the real wire).
+    json.dumps(_REAL_GET_RESPONSE_2026_05_23)
