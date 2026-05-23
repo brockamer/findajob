@@ -174,10 +174,12 @@ def _write_tarball(state_dir: Path, tarball_path: Path, manifest: mf.Manifest) -
 
 
 def _findajob_version() -> str:
-    """Return findajob's current version from CHANGELOG.md, or
-    ``"unknown"`` if not parseable. Informational — never load-bearing
-    for the verification logic, so a missing/malformed CHANGELOG must
-    not break exports."""
+    """Return findajob's current version from CHANGELOG.md as the first
+    SemVer-shaped ``## [N.N.N]`` heading. Skips the ``## [Unreleased]``
+    working-section header so a manifest never claims an unreleased
+    version. Returns ``"unknown"`` if CHANGELOG is missing or
+    unparseable — informational only, never load-bearing for
+    verification, so a malformed CHANGELOG must not break exports."""
     try:
         from findajob.paths import BASE
 
@@ -185,9 +187,11 @@ def _findajob_version() -> str:
         if not changelog.exists():
             return "unknown"
         for line in changelog.read_text().splitlines():
-            # Format: `## [0.27.10] - 2026-05-23`
+            # Format: `## [0.27.10] - 2026-05-23`. Reject `## [Unreleased]`.
             if line.startswith("## [") and "]" in line:
-                return line.split("[", 1)[1].split("]", 1)[0]
+                version = line.split("[", 1)[1].split("]", 1)[0]
+                if version[:1].isdigit():
+                    return version
     except Exception:
         return "unknown"
     return "unknown"
