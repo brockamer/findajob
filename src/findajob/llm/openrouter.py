@@ -444,6 +444,14 @@ def complete_stream(
         ``GeneratorExit`` (e.g. client disconnect) triggers the ``finally``
         without needing an explicit close call on the caller's side.
 
+    Emits ``openrouter_truncated`` (#798):
+        When the terminal chunk carries ``finish_reason='length'``, emits a
+        ``openrouter_truncated`` event to pipeline.jsonl BEFORE yielding the
+        terminal ``StreamFinish``. Mirrors the wrapper-level emission for
+        :func:`complete` (#737) so a single ``grep openrouter_truncated``
+        surfaces length-finishes from both paths. ``job_id`` is always
+        ``None`` today — no streaming consumer has job context.
+
     TODO(#740 route): SSE route handler POST /onboarding/interview/turn-stream
     TODO(#740 frontend): vanilla JS EventSource consumer
     """
@@ -688,6 +696,21 @@ def complete_stream(
             resp.close()
         except Exception:  # noqa: BLE001
             pass
+
+    # #798: partial-truncation observability — mirrors complete()'s wrapper-level
+    # emission (#737) so a single `pipeline.jsonl | grep openrouter_truncated`
+    # surfaces length-finishes from both the direct and streaming paths.
+    # job_id=None: complete_stream() has no job-scoped consumer today
+    # (onboarding turns aren't job-scoped); a future streaming consumer with
+    # job context can add a kwarg without changing the event shape.
+    if last_finish_reason == "length":
+        log_event(
+            "openrouter_truncated",
+            role=role,
+            job_id=None,
+            completion_tokens=last_usage["completion_tokens"],
+            content_chars=len("".join(accumulated)),
+        )
 
     # Emit the finish event.
     yield StreamFinish(
