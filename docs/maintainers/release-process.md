@@ -57,8 +57,13 @@ The image tag taxonomy — which determines what a user pulling from GHCR actual
 | `:vX.Y` | moving | `build-image.yml` on `v*.*.*` tag push | available for stacks that need to freeze on a specific minor |
 
 Every stack — operator, dogfood, staging, beta testers, Fly — runs `:latest`.
-A single `docker compose pull && up -d && verify_auth` per stack rolls every
-surface to the same image at deploy time.
+The deploy pass is substrate-aware: docker stacks get
+`docker compose pull && up -d && verify_auth` per stack; Fly apps get
+`fly deploy --config <fly.toml>` followed by `fly ssh console -C "python -m findajob.web.verify_auth"`.
+Per the Post-Launch Tester Sunset arc (milestone m26), the docker per-stack
+loop covers the operator's primary stacks plus any beta tester still on
+docker; testers drop out of the docker loop as they migrate to self-host
+on their own Fly accounts.
 
 ## Three-gate dev pipeline (#565)
 
@@ -73,6 +78,17 @@ Three application tiers exist, each with a single clear purpose:
 Plus the 5 tester stacks, all on `:latest`. Tester stacks share the operator's
 release cadence — every deploy reaches every surface in the same operational
 pass.
+
+The Post-Launch Tester Sunset arc (milestone m26) progressively migrates the
+self-onboarded tester docker stacks (dave / judy / papa / tango) to per-tester
+Fly accounts via `findajob.migrate` (see [`tester-migration.md`](tester-migration.md)).
+alice remains on operator-administered Fly (operator's account). The operator's
+own daily-utility deployment also runs on Fly post-cutover. While the arc is in
+flight, the release pass is dual-track: docker tester stacks still in place run
+through `§"Docker cohort deploy"`, and the operator's Fly app plus any migrated
+testers' Fly apps run through `§"Fly app deploy"`. When m26 closes, the docker
+tester loop drops; only `findajob-clean` (factory-reset) and `findajob-staging`
+(populated soak) remain on docker — both dev tiers, no production traffic.
 
 The pre-tag checklist becomes:
 
@@ -124,13 +140,24 @@ reference the new tag, the file is inconsistent — fix before cutting.
 
 - **Install templates ship `:latest`.** `ops/fly.toml.example` and `ops/compose.yaml.example` (defaulted via `FINDAJOB_IMAGE_TAG=latest`) both point at `:latest`. Fresh users following `install-fly.md` or `install-docker.md` land on the same image every existing stack runs; no per-release template maintenance is required.
 
-- [ ] **Staging soak.** Ensure `findajob-staging` has been on `:latest` for at least one completed daily triage cycle. Run the green-check from `<deployment-host>`:
+- [ ] **Staging soak (docker substrate).** Ensure `findajob-staging` has been on `:latest` for at least one completed daily triage cycle. Run the green-check from `<deployment-host>`:
 
       ```
       ssh <deployment-host> 'docker exec -u 1000 findajob-staging-scheduler-1 python -m findajob.staging.green'
       ```
 
       Must exit 0 before tagging. On non-zero, investigate using the failure summary printed to stderr; either fix and re-run, or document the override justification in the release CHANGELOG entry.
+
+      The Fly-substrate behavioral signal comes from the operator's own
+      daily-utility Fly app (and alice's app on the operator's account),
+      which run `:latest` under continuous real traffic — Watchtower does
+      not auto-update Fly apps (no equivalent poller exists on the Fly
+      platform), so any drift between the operator's running Fly machine
+      and current `main` is bounded by the operator's own `fly deploy`
+      cadence. If neither has had a clean daily triage on the
+      release-candidate `:latest` digest, run `fly deploy --config
+      ops/fly.toml --app findajob-<operator-handle>` against the
+      operator's Fly app and wait one triage cycle before tagging.
 
 ## Pre-tag parity matrix verification (minor-bump and major)
 
@@ -322,11 +349,23 @@ Actions UI or move to the rollback procedure in the next section.
 ## Cohort deploy
 
 Once the image is on GHCR and post-tag verification passes, every stack
-(operator's own stacks, `findajob-clean`, `findajob-staging`, every tester
-stack, and the operator's Fly stack) gets `pull && up -d` in a single
-operational pass. Every surface tracks `:latest`, so the cohort wave is one
-uniform operation per stack — no per-tester pin advancement and no `.env`
-edits. Per the `feedback_deploy_both_stacks` memory, no stack is left behind.
+gets the image roll in a single operational pass. Every surface tracks
+`:latest`, so the cohort wave is one uniform operation per stack — no
+per-tester pin advancement and no `.env` edits. Per the
+`feedback_deploy_both_stacks` memory, no stack is left behind. The pass is
+substrate-aware: docker stacks roll through §"Docker cohort deploy" below;
+Fly apps roll through §"Fly app deploy". Both substrates run in the same
+operational pass during the Post-Launch Tester Sunset arc (milestone m26),
+and the docker tester rows drop as each tester completes their Fly cutover.
+
+### Docker cohort deploy
+
+Covers the operator's docker stacks (`findajob-clean`, `findajob-staging`,
+and the operator's primary docker stack if any remain post-cutover) plus
+every beta tester docker stack still in place pre-m26. The tester rows
+drop out of this loop as each tester completes their Fly cutover; when m26
+closes, only `findajob-clean` and `findajob-staging` remain — both dev
+tiers.
 
 For each stack on `<deployment-host>`:
 
@@ -355,13 +394,41 @@ configured creds don't match the running container's env (exit 4 — usually
 a stale `.env` not picked up because the stack was `up -d` instead of full
 `down`/`up`).
 
+### Fly app deploy
+
+Covers the operator's own Fly app, alice's Fly app on the operator's
+account, and any beta tester's Fly app that has completed its cutover per
+milestone m26. Each Fly app deploys against its own `ops/fly.toml`
+(operator's checkout) or the tester's checkout of the same template.
+
+For each Fly app (operator runs from a local checkout of this repo, logged
+in via `fly auth login` as the appropriate account):
+
+```bash
+fly deploy --config ops/fly.toml --app findajob-<handle>
+fly ssh console --app findajob-<handle> --command "python -m findajob.web.verify_auth"
+```
+
+`fly deploy` returns once the http_service health check passes, so the
+machine is already serving the new image by the time the SSH'd
+`verify_auth` runs. The verifier is **not optional** here either — same
+auth-gate-regression incident class as docker, same exit-code taxonomy.
+
+If `verify_auth` exits non-zero, treat the app as broken until it passes.
+Roll back via §"Rollback" below — re-deploying the prior immutable tag is
+the canonical recovery, not editing the app in place.
+
+Operator + alice are the initial Fly cohort; each tester joins this loop
+when their migration completes (per `findajob.migrate` runbook at
+[`tester-migration.md`](tester-migration.md)) and drops out of the docker
+loop in the same operational pass.
+
 ## Rollback
 
 If post-tag verification fails or a regression is reported after the release
 is out in the wild, Claude rolls back by re-pointing `:latest` back to the
-prior immutable tag. Every stack pulls the prior image on its next
-`docker compose pull` (no per-tester reconfiguration; cohort discipline is
-uniform with deploy).
+prior immutable tag, then propagating the restored image to every stack on
+both substrates.
 
 1. Identify the last-known-good immutable tag, e.g. `v${VERSION_PREV}`.
 
@@ -380,16 +447,34 @@ uniform with deploy).
    frozen on a specific minor — but the default cohort runs on `:latest`, so
    the `:latest` repoint is the load-bearing step.)
 
-3. The immutable `:v${VERSION}` tag for the bad release stays pinned. Anyone who
+3. Propagate the restored image to every stack on both substrates. The
+   `:latest` repoint in step 2 is necessary but not sufficient — docker
+   stacks pull on their next `docker compose pull` (automatic on
+   Watchtower-enabled stacks per #768, manual otherwise), and Fly apps do
+   not pull on a poll at all.
+
+   - **Docker stacks:** for stacks with Watchtower auto-update enabled
+     (per #768; testers + `findajob-staging` scheduler opt in, operator
+     primary + `findajob-clean` + `findajob-staging` gmail-auth opt out),
+     the host's hourly poll picks up the restored `:latest` automatically.
+     For Watchtower-disabled stacks — and as belt-and-suspenders for the
+     opt-in stacks if speed matters — re-run §"Docker cohort deploy" for
+     each stack to force the pull and restart immediately.
+   - **Fly apps:** re-run §"Fly app deploy" for each Fly app to force the
+     deploy against the restored `:latest`. Fly does not have an
+     image-refresh equivalent to Watchtower; the explicit re-deploy is the
+     only way the rollback reaches Fly apps.
+
+4. The immutable `:v${VERSION}` tag for the bad release stays pinned. Anyone who
    specifically pinned to it keeps the broken image — that's intentional, because
    the immutable tag is the audit trail. If a user is on that tag and reports a
    bug, Claude can reproduce exactly what they're running.
 
-4. Document the rollback in `CHANGELOG.md` by adding a `## [Reverted] — YYYY-MM-DD`
+5. Document the rollback in `CHANGELOG.md` by adding a `## [Reverted] — YYYY-MM-DD`
    block near the top of the file (above `[Unreleased]`, below any intervening
    entries) naming the bad tag and stating the reason in a sentence or two.
 
-5. Notify external users (Alice Doe and any future beta testers) via whatever
+6. Notify external users (alice and any other beta testers) via whatever
    channel is active at the time.
 
 **First-release note (v0.1.0 specifically).** There is no prior tag to roll back
