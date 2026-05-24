@@ -10,6 +10,14 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Added
+
+- **Tuning loop Phase 1** (#229): `config_changes` and `recall_audit` tables; `jobs.company_tier` and `jobs.scored_by` columns; config-drift detector wired into triage, `/config/` POST, and onboarding injector; tier resolver; backfill scripts.
+
+### Migration required
+
+- Schema: run `scripts/init_db.py` on upgrade (auto-runs at container start). Backfill existing rows: `uv run python scripts/backfill_company_tier.py && uv run python scripts/backfill_scored_by.py` (both idempotent).
+
 ## [0.28.0] — 2026-05-24
 
 ### Changed
