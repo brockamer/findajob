@@ -99,7 +99,7 @@ When in doubt: does this change affect what users see when they pull `:latest`? 
 
 ### `migration-required` label
 
-PRs containing schema changes, config additions/removals, compose-file changes, crontab edits, or bind-mount changes get the `migration-required` label at PR-open time. The release-notes workflow surfaces these PRs to external users so they know an upgrade isn't pure `docker compose pull`.
+PRs containing schema changes, config additions/removals, compose-file changes, crontab edits, or bind-mount changes get the `migration-required` label at PR-open time. The release-notes workflow surfaces these PRs to external users so they know an upgrade isn't pure `docker compose pull`. Full criteria: [`docs/maintainers/release-process.md` § migration-required](docs/maintainers/release-process.md#migration-required-criteria).
 
 If your PR introduces any of the above, add the label yourself or call it out in the PR description; a maintainer will tag it.
 

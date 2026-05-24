@@ -2,7 +2,7 @@
 
 > **New here?** Start at [`README.md`](README.md) — it sequences prerequisites → install → configure in order.
 
-This is the install + operations guide for external users running findajob from the prebuilt `ghcr.io/brockamer/findajob` image via Docker Compose. Claude's release orchestration runbook lives separately at [`docs/maintainers/release-process.md`](../maintainers/release-process.md).
+This is the install + operations guide for running findajob from the prebuilt `ghcr.io/brockamer/findajob` image via Docker Compose. The release process (tagging, GHCR image builds, version scheme) is documented at [`docs/maintainers/release-process.md`](../maintainers/release-process.md).
 
 ## Who this is for
 

@@ -12,7 +12,9 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ### Changed
 
-- **#815 chore: scrub operator-internal context from public repo.** Removed the `/admin/stacks/` multi-tenant operator dashboard (module, routes, templates, tests, `FINDAJOB_OPERATOR_MODE` env var). Deleted `docs/maintainers/tester-migration.md`, `docs/maintainers/release-parity-matrix.md`; moved `docs/maintainers/release-process.md` to gitignored operator docs. Renamed all "tester" language to "user" in comments, docstrings, and docs (~70 files). Renamed DB columns `tester_openrouter_key` → `user_openrouter_key` and `tester_rapidapi_key` → `user_rapidapi_key` (migration 0006). Extracted `findajob.jsonl_tail` from the deleted admin module for continued use by `/tools/` log viewer. **Migration required** — see entry below.
+- **#815 chore: scrub operator-internal context from public repo.** Removed the `/admin/stacks/` multi-tenant operator dashboard (module, routes, templates, tests, `FINDAJOB_OPERATOR_MODE` env var). Deleted `docs/maintainers/tester-migration.md`, `docs/maintainers/release-parity-matrix.md`; removed operator-specific release-process content. Renamed all "tester" language to "user" in comments, docstrings, and docs (~70 files). Renamed DB columns `tester_openrouter_key` → `user_openrouter_key` and `tester_rapidapi_key` → `user_rapidapi_key` (migration 0006). Extracted `findajob.jsonl_tail` from the deleted admin module for continued use by `/tools/` log viewer. **Migration required** — see entry below.
+
+- **#649 docs(release-process): rewrite as fork-friendly universal process.** `docs/maintainers/release-process.md` re-created as a 176-line universal doc covering version scheme, pre-tag checklist, CHANGELOG workflow, tag cut, post-tag verification, rollback, and `migration-required` criteria. No operator-specific topology, no deployment choreography for specific stacks — the release is complete when multi-arch images land on GHCR; how you deploy is documented in the install guides. Updated stale references in `install-docker.md`, `roadmap.md`, and `scripts/test_container_integration.sh`.
 
 ### Migration required
 

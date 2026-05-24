@@ -8,9 +8,8 @@
 # full triage-to-pipeline_complete cycle, and asserts a scored job lands in
 # the DB. Proves a user can go from "clone + configure" to a working pipeline.
 #
-# This is the pre-tag release gate. Claude runs it from a docker-equipped
-# host before proposing any v0.1.x tag cut. See docs/maintainers/release-process.md
-# §"Pre-tag smoke check".
+# Recommended pre-tag check. Run from any docker-equipped host before
+# cutting a release tag. See docs/maintainers/release-process.md.
 #
 # Prereqs:
 # - docker + docker compose v2
