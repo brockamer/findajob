@@ -1,0 +1,194 @@
+{
+  "comments": "13/03/2026: The API has been updated to include the companySlug field in the response.",
+  "updatedAt": 1779575139,
+  "offset": 0,
+  "limit": 5,
+  "totalCount": 105594,
+  "jobs": [
+    {
+      "title": "Japanese Data Labeller",
+      "excerpt": "Canva's Localisation team is seeking a Japanese Data Labeller to support the company's AI features in LOTE markets.",
+      "companyName": "Canva",
+      "companySlug": "canva",
+      "companyLogo": "https://cdn-images.himalayas.app/0zsrzgpom9glnf43j3n8dmuiy4q7",
+      "employmentType": "Full Time",
+      "minSalary": null,
+      "maxSalary": null,
+      "seniority": [
+        "Entry-level"
+      ],
+      "currency": "USD",
+      "locationRestrictions": [
+        "Japan"
+      ],
+      "timezoneRestrictions": [
+        9
+      ],
+      "categories": [
+        "Data-Labeler",
+        "Japanese-AI-Data-Annotation-Trainer",
+        "Japanese-Data-Quality-Annotation-Specialist",
+        "Data-Labeling",
+        "AI-Data-Labelling",
+        "Language-Data-Annotator",
+        "Data-Labeling-Specialist",
+        "Japanese-QA-Annotator",
+        "Freelance-Data-Labeler"
+      ],
+      "parentCategories": [],
+      "description": "<p><a href=\"https://himalayas.app/companies/canva\">Canva</a>'s Localisation team is seeking a Japanese Data Labeller to support the company's AI features in LOTE markets. The ideal candidate has native proficiency in Japanese, a strong eye for visual communication, and experience in language quality evaluation. The role involves labelling and annotating data in Japanese to support product, content, and AI development initiatives.</p><h3>Requirements</h3><ul><li>Experience as a multimedia designer with a strong portfolio</li><li>Native proficiency in Japanese</li><li>Excellent written and verbal English communication skills</li><li>Ability to manage time efficiently and deliver tasks independently</li><li>Exceptional organizational skills and keen attention to detail</li></ul><p>Originally posted on <a href=\"https://himalayas.app\">Himalayas</a></p>",
+      "pubDate": 1779575139,
+      "expiryDate": 1784759138,
+      "applicationLink": "https://himalayas.app/companies/canva/jobs/japanese-data-labeller",
+      "guid": "https://himalayas.app/companies/canva/jobs/japanese-data-labeller"
+    },
+    {
+      "title": "Senior Manager | Software Development",
+      "excerpt": "This is a remote position; however, the candidate must reside within 30 miles of one of the following locations: Boston, MA; San Francisco Bay Area, CA; Dallas, TX; Seattle, WA; and Portland, ME \u200bAbout the Team/Role\u200bAre you excited about building a world-class merchant ecosystem where you will have the opportunity to design, build, and scale merchant services using AI?",
+      "companyName": "wex",
+      "companySlug": "wex",
+      "companyLogo": "https://cdn-images.himalayas.app/mpy8n0cajvn7osyxqas6h2y9fuyo",
+      "employmentType": "Full Time",
+      "minSalary": 175600,
+      "maxSalary": 204300,
+      "seniority": [
+        "Senior"
+      ],
+      "currency": "USD",
+      "locationRestrictions": [
+        "United States"
+      ],
+      "timezoneRestrictions": [
+        -10,
+        -9,
+        -8,
+        -7,
+        -6,
+        -5,
+        14
+      ],
+      "categories": [
+        "Senior-Software-Engineering-Manager",
+        "Engineering-Leadership",
+        "AI-Engineering-Management",
+        "Software-Development-Management",
+        "Fleet-Technology-Management"
+      ],
+      "parentCategories": [],
+      "description": "<p>This is a remote position; however, the candidate must reside within 30 miles of one of the following locations: Boston, MA; San Francisco Bay Area, CA; Dallas, TX; Seattle, WA; and Portland, ME</p><h3>\u200bAbout the Team/Role</h3><h3>\u200b</h3><p>Are you excited about building a world-class merchant ecosystem where you will have the opportunity to design, build, and scale merchant services using AI? \u200bWe are seeking a seasoned Sr. Manager of Software Engineering in the WEX Mobility Engineering organization who can think big for our customers, and drive AI driven development life cycle with innovative solutions. The mobility engineering team spans across USA, India and Brazil. WEX Mobility products enable credit issuance to fleet companies and their employees, and owner-operator truckers in the form of WEX Credit Cards, which can be used in fueling stations. At WEX, we provide fleet managers and operators with the ability to configure spend controls that restrict fleet members to use their card only at preconfigured merchants and for configured product families. </p><h3>\u200b</h3><h3>\u200bHow you\u2019ll make an impact:</h3><h3>Leadership &amp; Strategy:</h3><ul><li><p>Develop, drive, and execute a long-term vision and strategy for the Merchant ecosystem at WEX.</p></li><li><p>Drive, prioritize, and work backwards from customer requirements in collaboration with product and commercial partners.</p></li><li><p>Maintain a well-thought-out roadmap and create clear, interdependent OKRs with product and commercial teams.</p></li><li><p>Establish a robust engineering roadmap to maintain clarity and motivation within the team.</p></li></ul><h3>\u200b</h3><h3>     Technical Ownership &amp; Execution:</h3><ul><li><p>Be as a hands-on technical leader with full ownership of systems design across mobile applications and backend microservices.</p></li><li><p>Drive end-to-end AI-DLC, technical project execution, from initial concept through deployment and ongoing support.</p></li><li><p>Develop and track the progress of the architectural roadmap, aligning with business objectives and industry best practices.</p></li><li><p>Drive cross-team engineering projects as a single-threaded owner (STO).</p></li><li><p>Implement mechanisms to reduce time-to-market using evolving engineering approaches, continuously challenging the status quo.</p></li><li><p>Establish measurement of metrics-driven development productivity across the team.</p></li></ul><h3>Team Development &amp; Culture:</h3><ul><li><p>Hire, lead, manage, retain, and grow high-performance software engineers through active career growth planning.</p></li><li><p>Foster a culture of innovation, collaboration, empowerment, and continuous learning.</p></li><li><p>Maintain career growth plans and provide monthly and quarterly feedback for individual progress.</p></li><li><p>Maintain a granular resource map of developers and their month-over-month work streams.</p></li></ul><h3> Collaboration &amp; Efficiency:</h3><ul><li><p>Collaborate with other Mobility engineering teams to reuse development practices and components, reducing duplication.</p></li><li><p>Drive effective monthly and weekly mechanisms for planning, executing, and auditing workstreams.</p></li><li><p>Partner with product and commercial (sales) leads to maintain a well-thought-out roadmap.</p></li></ul><ul><li><p>\u200bComfortably present, influence, and communicate to the senior leadership team. Provide regular updates and insights to your manager (Director) on the challenges and opportunities.</p></li></ul><h3>\u200b</h3><h3>\u200bExperience you'll bring:</h3><h3>\u200b</h3><ul><li><p>\u200bMaster\u2019s degree in Computer Science or Software Engineering.</p></li><li><p>\u200b8+ years of experience in software engineering with 4+ years of engineering management experience.</p></li><li><p>Expertise in developing large-scale distributed systems and proven experience in testing and validating solutions for accuracy and performance</p></li><li><p>Ability to automate generating scaffolding code, unit tests, and integration tests using past execution data and generative AI</p></li><li><p>Strong understanding of security and compliance requirements in cloud and data environments.</p></li><li><p>\u200bExcellent leadership, team-building, and dynamic decision-making skills.</p></li><li><p>\u200bAbility to deal with ambiguity and thrive in a fast-paced, dynamic environment.</p></li><li><p>\u200bExcellent verbal and written communication skills.</p></li></ul><h3>\u200bPreferred Qualifications:</h3><ul><li><p>Experience in building products with AI-DLC with APIs and AI first approach</p></li><li><p>Experience in building and scaling Fleet Merchant systems</p></li><li><p>Familiarity with cloud platforms and containerization.</p></li><li><p>\u200bExperience building high-performance distributed systems at internet-scale companies.</p></li><li><p>\u200bExperience building credit card products, or experience developing solutions in a scheme/network.</p></li></ul>The base pay range represents the anticipated low and high end of the pay range for this position. Actual pay rates will vary and will be based on various factors, such as your qualifications, skills, competencies, and proficiency for the role. Base pay is one component of WEX's total compensation package. Most sales positions are eligible for commission under the terms of an applicable plan. Non-sales roles are typically eligible for a quarterly or annual bonus based on their role and applicable plan. WEX's comprehensive and market competitive benefits are designed to support your personal and professional well-being. Benefits include health, dental and vision insurances, retirement savings plan, paid time off, health savings account, flexible spending accounts, life insurance, disability insurance, tuition reimbursement, and more.  For more information, check out the \"About Us\" section.Pay Range: $175,600.00 - $204,300.00<p>Originally posted on <a href=\"https://himalayas.app\">Himalayas</a></p>",
+      "pubDate": 1779575117,
+      "expiryDate": 1784759116,
+      "applicationLink": "https://himalayas.app/companies/wex/jobs/senior-manager-software-development",
+      "guid": "https://himalayas.app/companies/wex/jobs/senior-manager-software-development"
+    },
+    {
+      "title": "Associate IT Auditor",
+      "excerpt": "Job Posting: Since 1953, Ferguson has been a source of quality supplies for a variety of industries.",
+      "companyName": "Ferguson",
+      "companySlug": "ferguson-com",
+      "companyLogo": "https://cdn-images.himalayas.app/qa18typ096bzxo0aj4k1qdsem0wt",
+      "employmentType": "Full Time",
+      "minSalary": 59200.08,
+      "maxSalary": 88800,
+      "seniority": [
+        "Mid-level"
+      ],
+      "currency": "USD",
+      "locationRestrictions": [
+        "United States"
+      ],
+      "timezoneRestrictions": [
+        -10,
+        -9,
+        -8,
+        -7,
+        -6,
+        -5,
+        14
+      ],
+      "categories": [
+        "IT-Audit",
+        "Internal-Audit",
+        "Compliance-&-Audit",
+        "IT-Compliance",
+        "Information-Systems-Audit"
+      ],
+      "parentCategories": [],
+      "description": "<h3>Job Posting: </h3><p>Since 1953, <a href=\"https://himalayas.app/companies/ferguson-com\">Ferguson</a> has been a source of quality supplies for a variety of industries. Together We Build Better infrastructure, better homes and better businesses. We exist to make our customers\u2019 complex projects simple, successful, and sustainable. We proactively solve problems, adapt and grow to continuously serve our customers, communities and each other. <a href=\"https://himalayas.app/companies/ferguson-com\">Ferguson</a>, a Fortune 500 company, is proud to provide best-in-class products, service and capabilities across the following industries: Commercial/Mechanical, Facilities Supply, Fire and Fabrication, HVAC, Industrial, Residential Trade, Residential Building and Remodel, Waterworks and Residential Digital Commerce.</p><p><a href=\"https://himalayas.app/companies/ferguson-com\">Ferguson</a> has approximately 36,000 associates across 1,700 locations. <a href=\"https://himalayas.app/companies/ferguson-com\">Ferguson</a> is a community of proud associates who operate with the shared purpose of building something meaningful. You will build a career that you are proud of, at a company you can believe in.</p><h3><b>Role Overview:</b></h3><p>The Associate IT Auditor reports to the IT Audit Manager and supports the audit team by performing design and operating effectiveness testing for Sarbanes Oxley IT General Controls (ITGC) with oversight from senior auditors and IT Audit management. This role is responsible for preparing thorough work-papers with supporting evidence, incorporating feedback for continuous improvement, and clearly communicating testing status and findings.</p><p>The Associate IT Auditor conducts ITGC walkthroughs with control owners, participates in a variety of IT audits\u2014including reviews of: ITGC on acquisitions, information security, cybersecurity, and system implementations\u2014and attends key audit meetings. Additional duties include drafting and communicating control deficiencies with root cause analysis, ensuring all documentation is accurately tracked in AuditBoard, supporting special projects, pursuing ongoing learning, and attending required trainings and team meetings.</p><h3><b>Location and Travel:</b></h3><p>This role is approved to be fully remote and can be based anywhere in the United States. This role can also by hybrid out of <a href=\"https://himalayas.app/companies/ferguson-com\">Ferguson</a>'s corporate offices in Newport News, VA, according to <a href=\"https://himalayas.app/companies/ferguson-com\">Ferguson</a> policy. Must be available to work East Coast hours.</p><p>Travel 10-35%, including Canada; for remote staff, travel to Newport News HQ at minimum annually in addition to audit location travel.</p><h3><b>Responsibilities:</b></h3><ul><li>Integrates the IPPF components into audit engagements to ensure conformance with mandatory requirements and leading practices.</li><li>Develops and drives the audit program, communicates engagement objectives and scope to partners, documents process walkthroughs and flowcharts, develops analytical procedures and sample-based testing, and gathers evidence to support conclusions.</li><li>Assists with writing engagement findings into a draft report and presenting audit findings to management.</li><li>Leads portions of an audit engagement, facilitating discussions with management on risk mitigation efforts and the feasibility of process improvements.</li><li>Recognizes the role of the internal audit function in fraud risk management, prevention, and detection; assists in identifying fraud risk indicators and gathering relevant information for analysis.</li><li>Enhances risk coverage and efficiency by identifying overlapping assurance efforts</li></ul><h3><b>Skills and Expectations:</b></h3><ul><li>Demonstrates a fundamental understanding of cybersecurity objectives, systems development lifecycle and project implementation guidelines, governance related to confidentiality, data integrity, and system availability, and effectively applies key processes to satisfy control objectives such as identification, prevention, detection, response, and recovery.</li><li>Familiarity with compliance/audit frameworks (NIST, COBIT, etc)</li><li>Knowledge of technical platforms, networks, security concepts and data retrieval techniques.</li><li>Demonstrates a basic understanding of basic business functions such as revenue, expenses, cash, receivables, payables, inventory, and other processes specific to distribution organizations and effectively evaluates the effectiveness of associated internal controls</li><li>Assists in gathering IT policies, system documentation, and IT control assessments under supervision. Communicates audit observations and process improvements to partners for the initial action plans to be created.</li><li>Demonstrates a fundamental understanding of ITGCs according to PCAOB standards supports the identification and reporting of deficiencies to stakeholders.</li><li>Applies ethical principles in audit work, ensuring impartiality and adherence to professional responsibilities.</li><li>Executes audit work in conformance with the Standards and expectations established within the quality assurance and improvement program (QAIP).</li><li>Understands principles of effective communication in internal auditing, including clarity, conciseness, and objectivity. Documents engagement planning, assists with interim progress communications and uses active listening during audit interviews and discussions.</li><li>Demonstrates conflict management skills as vital when resolving timing and engagement scope discussions with partners, seeking support from the engagement supervisor when appropriate.</li><li>Understands basic data analysis concepts, including data integrity, completeness, and accuracy in an internal auditing context and recognizes the importance of relevant, sufficient data to support findings and engagement conclusions</li><li>Demonstrates strong project management and time management skills to ensure engagement objectives are achieved and deadlines are met. Updates engagement progress tracking tools to reflect tasks performed.</li><li>Proactively takes initiative and ownership in achieving assigned objectives, ensuring the delivery of high-quality audit work, and continuously developing skills.</li><li>Demonstrates well-developed problem solving, critical thinking, and analytical skills.</li><li>Team player, collaborative and exhibits flexibility to adapt to changing priorities.</li></ul><h3><b>Qualifications:</b></h3><ul><li>Bachelor\u2019s degree in Information Systems, Computer Science, or related area; Advanced degree is a plus</li><li>6 months to 2+ years proven work experience and knowledge in IT Audit and/or related activities in IT.</li><li>Experience with the Microsoft Office Suite including PowerBI and Visio; knowledge of Workday, AuditBoard, Oracle, Sage X3 a plus</li><li>Familiarity with compliance/audit frameworks (NIST, COBIT, etc)</li><li>Knowledge of technical platforms, networks, security concepts and data retrieval techniques.</li><li>Experience working in a remote environment a plus.</li><li>A professional certification is required within one year from hire date. Other certifications not listed below will be considered for applicability.</li><li>Certified Information Systems Auditor (CISA) - Information Systems Audit and Control Association.</li><li>Certified Internal Auditor (CIA) - The Institute of Internal Auditors - North America.</li><li>Certified Public Accountant (CPA) - American Institute of Certified Public Accountants.</li><li>Certified Fraud Examiner (CFE) \u2013 Association of Certified Fraud Examiners</li></ul><p>At <a href=\"https://himalayas.app/companies/ferguson-com\">Ferguson</a>, we care for each other. We value our well-being just as much as our hard work. We are committed to a holistic approach towards benefits plans and programs that support the mental, physical and financial well-being of our associates. Our competitive offering not only includes benefits like health, dental, vision, paid time off, life insurance and a 401(k) with a company match, but our associates also enjoy additional meaningful and inclusive enhancements that are adaptable to their diverse situations and needs, including mental health coverage, gender affirming and family building benefits, paid parental leave, associate discounts, community involvement opportunities and more!</p><h3>-</h3><h3>Pay Range:</h3><h3>-</h3><p style=\"text-align:left\"><i>Actual pay rate may vary depending upon location. The estimated pay range for this position is below. The specific rate will depend on a candidate\u2019s qualifications and prior experience.</i></p><h3>-</h3>$4,933.34 - $7,400.00<h3>-</h3><p style=\"text-align:left\"><b><i>Estimated Ranges displayed are Monthly for Salaried roles </i><u>OR</u><i> Hourly for all other roles.</i></b></p><h3>-</h3><p style=\"text-align:left\">This role is Bonus or Incentive Plan eligible.</p><h3>-</h3><p><a href=\"https://himalayas.app/companies/ferguson-com\">Ferguson</a> complies with all wage regulations. The starting wage may be higher in certain locations based on local or state wage requirements.</p><h3>-</h3><p style=\"text-align:left\"><i>The Company is an equal opportunity employer as well as a government contractor that shall abide by the requirements of 41 CFR 60-300.5(a), which prohibits discrimination against qualified protected Veterans and the requirements of 41 CFR 60-741.5(A), which prohibits discrimination against qualified individuals on the basis of disability.</i></p><p style=\"text-align:left\"><i><a href=\"https://himalayas.app/companies/ferguson-com\">Ferguson</a> Enterprises, LLC. is an equal employment employer F/M/Disability/Vet/Sexual Orientation/Gender Identity.</i></p><p style=\"text-align:left\"><a href=\"https://www.ferguson.com/content/careers/reasonable-accommodation\" rel=\"nofollow ugc noopener noreferrer\" target=\"_blank\">Equal Employment Opportunity and Reasonable Accommodation Information</a></p><p>Originally posted on <a href=\"https://himalayas.app\">Himalayas</a></p>",
+      "pubDate": 1779575108,
+      "expiryDate": 1784759107,
+      "applicationLink": "https://himalayas.app/companies/ferguson-com/jobs/associate-it-auditor",
+      "guid": "https://himalayas.app/companies/ferguson-com/jobs/associate-it-auditor"
+    },
+    {
+      "title": "Associate Customer Success Manager with French or German",
+      "excerpt": "A career that\u2019s the whole package! At Conga, we\u2019ve built a community where our colleagues can thrive.",
+      "companyName": "Conga",
+      "companySlug": "conga",
+      "companyLogo": "https://cdn-images.himalayas.app/j00py65junxn3qsf6tbtpibsmsmg",
+      "employmentType": "Full Time",
+      "minSalary": null,
+      "maxSalary": null,
+      "seniority": [
+        "Mid-level"
+      ],
+      "currency": "USD",
+      "locationRestrictions": [
+        "United Kingdom"
+      ],
+      "timezoneRestrictions": [
+        0
+      ],
+      "categories": [
+        "Customer-Success-Management",
+        "Account-Management",
+        "Client-Success",
+        "B2B-Customer-Success",
+        "SaaS-Customer-Success"
+      ],
+      "parentCategories": [],
+      "description": "<div class=\"content-intro\"><h3>A career that\u2019s the whole package!</h3><p>At <a href=\"https://himalayas.app/companies/conga\">Conga</a>, we\u2019ve built a community where our colleagues can thrive. Here you\u2019ll find opportunities to innovate and support growth through individual and team development, all within an environment where every voice is heard.</p><p><strong><a href=\"https://himalayas.app/companies/conga\">Conga</a></strong> lines up commercial operations so companies run as connected, smarter businesses. By unifying the people and processes that drive commerce, <a href=\"https://himalayas.app/companies/conga\">Conga</a> aligns pricing, quoting, contracting, rebates, and communications so teams stay in sync and buyers keep moving forward. The result is trusted decisions, consistent buyer experiences, and profitable growth. More than 10,000 customers worldwide, including over 50% of the Fortune 100\u00ae, trust <a href=\"https://himalayas.app/companies/conga\">Conga</a> when commercial complexity is high and global impact is on the line.</p><p><strong>Our approach</strong> is grounded in the <a href=\"https://himalayas.app/companies/conga\">Conga</a> Way, a framework that reflects our values and drives everything from hiring to decision-making, as well as key programs including recognition. Created with direct input from our colleagues, the <a href=\"https://himalayas.app/companies/conga\">Conga</a> Way forms the foundation of our vibrant culture. </p></div><p><strong>Job Title:</strong>\u202fAssociate Customer Success Manager with French or German</p><p><strong>Reports to:</strong>\u202fAssociate Director, Customer Success </p><p><strong>Location:</strong>\u202fUK (remote-must be based in the UK)</p><p><strong>Languages:</strong> Native/C2 level English <strong>AND</strong> native/C2 level French <strong>OR</strong> German</p><h3>A quick snapshot\u2026</h3><p>The Customer Success Manager\u2019s primary responsibilities are to manage a book of global, complex customers who have invested in <a href=\"https://himalayas.app/companies/conga\">Conga</a> to power their revenue operations. You will perform detailed adoption analysis and engage customer in joint planning to increase adoption, lead value realization activities like customer stakeholder alignment and roadmap reviews to ensure the <a href=\"https://himalayas.app/companies/conga\">Conga</a> solution is continuing to be iterated on and improved in the customer\u2019s environment. You\u2019ll also drive customer advocacy by ensuring technical issues are being resolved quickly and efficiently by your internal <a href=\"https://himalayas.app/companies/conga\">Conga</a> partners. You are a facilitator, a coach, a consultant and never stop asking questions to get to KNOW your customers. </p><h3>Why it\u2019s a big deal\u2026</h3><p><a href=\"https://himalayas.app/companies/conga\">Conga</a>\u2019s Customer Success team has a culture unlike any other. We are fun, collaborative, celebratory, passionate, and driven. We invest in our team and when you work every day to ensure your customers' success, you ensure the success of yourself and <a href=\"https://himalayas.app/companies/conga\">Conga</a>. At <a href=\"https://himalayas.app/companies/conga\">Conga</a>, our customers are global, fortune 200 customers that invest millions into their <a href=\"https://himalayas.app/companies/conga\">Conga</a> solutions each year. Our CSMs are the customer's voice, the facilitator of conversations and the driver of outcomes for the Customer and <a href=\"https://himalayas.app/companies/conga\">Conga</a>. We drive adoption of <a href=\"https://himalayas.app/companies/conga\">Conga</a> products, identify expansion, own mitigation of risk using our cross functional teams and improve health and sentiment of <a href=\"https://himalayas.app/companies/conga\">Conga</a>\u2019s Customers, ensuring successful and growing renewal. </p><h3>What We\u2019re Looking For....</h3><p><strong>Languages: Native/C2 level English AND native/C2 level French OR German</strong></p><p><strong>Education</strong>: Bachelor\u2019s degree or equivalent hands\u2011on experience.</p><p><strong>Experience:</strong> 2-4 years in a customer\u2011facing role (Customer Success, Sales, SDR/BDR, or Technical Support) working with a range of European customers.</p><p><strong>Consultative mindset:</strong> Builds trust and credibility by actively listening, understanding needs, and tailoring solutions for a wide range of stakeholders.</p><p><strong>Proactive collaborator:</strong> A self\u2011starter who takes initiative while working effectively with others to achieve shared goals.</p><p><strong>Communication &amp; delivery:</strong> Strong written, verbal, presentation, and project management skills to influence, align, and execute.</p><p><strong>Technical proficiency:</strong> Confident using Salesforce and Microsoft tools (Outlook, Word, Excel, PowerPoint) to manage work efficiently.</p><p><strong>High\u2011growth adaptability:</strong> Thrives in fast\u2011paced environments, juggling multiple priorities with a structured, data\u2011driven approach.</p><p><strong>Customer retention focus:</strong> Proven track record of strengthening relationships and driving long\u2011term customer retention.</p><p><strong>Cross\u2011functional collaboration:</strong> Effectively aligns cross\u2011functional teams to deliver strong customer outcomes.</p><div><strong>Data Driven</strong>: use data\u2011driven insights to identify growth opportunities and accelerate value realization across accounts.</div><p><strong>Here's what will give you an edge: </strong>Experience with SaaS / cloud solutions; CLM, CPQ, Salesforce, or <a href=\"https://himalayas.app/companies/conga\">Conga</a> experience highly desirable</p><div class=\"content-conclusion\"><h3>Did we pique your interest?\u202f</h3><p>If this sounds like the kind of job you would love in the kind of environment where you would thrive, please click apply. We'd love to hear from you!\u202f</p><h3>Preferred Resume Format</h3><p>We accept resumes in any format, we suggest using PDF or plain text. These formats help ensure that your resume\u2019s formatting remains intact, making it easier for our recruiters to review your application promptly. </p><p><strong>Don\u2019t meet every requirement for the role?</strong><strong>\u202f</strong><strong>\u202f</strong></p><p>Studies have shown that women and members of ethnic minorities are less likely to apply to jobs unless they meet every single qualification. At <a href=\"https://himalayas.app/companies/conga\">Conga</a> we are dedicated to building a diverse, inclusive, and authentic workplace, so if you\u2019re excited about this role but your experience doesn\u2019t align perfectly with every qualification in the job description, we encourage you to apply anyway. You just might be the right candidate for this or other roles.\u202f </p><div><section id=\"st-additionalInformation\" class=\"job-section\"><div><h3>Additional Information</h3></div><div class=\"wysiwyg\"><p><a href=\"https://himalayas.app/companies/conga\">Conga</a> is proud to be an Equal Opportunity Employer and provides equal employment opportunities to all employees and applicants regardless of race, color, religion, gender, gender identity, age, national origin, disability, parental or pregnancy status, marriage and civil partnership, sexual orientation, veteran status, or any other characteristic protected by law. We understand interviewing can be stressful for those with disabilities. If reasonable accommodation is needed to allow you to show us your best self, please let your recruiter know as soon as possible. All your information will be kept confidential according to EEO guidelines. <a href=\"https://himalayas.app/companies/conga\">Conga</a> is not open to third party solicitation or resumes for our posted FTE positions. Resumes received from third party agencies that are unsolicited will be considered complimentary.</p></div></section></div><h3><a href=\"https://himalayas.app/companies/conga\">Conga</a>'s Applicant Privacy Statement </h3><p>The information you provide during the application process will be used in accordance with <a href=\"https://himalayas.app/companies/conga\">Conga</a>\u2019s Applicant Privacy Statement (<a href=\"https://conga.com/applicant-privacy-statement\" rel=\"nofollow ugc noopener noreferrer\" target=\"_blank\">https://conga.com/applicant-privacy-statement</a>). By submitting your application, you acknowledge and agree to the terms outlined in this privacy statement.</p></div><p>Originally posted on <a href=\"https://himalayas.app\">Himalayas</a></p>",
+      "pubDate": 1779575101,
+      "expiryDate": 1784759101,
+      "applicationLink": "https://himalayas.app/companies/conga/jobs/associate-customer-success-manager-with-french-or-german",
+      "guid": "https://himalayas.app/companies/conga/jobs/associate-customer-success-manager-with-french-or-german"
+    },
+    {
+      "title": "German Speaking Customer Care for Booking Platform | Paid Relocation to Greece",
+      "excerpt": "Join a leading Booking Platform as a German-speaking Customer Care Representative and enjoy a fully paid relocation to Greece.",
+      "companyName": "Mercier Consultancy Group",
+      "companySlug": "mercier-consultancy-group",
+      "companyLogo": "https://cdn-images.himalayas.app/s1f6nihte4wky5uty9kkbz950aca",
+      "employmentType": "Full Time",
+      "minSalary": null,
+      "maxSalary": null,
+      "seniority": [
+        "Entry-level"
+      ],
+      "currency": "USD",
+      "locationRestrictions": [
+        "Germany"
+      ],
+      "timezoneRestrictions": [
+        1
+      ],
+      "categories": [
+        "Bilingual-German-English-Customer-Support-Consultant",
+        "Bilingual-German-English-Customer-Support-Specialist",
+        "German-Speaking-Customer-Service-Representative",
+        "German-Language-Customer-Service-Jobs",
+        "Customer-Care",
+        "Customer-Support",
+        "Customer-Service"
+      ],
+      "parentCategories": [
+        "Customer Service"
+      ],
+      "description": "<p>Join a leading Booking Platform as a German-speaking Customer Care Representative and enjoy a fully paid relocation to Greece. Provide exceptional customer support, work collaboratively with internal departments, and contribute to service improvements.</p><h3>Requirements</h3><ul><li>Exceptional fluency in German (both written and spoken)</li><li>A minimum English proficiency of B2</li><li>Previous experience in customer care, preferably within travel, booking, or hospitality sectors</li><li>Strong communication and problem-solving skills with a customer-oriented approach</li><li>Ability to work effectively in a dynamic and fast-paced environment</li></ul><h3>Benefits</h3><ul><li>Competitive Monthly Salary</li><li>Fully Paid Relocation Package</li><li>Health Insurance</li><li>2 Extra Salaries Per Year</li><li>Work in a Positive Environment</li></ul><p>Originally posted on <a href=\"https://himalayas.app\">Himalayas</a></p>",
+      "pubDate": 1779575071,
+      "expiryDate": 1784759070,
+      "applicationLink": "https://himalayas.app/companies/mercier-consultancy-group/jobs/german-speaking-customer-care-for-booking-platform-paid-relocation-to-greece-1840431920",
+      "guid": "https://himalayas.app/companies/mercier-consultancy-group/jobs/german-speaking-customer-care-for-booking-platform-paid-relocation-to-greece-1840431920"
+    }
+  ]
+}
