@@ -19,6 +19,12 @@
       "type": "index"
     },
     {
+      "name": "idx_config_changes_lever_time",
+      "sql": "CREATE INDEX idx_config_changes_lever_time ON config_changes(lever,changed_at)",
+      "tbl_name": "config_changes",
+      "type": "index"
+    },
+    {
       "name": "idx_cost_log_job_id",
       "sql": "CREATE INDEX idx_cost_log_job_id ON cost_log(job_id)",
       "tbl_name": "cost_log",
@@ -31,6 +37,12 @@
       "type": "index"
     },
     {
+      "name": "idx_jobs_company_tier",
+      "sql": "CREATE INDEX idx_jobs_company_tier ON jobs(company_tier)",
+      "tbl_name": "jobs",
+      "type": "index"
+    },
+    {
       "name": "idx_jobs_fingerprint",
       "sql": "CREATE INDEX idx_jobs_fingerprint ON jobs(fingerprint)",
       "tbl_name": "jobs",
@@ -39,6 +51,12 @@
     {
       "name": "idx_jobs_loose_fingerprint",
       "sql": "CREATE INDEX idx_jobs_loose_fingerprint ON jobs(loose_fingerprint)",
+      "tbl_name": "jobs",
+      "type": "index"
+    },
+    {
+      "name": "idx_jobs_scored_by",
+      "sql": "CREATE INDEX idx_jobs_scored_by ON jobs(scored_by)",
       "tbl_name": "jobs",
       "type": "index"
     },
@@ -82,6 +100,12 @@
       "name": "idx_onboarding_sessions_completed",
       "sql": "CREATE INDEX idx_onboarding_sessions_completed ON onboarding_sessions(completed_at)",
       "tbl_name": "onboarding_sessions",
+      "type": "index"
+    },
+    {
+      "name": "idx_recall_audit_time",
+      "sql": "CREATE INDEX idx_recall_audit_time ON recall_audit(audited_at)",
+      "tbl_name": "recall_audit",
       "type": "index"
     },
     {
@@ -269,6 +293,71 @@
       "name": "background_tasks",
       "sql": "CREATE TABLE background_tasks(id INTEGER PRIMARY KEY AUTOINCREMENT,job_id TEXT NOT NULL,kind TEXT NOT NULL CHECK(kind IN('prep','prep_phase_b','interview_prep','speculative_research')),started_at TEXT NOT NULL DEFAULT(datetime('now')),finished_at TEXT,status TEXT NOT NULL DEFAULT 'running' CHECK(status IN('running','succeeded','failed')),error_message TEXT,pid INTEGER)",
       "tbl_name": "background_tasks",
+      "type": "table"
+    },
+    {
+      "columns": [
+        {
+          "cid": 0,
+          "dflt_value": null,
+          "name": "id",
+          "notnull": 0,
+          "pk": 1,
+          "type": "INTEGER"
+        },
+        {
+          "cid": 1,
+          "dflt_value": null,
+          "name": "lever",
+          "notnull": 1,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "cid": 2,
+          "dflt_value": "datetime('now')",
+          "name": "changed_at",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "cid": 3,
+          "dflt_value": "'manual'",
+          "name": "changed_by",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "cid": 4,
+          "dflt_value": null,
+          "name": "change_summary",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "cid": 5,
+          "dflt_value": null,
+          "name": "content_hash",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "cid": 6,
+          "dflt_value": null,
+          "name": "diff_summary",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        }
+      ],
+      "foreign_keys": [],
+      "name": "config_changes",
+      "sql": "CREATE TABLE config_changes(id INTEGER PRIMARY KEY AUTOINCREMENT,lever TEXT NOT NULL,changed_at TEXT DEFAULT(datetime('now')),changed_by TEXT DEFAULT 'manual',change_summary TEXT,content_hash TEXT,diff_summary TEXT)",
+      "tbl_name": "config_changes",
       "type": "table"
     },
     {
@@ -755,11 +844,27 @@
           "notnull": 0,
           "pk": 0,
           "type": "TEXT"
+        },
+        {
+          "cid": 35,
+          "dflt_value": "'unknown'",
+          "name": "company_tier",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "cid": 36,
+          "dflt_value": "''",
+          "name": "scored_by",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
         }
       ],
       "foreign_keys": [],
       "name": "jobs",
-      "sql": "CREATE TABLE jobs(id TEXT PRIMARY KEY,fingerprint TEXT UNIQUE NOT NULL,loose_fingerprint TEXT,url TEXT NOT NULL,title TEXT NOT NULL,company TEXT NOT NULL,location TEXT DEFAULT '',source TEXT NOT NULL,raw_jd_text TEXT,relevance_score INTEGER CHECK(relevance_score BETWEEN 1 AND 10),interview_likelihood INTEGER CHECK(interview_likelihood BETWEEN 1 AND 10),strengths_alignment TEXT,industry_sector TEXT,comp_estimate TEXT DEFAULT '',ai_notes TEXT,score_status TEXT CHECK(score_status IN('scored','manual_review')),score_flag_reason TEXT,remote_status TEXT DEFAULT 'Unknown',network_depth INTEGER DEFAULT 0,known_contacts TEXT DEFAULT '',stage TEXT DEFAULT 'discovered' CHECK(stage IN('discovered','enriched','scored','manual_review','prep_in_progress','briefing_ready','materials_drafted','waitlisted','applied','response_received','interview','offer','rejected','not_selected','withdrawn')),stage_updated TEXT,status TEXT DEFAULT 'active' CHECK(status IN('active','manual_review','skipped','applied','rejected','interviewing','offer')),apply_flag INTEGER DEFAULT 0,reject_reason TEXT DEFAULT '',prep_folder_path TEXT,gdrive_folder_url TEXT,fit_score REAL,probability_score REAL,user_notes TEXT DEFAULT '',created_at TEXT DEFAULT(datetime('now')),updated_at TEXT DEFAULT(datetime('now')),dupe_of TEXT DEFAULT '',synthetic INTEGER NOT NULL DEFAULT 0,speculative_briefing_folder TEXT)",
+      "sql": "CREATE TABLE jobs(id TEXT PRIMARY KEY,fingerprint TEXT UNIQUE NOT NULL,loose_fingerprint TEXT,url TEXT NOT NULL,title TEXT NOT NULL,company TEXT NOT NULL,location TEXT DEFAULT '',source TEXT NOT NULL,raw_jd_text TEXT,relevance_score INTEGER CHECK(relevance_score BETWEEN 1 AND 10),interview_likelihood INTEGER CHECK(interview_likelihood BETWEEN 1 AND 10),strengths_alignment TEXT,industry_sector TEXT,comp_estimate TEXT DEFAULT '',ai_notes TEXT,score_status TEXT CHECK(score_status IN('scored','manual_review')),score_flag_reason TEXT,remote_status TEXT DEFAULT 'Unknown',network_depth INTEGER DEFAULT 0,known_contacts TEXT DEFAULT '',stage TEXT DEFAULT 'discovered' CHECK(stage IN('discovered','enriched','scored','manual_review','prep_in_progress','briefing_ready','materials_drafted','waitlisted','applied','response_received','interview','offer','rejected','not_selected','withdrawn')),stage_updated TEXT,status TEXT DEFAULT 'active' CHECK(status IN('active','manual_review','skipped','applied','rejected','interviewing','offer')),apply_flag INTEGER DEFAULT 0,reject_reason TEXT DEFAULT '',prep_folder_path TEXT,gdrive_folder_url TEXT,fit_score REAL,probability_score REAL,user_notes TEXT DEFAULT '',created_at TEXT DEFAULT(datetime('now')),updated_at TEXT DEFAULT(datetime('now')),dupe_of TEXT DEFAULT '',synthetic INTEGER NOT NULL DEFAULT 0,speculative_briefing_folder TEXT,company_tier TEXT DEFAULT 'unknown',scored_by TEXT DEFAULT '')",
       "tbl_name": "jobs",
       "type": "table"
     },
@@ -1007,6 +1112,87 @@
       "name": "onboarding_sessions",
       "sql": "CREATE TABLE onboarding_sessions(id TEXT PRIMARY KEY,history_json TEXT NOT NULL,captured_blocks_json TEXT NOT NULL DEFAULT '{}',started_at TEXT NOT NULL,last_turn_at TEXT NOT NULL,completed_at TEXT,error_state TEXT,user_openrouter_key TEXT DEFAULT NULL,user_rapidapi_key TEXT DEFAULT NULL,cumulative_cost_usd REAL NOT NULL DEFAULT 0)",
       "tbl_name": "onboarding_sessions",
+      "type": "table"
+    },
+    {
+      "columns": [
+        {
+          "cid": 0,
+          "dflt_value": null,
+          "name": "id",
+          "notnull": 0,
+          "pk": 1,
+          "type": "INTEGER"
+        },
+        {
+          "cid": 1,
+          "dflt_value": null,
+          "name": "job_id",
+          "notnull": 1,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "cid": 2,
+          "dflt_value": "datetime('now')",
+          "name": "audited_at",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "cid": 3,
+          "dflt_value": null,
+          "name": "original_score",
+          "notnull": 0,
+          "pk": 0,
+          "type": "INTEGER"
+        },
+        {
+          "cid": 4,
+          "dflt_value": null,
+          "name": "original_scored_by",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "cid": 5,
+          "dflt_value": null,
+          "name": "auditor_model",
+          "notnull": 1,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "cid": 6,
+          "dflt_value": null,
+          "name": "audited_score",
+          "notnull": 0,
+          "pk": 0,
+          "type": "INTEGER"
+        },
+        {
+          "cid": 7,
+          "dflt_value": "0",
+          "name": "upgraded",
+          "notnull": 0,
+          "pk": 0,
+          "type": "INTEGER"
+        },
+        {
+          "cid": 8,
+          "dflt_value": null,
+          "name": "audit_notes",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        }
+      ],
+      "foreign_keys": [],
+      "name": "recall_audit",
+      "sql": "CREATE TABLE recall_audit(id INTEGER PRIMARY KEY AUTOINCREMENT,job_id TEXT NOT NULL,audited_at TEXT DEFAULT(datetime('now')),original_score INTEGER,original_scored_by TEXT,auditor_model TEXT NOT NULL,audited_score INTEGER,upgraded INTEGER DEFAULT 0,audit_notes TEXT)",
+      "tbl_name": "recall_audit",
       "type": "table"
     },
     {

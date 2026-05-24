@@ -243,7 +243,8 @@ def _rebuild_table_with_indexes(
     The recipe: PRAGMA foreign_keys=OFF, rename original to ``legacy_alias``,
     run the migration's CREATE TABLE, INSERT INTO new SELECT FROM old over
     the column set the two schemas share, re-execute every CREATE INDEX from
-    the migration, DROP the legacy shell.
+    the migration and from any later migration that targets the same table,
+    DROP the legacy shell.
 
     Column-set discipline: the source schema may carry drift columns the
     head schema no longer defines (see ``_DOCUMENTED_DEAD_COLUMNS`` in the
@@ -270,8 +271,52 @@ def _rebuild_table_with_indexes(
     shell. Without re-applying them, the rebuilt table runs without
     ``idx_jobs_fingerprint`` / ``idx_jobs_stage`` / etc., silently
     degrading every dashboard query.
+
+    Later-migration index forward-compatibility: the primary DDL lives in
+    ``migration_filename`` (typically ``0001_initial.sql``), but later
+    migrations may add more indexes on the same table via their own SQL
+    files (e.g. ``idx_jobs_company_tier`` added in ``0007_tuning_loop_phase1.sql``).
+    After the named-file indexes are applied, a second pass over all
+    migration files (excluding ``migration_filename`` itself) gathers any
+    additional ``CREATE INDEX ... ON {table}`` statements and executes them.
+    All index statements carry ``IF NOT EXISTS`` so the pass is idempotent.
     """
     create_sql, index_sqls = _extract_table_ddl(migration_filename, table)
+
+    # Read the stamped schema version so we know which later migrations have
+    # already been applied to this DB. Columns + indexes from those migrations
+    # must be re-applied after the rebuild; columns from migrations NOT YET
+    # stamped must not be touched here (the migration runner will add them).
+    _stamped_version: int = _read_schema_version(conn) or 0
+
+    # Collect ADD COLUMN and index statements for this table from later migration files.
+    # Applied in migration order so column additions precede their dependent indexes.
+    _later_add_col_re = re.compile(
+        rf"ALTER\s+TABLE\s+{re.escape(table)}\s+ADD\s+COLUMN\s+[^;]+;",
+        re.IGNORECASE,
+    )
+    _later_index_re = re.compile(
+        rf"CREATE\s+(?:UNIQUE\s+)?INDEX(?:\s+IF\s+NOT\s+EXISTS)?\s+\S+\s+ON\s+{re.escape(table)}\s*\([^)]*\)(?:\s+WHERE\s+[^;]*)?;",
+        re.IGNORECASE,
+    )
+    # Tuple of (migration_version, add_col_stmts, index_stmts) per migration file,
+    # sorted by file name. Only files with version <= _stamped_version are eligible
+    # (those migrations have already run; their schema changes must survive the rebuild).
+    _later_col_and_idx: list[tuple[list[str], list[str]]] = []
+    for _mig_path in sorted(MIGRATIONS_DIR.glob("*.sql")):
+        if _mig_path.name == migration_filename:
+            continue  # already handled by _extract_table_ddl above
+        _m = _FILENAME_RE.match(_mig_path.name)
+        if not _m:
+            continue
+        _mig_version = int(_m.group(1))
+        if _mig_version > _stamped_version:
+            continue  # migration not yet applied — runner will handle it
+        _sql = _mig_path.read_text(encoding="utf-8")
+        _cols = [m.group(0) for m in _later_add_col_re.finditer(_sql)]
+        _idxs = [m.group(0) for m in _later_index_re.finditer(_sql)]
+        if _cols or _idxs:
+            _later_col_and_idx.append((_cols, _idxs))
 
     legacy_cols = [row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()]
 
@@ -292,6 +337,24 @@ def _rebuild_table_with_indexes(
             conn.execute(f"DROP TABLE {legacy_alias}")
             for index_sql in index_sqls:
                 conn.execute(index_sql)
+            # Re-apply ADD COLUMN + index statements from every migration that
+            # has already been stamped (version <= _stamped_version). The rebuild
+            # drops the table, losing those columns and indexes; we must restore
+            # them so the post-rebuild schema matches what the migration runner
+            # had previously established.
+            # Guard: skip ADD COLUMN if the column already exists (handles the
+            # case where the rebuild is somehow triggered multiple times, or
+            # where a future migration both rebuilds and alters).
+            for _add_cols, _idxs in _later_col_and_idx:
+                present_cols = {row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+                for add_col_sql in _add_cols:
+                    _col_match = re.search(r"ADD\s+COLUMN\s+(\w+)", add_col_sql, re.IGNORECASE)
+                    col_name = _col_match.group(1) if _col_match else None
+                    if col_name and col_name in present_cols:
+                        continue  # already present — idempotent skip
+                    conn.execute(add_col_sql)
+                for index_sql in _idxs:
+                    conn.execute(index_sql)
             conn.commit()
         except Exception:
             conn.rollback()

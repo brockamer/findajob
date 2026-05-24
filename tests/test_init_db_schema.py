@@ -66,3 +66,27 @@ def test_jobs_has_user_notes_column(fresh_db):
     """board_actions /notes handler writes to jobs.user_notes from the Applied tab."""
     cols = _columns(fresh_db, "jobs")
     assert "user_notes" in cols
+
+
+def test_config_changes_table_exists(fresh_db):
+    """Migration 0007: config_changes table must have all required columns."""
+    cols = _columns(fresh_db, "config_changes")
+    assert cols >= {"id", "lever", "changed_at", "changed_by", "change_summary", "content_hash", "diff_summary"}
+
+
+def test_recall_audit_table_exists(fresh_db):
+    """Migration 0007: recall_audit table must have all required columns."""
+    cols = _columns(fresh_db, "recall_audit")
+    assert cols >= {"id", "job_id", "audited_at", "original_score", "original_scored_by", "auditor_model", "audited_score", "upgraded", "audit_notes"}
+
+
+def test_jobs_has_company_tier_column(fresh_db):
+    """Migration 0007: jobs.company_tier column added for tier-aware scoring."""
+    cols = _columns(fresh_db, "jobs")
+    assert "company_tier" in cols
+
+
+def test_jobs_has_scored_by_column(fresh_db):
+    """Migration 0007: jobs.scored_by column tracks which model scored the job."""
+    cols = _columns(fresh_db, "jobs")
+    assert "scored_by" in cols
