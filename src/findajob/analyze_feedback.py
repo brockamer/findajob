@@ -24,10 +24,8 @@ hack the M3 cleanup PR (#544) flagged for follow-up.
 from __future__ import annotations
 
 import json
-import os
 import re
 import sqlite3
-import subprocess
 import sys
 from collections import Counter
 from datetime import datetime
@@ -35,7 +33,7 @@ from typing import Any
 
 from findajob.config_loader import load_reject_reasons
 from findajob.db import connect
-from findajob.paths import BASE, load_env
+from findajob.paths import BASE
 
 DB_PATH = f"{BASE}/data/pipeline.db"
 
@@ -442,9 +440,8 @@ def main() -> None:
     print(report)
 
     if notify_flag:
-        env = load_env()
-        topic = env.get("NTFY_TOPIC") or os.environ.get("NTFY_TOPIC", "jobsearch-pipeline")
-        # Send abbreviated summary via ntfy
+        from findajob.notifications.ntfy import send
+
         total = data.get("total_feedback", 0)
         fp = data.get("false_positives", 0)
         fp_pct = data.get("fp_pct", 0)
@@ -455,22 +452,9 @@ def main() -> None:
             f"Top reason: {top_reason[0]} ({top_reason[1]})\n"
             f"Run: python3 scripts/analyze_feedback.py"
         )
-        subprocess.run(
-            [
-                "curl",
-                "-s",
-                "-X",
-                "POST",
-                f"https://ntfy.sh/{topic}",
-                "-H",
-                "Title: JSP Feedback Analysis",
-                "-H",
-                "Tags: magnifying_glass",
-                "-H",
-                "Content-Type: text/plain; charset=utf-8",
-                "-d",
-                body,
-            ],
-            check=False,
-            capture_output=True,
+        send(
+            title="JSP Feedback Analysis",
+            body=body,
+            tags="magnifying_glass",
+            kind="feedback_review",
         )

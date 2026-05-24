@@ -14,7 +14,7 @@ import sqlite3
 
 import pytest
 
-from findajob.analyze_feedback import _prefilter_candidates, analyze, format_report
+from findajob.analyze_feedback import _prefilter_candidates, analyze, format_report, main
 
 
 @pytest.fixture
@@ -144,3 +144,50 @@ def test_prefilter_candidates_filters_title_signal_reasons_only(monkeypatch):
     candidates = _prefilter_candidates(rejected, applied, min_recurrences=2)
     # Should be empty — only 1 row contributes to the count after filter.
     assert candidates == []
+
+
+def test_main_notify_calls_ntfy_send_with_feedback_review_kind(tmp_path, monkeypatch):
+    """--notify flag routes through ntfy.send() with kind='feedback_review' (#838)."""
+    import findajob.analyze_feedback as af
+
+    db_path = str(tmp_path / "pipeline.db")
+    conn = sqlite3.connect(db_path)
+    conn.executescript(
+        """
+        CREATE TABLE feedback_log (
+            id INTEGER PRIMARY KEY, job_id TEXT, title TEXT, company TEXT,
+            relevance_score INTEGER, reject_reason TEXT
+        );
+        CREATE TABLE jobs (
+            id TEXT PRIMARY KEY, title TEXT, company TEXT, source TEXT,
+            url TEXT, stage TEXT, dupe_of TEXT DEFAULT '', relevance_score INTEGER
+        );
+        INSERT INTO feedback_log (job_id, title, company, relevance_score, reject_reason)
+            VALUES ('j1', 'Engineer', 'Acme', 7, 'Low Fit Score');
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setattr(af, "DB_PATH", db_path)
+    monkeypatch.setattr(
+        af,
+        "load_reject_reasons",
+        lambda: (["Low Fit Score"], frozenset({"Low Fit Score"})),
+    )
+    monkeypatch.setattr("sys.argv", ["analyze_feedback.py", "--notify"])
+
+    calls: list[dict] = []
+
+    def fake_send(*, title, body, tags, kind):
+        calls.append({"title": title, "body": body, "tags": tags, "kind": kind})
+
+    monkeypatch.setattr("findajob.notifications.ntfy.send", fake_send)
+
+    main()
+
+    assert len(calls) == 1
+    assert calls[0]["kind"] == "feedback_review"
+    assert calls[0]["title"] == "JSP Feedback Analysis"
+    assert calls[0]["tags"] == "magnifying_glass"
+    assert "rejections" in calls[0]["body"]
