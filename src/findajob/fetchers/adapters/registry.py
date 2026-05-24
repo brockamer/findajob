@@ -8,11 +8,13 @@ from pathlib import Path
 from findajob.audit import log_event
 from findajob.paths import BASE
 
+from .algora_bounties import AlgoraBountiesAdapter
 from .ashby import AshbyAdapter
 from .base import JobSourceAdapter
 from .gmail import GmailLinkedInAdapter
 from .greenhouse import GreenhouseAdapter
 from .himalayas import HimalayasAdapter
+from .hn_firebase import HNFirebaseAdapter
 from .jobicy import JobicyAdapter
 from .jobs_api14 import JobsApi14Adapter
 from .jobs_api14_bing import JobsApi14BingAdapter
@@ -39,6 +41,8 @@ REGISTERED_ADAPTERS: list[type[JobSourceAdapter]] = [
     WeWorkRemotelyAdapter,  # type: ignore[list-item]  # #853 — opt-in, not auto-enabled
     RemotiveAdapter,  # type: ignore[list-item]  # #853 — opt-in, not auto-enabled
     JobicyAdapter,  # type: ignore[list-item]  # #853 — opt-in, not auto-enabled
+    AlgoraBountiesAdapter,  # type: ignore[list-item]  # #853 Phase 3 — opt-in
+    HNFirebaseAdapter,  # type: ignore[list-item]  # #853 Phase 3 — opt-in
 ]
 
 # Default when config/active_sources.txt is missing or empty: every adapter

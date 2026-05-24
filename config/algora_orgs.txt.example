@@ -1,0 +1,9 @@
+# Algora org slugs — one per line.
+# Each slug is fetched at https://console.algora.io/api/orgs/{slug}/bounties
+# Find orgs at https://console.algora.io/bounties
+#
+# Examples:
+# cal-com
+# documenso
+# formbricks
+# triggerdotdev
