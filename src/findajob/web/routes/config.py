@@ -113,12 +113,11 @@ def config_save(
         raise
 
     try:
-        import sqlite3 as _sql
-
+        from findajob.db import connect as _db_connect
         from findajob.metrics.config_changes import detect_and_record
         from findajob.paths import BASE as _BASE
 
-        _conn = _sql.connect(f"{_BASE}/data/pipeline.db", timeout=5)
+        _conn = _db_connect(f"{_BASE}/data/pipeline.db", timeout=5)
         detect_and_record(_conn, changed_by="manual", change_summary=f"edit via /config/ — {relpath}")
         _conn.close()
     except Exception:

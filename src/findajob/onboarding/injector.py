@@ -557,9 +557,10 @@ def inject(
 
     # Config-drift detection — record all levers that just landed.
     try:
+        from findajob.db import connect as _db_connect  # noqa: PLC0415
         from findajob.metrics.config_changes import detect_and_record as _detect  # noqa: PLC0415
 
-        _drift_conn = sqlite3.connect(str(base_root / "data" / "pipeline.db"), timeout=5)
+        _drift_conn = _db_connect(base_root / "data" / "pipeline.db", timeout=5)
         _detect(_drift_conn, changed_by="onboarding", change_summary="onboarding paste-back")
         _drift_conn.close()
     except Exception:  # noqa: BLE001 — drift detection must never fail onboarding
