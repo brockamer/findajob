@@ -13,12 +13,15 @@ from .base import JobSourceAdapter
 from .gmail import GmailLinkedInAdapter
 from .greenhouse import GreenhouseAdapter
 from .himalayas import HimalayasAdapter
+from .jobicy import JobicyAdapter
 from .jobs_api14 import JobsApi14Adapter
 from .jobs_api14_bing import JobsApi14BingAdapter
 from .jobs_api14_indeed import JobsApi14IndeedAdapter
 from .jsearch import JSearchAdapter
 from .lever import LeverAdapter
 from .remote_ok import RemoteOkAdapter
+from .remotive import RemotiveAdapter
+from .we_work_remotely import WeWorkRemotelyAdapter
 from .workday_cxs import WorkdayCXSAdapter
 
 REGISTERED_ADAPTERS: list[type[JobSourceAdapter]] = [
@@ -33,6 +36,9 @@ REGISTERED_ADAPTERS: list[type[JobSourceAdapter]] = [
     WorkdayCXSAdapter,  # type: ignore[list-item]
     RemoteOkAdapter,  # type: ignore[list-item]  # #853 — opt-in, not auto-enabled
     HimalayasAdapter,  # type: ignore[list-item]  # #853 — opt-in, not auto-enabled
+    WeWorkRemotelyAdapter,  # type: ignore[list-item]  # #853 — opt-in, not auto-enabled
+    RemotiveAdapter,  # type: ignore[list-item]  # #853 — opt-in, not auto-enabled
+    JobicyAdapter,  # type: ignore[list-item]  # #853 — opt-in, not auto-enabled
 ]
 
 # Default when config/active_sources.txt is missing or empty: every adapter
