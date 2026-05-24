@@ -139,11 +139,16 @@ def restore_from_tarball(raw: bytes, base: Path) -> RestoreResult:
                 continue
 
             existing = base / dirname
-            if existing.exists():
+            if existing.is_dir():
                 rollback_dest = rollback / dirname
-                existing.rename(rollback_dest)
+                rollback_dest.mkdir(parents=True, exist_ok=True)
+                for child in existing.iterdir():
+                    child.rename(rollback_dest / child.name)
+            else:
+                existing.mkdir(parents=True, exist_ok=True)
 
-            staged.rename(existing)
+            for child in staged.iterdir():
+                child.rename(existing / child.name)
 
         for secret_rel in _SECRETS_FILES:
             secret_path = base / secret_rel
@@ -195,12 +200,22 @@ def _attempt_rollback(base: Path, rollback: Path) -> None:
         if not rb.exists():
             continue
         target = base / dirname
-        if target.exists():
-            shutil.rmtree(target, ignore_errors=True)
-        try:
-            rb.rename(target)
-        except OSError:
-            pass
+        if target.is_dir():
+            for child in target.iterdir():
+                try:
+                    if child.is_dir():
+                        shutil.rmtree(child, ignore_errors=True)
+                    else:
+                        child.unlink(missing_ok=True)
+                except OSError:
+                    pass
+        else:
+            target.mkdir(parents=True, exist_ok=True)
+        for child in rb.iterdir():
+            try:
+                child.rename(target / child.name)
+            except OSError:
+                pass
 
 
 def _cleanup(path: Path) -> None:
