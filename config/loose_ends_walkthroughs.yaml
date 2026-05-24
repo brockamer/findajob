@@ -95,6 +95,13 @@ walkthroughs:
     persona: established_user
     target_category: 2
     steps:
+      # Self-setup: waitlist a scored job via the Dashboard dropdown so
+      # the walkthrough doesn't depend on external state (#777).
+      - goto: /board/dashboard
+      - assert_present: 'tr[data-stage="scored"]'
+      - select_option:
+          row_selector: 'tr[data-stage="scored"]'
+          option_value: "waitlist"
       - goto: /board/waitlist
       - assert_present: 'tr[data-stage="waitlisted"]'
       - pick_first_row_with_stage: waitlisted
