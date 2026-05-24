@@ -180,6 +180,7 @@ def main(since_days: int | None = None) -> int:
                         f"over prior {window} days. Review queue updated."
                     ),
                     cta_url="/board/rejections-review/",
+                    kind="rejection_detected",
                 )
             elif is_backlog_run:
                 ntfy.send(
@@ -189,12 +190,14 @@ def main(since_days: int | None = None) -> int:
                         f"over prior {window} days. Review queue ready."
                     ),
                     cta_url="/board/rejections-review/",
+                    kind="rejection_detected",
                 )
             else:
                 ntfy.send(
                     title="New rejection email(s) detected",
                     body=f"{suggestions_created} new rejection(s) — review queue updated.",
                     cta_url="/board/rejections-review/",
+                    kind="rejection_detected",
                 )
 
         log_event(

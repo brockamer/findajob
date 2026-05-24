@@ -358,6 +358,46 @@ def test_matched_suggestion_persists_to_db(harness):
     assert reason == "Company passed"
 
 
+def test_ntfy_send_uses_rejection_detected_kind(harness):
+    """#839: all three ntfy.send() call sites tag kind='rejection_detected'."""
+    _write_config(harness)
+    _make_db(harness)
+
+    import sqlite3
+
+    conn = sqlite3.connect(detect_rejections.DB_PATH)
+    conn.execute(
+        """
+        INSERT INTO jobs (
+            id, fingerprint, title, company, url, source, status, stage, synthetic
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        ("job-1", "fp-1", "Engineer", "Acme", "https://x", "web_manual", "manual_review", "applied", 0),
+    )
+    conn.commit()
+    conn.close()
+
+    suggestion = _make_suggestion(extracted_company="Acme")
+    outcome = FetchOutcome(
+        result=_RESULT_SUCCESS,
+        messages=[("no-reply@us.greenhouse-mail.io", b"raw")],
+        new_uid=42,
+        new_uidvalidity=99,
+    )
+
+    mock_send = patch.object(detect_rejections.ntfy, "send")
+    with (
+        patch.object(detect_rejections, "fetch_new_messages_for_rejection_scan", return_value=outcome),
+        patch.object(detect_rejections, "classify_email", return_value=suggestion),
+        patch.object(detect_rejections, "match_job", return_value=MatchResult(job_id="job-1", status="matched")),
+        mock_send as send_mock,
+    ):
+        detect_rejections.main()
+
+    assert send_mock.call_count == 1
+    assert send_mock.call_args.kwargs.get("kind") == "rejection_detected"
+
+
 # ─── #586: subject/body fallback when extraction fails ───────────────────────
 
 
