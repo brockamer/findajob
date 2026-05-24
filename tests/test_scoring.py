@@ -172,3 +172,25 @@ def test_build_feedback_block_excludes_synthetic(tmp_path, monkeypatch):
     assert "[SPEC]" not in block, "synthetic rejection title leaked into feedback block"
     # Should report "1x" (the real one), not "2x"
     assert '1x "Fit Mismatch"' in block
+
+
+def test_score_job_llm_branch_has_scored_by(monkeypatch):
+    from unittest.mock import MagicMock
+    from findajob.scoring import score_job
+
+    fake_result = MagicMock()
+    fake_result.text = '{"score_status":"scored","relevance_score":7,"interview_likelihood":6,"strengths_alignment":"good","industry_sector":"tech","comp_estimate":"","ai_notes":"","score_flag_reason":null,"remote_status":"Remote"}'
+    fake_result.usage = MagicMock(prompt_tokens=100, completion_tokens=50, cost=0.001)
+
+    monkeypatch.setattr("findajob.scoring.complete", lambda **kw: fake_result)
+    monkeypatch.setattr("findajob.scoring.prefilter_score", lambda *a, **kw: (None, None))
+
+    result, latency, completion = score_job(
+        title="Operations Program Manager",
+        company="Some Company",
+        location="Remote",
+        jd_text="A long usable JD about running operations programs. " * 20,
+        candidate_profile="CANDIDATE PROFILE: example",
+    )
+    assert result["scored_by"] == "llm"
+    assert "company_tier" in result

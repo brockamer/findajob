@@ -31,6 +31,7 @@ from findajob.config_loader import (
     load_hard_reject_rules,
     load_in_domain_rules,
 )
+from findajob.tiers import resolve_tier
 
 
 def _hard_reject_match(title: str) -> str | None:
@@ -92,6 +93,8 @@ def prefilter_score(title: str, company: str, jd_usable: bool) -> tuple[dict[str
             "ai_notes": reason,
             "score_flag_reason": reason,
             "remote_status": "Unknown",
+            "scored_by": "prefilter_stage1",
+            "company_tier": resolve_tier(company),
         }, reason
 
     excluded = _excluded_employer_match(company)
@@ -107,6 +110,8 @@ def prefilter_score(title: str, company: str, jd_usable: bool) -> tuple[dict[str
             "ai_notes": reason,
             "score_flag_reason": "excluded_employer",
             "remote_status": "Unknown",
+            "scored_by": "prefilter_stage1",
+            "company_tier": resolve_tier(company),
         }, reason
 
     # ── Stage 2: In-domain title, JD absent → score 5 ─────────────────────────
@@ -122,6 +127,8 @@ def prefilter_score(title: str, company: str, jd_usable: bool) -> tuple[dict[str
             "ai_notes": reason,
             "score_flag_reason": None,
             "remote_status": "Unknown",
+            "scored_by": "prefilter_stage2",
+            "company_tier": resolve_tier(company),
         }, reason
 
     return None, None

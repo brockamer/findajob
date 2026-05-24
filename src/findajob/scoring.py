@@ -13,6 +13,7 @@ from findajob.llm.openrouter import CompletionResult, OpenRouterError, complete
 from findajob.llm_parsing import extract_json_payload, validate_llm_json
 from findajob.paths import BASE
 from findajob.scorer_prefilter import _hard_reject_match, prefilter_score
+from findajob.tiers import resolve_tier
 
 DB_PATH: str = f"{BASE}/data/pipeline.db"
 SCHEMA_PATH: str = f"{BASE}/config/scoring_schema.json"
@@ -185,23 +186,21 @@ def score_job(
             company=company,
             latency_ms=latency_ms,
         )
-        return (
-            _manual_review(
-                f"Scorer {e.kind}",
-                f"Scorer failed: {e.kind} ({e.status_code or 'n/a'})",
-            ),
-            latency_ms,
-            None,
+        _err = _manual_review(
+            f"Scorer {e.kind}",
+            f"Scorer failed: {e.kind} ({e.status_code or 'n/a'})",
         )
+        _err["scored_by"] = "llm"
+        _err["company_tier"] = resolve_tier(company)
+        return _err, latency_ms, None
     latency_ms = int((time.time() - start) * 1000)
 
     if not result.text.strip():
         log_event("score_error", reason="empty_output", title=title, company=company)
-        return (
-            _manual_review("Scorer empty output", "Scorer returned empty output"),
-            latency_ms,
-            result,
-        )
+        _empty = _manual_review("Scorer empty output", "Scorer returned empty output")
+        _empty["scored_by"] = "llm"
+        _empty["company_tier"] = resolve_tier(company)
+        return _empty, latency_ms, result
 
     parsed, error = validate_llm_json(_normalize_llm_output(result.text), SCHEMA_PATH)
 
@@ -229,21 +228,24 @@ def score_job(
                     "comp_estimate": "",
                     "ai_notes": "LLM validation failed; hard-reject title pattern matched",
                     "remote_status": "Unknown",
+                    "scored_by": "prefilter_stage1",
+                    "company_tier": resolve_tier(company),
                 },
                 latency_ms,
                 result,
             )
-        return (
-            _manual_review(
-                f"Validation: {error}",
-                "Scorer output failed validation",
-            ),
-            latency_ms,
-            result,
+        _val_err = _manual_review(
+            f"Validation: {error}",
+            "Scorer output failed validation",
         )
+        _val_err["scored_by"] = "llm"
+        _val_err["company_tier"] = resolve_tier(company)
+        return _val_err, latency_ms, result
 
     assert parsed is not None  # guaranteed: error is None means parsed is valid
     if parsed.get("relevance_score") is None:
         log_event("score_error", reason="null_score", title=title, company=company)
 
+    parsed["scored_by"] = "llm"
+    parsed["company_tier"] = resolve_tier(company)
     return parsed, latency_ms, result

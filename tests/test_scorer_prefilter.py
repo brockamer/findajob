@@ -344,6 +344,8 @@ class TestPrefilterScore:
             "ai_notes",
             "score_flag_reason",
             "remote_status",
+            "scored_by",
+            "company_tier",
         }
         assert set(result.keys()) == expected_keys
         assert result["remote_status"] == "Unknown"
@@ -363,6 +365,8 @@ class TestPrefilterScore:
             "ai_notes",
             "score_flag_reason",
             "remote_status",
+            "scored_by",
+            "company_tier",
         }
         assert set(result.keys()) == expected_keys
         assert result["score_flag_reason"] is None  # not flagged
@@ -494,3 +498,19 @@ class TestPrefilterScoreExcludedEmployer:
         """Non-excluded company falls through to normal flow."""
         result, _ = prefilter_score("Product Manager", "Google", jd_usable=True)
         assert result is None  # falls through to LLM
+
+
+def test_stage1_hard_reject_returns_scored_by():
+    from findajob.scorer_prefilter import prefilter_score
+    result, _ = prefilter_score("Software Engineer at Acme", "Acme", jd_usable=True)
+    if result is not None:
+        assert result["scored_by"] == "prefilter_stage1"
+        assert "company_tier" in result
+
+
+def test_stage2_indomain_nojd_returns_scored_by():
+    from findajob.scorer_prefilter import prefilter_score
+    result, _ = prefilter_score("Data Center Operations Manager", "Acme", jd_usable=False)
+    if result is not None:
+        assert result["scored_by"] == "prefilter_stage2"
+        assert "company_tier" in result
