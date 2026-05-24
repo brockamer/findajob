@@ -1,4 +1,5 @@
 """Verify triage UPDATE includes scored_by + company_tier columns."""
+
 from pathlib import Path
 
 

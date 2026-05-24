@@ -1,4 +1,5 @@
 """Verify onboarding injector calls detect_and_record after paste-back."""
+
 from pathlib import Path
 
 

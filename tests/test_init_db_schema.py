@@ -77,7 +77,17 @@ def test_config_changes_table_exists(fresh_db):
 def test_recall_audit_table_exists(fresh_db):
     """Migration 0007: recall_audit table must have all required columns."""
     cols = _columns(fresh_db, "recall_audit")
-    assert cols >= {"id", "job_id", "audited_at", "original_score", "original_scored_by", "auditor_model", "audited_score", "upgraded", "audit_notes"}
+    assert cols >= {
+        "id",
+        "job_id",
+        "audited_at",
+        "original_score",
+        "original_scored_by",
+        "auditor_model",
+        "audited_score",
+        "upgraded",
+        "audit_notes",
+    }
 
 
 def test_jobs_has_company_tier_column(fresh_db):

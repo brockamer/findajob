@@ -1,4 +1,5 @@
 """Tests for the config-drift detector."""
+
 from __future__ import annotations
 
 import os

@@ -1,4 +1,5 @@
 """Verify triage orchestrator calls detect_and_record before scoring."""
+
 from pathlib import Path
 
 

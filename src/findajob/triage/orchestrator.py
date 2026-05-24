@@ -41,6 +41,7 @@ from findajob.fetchers import (
 from findajob.fetchers.adapters import iter_configured_adapters
 from findajob.fetchers.adapters.gmail import GmailLinkedInAdapter
 from findajob.metrics.config_changes import detect_and_record
+from findajob.notifications.ntfy import quick_notify
 from findajob.onboarding import is_complete as _onboarding_is_complete
 from findajob.paths import BASE, load_env
 from findajob.scoring import _build_feedback_block, score_job

@@ -1,4 +1,5 @@
 """Verify /config/ POST triggers drift detection."""
+
 from pathlib import Path
 
 

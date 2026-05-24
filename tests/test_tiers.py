@@ -1,4 +1,5 @@
 """Tests for company tier resolution."""
+
 from __future__ import annotations
 
 import pytest

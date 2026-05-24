@@ -176,10 +176,15 @@ def test_build_feedback_block_excludes_synthetic(tmp_path, monkeypatch):
 
 def test_score_job_llm_branch_has_scored_by(monkeypatch):
     from unittest.mock import MagicMock
+
     from findajob.scoring import score_job
 
     fake_result = MagicMock()
-    fake_result.text = '{"score_status":"scored","relevance_score":7,"interview_likelihood":6,"strengths_alignment":"good","industry_sector":"tech","comp_estimate":"","ai_notes":"","score_flag_reason":null,"remote_status":"Remote"}'
+    fake_result.text = (
+        '{"score_status":"scored","relevance_score":7,"interview_likelihood":6,'
+        '"strengths_alignment":"good","industry_sector":"tech","comp_estimate":"",'
+        '"ai_notes":"","score_flag_reason":null,"remote_status":"Remote"}'
+    )
     fake_result.usage = MagicMock(prompt_tokens=100, completion_tokens=50, cost=0.001)
 
     monkeypatch.setattr("findajob.scoring.complete", lambda **kw: fake_result)

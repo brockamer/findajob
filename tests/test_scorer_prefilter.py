@@ -502,6 +502,7 @@ class TestPrefilterScoreExcludedEmployer:
 
 def test_stage1_hard_reject_returns_scored_by():
     from findajob.scorer_prefilter import prefilter_score
+
     result, _ = prefilter_score("Software Engineer at Acme", "Acme", jd_usable=True)
     if result is not None:
         assert result["scored_by"] == "prefilter_stage1"
@@ -510,6 +511,7 @@ def test_stage1_hard_reject_returns_scored_by():
 
 def test_stage2_indomain_nojd_returns_scored_by():
     from findajob.scorer_prefilter import prefilter_score
+
     result, _ = prefilter_score("Data Center Operations Manager", "Acme", jd_usable=False)
     if result is not None:
         assert result["scored_by"] == "prefilter_stage2"
