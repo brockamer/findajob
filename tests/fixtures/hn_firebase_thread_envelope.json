@@ -1,0 +1,71 @@
+{
+  "_meta": "Recorded HN Firebase API responses for test_hn_firebase_adapter.py. Represents a 'Who is Hiring' thread with 5 top-level comments in the standard pipe-delimited format.",
+  "user": {
+    "id": "whoishiring",
+    "created": 1243524477,
+    "karma": 5000,
+    "submitted": [99001, 99002, 98500, 98000, 97500, 97000]
+  },
+  "thread": {
+    "id": 99001,
+    "type": "story",
+    "by": "whoishiring",
+    "title": "Ask HN: Who is hiring? (June 2026)",
+    "text": "",
+    "time": 1748736000,
+    "kids": [100001, 100002, 100003, 100004, 100005],
+    "descendants": 450
+  },
+  "comments": {
+    "100001": {
+      "id": 100001,
+      "type": "comment",
+      "by": "acme_recruiter",
+      "text": "Acme Corp | Senior Backend Engineer | San Francisco, CA | Remote OK | $180k-$220k<p>We're building the next generation of developer tools. Looking for senior engineers with strong distributed systems experience.<p>Stack: Go, PostgreSQL, Kubernetes<p>Apply: https://acme.example.com/careers/sbe",
+      "time": 1748736100,
+      "parent": 99001
+    },
+    "100002": {
+      "id": 100002,
+      "type": "comment",
+      "by": "startup_cto",
+      "text": "NovaTech | Full Stack Developer | Remote (US/EU) | $140k-$170k<p>Early-stage AI startup (Series A, $12M raised). Building tools for content creators.<p>Tech: TypeScript, React, Python, FastAPI<p>Email: jobs@novatech.example.com",
+      "time": 1748736200,
+      "parent": 99001
+    },
+    "100003": {
+      "id": 100003,
+      "type": "comment",
+      "by": "bigco_hiring",
+      "text": "MegaSoft | Platform Engineer | Seattle, WA | Onsite | $200k-$260k + equity<p>Join our cloud infrastructure team. We process 10B+ events/day.<p>Requirements:<br>- 5+ years systems programming<br>- Experience with large-scale distributed systems<br>- Strong Linux fundamentals<p>Apply at https://megasoft.example.com/platform-eng",
+      "time": 1748736300,
+      "parent": 99001
+    },
+    "100004": {
+      "id": 100004,
+      "type": "comment",
+      "by": "deleted_poster",
+      "text": "",
+      "time": 1748736400,
+      "parent": 99001,
+      "deleted": true
+    },
+    "100005": {
+      "id": 100005,
+      "type": "comment",
+      "by": "indie_dev",
+      "text": "Looking for a contract React Native developer for 3-month project. Building a fitness tracking app. Budget: $80/hr. Remote OK, prefer US timezone overlap.<p>DM me on HN or email: indie@example.com",
+      "time": 1748736500,
+      "parent": 99001
+    }
+  },
+  "non_hiring_story": {
+    "id": 98500,
+    "type": "story",
+    "by": "whoishiring",
+    "title": "Ask HN: Who wants to be hired? (June 2026)",
+    "time": 1748736000,
+    "kids": [200001],
+    "descendants": 200
+  }
+}

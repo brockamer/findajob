@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Backup — Settings{% endblock %}
+{% block content %}
+<div class="max-w-2xl space-y-6">
+  <div>
+    <h1 class="text-2xl font-semibold mb-1">Backup</h1>
+    <p class="text-sm text-slate-600">
+      Download a complete snapshot of this stack's state — database, config,
+      candidate profile, prep materials, and logs. Use it to restore on a new
+      instance or as disaster recovery.
+    </p>
+  </div>
+
+  <div class="rounded-lg border-2 border-amber-300 bg-amber-50 p-4">
+    <p class="text-sm font-semibold text-amber-900">
+      This file contains your API keys and personal data. Keep it private.
+    </p>
+    <p class="text-xs text-amber-800 mt-1">
+      The tarball includes your <code>.env</code> (API keys), candidate profile,
+      resume, cover letters, and LinkedIn connections. Treat it like a password
+      export&thinsp;—&thinsp;don't post it publicly or share it over unencrypted channels.
+    </p>
+  </div>
+
+  <div class="rounded-lg border border-slate-200 bg-white p-4 space-y-2">
+    <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">What's included</h2>
+    <ul class="text-sm text-slate-700 space-y-1 list-disc list-inside">
+      <li>Database (pipeline.db) — dumped via SQLite online backup API{% if db_exists %} <span class="text-slate-500">({{ db_size_mb }}&thinsp;MB)</span>{% endif %}</li>
+      {% for d in state_dirs %}
+      <li><code>{{ d }}/</code></li>
+      {% endfor %}
+    </ul>
+    <p class="text-xs text-slate-500 mt-2">
+      Excludes: WAL sidecars, <code>.stale/</code>, <code>*.bak</code> files.
+    </p>
+  </div>
+
+  <form method="post" action="/settings/backup/download">
+    <button type="submit"
+            class="inline-flex items-center gap-2 px-5 py-2.5 rounded-md bg-slate-900 text-white hover:bg-slate-700 text-sm font-medium"
+            {% if not db_exists %}disabled title="No database found"{% endif %}>
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V3"/>
+      </svg>
+      Download backup tarball
+    </button>
+  </form>
+
+  <details class="text-xs text-slate-500">
+    <summary class="cursor-pointer hover:text-slate-700">Restoring from a backup</summary>
+    <p class="mt-2">
+      To restore this backup on a new findajob instance, go through initial setup
+      and choose <strong>"Restore from backup"</strong> on the onboarding page.
+      Upload this tarball and the new instance will pick up exactly where this one
+      left off — no interview needed.
+    </p>
+  </details>
+</div>
+{% endblock %}

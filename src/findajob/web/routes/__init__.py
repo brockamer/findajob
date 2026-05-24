@@ -19,9 +19,11 @@ from findajob.web.routes import (
     onboarding_connections,
     onboarding_feed_config,
     onboarding_gmail_config,
+    onboarding_restore,
     onboarding_spend_ceiling,
     rejections_review,
     settings_active_sources,
+    settings_backup,
     settings_connections,
     settings_excluded_employers,
     settings_reject_reasons,
@@ -52,6 +54,7 @@ router.include_router(exclusion_rule.router, dependencies=_guard)
 router.include_router(ingest.router)
 router.include_router(settings_reject_reasons.router, dependencies=_guard)
 router.include_router(settings_active_sources.router, dependencies=_guard)
+router.include_router(settings_backup.router, dependencies=_guard)
 router.include_router(settings_connections.router, dependencies=_guard)
 router.include_router(settings_excluded_employers.router, dependencies=_guard)
 router.include_router(settings_spend_ceiling.router, dependencies=_guard)
@@ -67,6 +70,7 @@ router.include_router(onboarding.router)
 router.include_router(onboarding_feed_config.router)
 router.include_router(onboarding_gmail_config.router)
 router.include_router(onboarding_connections.router)
+router.include_router(onboarding_restore.router)
 router.include_router(onboarding_spend_ceiling.router)
 router.include_router(docs.router)
 router.include_router(notifications.router, dependencies=_guard)

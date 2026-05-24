@@ -1,0 +1,35 @@
+[
+  {
+    "id": "bnt_abc123",
+    "title": "Fix OAuth2 PKCE flow for mobile clients",
+    "description": "The current OAuth2 implementation doesn't properly handle PKCE for native mobile applications. Need to implement RFC 7636 with S256 code challenge method.\n\nAcceptance criteria:\n- PKCE flow works with iOS and Android native apps\n- Backward compatible with existing web flow\n- Tests covering all edge cases",
+    "reward_formatted": "$500",
+    "reward": 500,
+    "status": "open",
+    "url": "https://console.algora.io/org/cal-com/bounties/bnt_abc123",
+    "created_at": "2026-05-20T14:30:00Z",
+    "org_name": "Cal.com"
+  },
+  {
+    "id": "bnt_def456",
+    "title": "Implement WebSocket reconnection with exponential backoff",
+    "description": "WebSocket connections drop silently on mobile networks. Need automatic reconnection logic with exponential backoff and jitter.\n\nShould handle:\n- Network transitions (WiFi → cellular)\n- Server restarts\n- Token refresh during reconnection",
+    "reward_formatted": "$750",
+    "reward": 750,
+    "status": "open",
+    "url": "https://console.algora.io/org/cal-com/bounties/bnt_def456",
+    "created_at": "2026-05-18T09:15:00Z",
+    "org_name": "Cal.com"
+  },
+  {
+    "id": "bnt_ghi789",
+    "title": "Add CalDAV sync support for Fastmail",
+    "description": "Fastmail uses standard CalDAV but has some quirks with recurring events. Need adapter that handles their specific VTIMEZONE representations.",
+    "reward_formatted": "$1,000",
+    "reward": 1000,
+    "status": "open",
+    "url": "https://console.algora.io/org/cal-com/bounties/bnt_ghi789",
+    "created_at": "2026-05-15T11:00:00Z",
+    "org_name": "Cal.com"
+  }
+]

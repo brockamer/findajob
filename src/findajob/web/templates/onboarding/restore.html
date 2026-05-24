@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Restore from backup — findajob{% endblock %}
+{% block content %}
+<div class="max-w-2xl mx-auto p-6 space-y-6">
+  <div>
+    <h1 class="text-2xl font-semibold mb-1">Restore from backup</h1>
+    <p class="text-sm text-slate-600">
+      Upload a backup tarball from another findajob instance. Your database,
+      config, candidate profile, and prep materials will be restored — no
+      interview needed.
+    </p>
+  </div>
+
+  {% if validation_error %}
+  <div class="rounded-lg border border-rose-200 bg-rose-50 p-4">
+    <p class="text-sm text-rose-800">{{ validation_error }}</p>
+  </div>
+  {% endif %}
+
+  {% if restore_error %}
+  <div class="rounded-lg border border-rose-200 bg-rose-50 p-4">
+    <p class="text-sm font-semibold text-rose-800">Restore failed</p>
+    <p class="text-sm text-rose-700 mt-1">{{ restore_error }}</p>
+    <p class="text-xs text-rose-600 mt-2">
+      Previous state has been rolled back. You can retry with a different tarball
+      or <a href="/onboarding/" class="underline">start a fresh interview</a> instead.
+    </p>
+  </div>
+  {% endif %}
+
+  {% if needs_confirm %}
+  <div class="rounded-lg border-2 border-amber-300 bg-amber-50 p-4 space-y-3">
+    <p class="text-sm font-semibold text-amber-900">
+      This instance is already set up.
+    </p>
+    <p class="text-sm text-amber-800">
+      Restoring will replace all existing data — database, config, candidate profile,
+      and prep materials. This cannot be undone. If you want to keep the current state,
+      <a href="/settings/backup/" class="underline">download a backup first</a>.
+    </p>
+    <form method="post" action="/onboarding/restore/upload" enctype="multipart/form-data">
+      <input type="hidden" name="confirm_overwrite" value="yes">
+      <label class="block text-sm font-medium text-amber-900 mb-2">
+        Upload the tarball to confirm overwrite
+        <input type="file" name="backup_tarball" accept=".tar.gz,.tgz" required
+               class="mt-2 block w-full text-sm text-slate-700
+                      file:mr-3 file:rounded-md file:border-0
+                      file:bg-amber-600 file:px-3 file:py-1.5
+                      file:text-sm file:font-medium file:text-white
+                      hover:file:bg-amber-700" />
+      </label>
+      <button type="submit"
+              class="mt-2 px-4 py-2 rounded-md bg-amber-600 text-white hover:bg-amber-700 text-sm font-medium">
+        Overwrite and restore
+      </button>
+      <a href="/board/dashboard"
+         class="ml-3 text-sm text-slate-600 hover:text-slate-900">Cancel</a>
+    </form>
+  </div>
+  {% else %}
+
+  <form method="post" action="/onboarding/restore/upload" enctype="multipart/form-data"
+        class="rounded-lg border border-slate-200 bg-white p-4 space-y-3">
+    <label class="block text-sm font-medium text-slate-800">
+      Backup tarball (.tar.gz)
+      <input type="file" name="backup_tarball" accept=".tar.gz,.tgz" required
+             class="mt-2 block w-full text-sm text-slate-700
+                    file:mr-3 file:rounded-md file:border-0
+                    file:bg-slate-900 file:px-3 file:py-1.5
+                    file:text-sm file:font-medium file:text-white
+                    hover:file:bg-slate-700" />
+    </label>
+    <p class="text-xs text-slate-500">
+      Maximum size: {{ max_upload_mb }}&thinsp;MB. Must be a <code>.tar.gz</code>
+      with the standard <code>state/</code> layout.
+    </p>
+    <button type="submit"
+            class="px-4 py-2 rounded-md bg-slate-900 text-white hover:bg-slate-700 text-sm font-medium">
+      Restore
+    </button>
+  </form>
+
+  {% endif %}
+
+  <p class="text-sm text-slate-500">
+    <a href="/onboarding/" class="underline hover:text-slate-700">Back to onboarding</a>
+    — start a fresh interview instead.
+  </p>
+</div>
+{% endblock %}
