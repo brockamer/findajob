@@ -3,8 +3,8 @@
 Migrated from tests/test_gmail_imap.py:436-543 (the four `fetch_gmail_jobs`
 integration tests) to exercise the adapter directly per AC #8. The IMAP
 auth-streak counter at AUTH_FAILED is the hot-zone behavior — extra
-regression coverage included for the streak=3 transition AND the
-streak=4 no-re-fire invariant.
+regression coverage included for the threshold-crossing transition,
+the periodic re-fire interval, and the no-fire gap between them (#837).
 
 Fixtures construct GmailConfig / GmailState dataclass instances and use
 gmail_imap.save_config / save_state rather than writing JSON literals,
@@ -118,12 +118,9 @@ def test_fetch_increments_streak_on_auth_failure_and_ntfys_at_three(cfg_path, st
     assert "Gmail login failed" in sent[0]
 
 
-def test_fetch_does_not_refire_ntfy_after_streak_passes_three(cfg_path, state_path, monkeypatch) -> None:
-    """Hot-zone regression test (advisor add): once streak hits 3 the ntfy fires
-    exactly once. AUTH_FAILED at streak=3 → streak goes to 4 but ntfy MUST NOT
-    re-fire. Locks in the `if new_streak == 3:` exact-equality intent so a
-    future "fix" to `>=` fails CI loudly rather than silently spamming the
-    operator every 30 minutes."""
+def test_fetch_does_not_refire_ntfy_between_threshold_and_refire_interval(cfg_path, state_path, monkeypatch) -> None:
+    """Streak=3→4: past threshold but not at a re-fire boundary — no notification.
+    Replaces the old exact-equality lockdown test (#837)."""
     _save_valid_config()
     _save_state(streak=3)
 
@@ -141,6 +138,60 @@ def test_fetch_does_not_refire_ntfy_after_streak_passes_three(cfg_path, state_pa
     new_state = gmail_imap.load_state()
     assert new_state.auth_failure_streak == 4
     assert sent == []
+
+
+def test_fetch_streak_progression_fires_twice_over_full_interval(cfg_path, state_path, monkeypatch) -> None:
+    """AC: streak 3→4→...→27 → exactly 2 fires (one at 3, one at 27 with interval=24).
+    Simulates 25 consecutive auth failures starting from streak=2."""
+    from findajob.fetchers.adapters.gmail import _AUTH_FAIL_REFIRE_INTERVAL, _AUTH_FAIL_THRESHOLD
+
+    _save_valid_config()
+    _save_state(streak=2)
+
+    fake_outcome = gmail_imap.FetchOutcome(result=gmail_imap.TestResult.AUTH_FAILED)
+    monkeypatch.setattr(gmail_imap, "fetch_new_messages", lambda *a, **k: fake_outcome)
+
+    sent: list[str] = []
+    monkeypatch.setattr(
+        "findajob.fetchers.notify_send_raw",
+        lambda msg: sent.append(msg),
+        raising=False,
+    )
+
+    target_refire = _AUTH_FAIL_THRESHOLD + _AUTH_FAIL_REFIRE_INTERVAL  # 27
+    iterations = target_refire - 2  # streak starts at 2, run until streak reaches 27
+    for _ in range(iterations):
+        GmailLinkedInAdapter().fetch([])
+
+    new_state = gmail_imap.load_state()
+    assert new_state.auth_failure_streak == target_refire
+    assert len(sent) == 2
+    assert "Gmail login failed" in sent[0]
+    assert "Gmail login failed" in sent[1]
+
+
+def test_fetch_streak_crosses_three_then_continues_fires_once(cfg_path, state_path, monkeypatch) -> None:
+    """AC: streak crosses 3 and continues (3→4→5→6) — exactly 1 fire on the
+    crossing, no re-fires in the short term."""
+    _save_valid_config()
+    _save_state(streak=2)
+
+    fake_outcome = gmail_imap.FetchOutcome(result=gmail_imap.TestResult.AUTH_FAILED)
+    monkeypatch.setattr(gmail_imap, "fetch_new_messages", lambda *a, **k: fake_outcome)
+
+    sent: list[str] = []
+    monkeypatch.setattr(
+        "findajob.fetchers.notify_send_raw",
+        lambda msg: sent.append(msg),
+        raising=False,
+    )
+
+    for _ in range(4):
+        GmailLinkedInAdapter().fetch([])
+
+    new_state = gmail_imap.load_state()
+    assert new_state.auth_failure_streak == 6
+    assert len(sent) == 1
 
 
 def test_fetch_resets_streak_on_success(cfg_path, state_path, monkeypatch) -> None:

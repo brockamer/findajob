@@ -23,6 +23,9 @@ from findajob.audit import log_event
 
 from .base import LiveTestResult, QueryResult
 
+_AUTH_FAIL_THRESHOLD = 3
+_AUTH_FAIL_REFIRE_INTERVAL = 24
+
 
 class GmailLinkedInAdapter:
     """IMAP-backed adapter for LinkedIn / Indeed / ZipRecruiter / Google
@@ -71,13 +74,16 @@ class GmailLinkedInAdapter:
 
         if outcome.result == gmail_imap.TestResult.AUTH_FAILED:
             new_streak = state.auth_failure_streak + 1
+            prev_streak = state.auth_failure_streak
             gmail_imap.save_state(replace(state, auth_failure_streak=new_streak, last_error="auth_failed"))
             log_event("gmail_auth_failed", streak=new_streak)
-            # Exact-equality intent: notify only on the 2→3 transition. Test
-            # `test_fetch_does_not_refire_ntfy_after_streak_passes_three` locks
-            # this in — do not change `==` to `>=` without re-thinking the
-            # operator-experience contract.
-            if new_streak == 3:
+            should_notify = False
+            if new_streak >= _AUTH_FAIL_THRESHOLD:
+                if prev_streak < _AUTH_FAIL_THRESHOLD:
+                    should_notify = True
+                elif (new_streak - _AUTH_FAIL_THRESHOLD) % _AUTH_FAIL_REFIRE_INTERVAL == 0:
+                    should_notify = True
+            if should_notify:
                 try:
                     _fmod.notify_send_raw("🔐 Gmail login failed — refresh app password at /config/gmail/")
                 except Exception as e:
