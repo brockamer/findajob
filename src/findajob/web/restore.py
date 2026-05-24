@@ -87,8 +87,12 @@ def restore_from_tarball(raw: bytes, base: Path) -> RestoreResult:
     from datetime import UTC, datetime
 
     ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
-    staging = base / f".restore-staging-{ts}"
-    rollback = base / f".restore-rollback-{ts}"
+    # Use data/ as parent for staging dirs — BASE itself may be read-only
+    # (e.g. /app/ in Docker where only bind-mounted subdirs are writable).
+    work_root = base / "data"
+    work_root.mkdir(parents=True, exist_ok=True)
+    staging = work_root / f".restore-staging-{ts}"
+    rollback = work_root / f".restore-rollback-{ts}"
 
     try:
         staging.mkdir(parents=True, exist_ok=True)
@@ -133,6 +137,8 @@ def restore_from_tarball(raw: bytes, base: Path) -> RestoreResult:
 
         rollback.mkdir(parents=True, exist_ok=True)
 
+        skip_names = {staging.name, rollback.name}
+
         for dirname in _STATE_DIRS:
             staged = staging / dirname
             if not staged.exists():
@@ -143,11 +149,15 @@ def restore_from_tarball(raw: bytes, base: Path) -> RestoreResult:
                 rollback_dest = rollback / dirname
                 rollback_dest.mkdir(parents=True, exist_ok=True)
                 for child in existing.iterdir():
+                    if child.name in skip_names:
+                        continue
                     child.rename(rollback_dest / child.name)
             else:
                 existing.mkdir(parents=True, exist_ok=True)
 
             for child in staged.iterdir():
+                if child.name in skip_names:
+                    continue
                 child.rename(existing / child.name)
 
         for secret_rel in _SECRETS_FILES:
