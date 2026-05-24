@@ -177,7 +177,7 @@ def test_group_files_skips_subdirectories(tmp_path: Path):
     ],
 )
 def test_classify_works_across_display_names(filename: str, expected_label: str):
-    """display_name is configurable per-tester (#335) — the classifier
+    """display_name is configurable per-user (#335) — the classifier
     keys on document-type substring, not the leading display_name."""
     assert _classify_file(filename)[0] == expected_label
 

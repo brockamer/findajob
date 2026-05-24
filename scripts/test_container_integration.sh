@@ -6,8 +6,7 @@
 # Spins up a throwaway stack with EMPTY bind mounts, provides the minimum
 # realistic input (live API keys + one fixture candidate profile), runs the
 # full triage-to-pipeline_complete cycle, and asserts a scored job lands in
-# the DB. Proves an external tester can go from "clone + configure" to a
-# working pipeline with no operator intervention.
+# the DB. Proves a user can go from "clone + configure" to a working pipeline.
 #
 # This is the pre-tag release gate. Claude runs it from a docker-equipped
 # host before proposing any v0.1.x tag cut. See docs/maintainers/release-process.md
@@ -77,7 +76,7 @@ done
 
 IMAGE="${FINDAJOB_TEST_IMAGE:-findajob:local}"
 
-# Source .env either from the operator's standard location or from the
+# Source .env either from the standard install location or from the
 # working copy — same fallback the old script used.
 SRC_ENV=""
 if [ -f "$HOME/.findajob/state/data/.env" ]; then
@@ -113,7 +112,7 @@ mkdir -p "$SCRATCH/state"/{data,config,candidate_context,companies,logs}
 # 4. Seed inputs into the bind mounts
 # ────────────────────────────────────────────────────────────────────────────
 
-# API keys → state/data/.env (copied from live operator install)
+# API keys → state/data/.env (copied from live install)
 cp "$SRC_ENV" "$SCRATCH/state/data/.env"
 chmod 600 "$SCRATCH/state/data/.env"
 

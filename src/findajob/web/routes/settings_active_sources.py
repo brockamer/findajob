@@ -8,8 +8,8 @@ returning an HTMX partial with success/error feedback.
 Pre-#410.5 the orchestrator fired `fetch_greenhouse_jobs` /
 `fetch_ashby_jobs` / `fetch_lever_jobs` / `fetch_gmail_jobs` unconditionally.
 After #410.5 every adapter is registry-gated by `active_sources.txt`, and
-existing tester stacks need to add the four formerly-unconditional adapters.
-This UI lets each tester self-serve that migration instead of operator
+existing deployments that predate #410.5 need to add the four formerly-unconditional adapters.
+This UI lets each user self-serve that migration instead of operator
 SSH'ing into every stack.
 """
 

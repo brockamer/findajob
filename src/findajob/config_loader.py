@@ -30,7 +30,7 @@ _PROFILE_PATH = Path(BASE) / "candidate_context" / "profile.md"
 
 # Field-agnostic fallback used when `config/reject_reasons.yaml` is missing or
 # `reasons:` is empty. Operator stacks override via the file (interview-emitted
-# in a follow-up to #429); fresh installs and tester stacks see this default.
+# in a follow-up to #429); fresh installs and new deployments see this default.
 _DEFAULT_REJECT_REASONS: tuple[str, ...] = (
     "Not relevant",
     "Skills Mismatch",

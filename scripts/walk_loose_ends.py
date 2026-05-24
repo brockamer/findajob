@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Dynamic UX loose-end walkthrough entry point (#572 Phase 2).
 
-Walks two personas (nux_user @ findajob-clean, established_user @
-findajob-staging) through the YAML itinerary, evaluates each evaluate_dom
+Walks two personas (nux_user @ fresh-install instance, established_user @
+populated instance) through the YAML itinerary, evaluates each evaluate_dom
 step against the cat-2 / cat-3 rubrics, writes a dated roll-up report.
 
 Runs on the dev VM against findajob.paths.BASE — not in the container.
@@ -10,8 +10,8 @@ Runs on the dev VM against findajob.paths.BASE — not in the container.
 Usage:
     uv run python scripts/walk_loose_ends.py \\
         --persona all \\
-        --nux-url https://findajob-clean.<operator-domain>/ \\
-        --established-url https://findajob-staging.<operator-domain>/ \\
+        --nux-url https://<fresh-instance-url>/ \\
+        --established-url https://<populated-instance-url>/ \\
         --output-dir docs/personal/audit-reports/2026-05-19-walkthrough-run/ \\
         --secrets-file ~/.secrets
 
@@ -68,9 +68,9 @@ def _filter_walkthroughs(walkthroughs: list[Walkthrough], persona: str) -> list[
 def _resolve_creds(secrets: dict[str, str], persona: str) -> tuple[str, str]:
     """Pick basic-auth creds per persona, with FINDAJOB_TEST_* as legacy fallback.
 
-    Per-persona keys reflect the per-stack split (clean for nux, staging for
-    established); FINDAJOB_TEST_* predates the #565 findajob-test → findajob-clean
-    rename and is kept as a fallback so older ~/.secrets layouts keep working.
+    Per-persona keys reflect the per-stack split (fresh instance for nux, populated
+    instance for established); FINDAJOB_TEST_* is kept as a fallback so older
+    ~/.secrets layouts keep working.
     """
     primary_user_key = {
         "nux_user": "FINDAJOB_CLEAN_USER",

@@ -116,8 +116,7 @@ Active labels:
 | `documentation` | Docs-only change |
 | `migration-required` | Manual step required (schema/config/crontab/mount/compose-down) before `docker compose pull`. Applied at PR-open time so the release-notes pipeline picks it up. |
 | `tracking` | Long-running tracking ticket; closes when external prerequisites land. |
-| `feedback` | Operator/tester feedback ticket. |
-| `nux-papa-findings` | NUX cliffs surfaced during papa's beta walkthrough (#337). |
+| `feedback` | User feedback ticket. |
 | `big-idea` | Speculative far-horizon concept; not on the active roadmap. Always pair with Priority: Low. |
 | `personal` | User-specific content — not generalizable pipeline work (e.g. personal resume edits). Not part of the shared roadmap; tracked here for convenience only. |
 

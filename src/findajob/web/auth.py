@@ -5,9 +5,9 @@ set and non-empty. When unset, the middleware is not added at all and every
 request passes through. When set, every request to a non-allowlisted path
 must present matching HTTP Basic Auth credentials or gets 401.
 
-Threat model: drive-by scanning of internet-exposed per-tester instances
-(`findajob-{tester}.example.com`). Defense layers upstream are TLS
-termination + geo-IP restriction. This is shared-secret auth, not identity.
+Threat model: drive-by scanning of internet-exposed instances. Defense
+layers upstream are TLS termination + geo-IP restriction. This is
+shared-secret auth, not identity.
 """
 
 from __future__ import annotations

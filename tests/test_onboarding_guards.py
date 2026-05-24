@@ -3,7 +3,7 @@ hasn't completed onboarding.
 
 Was: triage.py crashed on missing profile.md (`pipeline_crash`) and
 discover_companies failed similarly. Each cron tick on a deployed but
-never-onboarded tester stack emitted noise into pipeline.jsonl.
+never-onboarded stack emitted noise into pipeline.jsonl.
 
 Now: each script checks the onboarding sentinel and emits a structured
 `*_skipped` event before returning 0.
@@ -34,7 +34,7 @@ def _load_script(name: str):
 
 
 def test_triage_skipped_when_not_onboarded(tmp_path: Path, monkeypatch):
-    """Cron fires triage on a tester stack with no profile.md/sentinel —
+    """Cron fires triage on a stack with no profile.md/sentinel —
     must emit `triage_skipped` and return cleanly instead of raising
     FileNotFoundError on PROFILE_PATH.
 

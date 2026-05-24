@@ -1,6 +1,6 @@
 """`/tools/logs/pipeline/` — bounded tail viewer for pipeline.jsonl (#650).
 
-Reuses `findajob.admin.jsonl_tail.tail_events` for the read; same source
+Reuses `findajob.jsonl_tail.tail_events` for the read; same source
 the cron_registry concurrency gate uses, so the log viewer is a fully
 faithful window onto whatever the gate sees. Filtering happens in
 Python after the read, not via shell pipes.
@@ -17,7 +17,7 @@ from pathlib import Path
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
-from findajob.admin.jsonl_tail import tail_events
+from findajob.jsonl_tail import tail_events
 
 router = APIRouter()
 

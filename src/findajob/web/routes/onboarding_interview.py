@@ -1,11 +1,11 @@
 """In-app onboarding interview routes (#336 + #339).
 
 Wires session_store + interview_runner + parser + injector into a chat
-surface so non-technical testers can complete onboarding without leaving
+surface so non-technical users can complete onboarding without leaving
 findajob's UI.
 
 Routes always register (#339); the in-app affordance is gated at runtime
-on tester credentials being collected (Step 1 of /onboarding/). When no
+on user credentials being collected (Step 1 of /onboarding/). When no
 credentials are present the routes return 503 with an actionable error
 pointing the user back to /onboarding/ Step 1.
 
@@ -68,15 +68,15 @@ _KICKOFF_USER_MESSAGE = "Begin the interview."
 def _resolved_chat_key(conn: sqlite3.Connection, session_id: str | None) -> str:
     """Return the OpenRouter key for chat-runner calls.
 
-    Reads the tester's own key in precedence order:
+    Reads the user's own key in precedence order:
 
-    1. The tester's own key on the given session (if session_id provided
+    1. The user's own key on the given session (if session_id provided
        and credentials set on it).
     2. The most-recent credentials-only session's OpenRouter key (when
        called from /start before a chat session exists).
     3. Empty string — caller surfaces a 503 with link back to /onboarding/.
 
-    Tester pays for their own chat — there is no operator-funded fallback.
+    User pays for their own chat — there is no operator-funded fallback.
     """
     if session_id is not None:
         creds = get_credentials(conn, session_id)
@@ -94,7 +94,7 @@ def _unavailable_503() -> HTTPException:
     """Consistent 503 surface for "in-app interview unavailable" cases.
 
     Detail message points the user at /onboarding/ Step 1 — the only path
-    out of this state is to supply tester credentials.
+    out of this state is to supply user credentials.
     """
     return HTTPException(
         status_code=503,
@@ -171,7 +171,7 @@ def _render_error_partial(
 def _keys_collected_for(conn: sqlite3.Connection, session_id: str) -> tuple[bool, str]:
     """Return ``(keys_collected, openrouter_last4)`` for finalize-form rendering.
 
-    True iff the session has a non-NULL ``tester_openrouter_key``. Templates
+    True iff the session has a non-NULL ``user_openrouter_key``. Templates
     use this to hide the finalize OR-input field when Step 1 already has
     the key — typing a different one at finalize broke the smoke check
     and stranded the user on an unfinishable session (the loop-back bug).

@@ -374,7 +374,7 @@ def test_set_credentials_blank_strings_stored_as_null(db):
 
     # Verify at the raw SQL level too.
     row = db.execute(
-        "SELECT tester_openrouter_key FROM onboarding_sessions WHERE id = ?",
+        "SELECT user_openrouter_key FROM onboarding_sessions WHERE id = ?",
         (sid,),
     ).fetchone()
     assert row[0] is None

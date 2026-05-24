@@ -28,12 +28,12 @@ def tail_events(path: Path, *, max_bytes: int = 1_048_576) -> Iterator[dict]:
     """
     # Catch OSError (parent of FileNotFoundError AND PermissionError) so
     # a foreign-uid / chmod-stripped log file degrades to "no events"
-    # rather than 500-ing the operator dashboard. The bounded-tail
-    # design exists exactly to keep this path defensive.
+    # rather than 500-ing the dashboard. The bounded-tail design exists
+    # exactly to keep this path defensive.
     try:
         size = os.path.getsize(path)
     except OSError:
-        logger.warning("admin_stacks.jsonl_tail: cannot stat %s", path)
+        logger.warning("jsonl_tail: cannot stat %s", path)
         return
     if size == 0:
         return
@@ -44,7 +44,7 @@ def tail_events(path: Path, *, max_bytes: int = 1_048_576) -> Iterator[dict]:
             f.seek(size - read_len)
             chunk = f.read(read_len)
     except OSError:
-        logger.warning("admin_stacks.jsonl_tail: cannot open %s", path)
+        logger.warning("jsonl_tail: cannot open %s", path)
         return
 
     text = chunk.decode("utf-8", errors="replace")
@@ -61,4 +61,4 @@ def tail_events(path: Path, *, max_bytes: int = 1_048_576) -> Iterator[dict]:
         try:
             yield json.loads(line)
         except json.JSONDecodeError:
-            logger.warning("admin_stacks.jsonl_tail: malformed line in %s", path)
+            logger.warning("jsonl_tail: malformed line in %s", path)

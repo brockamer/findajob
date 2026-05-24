@@ -3,7 +3,7 @@
 # Schema: name, persona ({nux_user, established_user}), target_category ({2, 3}), steps.
 
 walkthroughs:
-  # ── nux_user @ findajob-clean ──────────────────────────────────────────────
+  # ── nux_user (fresh install, no data) ─────────────────────────────────────
   - name: dashboard_first_load
     persona: nux_user
     target_category: 3
@@ -49,7 +49,7 @@ walkthroughs:
           category: 3
           rubric: empty_state_no_guidance
 
-  # ── established_user @ findajob-staging ────────────────────────────────────
+  # ── established_user (populated instance) ──────────────────────────────────
   - name: applied_to_interviewing_undo
     persona: established_user
     target_category: 2

@@ -33,7 +33,7 @@ def main(argv: list[str] | None = None) -> int:
     p_export = sub.add_parser("export", help="export a stopped stack's state to a tarball")
     p_export.add_argument("--state-dir", type=Path, required=True)
     p_export.add_argument("--tarball", type=Path, required=True)
-    p_export.add_argument("--stack-tag", required=True, help="e.g. findajob-staging")
+    p_export.add_argument("--stack-tag", required=True, help="e.g. findajob-myhandle")
     p_export.add_argument("--dry-run", action="store_true")
 
     p_import = sub.add_parser("import-fly", help="push a tarball into a Fly app")

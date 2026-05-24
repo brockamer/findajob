@@ -92,7 +92,7 @@ def _latest_applied_date(folder: Path) -> str | None:
 
 # Plain-language explanation per group: what it is + when to use it. Templates
 # interpolate {title}, {company}, {recipient} where applicable. Goal is to be
-# specific enough that a non-power-user (a beta tester opening this folder for
+# specific enough that a non-power-user (a user opening this folder for
 # the first time) understands which docs are submission artifacts vs internal
 # prep notes — the latter must NEVER read as "send this to the employer."
 _GROUP_DESCRIPTIONS: dict[str, str] = {

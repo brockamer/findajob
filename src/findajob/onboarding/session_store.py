@@ -35,7 +35,7 @@ class Session:
 
 @dataclass(frozen=True)
 class Credentials:
-    """Per-tester API credentials collected during onboarding (#339)."""
+    """Per-user API credentials collected during onboarding (#339)."""
 
     openrouter_api_key: str | None
     rapidapi_key: str | None
@@ -179,7 +179,7 @@ def find_active(db: sqlite3.Connection, *, max_age_hours: int = 24) -> Session |
 
     - ``completed_at IS NULL`` — finalized sessions don't need resuming
     - ``last_turn_at >= now - max_age_hours`` — stale sessions are dropped
-      so a tester who walked away days ago doesn't see an outdated affordance
+      so a user who walked away days ago doesn't see an outdated affordance
 
     Sessions with ``error_state`` set are still returned: the user can
     retry from the chat page. Empty-history sessions are also returned —
@@ -200,7 +200,7 @@ def find_active(db: sqlite3.Connection, *, max_age_hours: int = 24) -> Session |
     return _row_to_session(row)
 
 
-# ── Per-tester credentials (#339) ────────────────────────────────────────────
+# ── Per-user credentials (#339) ──────────────────────────────────────────────
 
 
 def set_credentials(
@@ -220,8 +220,8 @@ def set_credentials(
         raise KeyError(session_id)
     db.execute(
         """UPDATE onboarding_sessions
-           SET tester_openrouter_key = ?,
-               tester_rapidapi_key   = ?
+           SET user_openrouter_key = ?,
+               user_rapidapi_key   = ?
            WHERE id = ?""",
         (
             openrouter_api_key.strip() or None,
@@ -240,7 +240,7 @@ def get_credentials(db: sqlite3.Connection, session_id: str) -> Credentials | No
     collected).
     """
     row = db.execute(
-        """SELECT tester_openrouter_key, tester_rapidapi_key
+        """SELECT user_openrouter_key, user_rapidapi_key
            FROM onboarding_sessions WHERE id = ?""",
         (session_id,),
     ).fetchone()
@@ -285,7 +285,7 @@ def has_any_credentials(db: sqlite3.Connection) -> bool:
     credentials bound to the active session, the gate flipped back to
     False mid-flow and disabled the resume affordance.
     """
-    row = db.execute("SELECT 1 FROM onboarding_sessions WHERE tester_openrouter_key IS NOT NULL LIMIT 1").fetchone()
+    row = db.execute("SELECT 1 FROM onboarding_sessions WHERE user_openrouter_key IS NOT NULL LIMIT 1").fetchone()
     return row is not None
 
 
@@ -294,7 +294,7 @@ def find_credentials_only(db: sqlite3.Connection) -> Session | None:
 
     Used by ``start_interview`` to "promote" the credentials-only row
     (created by Step 1) into the active interview session, so chat
-    history attaches to the same row holding the tester's key. Returns
+    history attaches to the same row holding the user's key. Returns
     ``None`` when no such session exists.
 
     Conditions:
@@ -311,8 +311,8 @@ def find_credentials_only(db: sqlite3.Connection) -> Session | None:
             WHERE completed_at IS NULL
               AND history_json = '[]'
               AND (
-                    tester_openrouter_key IS NOT NULL
-                 OR tester_rapidapi_key   IS NOT NULL
+                    user_openrouter_key IS NOT NULL
+                 OR user_rapidapi_key   IS NOT NULL
               )
             ORDER BY last_turn_at DESC
             LIMIT 1"""

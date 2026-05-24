@@ -264,7 +264,7 @@ Switching between tags is a one-line `.env` edit followed by `docker compose pul
 
 ## Multi-tenant hosts: staggering scheduled jobs
 
-If you run multiple findajob stacks on the same Docker host (one per tester / family member / friend), the daily `triage` cron in every stack defaults to `00:00` in the container's TZ. Same-TZ stacks fire `triage.py` at the *exact same instant*, simultaneously hitting RapidAPI / Gmail / OpenRouter — risking quota exhaustion and host CPU spikes.
+If you run multiple findajob instances on the same Docker host, the daily `triage` cron in every stack defaults to `00:00` in the container's TZ. Same-TZ stacks fire `triage.py` at the *exact same instant*, simultaneously hitting RapidAPI / Gmail / OpenRouter — risking quota exhaustion and host CPU spikes.
 
 The image reads its supercronic schedule from `ops/scheduled-jobs.yaml` (baked into the image). Per-job env-var overrides in your stack's `.env` let you stagger schedules without forking the YAML:
 
@@ -289,50 +289,6 @@ Do the same for any other job that does heavyweight network or LLM work (`discov
 
 The full job list lives at `ops/scheduled-jobs.yaml` in the repo. To inspect what your running container actually scheduled: `docker exec <container> cat /app/crontab` (the rendered output).
 
-### Operator mode (multi-tenant stack health dashboard) — #333
-
-If you run multiple findajob stacks side-by-side (e.g. yourself + several
-beta testers on the same `<deployment-host>`), the operator stack can run with
-operator mode enabled to surface a cross-stack health dashboard at
-`/admin/stacks/`. The dashboard shows last-triage time, stage distribution,
-stuck-prep count, and last-failure timestamp for every stack at
-`/opt/stacks/findajob-*/`.
-
-Operator mode is operator-only — testers' stacks must NOT enable it. It is
-gated by a single env flag and a read-only mount.
-
-**On operator's stack only**, edit `compose.yaml`:
-
-```yaml
-services:
-  scheduler:
-    environment:
-      FINDAJOB_OPERATOR_MODE: "1"
-      # Optional: float operator's own row to the top of the dashboard.
-      # Value must match the operator's stack handle (the trailing component
-      # of /opt/stacks/findajob-{handle}). When unset, rows render in pure
-      # alphabetical order. The handle is read from the env so tracked code
-      # stays free of operator-specific identifiers.
-      FINDAJOB_OPERATOR_HANDLE: "${YOUR_HANDLE}"
-    volumes:
-      - /opt/stacks:/opt/stacks:ro
-```
-
-Apply with `docker compose up -d`. The route is loaded conditionally — when
-the flag is unset, `/admin/stacks/` returns 404 and no cross-stack mount is
-required.
-
-**Visual cue:** when operator mode is enabled, the top nav bar renders red
-on every page (not just `/admin/stacks/`). This is intentional — it keeps
-you aware that you're in the operator surface.
-
-**Auth:** the dashboard inherits `FINDAJOB_AUTH_USER` / `FINDAJOB_AUTH_PASS`
-Basic Auth (the same credentials that protect `/board/`). No new credential
-to manage.
-
-**Read-only invariant:** the dashboard cannot modify any tester state. All
-SQLite reads use `mode=ro` URI; `/opt/stacks` is mounted read-only.
-
 ## Operating an existing stack
 
 ### Rotating an API key
@@ -351,8 +307,8 @@ before overwriting.
 
 **Option B — SSH (operator-side):**
 
-Useful when the tester is unavailable and you need to rotate on their
-behalf, or when the web UI is unreachable. Edit `data/.env` server-side
+Useful when the web UI is unreachable or you need to rotate keys on
+behalf of another stack. Edit `data/.env` server-side
 and bounce the stack:
 
 ```bash

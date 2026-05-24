@@ -52,8 +52,6 @@ When the pipeline runs inside the `ghcr.io/brockamer/findajob` image, paths shif
 | `candidate_context/` | `<repo>/candidate_context/` | `/app/candidate_context/` (bind-mount) |
 | `discovered_companies.{md,json}` | `<repo>/candidate_context/` (gitignored) | `/app/candidate_context/` (generated into bind-mount) |
 | `companies/` | `<repo>/companies/` | `/app/companies/` (bind-mount) |
-| `FINDAJOB_OPERATOR_MODE` env | n/a | `1` on operator's stack only; unset on testers' (#333) |
-| `FINDAJOB_OPERATOR_HANDLE` env | n/a | Optional. When set, that row floats to the top of `/admin/stacks/`; unset = pure alphabetical (#333) |
 | Onboarding sentinel | `<repo>/data/.onboarding-complete` | `/app/data/.onboarding-complete` (bind-mount) |
 | Onboarding backups | `<repo>/.backups/{UTC-stamp}/` | `/app/.backups/` (bind-mount from `./state/.backups/`) |
 | Web viewer | `src/findajob/web/` (package) | uvicorn co-process on container port 8090 (mapped to `FINDAJOB_MATERIALS_PORT`) |

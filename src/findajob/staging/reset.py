@@ -3,9 +3,9 @@
 Wipes staging bind-mount data/ and copies the persona fixture into place.
 Operator stops + restarts the container around this call:
 
-  docker compose stop findajob-staging
-  docker exec -u 1000 findajob-staging python -m findajob.staging.reset
-  docker compose start findajob-staging
+  docker compose stop <stack-name>
+  docker exec -u 1000 <stack-name> python -m findajob.staging.reset
+  docker compose start <stack-name>
 
 Stop/start are operator-side; this module only does the file work. Skipping
 the stop risks rmtree hitting EBUSY on open SQLite WAL/shm sidecars held

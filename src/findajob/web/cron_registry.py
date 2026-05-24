@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from findajob.admin.jsonl_tail import tail_events
+from findajob.jsonl_tail import tail_events
 
 
 @dataclass(frozen=True)

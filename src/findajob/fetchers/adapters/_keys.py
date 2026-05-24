@@ -8,7 +8,7 @@ returns the first non-empty value, treating whitespace-only as unset.
 
 Convention: callers pass the canonical name (`RAPIDAPI_KEY`) first, then any
 legacy per-adapter names as fallbacks (e.g. `JOBS_API14_KEY`). New
-onboardings write only the canonical; existing tester stacks keep working
+onboardings write only the canonical; existing deployments keep working
 via fallback without code-side migration.
 """
 

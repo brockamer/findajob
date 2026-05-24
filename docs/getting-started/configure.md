@@ -277,9 +277,8 @@ can't access secrets aren't blocked — they shouldn't have operator PII anyway)
 pattern is printed in the run log (the matched line itself is NOT printed to avoid
 leaking the PII to public CI logs). Find the line locally, fix, push.
 
-**Updating patterns:** when you add a new beta tester or a new personal service
-handle to the local hook, re-run the install command above to push the updated
-list to the secret.
+**Updating patterns:** when you add new PII patterns to the local hook, re-run
+the install command above to push the updated list to the secret.
 
 See also `docs/maintainers/generalization.md` for the broader tracking of domain-specific content that
 should not land in tracked files.

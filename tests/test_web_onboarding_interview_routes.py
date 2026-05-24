@@ -188,10 +188,10 @@ def _read_session(base_root: Path, session_id: str) -> tuple[str, str, str | Non
 def test_routes_register_but_503_when_no_credentials(client: TestClient) -> None:
     """#339 changed gating from import-time to per-request.
 
-    With no tester credentials collected via /onboarding/ Step 1, the route
+    With no user credentials collected via /onboarding/ Step 1, the route
     is registered (no 404) but resolves to a 503 with a pointer back to
     /onboarding/. The previous import-time 404 was the wrong shape because
-    a self-deploy stack with tester credentials NEEDS the route to register.
+    a self-deploy stack with user credentials NEEDS the route to register.
     """
     resp = client.post("/onboarding/interview/start")
     assert resp.status_code == 503
@@ -254,7 +254,7 @@ def test_start_creates_session_does_not_call_llm(
 def _create_session_directly(base_root: Path, *, with_credentials: bool = True) -> str:
     """Insert a session row directly so /turn tests don't depend on /start.
 
-    By default, also binds tester credentials to the session — /turn now
+    By default, also binds user credentials to the session — /turn now
     requires session credentials to resolve a chat key (no operator-env
     fallback after #401). Pass ``with_credentials=False`` to test the
     no-credentials behavior (e.g. resume-banner suppression).
@@ -623,7 +623,7 @@ def test_error_turn_renders_partial_not_full_page(
 def test_error_kind_auth_surfaces_openrouter_keys_link(
     client_with_key: TestClient, base_root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """401 → keys page link (operator-side fix), distinct from per-tester
+    """401 → keys page link (operator-side fix), distinct from per-user
     smoke-check finalize message which references the user's own key."""
     sid = _create_session_directly(base_root)
     _stub_run_turn_error(
@@ -875,7 +875,7 @@ def test_resume_index_excludes_stale_sessions(client_with_key: TestClient, base_
 
 
 def test_resume_index_no_affordance_when_no_credentials(client: TestClient, base_root: Path) -> None:
-    """When no tester credentials have been collected, surfacing a resume
+    """When no user credentials have been collected, surfacing a resume
     affordance would point at an interview the user can't actually run.
     Suppress it."""
     sid = _create_session_directly(base_root, with_credentials=False)

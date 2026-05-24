@@ -90,8 +90,10 @@ def test_fresh_db_runs_initial_migration(tmp_path: Path) -> None:
         assert "synthetic" in jobs_cols
         assert "speculative_briefing_folder" in jobs_cols
         sess_cols = {row[1] for row in _table_info(conn, "onboarding_sessions")}
-        assert "tester_openrouter_key" in sess_cols
-        assert "tester_rapidapi_key" in sess_cols
+        assert "user_openrouter_key" in sess_cols
+        assert "user_rapidapi_key" in sess_cols
+        assert "tester_openrouter_key" not in sess_cols
+        assert "tester_rapidapi_key" not in sess_cols
         assert "cumulative_cost_usd" in sess_cols
     finally:
         conn.close()
@@ -149,8 +151,10 @@ def test_legacy_v0_10_bridges_to_equilibrium(tmp_path: Path) -> None:
         # historically the entry point. The runner is a no-op here.
         # Onboarding columns added.
         sess_cols = {row[1] for row in _table_info(conn, "onboarding_sessions")}
-        assert "tester_openrouter_key" in sess_cols
-        assert "tester_rapidapi_key" in sess_cols
+        assert "user_openrouter_key" in sess_cols
+        assert "user_rapidapi_key" in sess_cols
+        assert "tester_openrouter_key" not in sess_cols
+        assert "tester_rapidapi_key" not in sess_cols
         assert "cumulative_cost_usd" in sess_cols
         assert "tester_google_key" not in sess_cols
         # Jobs columns added.
@@ -380,7 +384,7 @@ def test_existing_v1_db_gains_briefing_ready_via_helper(tmp_path: Path) -> None:
     (no ``briefing_ready``) gets the constraint updated when
     ``apply_pending`` runs again. Existing rows are preserved.
 
-    This is the migration path for every shipped tester stack — they're
+    This is the migration path for every shipped deployment — they're
     all at version 1 with the pre-#691 CHECK and need to absorb the new
     constraint without losing data.
     """

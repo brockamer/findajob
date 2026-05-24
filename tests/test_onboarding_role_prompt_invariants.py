@@ -72,7 +72,7 @@ def test_meta_rule_commits_to_letter_style() -> None:
 
 
 def test_meta_rule_forbids_bullets() -> None:
-    """Bullets ("- foo", "* foo") were the third drift mode the tester
+    """Bullets ("- foo", "* foo") were the third drift mode the user
     observed. The meta-rule must explicitly forbid them — without that,
     the LLM falls back to its training-default list style on long lists."""
     text = _read_role()

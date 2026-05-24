@@ -12,6 +12,3 @@ exclusions:
     rationale: "Operator-emergency edit via raw /config/; structured editor is /settings/spend-ceiling/."
   - path: "config/audit_exclusions.yaml"
     rationale: "Self-reference — the exclusions file itself is operator-curated, no UI."
-  # Operator mode and /admin/stacks/ are surfaces, not user-input files —
-  # they consume FINDAJOB_OPERATOR_MODE (env var, not file). Env-var audit
-  # is Phase 1.5 (out of scope per spec).

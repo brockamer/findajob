@@ -99,10 +99,10 @@ def test_load_config_backwards_compatible_without_rejection_field(cfg_path) -> N
 def test_load_config_unions_persisted_with_defaults(cfg_path) -> None:
     """DEFAULT_REJECTION_ALLOWLIST acts as a floor — persisted ∪ DEFAULT (#658).
 
-    Existing tester stacks have rejection_sender_allowlist persisted from the
+    Existing deployments have rejection_sender_allowlist persisted from the
     pre-#658 4-entry full-address list. After #658 the in-memory list must
     include every new default plus any persisted-only customizations, so
-    cohort stacks pick up new ATS senders without a schema migration.
+    deployed stacks pick up new ATS senders without a schema migration.
     """
     persisted_cfg = gmail_imap.GmailConfig(
         address="user@gmail.com",

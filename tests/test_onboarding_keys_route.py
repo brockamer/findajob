@@ -77,7 +77,7 @@ def _stored_credentials(base_root: Path) -> tuple[str | None, str | None] | None
     conn = sqlite3.connect(base_root / "data" / "pipeline.db")
     try:
         row = conn.execute(
-            """SELECT tester_openrouter_key, tester_rapidapi_key
+            """SELECT user_openrouter_key, user_rapidapi_key
                FROM onboarding_sessions ORDER BY started_at DESC LIMIT 1"""
         ).fetchone()
         return row if row else None
@@ -290,7 +290,7 @@ def test_post_preserves_rapidapi_on_failure(client: TestClient, base_root: Path)
 def test_already_onboarded_hint_renders_when_sentinel_present_no_keys(client: TestClient, base_root: Path) -> None:
     """Advisor follow-up to #339: an already-onboarded stack (sentinel
     present) where Step 1 hasn't been used renders a soft hint rather
-    than asking the tester for keys they've never seen this UI ask for."""
+    than asking the user for keys they've never seen this UI ask for."""
     sentinel = base_root / "data" / ".onboarding-complete"
     sentinel.write_text("2026-04-29T00:00:00Z\n")
     r = client.get("/onboarding/")
@@ -310,7 +310,7 @@ def test_already_onboarded_hint_suppressed_in_rerun_mode(client: TestClient, bas
 
 
 def test_already_onboarded_hint_suppressed_when_keys_collected(client: TestClient, base_root: Path) -> None:
-    """If the tester has already used Step 1, they're past the
+    """If the user has already used Step 1, they're past the
     accidentally-confused state — the keys-collected layout takes
     over and the hint is unnecessary."""
     sentinel = base_root / "data" / ".onboarding-complete"

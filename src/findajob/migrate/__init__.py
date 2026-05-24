@@ -2,7 +2,7 @@
 
 Operator-only. Exports a stack's state (data/, companies/, candidate_context/)
 to a single verifiable tarball, then imports it into a freshly-provisioned
-Fly app so a tester's accumulated history survives the platform cutover.
+Fly app so the instance's accumulated history survives the platform cutover.
 
 Provisioning is out of scope — `ops/fly-deploy.sh` creates the app + volume;
 this module only moves state. Secrets handoff is also out of scope; the

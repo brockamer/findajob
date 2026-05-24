@@ -7,7 +7,7 @@ import sqlite3
 from collections.abc import Generator
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -25,7 +25,7 @@ from findajob.web.helpers import (
     stage_row_class,
 )
 from findajob.web.middleware import DisconnectStateMiddleware
-from findajob.web.onboarding_guard import onboarding_complete, require_onboarding_complete
+from findajob.web.onboarding_guard import onboarding_complete
 from findajob.web.routes import materials as _materials_routes
 from findajob.web.routes import router as _aggregated_router
 
@@ -45,7 +45,6 @@ def create_app(
     templates.env.globals["remote_cell_class"] = remote_cell_class
     templates.env.globals["stage_row_class"] = stage_row_class
     templates.env.globals["filter_qs_with"] = filter_qs_with
-    templates.env.globals["operator_mode"] = os.environ.get("FINDAJOB_OPERATOR_MODE") == "1"
 
     def _reject_reason_options() -> tuple[str, ...]:
         from findajob.config_loader import load_reject_reasons
@@ -161,20 +160,13 @@ def create_app(
 
     app.dependency_overrides.setdefault(_materials_routes.get_db, get_db)
     app.include_router(_aggregated_router)
-    if os.environ.get("FINDAJOB_OPERATOR_MODE") == "1":
-        from findajob.web.routes import admin_stacks
-
-        app.include_router(
-            admin_stacks.router,
-            dependencies=[Depends(require_onboarding_complete)],
-        )
     # In-app onboarding interview routes (#336 + #339): registered
     # unconditionally. The runtime gate is per-request via
-    # ``_resolved_chat_key`` — the tester must have collected their own
+    # ``_resolved_chat_key`` — the user must have collected their own
     # OpenRouter key at /onboarding/ Step 1 (#339). When no key is on
     # file the routes surface a 503 with a pointer back to /onboarding/.
     # The previous import-time gate (which 404'd on stacks with no
-    # operator key) made self-deploy impossible.
+    # key) made self-deploy impossible.
     from findajob.web.routes import onboarding_interview
 
     app.include_router(onboarding_interview.router)

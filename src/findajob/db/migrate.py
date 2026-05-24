@@ -24,8 +24,8 @@ Algorithm:
    later version.
 
 The heuristic exists because real production stacks have no ``_meta``
-table on first contact with this runner. The cohort wave (M5.E2) bumps
-every active stack to the M5-shipping minor; first boot under that
+table on first contact with this runner. The migration runner bumps
+every active deployment to the current minor; first boot under that
 image hits the heuristic exactly once, then ``_meta.schema_version=1``
 and all subsequent boots are no-ops.
 
@@ -66,11 +66,15 @@ _REQUIRED_JOBS_COLUMNS: tuple[str, ...] = (
     "speculative_briefing_folder",
 )
 _REQUIRED_ONBOARDING_SESSIONS_COLUMNS: tuple[str, ...] = (
-    "tester_openrouter_key",
-    "tester_rapidapi_key",
+    "user_openrouter_key",
+    "user_rapidapi_key",
     "cumulative_cost_usd",
 )
-_REMOVED_ONBOARDING_SESSIONS_COLUMNS: tuple[str, ...] = ("tester_google_key",)
+_REMOVED_ONBOARDING_SESSIONS_COLUMNS: tuple[str, ...] = (
+    "tester_google_key",
+    "tester_openrouter_key",  # renamed to user_openrouter_key in 0006
+    "tester_rapidapi_key",  # renamed to user_rapidapi_key in 0006
+)
 _REQUIRED_TABLES: tuple[str, ...] = ("notifications", "notes_history")
 _REMOVED_TABLES: tuple[str, ...] = ("cost_calibration",)
 
@@ -353,7 +357,7 @@ def _tighten_score_status_check_if_needed(conn: sqlite3.Connection) -> None:
     "existing rows verified ``score_status != 'needs_info'`` before the
     constraint tightens."
 
-    Verified at filing time that every active cohort stack carried
+    Verified at filing time that every active deployment carried
     zero ``needs_info`` rows. The guard is defense in depth against
     future drift, not a known-failure path.
 
@@ -366,7 +370,7 @@ def _tighten_score_status_check_if_needed(conn: sqlite3.Connection) -> None:
     ``_relax_jobs_stage_check_if_needed`` rebuilds the jobs table from
     the (now-tightened) 0001 CHECK and would surface a generic
     ``sqlite3.IntegrityError`` on a v0.10-shape stack that carried
-    ``needs_info`` rows. Cold path: every active cohort stack is at
+    ``needs_info`` rows. Cold path: every active deployment is at
     ``schema_version=1`` already, so the bridge is unreachable. If a
     future fresh v0.10 import needs the specific message, move the
     guard ahead of :func:`_infer_baseline_version`.
@@ -423,7 +427,7 @@ def _infer_baseline_version(conn: sqlite3.Connection) -> int:
         - ``0`` if the DB has no ``jobs`` table — a fresh install. The
           apply pass will run 0001 from scratch.
         - ``1`` if the DB is already at equilibrium — every active
-          tester / operator stack circa 2026-05-08. No DDL runs.
+          deployment circa 2026-05-08. No DDL runs.
         - ``0`` after running :func:`_bridge_legacy_to_v1` for legacy
           drift. The bridge fixes existing-table column drift but
           doesn't create missing tables (e.g. ``notifications`` is
@@ -474,7 +478,7 @@ def apply_pending(conn: sqlite3.Connection, *, dry_run: bool = False) -> list[Ap
     Returns:
         List of :class:`AppliedMigration` records describing every
         migration considered. Empty list when the DB is already at the
-        head version (the common case after the cohort wave settles).
+        head version (the common case after deployments update).
 
     Raises:
         sqlite3.OperationalError: any error inside a migration's

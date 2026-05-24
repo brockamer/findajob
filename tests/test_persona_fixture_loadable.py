@@ -64,7 +64,7 @@ def test_persona_pii_clean() -> None:
     """
     # fmt: off
     # Encoded so this source file doesn't trip the pre-commit PII scanner.
-    # Covers: operator handle, operator full name, and each tester's real
+    # Covers: operator handle, operator full name, and each user's real
     # name / email prefix (alice, papa, tango, dave, judy).
     _FORBIDDEN_B64 = [
         "YnJvY2thbWVy",

@@ -31,4 +31,4 @@ Competitive market rate for ~12 years experience. Willing to discuss range durin
 - HashiCorp
 
 ## Notes
-This persona is fictional and used only by `findajob-staging`. Do not edit to add real-person PII — staging persona PII discipline mirrors operator + tester PII rules per CLAUDE.md.
+This persona is fictional and used only by the soak/staging instance. Do not edit to add real-person PII.

@@ -2,13 +2,13 @@
 """Autonomous Playwright walkthrough harness for findajob onboarding.
 
 Drives a headless browser through the full onboarding interview against a
-live findajob instance (typically findajob-clean), replaying user answers
+live findajob instance (typically a fresh-install test instance), replaying user answers
 from a prior transcript. Checks #401 PR B acceptance criteria and emits a
 machine-readable findings report.
 
 Usage:
   uv run python scripts/walkthrough_harness.py \\
-    --base-url https://findajob-clean.example.com/ \\
+    --base-url https://<instance-url>/ \\
     --output-dir tmp/onboarding-walkthrough-YYYY-MM-DD/ \\
     --secrets-file ~/.secrets
 
@@ -55,7 +55,7 @@ Start Interview click timing budget (#754):
 POST /onboarding/interview/start runs a synchronous LLM call inline to
 generate the initial assistant greeting. On a freshly-reset stack with a
 cold model, this takes ~25-28s p50 (measured: 25.0s/26.7s/28.1s across
-curl, requestSubmit, and click probes against findajob-clean v0.27.2).
+curl, requestSubmit, and click probes against a fresh-install instance v0.27.2).
 Playwright's `page.click()` default 30s implicit nav-wait races this
 response, especially when Alpine hydration retry overhead adds ~5s before
 the click dispatches. The harness uses `no_wait_after=True` on the Start
@@ -96,10 +96,8 @@ _REQUIRED_SECRET_VARS = [
     "FINDAJOB_TEST_OR_KEY",
     "FINDAJOB_TEST_RAPIDAPI_KEY",
 ]
-# USER/PASS only matter when the target stack sits behind HTTP Basic Auth
-# (tester stacks like alice/papa/dave/judy/tango). The operator's findajob-clean
-# instance is open from the WireGuard mesh / public domain without auth, so
-# leaving them unset just means Playwright skips the httpCredentials context.
+# USER/PASS only matter when the target instance sits behind HTTP Basic Auth.
+# Leaving them unset just means Playwright skips the httpCredentials context.
 _OPTIONAL_SECRET_VARS = [
     "FINDAJOB_TEST_USER",
     "FINDAJOB_TEST_PASS",

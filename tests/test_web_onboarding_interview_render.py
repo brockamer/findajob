@@ -3,7 +3,7 @@
 Distinct from `test_web_onboarding_interview_routes.py` (which exercises the
 route logic + DB observable state). These tests assert on the rendered HTML
 shape so the chat UI is correct independent of route behavior:
-- /onboarding/ shows the interview affordance only when tester credentials
+- /onboarding/ shows the interview affordance only when user credentials
   have been collected at Step 1
 - interview.html: messages list, HTMX wiring, finalize visibility
 - _turn.html: single bubble, role-styled
@@ -367,7 +367,7 @@ def test_interview_page_finalize_membership_not_cardinality(client_with_key: Tes
     assert resp.status_code == 200
     body = resp.text
     # Green banner must be suppressed — the finalize form and the green styling
-    # are the visible signal that misled the tester in the original report.
+    # are the visible signal that misled the user in the original report.
     assert f"/onboarding/interview/{sid}/finalize" not in body
     assert "border-green-300" not in body
     # Progress badge must reflect required-only matches, not total captures —
@@ -398,7 +398,7 @@ def test_turn_response_renders_user_and_assistant_bubbles(
     from view after the HTMX swap."""
     sid = _create_session_with_history(base_root, [])
     # /turn now requires the session's credentials to resolve a chat key
-    # (no operator-env fallback after #401). Bind a tester key to this row.
+    # (no operator-env fallback after #401). Bind a user key to this row.
     from findajob.onboarding.session_store import set_credentials
 
     conn = sqlite3.connect(base_root / "data" / "pipeline.db")

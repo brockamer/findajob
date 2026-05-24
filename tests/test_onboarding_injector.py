@@ -634,7 +634,7 @@ def test_inject_preserves_other_env_keys(tmp_path: Path) -> None:
     assert "OPERATOR_CUSTOM_VAR=preserve-me-too" in env_content
 
 
-# ── #339: per-tester RapidAPI key injection ───────────────────────────────────
+# ── #339: per-user RapidAPI key injection ─────────────────────────────────────
 
 # Minimal .env.example content that mirrors the real file's key ordering.
 # Tests that verify "placeholder preserved" must seed this into tmp_path so

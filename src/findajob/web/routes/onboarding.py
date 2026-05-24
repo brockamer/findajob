@@ -2,7 +2,7 @@
 
 The flow has two steps that share the ``onboarding_sessions`` table:
 
-- ``POST /onboarding/keys`` collects the tester's OpenRouter / RapidAPI
+- ``POST /onboarding/keys`` collects the user's OpenRouter / RapidAPI
   credentials and persists them on a credentials-only session row.
 - ``POST /onboarding/interview/start`` (lives in
   :mod:`findajob.web.routes.onboarding_interview`) promotes that row into
@@ -66,7 +66,7 @@ def _humanize_minutes_ago(iso_utc: str) -> str:
 
 
 def _has_in_app_interview_capability(request: Request) -> bool:
-    """True iff any session row has a tester OpenRouter key set.
+    """True iff any session row has a user OpenRouter key set.
 
     Step 1 (API-key collection at ``/onboarding/keys``) is the single
     gate for the in-app interview — without it, finalize has no key to
@@ -97,7 +97,7 @@ def _active_session_for_index(request: Request) -> Session | None:
     """Look up a resumable in-app interview session for the index page.
 
     Returns ``None`` when:
-    - In-app interview is unavailable on this stack (no tester
+    - In-app interview is unavailable on this stack (no user
       credentials collected at /onboarding/ Step 1)
     - DB unavailable or schema doesn't include ``onboarding_sessions``
     - no recent un-completed session exists
@@ -198,7 +198,7 @@ def onboarding_index(
     When the stack is already onboarded (sentinel file present) AND no
     Step 1 credentials have been collected yet AND the user is not in
     rerun mode, surface a brief "you've already onboarded" hint so an
-    already-configured tester who lands here from a stale link or out
+    already-configured user who lands here from a stale link or out
     of curiosity doesn't think findajob has forgotten them.
 
     ``manual=1`` suppresses env-var detection for that render. Used by
@@ -366,7 +366,7 @@ def onboarding_keys(
         else:
             session_id = create_session(conn)
         # Invariant (#689 AC #4): set_credentials is the *only* write path
-        # that mutates tester_rapidapi_key after this point. The interview's
+        # that mutates user_rapidapi_key after this point. The interview's
         # opt-out path must NOT call set_credentials() with a blank
         # rapidapi_key — Step-1 keys are preserved through opt-out so the
         # finalize injector can decide whether to emit them based on the

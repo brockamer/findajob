@@ -144,7 +144,7 @@ class TestRetentionSweep:
 
 class TestReaderCompat:
     def test_jsonl_tail_yields_only_current_file(self, _isolated_log_path: Path, _tiny_threshold) -> None:
-        from findajob.admin.jsonl_tail import tail_events
+        from findajob.jsonl_tail import tail_events
 
         _write_n(20)
         assert Path(str(_isolated_log_path) + ".1.gz").exists()

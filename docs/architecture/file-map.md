@@ -33,7 +33,7 @@ When this map drifts from the actual code (renamed file, new route module, retir
 <repo>/src/findajob/web/config_files.py      # allowlist + resolve_editable() for /config/ editor
 <repo>/src/findajob/web/onboarding_guard.py # NUX guard dependency — 307s /board,/materials,/stats to /onboarding when sentinel missing
 <repo>/src/findajob/web/routes/onboarding.py # GET /onboarding/, POST /onboarding/keys (Step 1 keys collection)
-<repo>/src/findajob/web/routes/onboarding_interview.py # In-app interview routes: /onboarding/interview/start | /turn | /{sid} | /{sid}/finalize. _resolved_chat_key reads tester's OpenRouter key from session credentials; 503 if no key. Step 1 keys mandatory before /start.
+<repo>/src/findajob/web/routes/onboarding_interview.py # In-app interview routes: /onboarding/interview/start | /turn | /{sid} | /{sid}/finalize. _resolved_chat_key reads user's OpenRouter key from session credentials; 503 if no key. Step 1 keys mandatory before /start.
 <repo>/src/findajob/web/routes/onboarding_feed_config.py # GET/POST /onboarding/feed-config/{sid} — per-adapter signup walkthrough (#408)
 <repo>/src/findajob/web/routes/onboarding_gmail_config.py # GET/POST /onboarding/gmail-config/{sid}/{,skip,finish} — Gmail IMAP gate; /finish blocks until IMAP verify (#407 invariant) then hands off to the connections gate (#571); no longer writes the sentinel
 <repo>/src/findajob/web/routes/onboarding_connections.py # GET/POST /onboarding/connections/{sid}/{,upload,skip} — terminal gate; validates LinkedIn Connections.csv header + atomic-writes to data/connections.csv, OR explicit skip; writes the sentinel on either path (#571)
@@ -44,7 +44,6 @@ When this map drifts from the actual code (renamed file, new route module, retir
 <repo>/src/findajob/onboarding/session_store.py # onboarding_sessions CRUD (history/captured_blocks/find_active)
 <repo>/src/findajob/onboarding/interview_runner.py # thin shim around `findajob.llm.openrouter`; preserves InterviewRunnerError.user_message contract for chat-UI verbatim render (Sonnet 4.6 pinned, #471)
 <repo>/src/findajob/discoverer/                # company discovery library — prompt, parser, runner, writer
-<repo>/src/findajob/web/routes/admin_stacks.py # GET /admin/stacks/ — operator-only multi-tenant stack health (#333; loaded iff FINDAJOB_OPERATOR_MODE=1)
 <repo>/src/findajob/web/routes/healthz.py    # GET /healthz
 <repo>/src/findajob/web/routes/materials.py  # GET /materials/ — candidate materials viewer; POST /materials/{fp}/files/{name} — in-browser .md editor w/ .docx auto-regen (#210); uses folder_resolver
 <repo>/src/findajob/web/folder_resolver.py   # stage→filesystem resolver with path-traversal guards
@@ -91,8 +90,6 @@ When this map drifts from the actual code (renamed file, new route module, retir
 <repo>/logs/pipeline.jsonl                  # structured event log
 
 # ── Operations ──────────────────────────────────────────────────────────────
-<repo>/docs/maintainers/release-process.md              # Claude's release orchestration runbook — dogfood gate, tag cut, rollback
-<repo>/docs/maintainers/release-parity-matrix.md        # Docker ↔ Fly per-surface parity verification matrix (#747); pre-tag gate for major-point releases
 <repo>/docs/getting-started/install-docker.md         # external-user Docker install + operations guide
 
 # ── Quality ─────────────────────────────────────────────────────────────────

@@ -95,7 +95,7 @@ def client_with_credentials_only_session(tmp_path: Path) -> TestClient:
     """
     db_path = tmp_path / "pipeline.db"
     _build_pipeline_db(db_path)
-    # Insert a credentials-only session row WITH its tester credential
+    # Insert a credentials-only session row WITH its user credential
     # already set. Under the M5 migration runner, all schema columns
     # exist by the time create_app runs, so we can write the row in
     # one shot rather than the prior two-phase pattern (insert row,
@@ -104,7 +104,7 @@ def client_with_credentials_only_session(tmp_path: Path) -> TestClient:
     conn.execute(
         """INSERT INTO onboarding_sessions
                (id, history_json, captured_blocks_json, started_at, last_turn_at,
-                tester_openrouter_key)
+                user_openrouter_key)
            VALUES ('cred-only-session', '[]', '{}',
                    datetime('now'), datetime('now'),
                    'sk-or-v1-fake-tester-key-for-test')"""

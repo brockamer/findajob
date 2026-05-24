@@ -1,7 +1,7 @@
 """In-app notification dashboard + history (#440).
 
 Mirrors what `scripts/notify.py` already pushes to ntfy.sh, but persisted
-server-side so the operator (and testers) can scan recent signals without
+server-side so the operator (and users) can scan recent signals without
 leaving the app. The DB row is written by `scripts/notify.py:send()` BEFORE
 the ntfy POST — so the audit trail captures even ntfy outages.
 

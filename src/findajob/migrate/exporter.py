@@ -80,8 +80,7 @@ def export(
     that was bundled.
 
     ``dry_run=True`` does all the I/O reads (checkpoint, count, checksum)
-    but does not write the tarball — useful for the AC's "dry-run on
-    findajob-clean" smoke step.
+    but does not write the tarball — useful for a dry-run smoke step.
     """
     if not state_dir.exists() or not state_dir.is_dir():
         raise FileNotFoundError(f"state directory not found: {state_dir}")

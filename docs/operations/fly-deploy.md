@@ -65,7 +65,7 @@ Stage a new value, then deploy to apply it:
     fly deploy --config ops/fly.toml
     fly ssh console --app findajob-<handle> --command "python -m findajob.web.verify_auth"
 
-Notify the tester out-of-band. Same caveat as compose: anyone holding the credential can edit pipeline config at `/config/`.
+Notify the user out-of-band. Same caveat as compose: anyone holding the credential can edit pipeline config at `/config/`.
 
 ## Inspecting and operating
 
@@ -101,7 +101,7 @@ Rough monthly cost per tenant on the defaults in `fly.toml.example`:
 |---------------------------------------|------------------------|---------------------------|---------|
 | `shared-cpu-1x` 1 GB machine, always-on | ~$3.19/mo at full month | 1 machine                 | ~$3.19  |
 | Volume                                | $0.15/GB-month         | 8 GB                      | ~$1.20  |
-| Bandwidth                             | Free tier covers low-egress traffic | Operator + tester only | ~$0 |
+| Bandwidth                             | Free tier covers low-egress traffic | Single-user traffic    | ~$0 |
 | **Total**                             |                        |                           | **~$3–5** |
 
 Fly's current pricing is at <https://fly.io/docs/about/pricing/> — verify before forecasting more than a handful of tenants. **Volume snapshots are billed separately starting January 2026**; if you take snapshots (see [Backup](#backup) below), check the pricing page for the current rate.

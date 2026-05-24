@@ -157,7 +157,7 @@ def run_turn(
     """Submit one user turn and receive the assistant turn.
 
     Args:
-        api_key: tester's OpenRouter key (collected at /onboarding/ Step 1).
+        api_key: user's OpenRouter key (collected at /onboarding/ Step 1).
             The chat is funded by this key — there is no operator-funded
             fallback.
         history: prior turns as ``[{"role":"user"|"assistant","content":"..."}, ...]``.

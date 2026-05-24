@@ -82,7 +82,7 @@ def _stored_credentials(base_root: Path) -> tuple[str | None, str | None] | None
     conn = sqlite3.connect(base_root / "data" / "pipeline.db")
     try:
         row = conn.execute(
-            """SELECT tester_openrouter_key, tester_rapidapi_key
+            """SELECT user_openrouter_key, user_rapidapi_key
                FROM onboarding_sessions ORDER BY started_at DESC LIMIT 1"""
         ).fetchone()
         return row if row else None

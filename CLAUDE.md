@@ -19,7 +19,7 @@ Before writing any command, path, binary call, or file location:
 
 ## PII and Domain-Neutrality
 
-The repo is public. Tracked files must not contain personal identifiers (operator's or beta testers') or content that locks the pipeline to one career field. The actual enforcement layer is `.git/hooks/pre-commit` — see `docs/getting-started/configure.md` for setup. The hook is not tracked; each clone installs its own and extends `PATTERNS` when new identifiers appear (new ntfy topic, new tester real name, new operator subdomain).
+The repo is public. Tracked files must not contain personal identifiers (real names, emails, API keys) or content that locks the pipeline to one career field. The actual enforcement layer is `.git/hooks/pre-commit` — see `docs/getting-started/configure.md` for setup. The hook is not tracked; each clone installs its own and extends `PATTERNS` when new identifiers appear.
 
 Two categories the hook can't fully catch — be deliberate about these:
 
@@ -67,12 +67,9 @@ Foundational decisions (design rationale lives in operator-private specs):
 
 - `/config/` — raw text editor for allowlisted config files (`findajob.web.config_files`).
 - `/settings/` — domain-aware config editors with per-page UX (validation, structured rows, HTMX partial-swap). Occupants: `/settings/reject-reasons/` (#490), `/settings/active-sources/` (#603 — checkbox list of `REGISTERED_ADAPTERS` with per-row `is_configured()` badge; writes `config/active_sources.txt` atomically), and `/settings/connections/` (#614 — maintenance UI for `data/connections.csv`: last-imported timestamp, row count, refresh/replace, remove with confirm-zone modal mirroring the #700 regenerate-confirm pattern). The connections page shares `findajob.web.connections_upload` (validator + atomic write) with the onboarding gate at `/onboarding/connections/` (#571) so the two upload paths can't drift; the shared `templates/settings/_linkedin_export_explainer.html` partial keeps the LinkedIn-export procedure copy DRY across both. Saves take effect on the next request without container restart; `findajob.config_loader` loaders are no-cache. The `/board/dashboard` shows a dismissible banner when `active_sources.txt` is absent, pointing at `/settings/active-sources/`.
-- `/onboarding/` — first-run NUX, two steps: API keys (tester's own OpenRouter required) and chat interview (`onboarding_sessions` table). Sentinel `data/.onboarding-complete` written by the Gmail-config gate; `findajob.web.onboarding_guard` redirects most routes to `/onboarding/` until it exists.
+- `/onboarding/` — first-run NUX, two steps: API keys (user's own OpenRouter required) and chat interview (`onboarding_sessions` table). Sentinel `data/.onboarding-complete` written by the Gmail-config gate; `findajob.web.onboarding_guard` redirects most routes to `/onboarding/` until it exists.
 - `/docs/` — renders `docs/usage.md`, `docs/troubleshooting.md`, `docs/getting-started/*` inline. Slug allowlist in `findajob.web.routes.docs`.
-- `/tools/` — guided LLM prompts (`findajob.web.tools_registry`) plus direct-edit shortcuts. Each prompt tile loads its body from `config/tool_prompts/{slug}.md` and renders a Copy-prompt button plus an "Open in Claude" anchor pointing at `claude.ai/new?q=<urlencoded prompt>` (anchor is omitted when the encoded prompt exceeds 6 KB). Adding a new tool = append a tile to `TILES` + drop a markdown file in `config/tool_prompts/` — no schema, no migration. Prompts steer their output into gitignored `candidate_context/profile.md` sections (`## Excluded Categories`, `## Title Calibration Notes`, etc.) rather than tracked role files, keeping the surface generalization-safe across testers (#150).
-- `/admin/stacks/` — gated by `FINDAJOB_OPERATOR_MODE=1` (operator's stack only). The **only** code path that reads cross-stack state from inside `findajob.web`. Read-only, no POST handlers, all SQLite handles open with `?mode=ro&immutable=1`. Adds a red top nav on every page as a visual safeguard.
-
-**Per-stack key isolation invariant (#339):** every tester stack's `data/.env` carries only that tester's credentials.
+- `/tools/` — guided LLM prompts (`findajob.web.tools_registry`) plus direct-edit shortcuts. Each prompt tile loads its body from `config/tool_prompts/{slug}.md` and renders a Copy-prompt button plus an "Open in Claude" anchor pointing at `claude.ai/new?q=<urlencoded prompt>` (anchor is omitted when the encoded prompt exceeds 6 KB). Adding a new tool = append a tile to `TILES` + drop a markdown file in `config/tool_prompts/` — no schema, no migration. Prompts steer their output into gitignored `candidate_context/profile.md` sections (`## Excluded Categories`, `## Title Calibration Notes`, etc.) rather than tracked role files, keeping the surface generalization-safe (#150).
 
 ### Per-column filter framework
 
@@ -123,9 +120,9 @@ Every RapidAPI-flavored job source implements `JobSourceAdapter`
 adapter file + one entry in `REGISTERED_ADAPTERS`. `triage.py` iterates
 the registry; no per-source code paths in triage. Adapters share a canonical
 `RAPIDAPI_KEY` env var (#414); per-adapter env vars (`JOBS_API14_KEY`,
-`JSEARCH_API_KEY`) remain valid as fallbacks for legacy stacks. Stacks pick
-which adapters to run via `config/active_sources.txt` (default: `['jobs-api14']`
-if missing). The `JobSourceAdapter` Protocol is source-agnostic
+`JSEARCH_API_KEY`) remain valid as fallbacks. Active adapters are selected via
+`config/active_sources.txt` (default: `['jobs-api14']` if missing). The
+`JobSourceAdapter` Protocol is source-agnostic
 by design — direct fetchers (Workday CXS #248, Gem GraphQL #249) implement
 the same contract.
 
@@ -245,7 +242,7 @@ After every `docker compose up -d` on any stack, the basic-auth gate must be ver
 
 Exit codes: 2 = `FINDAJOB_AUTH_USER`/`FINDAJOB_AUTH_PASS` empty; 3 = anonymous request didn't get `401 + WWW-Authenticate: Basic`; 4 = authenticated request didn't get `200`; 5 = network failure.
 
-A stack that intentionally has no app-level auth (e.g., behind an internal-mesh perimeter) will fail with exit 2 — that's the signal to either configure auth or document the explicit exception in CLAUDE.local.md. Applies to every stack, operator-only or tester.
+A stack that intentionally has no app-level auth (e.g., behind an internal-mesh perimeter) will fail with exit 2 — that's the signal to either configure auth or document the explicit exception in CLAUDE.local.md.
 
 ---
 
@@ -261,7 +258,7 @@ The one rule worth restating here because it bites often: **Same-PR docs rule.**
 
 - **Project board** — GitHub Projects v2 at https://github.com/users/brockamer/projects/1 is the single source of truth. Not on the board = not on the roadmap. Conventions in [`docs/maintainers/project-board.md`](docs/maintainers/project-board.md). Use the `/jared file` skill instead of manual `gh` calls — issue creation requires both `gh issue create` AND `gh project item-add` (new issues do not auto-add).
 - **Plans, specs, experiments** — gitignored under `docs/superpowers/`. Content conventions in [`docs/maintainers/plan-conventions.md`](docs/maintainers/plan-conventions.md). A plan without a **Documentation Impact** section is incomplete — push back rather than execute it.
-- **Releases** — Docker image release process in [`docs/maintainers/release-process.md`](docs/maintainers/release-process.md). Claude orchestrates (dogfood gate, CHANGELOG, tag, verify, rollback); user reviews and approves. PRs with schema / config / crontab / mount / compose changes get `migration-required` at PR-open time.
+- **Releases** — Docker image tagged from main; CHANGELOG.md is the release-notes source. PRs with schema / config / crontab / mount / compose changes get `migration-required` at PR-open time.
 
 ---
 

@@ -25,7 +25,6 @@ def app_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     from findajob.db.migrate import apply_pending
     from findajob.onboarding import mark_complete
 
-    monkeypatch.delenv("FINDAJOB_OPERATOR_MODE", raising=False)
     companies = tmp_path / "companies"
     companies.mkdir(exist_ok=True)
     db = tmp_path / "pipeline.db"

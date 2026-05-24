@@ -32,8 +32,8 @@ from findajob.web.markdown import render_markdown
 
 router = APIRouter()
 # #635: every other route module renders via ``request.app.state.templates``,
-# which ``findajob.web.app.create_app`` populates with all ~10 Jinja globals
-# (``onboarding_complete``, ``operator_mode``, ``reject_reason_options``, …).
+# which ``findajob.web.app.create_app`` populates with all Jinja globals
+# (``onboarding_complete``, ``reject_reason_options``, …).
 # Pre-#635 this module built its own ``Jinja2Templates(...)`` with no globals
 # registered — production speculative status/review renders would have 500'd
 # after #618 added ``{% if onboarding_complete(request) %}`` to ``_nav.html``,

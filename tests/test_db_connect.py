@@ -6,7 +6,7 @@ adopt across all 32 ``sqlite3.connect`` sites:
 - Plain-write returns a writable connection.
 - ``ro=True`` opens read-only (write attempts raise OperationalError).
 - ``cross_stack=True`` constructs ``mode=ro&immutable=1`` URI with
-  ``uri=True``. Required for foreign-uid reads of tester DBs from the
+  ``uri=True``. Required for foreign-uid reads of other stacks' DBs from the
   operator-mode admin dashboard — see
   ``feedback_immutable_for_cross_stack_sqlite``.
 - ``cross_stack=True`` without ``ro=True`` raises ``ValueError`` —
@@ -74,7 +74,7 @@ def test_cross_stack_uri_carries_immutable_flag(tmp_path: Path) -> None:
     This is the load-bearing assertion for cross-stack reads — without
     ``immutable=1``, SQLite tries to open the WAL/shm sidecars for
     journal coordination, and a foreign uid (operator container vs
-    tester container) can't read those sidecars. The helper is the
+    foreign-uid container) can't read those sidecars. The helper is the
     single enforcement point per M4 acceptance criterion #3.
     """
     db = tmp_path / "test.db"

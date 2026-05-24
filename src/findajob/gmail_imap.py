@@ -36,8 +36,8 @@ _SCHEMA_VERSION = 1
 # in findajob.rejection_detector.patterns — IMAP and classifier must agree on
 # coverage, else the IMAP layer silently drops rejections before classification.
 #
-# Treated as a floor at load_config(): persisted ∪ DEFAULT, so existing tester
-# stacks pick up new senders when this tuple grows without a schema migration
+# Treated as a floor at load_config(): persisted ∪ DEFAULT, so existing
+# deployments pick up new senders when this tuple grows without a schema migration
 # (#658). Hand-removing a default from a persisted config will be re-added on
 # next load — acceptable today because no UI exposes per-sender removal.
 #

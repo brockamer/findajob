@@ -228,8 +228,8 @@ def test_build_prompt_contract_with_onboarding_v3_schema_exemplar() -> None:
     """Contract test: the discoverer must extract a useful anchor from a
     profile shaped exactly like the schema exemplar in
     ``config/roles/onboarding_interviewer.md``. This is the wire format
-    every newly-onboarded tester emits; if this test fails, every new
-    tester's discoverer query degrades to generic.
+    every newly-onboarded user emits; if this test fails, every new
+    user's discoverer query degrades to generic.
 
     The exemplar text is duplicated here intentionally (rather than read
     from the role file) so the test breaks loudly when either side drifts —

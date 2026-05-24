@@ -1,7 +1,7 @@
 """De-jargon guard for findajob.notifications user-facing subcommands (#151).
 
 Three subcommands are direct user nudges (notifications a non-technical
-beta tester reads): daily-stats, apply-reminder, feedback-review. Their
+user reads): daily-stats, apply-reminder, feedback-review. Their
 body strings must avoid pipeline-internal jargon. Operator diagnostics
 (health-check, ci-check, scoreboard) keep their technical detail; only
 the titles are branded.

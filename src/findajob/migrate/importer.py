@@ -4,7 +4,7 @@ Orchestration:
 
 1. **Pre-flight** (unless ``--force``): ssh ``ls /app/state/manifest.json``
    and refuse if it returns 0 — that means a prior migration ran and a
-   second pass would clobber the tester's state.
+   second pass would clobber the instance's state.
 2. **Upload**: sftp put the tarball to ``/tmp/<basename>`` on the Fly
    machine. Single-file, atomic from the Fly side's perspective.
 3. **Extract**: ssh ``tar -xzf /tmp/<name> -C /app/state``.
