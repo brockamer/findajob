@@ -49,6 +49,14 @@
   </div>
   {% endif %}
 
+  <div class="rounded border border-slate-200 bg-slate-50 px-4 py-3">
+    <p class="text-sm text-slate-700">
+      <strong>Already have a backup tarball?</strong>
+      <a href="/onboarding/restore/" class="underline text-blue-600 hover:text-blue-800">Restore from backup</a>
+      to skip the interview and pick up where your previous instance left off.
+    </p>
+  </div>
+
   {# Step 1 — API keys collection #}
   {% include "onboarding/_keys_form.html" %}
 
