@@ -101,12 +101,13 @@ has_secret() {
         | grep -qxF "$1"
 }
 
-# prompt_secret <NAME> <prompt-label> [default] [sensitive=1|0]
+# prompt_secret <NAME> <prompt-label> [default] [sensitive=1|0] [optional=1|0]
 prompt_secret() {
     local name="$1"
     local label="$2"
     local default="${3:-}"
     local sensitive="${4:-0}"
+    local optional="${5:-0}"
     if has_secret "$name"; then
         echo "    skip   $name (already set — rotate with: fly secrets set $name=... --app $APP)"
         return
@@ -115,6 +116,8 @@ prompt_secret() {
     local prompt_suffix=""
     if [ -n "$default" ]; then
         prompt_suffix=" [default: $default]"
+    elif [ "$optional" = "1" ]; then
+        prompt_suffix=" (optional — press Enter to skip)"
     fi
     if [ "$sensitive" = "1" ]; then
         printf "    %s%s: " "$label" "$prompt_suffix" >&2
@@ -129,6 +132,10 @@ prompt_secret() {
         val="$default"
     fi
     if [ -z "$val" ]; then
+        if [ "$optional" = "1" ]; then
+            echo "    skip   $name (not provided)"
+            return
+        fi
         echo "ERROR: $name is required and was empty." >&2
         exit 1
     fi
@@ -138,8 +145,8 @@ prompt_secret() {
 
 echo "==> Configuring secrets (already-set values skipped)..."
 prompt_secret OPENROUTER_API_KEY "OpenRouter API key"                  ""                          1
-prompt_secret RAPIDAPI_KEY       "RapidAPI key"                        ""                          1
-prompt_secret NTFY_TOPIC         "ntfy topic"                          ""                          0
+prompt_secret RAPIDAPI_KEY       "RapidAPI key"                        ""                          1  1
+prompt_secret NTFY_TOPIC         "ntfy topic"                          ""                          0  1
 prompt_secret FINDAJOB_AUTH_USER "Basic-auth username"                 ""                          0
 prompt_secret FINDAJOB_AUTH_PASS "Basic-auth password (>= 24 chars)"   ""                          1
 prompt_secret FINDAJOB_WEB_URL   "Public web URL"                      "https://$APP.fly.dev"      0
