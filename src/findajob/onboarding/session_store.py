@@ -39,6 +39,7 @@ class Credentials:
 
     openrouter_api_key: str | None
     rapidapi_key: str | None
+    gemini_api_key: str | None = None
 
 
 def _utcnow_iso() -> str:
@@ -209,6 +210,7 @@ def set_credentials(
     *,
     openrouter_api_key: str,
     rapidapi_key: str,
+    gemini_api_key: str = "",
 ) -> None:
     """Persist API credentials on an existing session row.
 
@@ -220,12 +222,14 @@ def set_credentials(
         raise KeyError(session_id)
     db.execute(
         """UPDATE onboarding_sessions
-           SET user_openrouter_key = ?,
-               user_rapidapi_key   = ?
+           SET user_openrouter_key  = ?,
+               user_rapidapi_key    = ?,
+               user_gemini_api_key  = ?
            WHERE id = ?""",
         (
             openrouter_api_key.strip() or None,
             rapidapi_key.strip() or None,
+            gemini_api_key.strip() or None,
             session_id,
         ),
     )
@@ -240,18 +244,19 @@ def get_credentials(db: sqlite3.Connection, session_id: str) -> Credentials | No
     collected).
     """
     row = db.execute(
-        """SELECT user_openrouter_key, user_rapidapi_key
+        """SELECT user_openrouter_key, user_rapidapi_key, user_gemini_api_key
            FROM onboarding_sessions WHERE id = ?""",
         (session_id,),
     ).fetchone()
     if row is None:
         return None
-    or_key, rapi_key = row
-    if or_key is None and rapi_key is None:
+    or_key, rapi_key, gem_key = row
+    if or_key is None and rapi_key is None and gem_key is None:
         return None
     return Credentials(
         openrouter_api_key=or_key,
         rapidapi_key=rapi_key,
+        gemini_api_key=gem_key,
     )
 
 

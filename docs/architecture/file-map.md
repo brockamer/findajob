@@ -18,6 +18,7 @@ When this map drifts from the actual code (renamed file, new route module, retir
 <repo>/src/findajob/scoring.py              # score_job(), _build_feedback_block() — calls findajob.llm.openrouter (#470)
 <repo>/src/findajob/scorer_prefilter.py     # deterministic pre-filter (Stage 1 + 2)
 <repo>/src/findajob/llm/openrouter.py       # canonical OpenRouter HTTP wrapper (#470) — complete(), CompletionResult, OpenRouterError; cache_control on cached_prefix + cache_system axes
+<repo>/src/findajob/llm/tts.py              # Gemini TTS wrapper (#870) — generate_audio(), pcm_to_mp3(), generate_podcast(); MultiSpeakerVoiceConfig two-speaker rendering via Google AI API
 <repo>/src/findajob/cost_rollups.py         # SQL helpers backing all cost surfaces — per_job_cost, per_job_breakdown, weekly_spend, projected_monthly, spend_this_month
 <repo>/src/findajob/web/app.py               # FastAPI app factory (create_app)
 <repo>/src/findajob/web/middleware/disconnect_state.py # ASGI middleware wrapping receive() to record http.disconnect into scope["findajob.client_disconnected"] (#743) — passive observation, no race with Starlette's listen_for_disconnect; SSE route reads the flag via is_cancelled closure
@@ -73,7 +74,7 @@ When this map drifts from the actual code (renamed file, new route module, retir
 
 # ── Config (pipeline operation — mostly gitignored) ──────────────────────────
 <repo>/config/paths.env                     # binary path overrides (gitignored; see paths.env.example)
-<repo>/config/roles/                        # role .md files (8 roles)
+<repo>/config/roles/                        # role .md files (9 roles; podcast_scriptwriter added #870)
 <repo>/config/scoring_schema.json           # JSON schema for LLM scorer output validation
 <repo>/config/rapidapi_feeds.yaml            # operator-curated feed table (gitignored; see rapidapi_feeds.yaml.example)
 <repo>/config/active_sources.txt           # per-stack active adapter list (gitignored; interview-emitted via 3h picker)

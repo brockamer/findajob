@@ -37,6 +37,11 @@ Three render branches:
       {% else %}
       <li>RapidAPI — <span class="text-slate-500">not provided (LinkedIn / Indeed search inactive)</span></li>
       {% endif %}
+      {% if gemini_last4 %}
+      <li>Gemini — <code>***{{ gemini_last4 }}</code></li>
+      {% else %}
+      <li>Gemini — <span class="text-slate-500">not provided (interview-prep podcasts inactive)</span></li>
+      {% endif %}
     </ul>
     <form method="post" action="/onboarding/keys" class="inline">
       <input type="hidden" name="reset" value="1">
@@ -57,6 +62,11 @@ Three render branches:
       <li>RapidAPI — <code>***{{ env_rapidapi_last4 }}</code></li>
       {% else %}
       <li>RapidAPI — <span class="text-slate-500">not set in env (LinkedIn / Indeed search inactive unless you enter one below)</span></li>
+      {% endif %}
+      {% if env_gemini_last4 %}
+      <li>Gemini — <code>***{{ env_gemini_last4 }}</code></li>
+      {% else %}
+      <li>Gemini — <span class="text-slate-500">not set in env (interview-prep podcasts inactive)</span></li>
       {% endif %}
     </ul>
     <div class="flex items-center gap-3">
@@ -109,6 +119,18 @@ Three render branches:
              class="w-full border rounded p-2 font-mono text-xs"
              placeholder="(optional)"
              value="{{ rapidapi_input|default('') }}">
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium" for="keys_gemini">
+        Google AI (Gemini) API key
+        <span class="text-xs font-normal text-slate-600">— optional. Enables interview-prep podcasts: AI-generated audio conversations that walk you through company research and prep materials. Get a free key at <a class="underline" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>. You can add this later from Settings.</span>
+      </label>
+      <input type="password" name="gemini_api_key" id="keys_gemini"
+             autocomplete="off" spellcheck="false"
+             class="w-full border rounded p-2 font-mono text-xs"
+             placeholder="(optional)"
+             value="{{ gemini_input|default('') }}">
     </div>
 
     <button type="submit"

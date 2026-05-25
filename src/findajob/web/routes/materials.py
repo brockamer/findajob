@@ -67,7 +67,9 @@ _OUTREACH_RECIPIENT_RE = re.compile(r" Outreach to ([^-]+?) - ")
 # Hide audit-snapshot (.applied-YYYY-MM-DD.md, written on apply transition #210)
 # and edit-backup (.bak, written on first edit via /materials/{fp}/files/{name})
 # files from the per-folder view — they exist for audit/recovery, not day-to-day display.
-_HIDE_FROM_VIEW_RE = re.compile(r"\.applied-\d{4}-\d{2}-\d{2}\.md$|\.bak$| Flashcards - .*\.json$")
+_HIDE_FROM_VIEW_RE = re.compile(
+    r"\.applied-\d{4}-\d{2}-\d{2}\.md$|\.bak$| Flashcards - .*\.json$|interview_prep_podcast_.*\.mp3$"
+)
 _APPLIED_DATE_RE = re.compile(r"\.applied-(\d{4}-\d{2}-\d{2})\.md$")
 
 # Stages where the materials have already been sent — banner reminds the
@@ -407,6 +409,11 @@ def folder_view(
                 pass
             break
 
+    # Podcast section (#870). Detect which podcast formats have been generated
+    # and build the context for the template's audio player + generate buttons.
+    gemini_configured = bool(os.environ.get("GEMINI_API_KEY", "").strip())
+    podcast_formats = _build_podcast_context(folder) if gemini_configured else []
+
     templates = request.app.state.templates
     return templates.TemplateResponse(
         request=request,
@@ -426,8 +433,149 @@ def folder_view(
             "is_briefing_gate": is_briefing_gate,
             "reject_reasons": reject_reasons,
             "flashcards_data": flashcards_data,
+            "gemini_configured": gemini_configured,
+            "podcast_formats": podcast_formats,
         },
     )
+
+
+_PODCAST_FORMAT_META: dict[str, tuple[str, str]] = {
+    "deep_dive": ("Deep Dive", "Two hosts break down the company, role, and interview angles (~8 min)"),
+    "deep_dive_long": ("Deep Dive (Extended)", "Thorough version with more company context and interview prep (~15 min)"),
+    "brief": ("The Brief", "Quick summary: strongest angle, biggest gap, key question (~3 min)"),
+    "qa_drill": ("Q&A Drill", "Mock interview: realistic questions with coaching on each answer (~8 min)"),
+    "critical_analysis": (
+        "Critical Analysis",
+        "Hiring manager objections and counter-strategies (~8 min)",
+    ),
+}
+
+
+def _build_podcast_context(folder: Path) -> list[dict]:
+    """Build template context for the podcast section."""
+    result = []
+    for fmt_key, (label, desc) in _PODCAST_FORMAT_META.items():
+        filename = f"interview_prep_podcast_{fmt_key}.mp3"
+        mp3_path = folder / filename
+        exists = mp3_path.is_file()
+        entry: dict = {
+            "format_key": fmt_key,
+            "format_label": label,
+            "description": desc,
+            "filename": filename,
+            "exists": exists,
+            "size": "",
+            "mtime": "",
+        }
+        if exists:
+            stat = mp3_path.stat()
+            size_mb = stat.st_size / (1024 * 1024)
+            entry["size"] = f"{size_mb:.1f} MB" if size_mb >= 1 else f"{stat.st_size / 1024:.0f} KB"
+            entry["mtime"] = datetime.fromtimestamp(stat.st_mtime, tz=UTC).strftime("%Y-%m-%d %H:%M UTC")
+        result.append(entry)
+    return result
+
+
+@router.post("/materials/{fingerprint}/podcast/{podcast_format}", response_class=RedirectResponse)
+def generate_podcast_from_materials(
+    fingerprint: str,
+    podcast_format: str,
+    request: Request,  # noqa: ARG001
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> RedirectResponse:
+    """On-demand podcast generation for any format from the materials page.
+
+    Launches the scriptwriter + TTS pipeline synchronously (typical ~30-60s)
+    and redirects back to the materials page. Spend ceiling enforced via
+    launch gate + per-call gate (two-point pattern).
+    """
+    from findajob.interview.orchestrator import FORMAT_INSTRUCTIONS, generate_podcast_for_job
+    from findajob.spend_ceiling import check_launch_gate
+
+    if podcast_format not in FORMAT_INSTRUCTIONS:
+        raise HTTPException(status_code=400, detail=f"Unknown podcast format: {podcast_format}")
+
+    job = db.execute(
+        "SELECT id, title, company, raw_jd_text, prep_folder_path FROM jobs WHERE fingerprint=?",
+        (fingerprint,),
+    ).fetchone()
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    prep_folder = job["prep_folder_path"]
+    if not prep_folder or not os.path.isdir(prep_folder):
+        raise HTTPException(status_code=404, detail="No prep folder")
+
+    refusal = check_launch_gate(db)
+    if refusal:
+        return RedirectResponse(
+            url=f"/materials/{fingerprint}?podcast_error=spend_ceiling",
+            status_code=303,
+        )
+
+    def _read_latest(pattern: str) -> str:
+        folder_path = Path(prep_folder)
+        pat = re.compile(pattern)
+        matches = sorted(
+            (p for p in folder_path.iterdir() if p.is_file() and pat.search(p.name)),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        if not matches:
+            return ""
+        try:
+            return matches[0].read_text(encoding="utf-8")
+        except OSError:
+            return ""
+
+    briefing = _read_latest(r"Briefing.*\.md$")
+    resume = _read_latest(r"(?<!Changes )Resume(?! Changes).*\.md$")
+    cover = _read_latest(r"Cover.*\.md$")
+    critique = _read_latest(r"Critique.*\.md$")
+    interview_prep = _read_latest(r"Interview Prep.*\.md$")
+
+    if not briefing or not interview_prep:
+        raise HTTPException(status_code=409, detail="Missing briefing or interview prep artifacts")
+
+    from findajob.paths import BASE
+
+    profile_path = f"{BASE}/candidate_context/profile.md"
+    master_path = f"{BASE}/candidate_context/master_resume.md"
+    profile = Path(profile_path).read_text(encoding="utf-8") if Path(profile_path).is_file() else ""
+    master = Path(master_path).read_text(encoding="utf-8") if Path(master_path).is_file() else ""
+    cached_prefix = f"CANDIDATE PROFILE:\n{profile}\n\nMASTER RESUME:\n{master}"
+
+    try:
+        generate_podcast_for_job(
+            prep_folder=prep_folder,
+            company=job["company"],
+            title=job["title"],
+            job_id=job["id"],
+            jd_text=job["raw_jd_text"] or "",
+            briefing=briefing,
+            resume=resume,
+            cover=cover,
+            critique=critique,
+            interview_prep=interview_prep,
+            cached_prefix=cached_prefix,
+            podcast_format=podcast_format,
+            conn=db,
+        )
+    except Exception as exc:  # noqa: BLE001
+        from findajob.audit import log_event
+
+        log_event(
+            "podcast_on_demand_error",
+            fingerprint=fingerprint,
+            format=podcast_format,
+            error=f"{type(exc).__name__}: {exc}",
+        )
+        return RedirectResponse(
+            url=f"/materials/{fingerprint}?podcast_error=generation_failed",
+            status_code=303,
+        )
+
+    return RedirectResponse(url=f"/materials/{fingerprint}#podcasts", status_code=303)
 
 
 @router.post("/materials/{fingerprint}/regenerate", response_class=RedirectResponse)

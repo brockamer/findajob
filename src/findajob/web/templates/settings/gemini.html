@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}Gemini API Key — Settings{% endblock %}
+{% block content %}
+
+<nav class="text-sm text-slate-500 mb-3">
+  <a class="underline hover:text-slate-900" href="/settings/">← settings</a>
+</nav>
+
+<header class="mb-4">
+  <h1 class="text-2xl font-semibold text-slate-900">Gemini API Key</h1>
+  <p class="text-sm text-slate-600 mt-1">
+    Used for interview-prep podcast generation. When set, findajob can create
+    conversational audio podcasts that walk you through company research,
+    interview prep, and your positioning for each role.
+  </p>
+</header>
+
+{% if saved %}
+<aside class="mb-4 border border-emerald-300 bg-emerald-50 rounded px-4 py-3 text-sm text-emerald-800">
+  Gemini API key saved. Podcast generation is now active.
+</aside>
+{% endif %}
+
+{% if removed %}
+<aside class="mb-4 border border-amber-300 bg-amber-50 rounded px-4 py-3 text-sm text-amber-800">
+  Gemini API key removed. Podcast generation is inactive until a new key is added.
+</aside>
+{% endif %}
+
+<section class="bg-white border border-slate-200 rounded-lg p-5 max-w-lg">
+
+  {% if has_key %}
+  <div class="space-y-3">
+    <div class="flex items-center gap-2">
+      <span class="inline-block w-3 h-3 rounded-full bg-emerald-500"></span>
+      <span class="text-sm font-medium text-slate-700">Active</span>
+      <span class="text-sm text-slate-500 font-mono">***{{ key_last4 }}</span>
+    </div>
+    <p class="text-xs text-slate-600">
+      Podcast generation will run automatically when you trigger interview prep,
+      and additional formats are available on demand from the materials page.
+    </p>
+
+    <div class="pt-3 border-t border-slate-200 space-y-3">
+      <p class="text-sm font-medium text-slate-700">Update key</p>
+      <form method="POST" action="/settings/gemini/" class="space-y-2">
+        <input type="hidden" name="action" value="save">
+        <input type="password" name="gemini_api_key"
+               autocomplete="off" spellcheck="false"
+               class="w-full border rounded p-2 font-mono text-xs"
+               placeholder="Paste new key to replace current one">
+        <button type="submit"
+                class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">
+          Save new key
+        </button>
+      </form>
+
+      <form method="POST" action="/settings/gemini/" class="pt-2">
+        <input type="hidden" name="action" value="remove">
+        <button type="submit"
+                class="text-sm text-rose-600 underline hover:text-rose-800">
+          Remove key (disable podcasts)
+        </button>
+      </form>
+    </div>
+  </div>
+
+  {% else %}
+  <div class="space-y-3">
+    <div class="flex items-center gap-2">
+      <span class="inline-block w-3 h-3 rounded-full bg-slate-300"></span>
+      <span class="text-sm font-medium text-slate-700">Not configured</span>
+    </div>
+    <p class="text-sm text-slate-600">
+      Without a Gemini API key, interview-prep podcasts are skipped. Everything
+      else (resume, cover letter, briefing, study guide, flashcards) still works.
+    </p>
+    <div class="bg-slate-50 border border-slate-200 rounded p-3 text-sm text-slate-700 space-y-2">
+      <p class="font-medium">How to get a key (free):</p>
+      <ol class="list-decimal list-inside space-y-1 text-xs">
+        <li>Go to <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" class="underline text-blue-600">aistudio.google.com/apikey</a></li>
+        <li>Sign in with your Google account</li>
+        <li>Click "Create API Key"</li>
+        <li>Copy the key and paste it below</li>
+      </ol>
+      <p class="text-xs text-slate-500">
+        The free tier handles typical interview-prep volume (2-5 podcasts/month).
+        Paid tier costs ~$2-4 per podcast depending on length.
+      </p>
+    </div>
+
+    <form method="POST" action="/settings/gemini/" class="space-y-2">
+      <input type="hidden" name="action" value="save">
+      <label class="block text-sm font-medium text-slate-700" for="gemini_key">
+        Gemini API key
+      </label>
+      <input type="password" name="gemini_api_key" id="gemini_key"
+             autocomplete="off" spellcheck="false"
+             class="w-full border rounded p-2 font-mono text-xs"
+             placeholder="AIza...">
+      <button type="submit"
+              class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">
+        Save key
+      </button>
+    </form>
+  </div>
+  {% endif %}
+
+</section>
+
+{% endblock %}

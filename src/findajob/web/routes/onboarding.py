@@ -164,27 +164,16 @@ def _last4(value: str | None) -> str:
     return value[-4:]
 
 
-def _env_var_keys() -> tuple[str | None, str | None]:
-    """Read OPENROUTER_API_KEY / RAPIDAPI_KEY from the process environment.
+def _env_var_keys() -> tuple[str | None, str | None, str | None]:
+    """Read OPENROUTER_API_KEY / RAPIDAPI_KEY / GEMINI_API_KEY from the process environment.
 
-    Returns ``(openrouter, rapidapi)``. Empty / whitespace-only values are
-    normalized to ``None`` so the caller can boolean-check.
-
-    Covers both delivery paths transparently:
-    - **Fly.io**: ``fly secrets set`` materializes secrets into ``os.environ``.
-    - **Docker Compose**: ``env_file: ./state/data/.env`` (see
-      ``ops/compose.yaml.example``) loads data/.env values into ``os.environ``
-      at container startup. (Caveat: ``docker compose restart`` does NOT
-      re-read env_file — only ``up -d`` does — but that's an existing
-      operational fact, not in scope for env-var detection.)
-
-    The literal AC #1 reading ("os.environ AND in data/.env") is satisfied by
-    reading os.environ alone, since data/.env's contents become env vars at
-    container startup on every supported deploy.
+    Returns ``(openrouter, rapidapi, gemini)``. Empty / whitespace-only values
+    are normalized to ``None`` so the caller can boolean-check.
     """
     openrouter = (os.environ.get("OPENROUTER_API_KEY") or "").strip()
     rapidapi = (os.environ.get("RAPIDAPI_KEY") or "").strip()
-    return (openrouter or None, rapidapi or None)
+    gemini = (os.environ.get("GEMINI_API_KEY") or "").strip()
+    return (openrouter or None, rapidapi or None, gemini or None)
 
 
 @router.get("/onboarding/", response_class=HTMLResponse)
@@ -213,7 +202,7 @@ def onboarding_index(
     creds = _credentials_for_index(request)
     keys_collected = creds is not None and (creds.openrouter_api_key is not None)
 
-    env_openrouter, env_rapidapi = (None, None) if manual == "1" else _env_var_keys()
+    env_openrouter, env_rapidapi, env_gemini = (None, None, None) if manual == "1" else _env_var_keys()
     env_keys_available = env_openrouter is not None and not keys_collected
 
     base_root: Path = request.app.state.base_root
@@ -230,12 +219,15 @@ def onboarding_index(
             "keys_collected": keys_collected,
             "openrouter_last4": _last4(creds.openrouter_api_key) if creds else "",
             "rapidapi_last4": _last4(creds.rapidapi_key) if creds else "",
+            "gemini_last4": _last4(creds.gemini_api_key) if creds else "",
             "keys_error": None,
             "rapidapi_input": "",
+            "gemini_input": "",
             "show_already_onboarded_hint": show_already_onboarded_hint,
             "env_keys_available": env_keys_available,
             "env_openrouter_last4": _last4(env_openrouter),
             "env_rapidapi_last4": _last4(env_rapidapi),
+            "env_gemini_last4": _last4(env_gemini),
         },
     )
 
@@ -245,6 +237,7 @@ def _render_keys_error(
     *,
     error: str,
     rapidapi_input: str = "",
+    gemini_input: str = "",
 ) -> HTMLResponse:
     """Re-render the index page with a Step 1 error, preserving optional inputs.
 
@@ -265,15 +258,15 @@ def _render_keys_error(
             "keys_collected": False,
             "openrouter_last4": "",
             "rapidapi_last4": "",
+            "gemini_last4": "",
             "keys_error": error,
             "rapidapi_input": rapidapi_input,
+            "gemini_input": gemini_input,
             "show_already_onboarded_hint": False,
-            # The error path is showing the manual form by definition, so
-            # suppress env-var detection here regardless. Otherwise a failed
-            # smoke check would flip the user back to the detected UI mid-flow.
             "env_keys_available": False,
             "env_openrouter_last4": "",
             "env_rapidapi_last4": "",
+            "env_gemini_last4": "",
         },
         status_code=400,
     )
@@ -284,6 +277,7 @@ def onboarding_keys(
     request: Request,
     openrouter_api_key: str = Form(default=""),
     rapidapi_key: str = Form(default=""),
+    gemini_api_key: str = Form(default=""),
     reset: str = Form(default=""),
 ) -> HTMLResponse | RedirectResponse:
     """Step 1 of #339: collect two API keys; persist to the credentials session.
@@ -376,6 +370,7 @@ def onboarding_keys(
             session_id,
             openrouter_api_key=openrouter_api_key.strip(),
             rapidapi_key=rapidapi_key.strip(),
+            gemini_api_key=gemini_api_key.strip(),
         )
         return RedirectResponse(url="/onboarding/", status_code=303)
     finally:
@@ -398,12 +393,13 @@ def onboarding_keys_use_detected(request: Request) -> HTMLResponse | RedirectRes
     set), redirect to ``/onboarding/?manual=1`` so the user lands on the
     empty form rather than a confusing error page.
     """
-    env_openrouter, env_rapidapi = _env_var_keys()
+    env_openrouter, env_rapidapi, env_gemini = _env_var_keys()
 
     if env_openrouter is None:
         return RedirectResponse(url="/onboarding/?manual=1", status_code=303)
 
     rapidapi_value = env_rapidapi or ""
+    gemini_value = env_gemini or ""
 
     ok, err = validate_openrouter_format(env_openrouter)
     if not ok:
@@ -464,6 +460,7 @@ def onboarding_keys_use_detected(request: Request) -> HTMLResponse | RedirectRes
             session_id,
             openrouter_api_key=env_openrouter,
             rapidapi_key=rapidapi_value,
+            gemini_api_key=gemini_value,
         )
         return RedirectResponse(url="/onboarding/", status_code=303)
     finally:

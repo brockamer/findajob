@@ -321,6 +321,7 @@ def inject(
     *,
     openrouter_api_key: str = "",
     rapidapi_key: str = "",
+    gemini_api_key: str = "",
     redact_voice_samples: bool = True,
     skip_smoke_check: bool = False,
     conn: sqlite3.Connection | None = None,
@@ -375,6 +376,8 @@ def inject(
         env_updates["OPENROUTER_API_KEY"] = openrouter_api_key.strip()
     if rapidapi_key.strip():
         env_updates["RAPIDAPI_KEY"] = rapidapi_key.strip()
+    if gemini_api_key.strip():
+        env_updates["GEMINI_API_KEY"] = gemini_api_key.strip()
     if "ntfy_topic.txt" in found:
         env_updates["NTFY_TOPIC"] = _parse_ntfy_topic_body(found["ntfy_topic.txt"])
 

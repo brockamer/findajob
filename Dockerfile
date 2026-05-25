@@ -28,6 +28,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         gosu \
         curl \
         ca-certificates \
+        ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # supercronic — SHA1-verified per arch.
