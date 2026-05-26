@@ -390,7 +390,6 @@ def _generate_study_materials(
         f"COMPANY BRIEFING:\n{briefing}\n\n"
         f"TAILORED RESUME:\n{resume}\n"
         f"\nINTERVIEW PREP:\n{interview_prep}\n"
-        f"\nSTUDY GUIDE:\n{study_guide_md}\n"
     )
 
     flashcard_json_raw = run_role(

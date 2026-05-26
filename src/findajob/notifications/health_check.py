@@ -113,7 +113,7 @@ def cmd_health_check() -> None:
     if error_events:
         issues.append(f"ERRORS: {len(error_events)} error events in log")
         for e in error_events[:3]:
-            issues.append(f"  • [{e.get('event', '?')}] {e.get('error', e.get('note', ''))}")
+            issues.append(f"  • [{e.get('event', '?')}] {e.get('error', e.get('reason', e.get('note', '')))}")
     if null_score:
         issues.append(f"INFO: {len(null_score)} jobs scored None (likely LLM timeout)")
 

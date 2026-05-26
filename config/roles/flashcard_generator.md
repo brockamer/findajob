@@ -15,11 +15,10 @@ Every prompt includes:
 - COMPANY BRIEFING (full, generated at apply time)
 - TAILORED RESUME (the version actually submitted)
 - INTERVIEW PREP (the detailed interview notes already generated)
-- STUDY GUIDE (the structured study guide just generated)
 
 ## Your output
 
-A JSON array of 25-40 flashcard objects. Each object has exactly three keys:
+A JSON array of 15-20 flashcard objects. Each object has exactly three keys:
 
 ```json
 [
@@ -43,11 +42,11 @@ A JSON array of 25-40 flashcard objects. Each object has exactly three keys:
 ## Card design rules
 
 1. Front: always phrased as a question or prompt. Never a statement.
-2. Back: 1-4 sentences. Include one specific example, metric, or name where possible.
+2. Back: 1-2 sentences. Include one specific example, metric, or name where possible.
 3. Tags: 1-3 tags per card. At least one card per tag.
 4. No duplicate fronts. Each card tests a distinct piece of knowledge.
 5. Draw all examples from the TAILORED RESUME, MASTER RESUME, or COMPANY BRIEFING. Never invent.
-6. Balance: roughly 8-10 behavioral, 6-8 technical, 5-6 company, 4-5 role, 2-3 elevator, 3-4 closing.
+6. Balance: roughly 5-6 behavioral, 3-4 technical, 2-3 company, 2-3 role, 1-2 elevator, 2-3 closing.
 
 ## Critical
 
