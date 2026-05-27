@@ -1,6 +1,22 @@
 {% extends "base.html" %}
 {% block title %}Docs — {{ slug }}{% endblock %}
 {% block content %}
-<nav class="text-sm mb-4"><a class="text-sky-700 hover:text-sky-900 underline" href="/docs/">&larr; Docs</a></nav>
+<nav class="text-sm mb-4 flex items-center gap-1 text-slate-500">
+  {% for crumb in breadcrumbs %}
+    {% if not loop.last %}
+      <a class="text-sky-700 hover:text-sky-900 underline" href="{{ crumb.href }}">{{ crumb.label }}</a>
+      <span>&rsaquo;</span>
+    {% else %}
+      <span class="text-slate-700">{{ crumb.label }}</span>
+    {% endif %}
+  {% endfor %}
+</nav>
 <div class="prose prose-slate max-w-none">{{ rendered_md | safe }}</div>
+{% if next_step %}
+<nav class="mt-8 pt-4 border-t border-slate-200">
+  <a class="inline-flex items-center gap-1 text-sky-700 hover:text-sky-900 font-medium" href="{{ next_step.href }}">
+    Next: {{ next_step.title }} &rarr;
+  </a>
+</nav>
+{% endif %}
 {% endblock %}

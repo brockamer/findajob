@@ -309,7 +309,7 @@ echo "  index renders with expected sections"
 # Slug list mirrors a representative subset of findajob.web.routes.docs._PAGES;
 # `setup/*` was renamed to `getting-started/*` in the May-8 docs cleanup
 # (#499–#503) and this list followed in v0.22.
-for slug in "" usage troubleshooting getting-started getting-started/install-docker getting-started/install-fly getting-started/start-here-fly getting-started/cost; do
+for slug in "" usage tuning troubleshooting getting-started operations/install-docker getting-started/install-fly getting-started/start-here-fly getting-started/cost; do
     HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:${VIEWER_PORT}/docs/${slug}" || echo "FAIL")
     if [ "$HTTP_CODE" != "200" ]; then
         echo "ERROR: /docs/${slug} returned $HTTP_CODE (expected 200)" >&2

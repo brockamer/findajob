@@ -2,7 +2,10 @@
 {% block title %}Docs — findajob{% endblock %}
 {% block content %}
 <h1 class="text-2xl font-semibold mb-2">Docs</h1>
-<p class="text-slate-600 mb-6">User-facing guides for running findajob. The markdown source lives at <code class="text-sm bg-slate-100 px-1 rounded">docs/</code> in the repo.</p>
+<p class="text-slate-600 mb-4">User-facing guides for running findajob.</p>
+<div class="mb-6 p-4 bg-sky-50 border border-sky-200 rounded-lg">
+  <a class="text-sky-700 hover:text-sky-900 font-medium text-lg" href="/docs/getting-started/start-here-fly">New here? Start with Getting Started &rarr;</a>
+</div>
 <ul class="space-y-4">
   {% for guide in guides %}
   <li>
