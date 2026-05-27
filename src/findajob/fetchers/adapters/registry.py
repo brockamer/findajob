@@ -11,6 +11,7 @@ from findajob.paths import BASE
 from .algora_bounties import AlgoraBountiesAdapter
 from .ashby import AshbyAdapter
 from .base import JobSourceAdapter
+from .gem import GemAdapter
 from .gmail import GmailLinkedInAdapter
 from .greenhouse import GreenhouseAdapter
 from .himalayas import HimalayasAdapter
@@ -43,6 +44,7 @@ REGISTERED_ADAPTERS: list[type[JobSourceAdapter]] = [
     JobicyAdapter,  # type: ignore[list-item]  # #853 — opt-in, not auto-enabled
     AlgoraBountiesAdapter,  # type: ignore[list-item]  # #853 Phase 3 — opt-in
     HNFirebaseAdapter,  # type: ignore[list-item]  # #853 Phase 3 — opt-in
+    GemAdapter,  # type: ignore[list-item]  # #249 — opt-in, not auto-enabled
 ]
 
 # Default when config/active_sources.txt is missing or empty: every adapter
