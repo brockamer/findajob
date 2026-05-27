@@ -7,6 +7,7 @@ GET routes:
 
 POST routes:
   /materials/{fp}/regenerate               — full LLM re-run (delegates to prep subprocess; #616)
+  /materials/{fp}/rerun-interview-prep     — re-run interview prep only for interview-stage jobs (#875)
   /materials/{fp}/files/{filename}         — atomic edit-and-save for .md files; auto-regenerates .docx sibling (#210)
 """
 
@@ -409,6 +410,15 @@ def folder_view(
                 pass
             break
 
+    # Interview prep re-run (#875). Show button when stage=interview;
+    # detect in-flight task to disable re-click.
+    is_interview_stage = stage == "interview"
+    interview_prep_generating = False
+    if is_interview_stage and row is not None:
+        from findajob.background_tasks import find_active_for_subject
+
+        interview_prep_generating = find_active_for_subject(db, row["id"], "interview_prep") is not None
+
     # Podcast section (#870). Detect which podcast formats have been generated
     # and build the context for the template's audio player + generate buttons.
     gemini_configured = bool(os.environ.get("GEMINI_API_KEY", "").strip())
@@ -433,6 +443,9 @@ def folder_view(
             "applied_date": applied_date,
             "is_briefing_gate": is_briefing_gate,
             "reject_reasons": reject_reasons,
+            "is_interview_stage": is_interview_stage,
+            "interview_prep_generating": interview_prep_generating,
+            "interview_rerun_error": request.query_params.get("interview_rerun_error", ""),
             "flashcards_data": flashcards_data,
             "gemini_configured": gemini_configured,
             "podcast_formats": podcast_formats,
@@ -644,6 +657,55 @@ def regenerate_from_materials(
     _execute_regenerate(db, job, source_event="web_regen_dispatched_from_materials")
 
     return RedirectResponse(url="/materials/", status_code=303)
+
+
+@router.post("/materials/{fingerprint}/rerun-interview-prep", response_class=RedirectResponse)
+def rerun_interview_prep_from_materials(
+    fingerprint: str,
+    request: Request,  # noqa: ARG001 — kept for handler signature parity
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> RedirectResponse:
+    """Re-run interview prep from the per-job materials page (#875).
+
+    For interview-stage jobs that were prepped before study-guide /
+    flashcard / podcast features shipped, or where the operator wants
+    fresh artifacts after receiving panel info.  Same subprocess as
+    ``POST /board/jobs/{fp}/interview`` (re-click path), gated by
+    spend ceiling + per-job concurrency via ``background_tasks``.
+    """
+    from findajob.background_tasks import find_active_for_subject
+    from findajob.spend_ceiling import check_launch_gate
+    from findajob.web.routes.board_actions import _launch_interview_prep_subprocess
+
+    job = db.execute(
+        "SELECT id, fingerprint, title, company, url, stage FROM jobs WHERE fingerprint=?",
+        (fingerprint,),
+    ).fetchone()
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if job["stage"] != "interview":
+        raise HTTPException(
+            status_code=409,
+            detail="Re-run interview prep only valid for interview-stage jobs",
+        )
+
+    if find_active_for_subject(db, job["id"], "interview_prep"):
+        return RedirectResponse(
+            url=f"/materials/{fingerprint}?interview_rerun_error=already_running",
+            status_code=303,
+        )
+
+    refusal = check_launch_gate(db)
+    if refusal is not None:
+        return RedirectResponse(
+            url=f"/materials/{fingerprint}?interview_rerun_error=spend_ceiling",
+            status_code=303,
+        )
+
+    _launch_interview_prep_subprocess(db, job)
+
+    return RedirectResponse(url=f"/materials/{fingerprint}", status_code=303)
 
 
 @router.post("/materials/{fingerprint}/continue-prep", response_class=RedirectResponse)

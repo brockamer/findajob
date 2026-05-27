@@ -201,6 +201,47 @@
   {% endif %}
 </aside>
 
+{# Re-run interview prep (#875). For interview-stage jobs, a dedicated button
+   to regenerate study guide, flashcards, and podcast artifacts — e.g. after
+   receiving panel info or when those features shipped post-prep. #}
+{% if is_interview_stage %}
+<aside class="mb-5 border border-purple-200 bg-purple-50 rounded-md px-4 py-3">
+  {% if interview_rerun_error == 'already_running' %}
+  <div class="mb-3 border border-amber-300 bg-amber-50 text-amber-900 rounded px-3 py-2 text-sm">
+    Interview prep is already running for this job. Please wait for it to finish.
+  </div>
+  {% elif interview_rerun_error == 'spend_ceiling' %}
+  <div class="mb-3 border border-amber-300 bg-amber-50 text-amber-900 rounded px-3 py-2 text-sm">
+    Interview prep blocked — monthly spend ceiling reached.
+  </div>
+  {% endif %}
+  <div class="flex items-center justify-between gap-4">
+    <div class="text-sm text-slate-700 min-w-0">
+      <span class="font-semibold text-purple-900">Re-run interview prep</span>
+      <span class="ml-2 text-slate-600">Regenerate study guide, flashcards, and interview notes.</span>
+    </div>
+    <div class="shrink-0">
+      {% if interview_prep_generating %}
+        <span class="inline-flex items-center px-3 py-1.5 rounded text-sm font-medium bg-purple-100 text-purple-700 opacity-80">
+          <svg class="animate-spin -ml-0.5 mr-1.5 h-3.5 w-3.5 text-purple-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+          </svg>
+          Generating…
+        </span>
+      {% else %}
+        <form method="POST" action="/materials/{{ fingerprint }}/rerun-interview-prep">
+          <button type="submit"
+                  class="inline-flex items-center px-3 py-1.5 rounded text-sm font-medium bg-purple-600 hover:bg-purple-700 text-white">
+            ⟳ Re-run interview prep
+          </button>
+        </form>
+      {% endif %}
+    </div>
+  </div>
+</aside>
+{% endif %}
+
 {# Document-type groups in workflow order: JD → Briefing → Resume → Resume Changes → Cover → Outreach → Critique → Review → Other.
    Each group header shows a plain-language description (what it is + when to use it). The per-file row shows
    the format-specific hint, size/mtime, and the View/Download action. #}
