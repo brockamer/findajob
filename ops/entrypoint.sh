@@ -71,7 +71,7 @@ WARNING (#625): $JSP_BASE/data is on filesystem type '$FS_TYPE'.
 This usually means Docker Desktop on macOS or Windows, which is NOT a
 supported platform for findajob. SQLite WAL mode interacts badly with
 Docker Desktop's bind-mount layer and can corrupt pipeline.db mid-write.
-See docs/getting-started/install-docker.md (Supported platforms).
+See docs/operations/install-docker.md (Supported platforms).
 Run findajob on a Linux Docker host.
 EOF
             ;;

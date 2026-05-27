@@ -1,6 +1,6 @@
 # Docker Install
 
-> **New here?** Start at [`README.md`](README.md) — it sequences prerequisites → install → configure in order.
+> **New here?** Start at [`Getting started`](../getting-started/README.md) — it sequences prerequisites → install → configure in order.
 
 This is the install + operations guide for running findajob from the prebuilt `ghcr.io/brockamer/findajob` image via Docker Compose. The release process (tagging, GHCR image builds, version scheme) is documented at [`docs/maintainers/release-process.md`](../maintainers/release-process.md).
 
@@ -21,11 +21,11 @@ If you want to run findajob on a Mac or Windows machine, host it inside a **Linu
 ## Prerequisites on the Docker host
 
 - Docker Engine 24+ and Docker Compose v2
-- (Optional) A Gmail account, if you want to ingest LinkedIn and other job-alert emails. See [gmail.md](gmail.md) for the post-deploy walkthrough.
+- (Optional) A Gmail account, if you want to ingest LinkedIn and other job-alert emails. See [gmail.md](../getting-started/gmail.md) for the post-deploy walkthrough.
 
 ## Prerequisites for your Claude Code helper (for the admin)
 
-See [configure.md](configure.md). API keys and personal config end up in `state/data/.env` (mode 0600).
+See [config-reference.md](config-reference.md). API keys and personal config end up in `state/data/.env` (mode 0600).
 
 ## 1. Create the stack directory
 
@@ -82,7 +82,7 @@ chmod 600 state/data/.env
 
 Other files under `state/`:
 
-- `state/config/*.yaml|.txt|.json` — personal config files. See [configure.md](configure.md) for each file's purpose.
+- `state/config/*.yaml|.txt|.json` — personal config files. See [config-reference.md](config-reference.md) for each file's purpose.
 - `state/candidate_context/profile.md` + `master_resume.md` — your candidate profile. See [`candidate_context/profile.md.example`](https://github.com/brockamer/findajob/blob/main/candidate_context/profile.md.example).
 
 > **First-time deployers can stop here.** The remaining `state/` files
@@ -102,7 +102,7 @@ FINDAJOB_AUTH_PASS=<a strong password>
 ```
 
 the perimeter VPN-only / LAN-only instances can skip this — the perimeter is the gate.
-See [`../operations/internet-exposure.md`](../operations/internet-exposure.md) for the full threat model.
+See [`internet-exposure.md`](internet-exposure.md) for the full threat model.
 
 ### What the entrypoint does automatically
 
@@ -150,7 +150,7 @@ live text filter.
 
 ## 4. Configure Gmail integration (optional)
 
-If you want findajob to ingest LinkedIn (and other) job-alert emails from your Gmail, follow [`gmail.md`](gmail.md) after the stack is up. The pipeline runs cleanly without Gmail integration — Greenhouse / Ashby / Lever direct fetches and RapidAPI LinkedIn search cover most ingestion volume.
+If you want findajob to ingest LinkedIn (and other) job-alert emails from your Gmail, follow [`gmail.md`](../getting-started/gmail.md) after the stack is up. The pipeline runs cleanly without Gmail integration — Greenhouse / Ashby / Lever direct fetches and RapidAPI LinkedIn search cover most ingestion volume.
 
 ## 5. Deploy
 
@@ -185,7 +185,7 @@ path enables. You'll need:
 Skipping RapidAPI means LinkedIn + Indeed search is inactive, but
 Greenhouse / Ashby / Lever feeds and Gmail alert ingestion still work.
 Full sign-up walk-throughs:
-[`docs/getting-started/api-keys.md`](api-keys.md) — also reachable in-app at
+[`docs/getting-started/api-keys.md`](../getting-started/api-keys.md) — also reachable in-app at
 `/docs/getting-started/api-keys`.
 
 **Step 2 — Run the interview.** Click "Start interview." findajob opens a
@@ -387,5 +387,5 @@ A local rollback via `.env` pin doesn't affect other users on `:latest`.
 - Container fails to start: `docker compose logs scheduler` usually points at the issue.
 - Supercronic prints "schedule invalid": a crontab syntax error. Check `ops/scheduled-jobs.yaml` for the canonical schedule, or `docker exec <container> cat /app/crontab` for the rendered version after env-var overrides.
 - Container restart-loops with "render_crontab: FATAL": malformed `ops/scheduled-jobs.yaml`, missing required field, or an unrecognized `FINDAJOB_<JOB>_ENABLED` value (must be `true`/`false`/`1`/`0`/`yes`/`no`). Logs name the offending job.
-- Gmail ingestion silently disabled: revisit configuration at /config/gmail/ — see [gmail.md](gmail.md).
+- Gmail ingestion silently disabled: revisit configuration at /config/gmail/ — see [gmail.md](../getting-started/gmail.md).
 - For anything else, open an issue at https://github.com/brockamer/findajob/issues.

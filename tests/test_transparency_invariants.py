@@ -189,5 +189,5 @@ def test_pre_commit_hook_blocks_gmail_creds():
     text = hook.read_text()
     assert "gmail.json" in text or "gmail_token" in text, (
         "Pre-commit hook does not mention gmail credentials — extend its PATTERNS "
-        "array per docs/getting-started/configure.md."
+        "array per docs/operations/config-reference.md."
     )

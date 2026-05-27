@@ -160,7 +160,7 @@ depends on your infrastructure:
 - **Fly.io:** `fly deploy` against your `fly.toml`. See
   [`docs/getting-started/install-fly.md`](../getting-started/install-fly.md).
 - **Docker Compose:** `docker compose pull && docker compose up -d`. See
-  [`docs/getting-started/install-docker.md`](../getting-started/install-docker.md).
+  [`docs/operations/install-docker.md`](../operations/install-docker.md).
 
 After deploying, verify the auth gate:
 ```bash

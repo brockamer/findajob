@@ -14,7 +14,7 @@ If neither stage fires, returns (None, None) and caller should invoke the LLM.
 Rules are loaded from config/prefilter_rules.yaml, config/in_domain_patterns.yaml,
 and config/excluded_employers.yaml (all gitignored). See
 src/findajob/config_loader.py. If any file is missing, that branch becomes a
-no-op — install config files per docs/getting-started/configure.md.
+no-op — install config files per docs/operations/config-reference.md.
 
 Usage:
     from findajob.scorer_prefilter import prefilter_score

@@ -32,7 +32,7 @@ Containerized deploys:
     Docker compose sets ``JSP_BASE=/app`` (matches Dockerfile default), so
     ``BASE == IMAGE_ROOT == /app``. Fly sets ``JSP_BASE=/app/state`` so
     ``BASE = /app/state`` while ``IMAGE_ROOT = /app``. See
-    ``docs/getting-started/install-docker.md`` and
+    ``docs/operations/install-docker.md`` and
     ``docs/operations/fly-deploy.md``.
 """
 

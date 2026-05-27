@@ -242,7 +242,7 @@ or deploying to Fly), you ARE the operator — both options above work
 for you. If a separate person manages your stack on your behalf, they
 can edit `data/.env` directly on the host:
 - **Docker self-host:** SSH into the host and edit `data/.env` — see
-  `docs/getting-started/install-docker.md` under "Operating an existing
+  `docs/operations/install-docker.md` under "Operating an existing
   stack."
 - **Fly.io:** `fly secrets set OPENROUTER_API_KEY=sk-or-v1-... --app findajob-<your-handle>`
   (Fly redeploys the machine automatically when secrets change).

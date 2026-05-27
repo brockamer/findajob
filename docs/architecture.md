@@ -2,7 +2,7 @@
 
 The pipeline runs as a single Docker container (`ghcr.io/brockamer/findajob`)
 with supercronic and uvicorn as co-processes. For setup, see
-[`getting-started/install-docker.md`](getting-started/install-docker.md).
+[`operations/install-docker.md`](operations/install-docker.md).
 
 ## Scheduler
 

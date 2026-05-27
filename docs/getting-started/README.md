@@ -12,7 +12,7 @@ Three docs cover the same Fly or Docker install at different paces. Both Fly opt
 
 - **[`start-here-fly.md`](start-here-fly.md)** — **start here if you're not comfortable with the command line.** Step-by-step Fly.io install paced for first-timers, with screenshots at every UI decision point and "what to do if this didn't work" branches inline. Recommended for most non-engineers. ~$3–5/mo Fly hosting + LLM API spend.
 - **[`install-fly.md`](install-fly.md)** — denser runbook covering the same Fly.io install. ~20 minutes from `fly auth login` to the first onboarding screen. Same ~$3–5/mo cost. One Fly app per person; no server to operate.
-- **[`install-docker.md`](install-docker.md)** — self-host with docker-compose on a Linux box you own. Free if you already have the box; more knobs, more responsibility. Good if you already operate Linux servers.
+- **[`install-docker.md`](../operations/install-docker.md)** — have a Linux server? Self-host with docker-compose. Free if you already have the box; more knobs, more responsibility.
 
 Prerequisites for each path are listed at the top of its respective runbook. Both Fly paths need a Fly.io account with billing enabled; Docker needs a Linux host running Docker 24+ with Compose v2. All three need an OpenRouter API key (and optionally a RapidAPI key + ntfy topic) — picked up inside the runbook.
 
@@ -32,7 +32,7 @@ The page presents three steps, plus a Gmail-config gate on the way to the dashbo
 
 Cost runs ~$3-6 per onboarding even with prompt caching enabled (the system prompt is cached server-side at OpenRouter so subsequent turns are billed at ~10% of the system tokens, but voice-samples emission and the cumulative chat history dominate the bill in long interviews).
 
-**Manual:** Skip the interview and edit the config files by hand. See [`configure.md`](configure.md) for the file-by-file walkthrough — which fields matter most, which have sensible defaults, and which you can safely leave blank.
+**Manual:** Skip the interview and edit the config files by hand. See [`config-reference.md`](../operations/config-reference.md) for the file-by-file walkthrough — which fields matter most, which have sensible defaults, and which you can safely leave blank.
 
 Once onboarding is done, the web UI unlocks `/board/`, `/materials/`, `/stats/`, and `/config/`. The in-browser editor at `/config/` is how you edit these same files later without shelling in — it's the primary surface for ongoing tweaks.
 

@@ -205,7 +205,7 @@ docker compose up -d
 
 > If you placed the stack in `/opt/stacks/`, prefix `mkdir` with `sudo` and follow with `sudo chown -R $(id -u):$(id -g) <stack-dir>/`. Skip both for paths under your home directory.
 
-Full walkthrough → [`docs/getting-started/install-docker.md`](docs/getting-started/install-docker.md)
+Full walkthrough → [`docs/operations/install-docker.md`](docs/operations/install-docker.md)
 
 ### First-run onboarding (both paths)
 
@@ -217,7 +217,7 @@ Open your stack URL. A fresh deploy redirects to `/onboarding/`:
 4. **Gmail config gate** *(optional)*. Wire up IMAP + an app password for LinkedIn job-alert ingestion and ATS rejection-email detection. Skippable; configure later at `/config/gmail/`.
 5. **LinkedIn Connections.csv** *(optional)*. Drop in your LinkedIn data export so outreach drafts can name real contacts at target companies. Skippable; upload later at `/onboarding/connections/`.
 
-After the gates you land on the dashboard. The next scheduled triage run (00:00 in your stack's `TZ`) ingests the first batch — by midday you'll have a scored shortlist of 20–50 jobs. To populate immediately, the [install-fly.md](docs/getting-started/install-fly.md#7-verify-and-wait-for-first-triage) and [install-docker.md](docs/getting-started/install-docker.md) runbooks document a manual-trigger command (5–60 minutes depending on how many target companies you named).
+After the gates you land on the dashboard. The next scheduled triage run (00:00 in your stack's `TZ`) ingests the first batch — by midday you'll have a scored shortlist of 20–50 jobs. To populate immediately, the [install-fly.md](docs/getting-started/install-fly.md#7-verify-and-wait-for-first-triage) and [install-docker.md](docs/operations/install-docker.md) runbooks document a manual-trigger command (5–60 minutes depending on how many target companies you named).
 
 ---
 

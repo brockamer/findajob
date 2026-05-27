@@ -95,7 +95,7 @@ When this map drifts from the actual code (renamed file, new route module, retir
 <repo>/logs/pipeline.jsonl                  # structured event log
 
 # ── Operations ──────────────────────────────────────────────────────────────
-<repo>/docs/getting-started/install-docker.md         # external-user Docker install + operations guide
+<repo>/docs/operations/install-docker.md               # external-user Docker install + operations guide
 
 # ── Quality ─────────────────────────────────────────────────────────────────
 <repo>/pyproject.toml                       # deps, pytest, ruff, mypy config
