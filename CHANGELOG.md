@@ -12,6 +12,7 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ### Added
 
+- **Spend ceiling ntfy alerts at 80% and 100%** (#876): Both the per-call gate and launch gate now fire ntfy notifications when monthly LLM spend crosses 80% ("approaching ceiling") and 100% ("ceiling reached — calls blocked"). Alerts fire at most once per threshold per calendar month, deduped via in-process cache + `notifications` table query. Notification failure never breaks the safety gate. Two new notification kinds: `spend_ceiling_warning`, `spend_ceiling_reached`.
 - **Auto-derive `FINDAJOB_WEB_URL` from Fly runtime env** (#881): On Fly.io, `FINDAJOB_WEB_URL` is now auto-derived from the `FLY_APP_NAME` env var (set by Fly at runtime) when not explicitly configured. Eliminates 1 required secret from Fly deploys. Fallback chain: `data/.env` → `FINDAJOB_WEB_URL` env → `https://{FLY_APP_NAME}.fly.dev` → `http://localhost:8090`. `fly-deploy.sh` now marks `FINDAJOB_WEB_URL` as optional (skippable).
 - **Root-level `fly.toml` for web deploy** (#881): Tracked `fly.toml` at repo root enables the Fly.io "Launch from GitHub" web flow with default config path `./`. CLI users continue using `ops/fly.toml.example` → `ops/fly.toml` unchanged.
 - **Gem GraphQL adapter** (#249): New `GemAdapter` fetches job postings from Gem-hosted boards (`jobs.gem.com`) via the public GraphQL batch endpoint. Two-phase fetch: list query + per-posting detail call for descriptions. No auth required. Opt-in via `config/active_sources.txt` (not auto-enabled).

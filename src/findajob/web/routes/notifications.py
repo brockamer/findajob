@@ -46,6 +46,8 @@ _KIND_LABELS: dict[str, str] = {
     "prep_failure": "Prep failed",
     "interview_prep_ready": "Interview prep ready",
     "interview_prep_failed": "Interview prep failed",
+    "spend_ceiling_warning": "Spend warning",
+    "spend_ceiling_reached": "Spend ceiling hit",
 }
 
 

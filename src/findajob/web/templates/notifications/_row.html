@@ -15,6 +15,8 @@
   "prep_failure": "bg-red-200 text-red-900 border-red-400",
   "interview_prep_ready": "bg-cyan-100 text-cyan-800 border-cyan-300",
   "interview_prep_failed": "bg-orange-100 text-orange-800 border-orange-300",
+  "spend_ceiling_warning": "bg-yellow-100 text-yellow-800 border-yellow-300",
+  "spend_ceiling_reached": "bg-red-200 text-red-900 border-red-400",
 } %}
 {% set kind_class = kind_color_map.get(item.kind, "bg-slate-100 text-slate-800 border-slate-300") %}
 {% set is_unread = item.read_at is none %}

@@ -78,6 +78,8 @@ NOTIFICATION_KINDS: tuple[str, ...] = (
     "podcast_failed",
     "recall_audit_alert",
     "drift_alert",
+    "spend_ceiling_warning",
+    "spend_ceiling_reached",
 )
 
 
