@@ -29,8 +29,9 @@ primary_region = "iad"
 # (data/, logs/, companies/, config/, candidate_context/, .backups/) live
 # under a single volume root. The entrypoint materializes them on first boot.
 # Secrets (OPENROUTER_API_KEY, RAPIDAPI_KEY, NTFY_TOPIC, FINDAJOB_AUTH_USER,
-# FINDAJOB_AUTH_PASS, FINDAJOB_WEB_URL) are set via `fly secrets set` —
-# the deploy script prompts for any that are missing.
+# FINDAJOB_AUTH_PASS) are set via `fly secrets set` — the deploy script
+# prompts for any that are missing. FINDAJOB_WEB_URL is auto-derived from
+# FLY_APP_NAME on Fly (falls back to http://localhost:8090 elsewhere).
 [env]
   JSP_BASE = "/app/state"
   PUID = "1000"

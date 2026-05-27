@@ -149,7 +149,9 @@ prompt_secret RAPIDAPI_KEY       "RapidAPI key"                        ""       
 prompt_secret NTFY_TOPIC         "ntfy topic"                          ""                          0  1
 prompt_secret FINDAJOB_AUTH_USER "Basic-auth username"                 ""                          0
 prompt_secret FINDAJOB_AUTH_PASS "Basic-auth password (>= 24 chars)"   ""                          1
-prompt_secret FINDAJOB_WEB_URL   "Public web URL"                      "https://$APP.fly.dev"      0
+# FINDAJOB_WEB_URL is auto-derived from FLY_APP_NAME at runtime; only
+# prompt when the operator explicitly wants a custom domain.
+prompt_secret FINDAJOB_WEB_URL   "Public web URL (auto-derived if skipped)" ""                      0  1
 
 # --- 4. Deploy ------------------------------------------------------------
 

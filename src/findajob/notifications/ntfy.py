@@ -41,11 +41,16 @@ def _runtime() -> dict[str, str]:
     globals literally.
     """
     env = load_env()
+    web_url = (
+        env.get("FINDAJOB_WEB_URL")
+        or os.environ.get("FINDAJOB_WEB_URL")
+    )
+    if not web_url:
+        fly_app = os.environ.get("FLY_APP_NAME")
+        web_url = f"https://{fly_app}.fly.dev" if fly_app else "http://localhost:8090"
     return {
         "ntfy_topic": env.get("NTFY_TOPIC") or os.environ.get("NTFY_TOPIC", "jobsearch-pipeline"),
-        "web_base_url": (
-            env.get("FINDAJOB_WEB_URL") or os.environ.get("FINDAJOB_WEB_URL", "http://localhost:8090")
-        ).rstrip("/"),
+        "web_base_url": web_url.rstrip("/"),
     }
 
 
