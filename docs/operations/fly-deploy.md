@@ -23,7 +23,7 @@ Same as compose: shared-secret HTTP Basic Auth is *not* identity. It defends aga
 - `fly auth login` completed against your Fly account.
 - **Billing enabled on your Fly organization.** Trial orgs reject `fly deploy` with HTTP 422 "This functionality is disabled for trial organizations" until a credit card is on file. Add one at `https://fly.io/dashboard/<your-org-slug>/billing` before running the deploy script.
 - This repo checked out locally (you'll edit `ops/fly.toml`).
-- Credentials in hand before you start: OpenRouter API key, RapidAPI key, ntfy topic, and a basic-auth username + password you'll generate (≥24 chars; `openssl rand -base64 32`).
+- Credentials in hand before you start: OpenRouter API key, RapidAPI key, ntfy topic. The basic-auth username + password are now optional at deploy time (#895) — they can be set during the in-app onboarding flow instead, with a one-time setup token from `fly logs` gating the form against drive-by squat. To pre-set them via Fly secrets, generate a strong password (`openssl rand -base64 32`) and have it ready.
 
 ## First deploy
 
@@ -37,11 +37,11 @@ The script is idempotent: re-runs detect existing apps, volumes, and secrets and
 
 1. Creates the Fly app if it doesn't exist.
 2. Creates the single `findajob_state` volume (8 GB default) if it doesn't exist.
-3. Prompts only for secrets not already set (`OPENROUTER_API_KEY`, `RAPIDAPI_KEY`, `NTFY_TOPIC`, `FINDAJOB_AUTH_USER`, `FINDAJOB_AUTH_PASS`, `FINDAJOB_WEB_URL` — defaults to `https://<app>.fly.dev`).
+3. Prompts only for secrets not already set (`OPENROUTER_API_KEY`, `RAPIDAPI_KEY`, `NTFY_TOPIC`, `FINDAJOB_AUTH_USER`, `FINDAJOB_AUTH_PASS`, `FINDAJOB_WEB_URL` — defaults to `https://<app>.fly.dev`). Auth credentials can be skipped here and set during onboarding instead (#895).
 4. Runs `fly deploy --config ops/fly.toml`. On first boot inside the machine, `ops/entrypoint.sh` materializes the six state subdirs under `/app/state/` and `init_db.py` creates `pipeline.db`.
-5. Verifies the auth gate by running `python -m findajob.web.verify_auth` inside the running machine via `fly ssh console --command`. Non-zero exit means the deploy is up but unverified — the script prints `fly logs / status / ssh console` debug commands and exits.
+5. Verifies the auth gate by running `python -m findajob.web.verify_auth` inside the running machine via `fly ssh console --command`. Non-zero exit means the deploy is up but unverified — the script prints `fly logs / status / ssh console` debug commands and exits. If auth credentials were skipped, the verifier exits 2 — set them during onboarding to make the gate active and re-run the verifier afterward.
 
-Verify in a browser: `https://findajob-<handle>.fly.dev/` should prompt for basic auth. After login the dashboard renders.
+Verify in a browser: `https://findajob-<handle>.fly.dev/` should prompt for basic auth (if pre-set) or land on the onboarding page with a "Set your login password" step that requires the `FINDAJOB_SETUP_TOKEN` from `fly logs`. After login or password setup, the dashboard renders.
 
 ## Image upgrades
 
