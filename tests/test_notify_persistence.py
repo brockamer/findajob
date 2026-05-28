@@ -162,6 +162,8 @@ def test_taxonomy_constant_includes_known_kinds(notify):
         "drift_alert",
         "podcast_ready",
         "podcast_failed",
+        "spend_ceiling_warning",
+        "spend_ceiling_reached",
     }
     assert set(notify.NOTIFICATION_KINDS) == expected
 
