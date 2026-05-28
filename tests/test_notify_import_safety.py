@@ -133,5 +133,7 @@ def test_notification_kinds_taxonomy_intact():
         "drift_alert",
         "podcast_ready",
         "podcast_failed",
+        "spend_ceiling_warning",
+        "spend_ceiling_reached",
     }
     assert set(NOTIFICATION_KINDS) == expected
