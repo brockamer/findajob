@@ -268,3 +268,31 @@ def test_setup_token_form_field_shown_when_required(client: TestClient) -> None:
     assert r.status_code == 200
     assert 'name="setup_token"' in r.text
     assert "FINDAJOB_SETUP_TOKEN" in r.text
+
+
+def test_partial_config_still_requires_setup_token(base_root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Regression: when only USER or PASS is set (typo'd config), the
+    middleware fails open AND a setup token must still gate /onboarding/auth.
+    Earlier code skipped token generation in this branch — drive-by squat hole.
+    """
+    monkeypatch.setenv("FINDAJOB_AUTH_USER", "onlyhalf")
+    monkeypatch.delenv("FINDAJOB_AUTH_PASS", raising=False)
+    app = create_app(
+        companies_root=base_root / "companies",
+        db_path=base_root / "data" / "pipeline.db",
+        base_root=base_root,
+    )
+    assert app.state.setup_token, "partial-config branch must generate a setup token"
+
+    c = TestClient(app, follow_redirects=False)
+    r = c.post(
+        "/onboarding/auth",
+        data={
+            "auth_username": "attacker",
+            "auth_password": "squat-password",
+            "auth_password_confirm": "squat-password",
+        },
+    )
+    assert r.status_code == 400
+    assert "Setup token" in r.text
+    assert not is_auth_configured(base_root)

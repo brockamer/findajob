@@ -260,16 +260,25 @@ def onboarding_auth(
     logs``) an attacker who hits a freshly-deployed unprotected instance
     can't lock out the legitimate operator.
     """
-    expected_token = getattr(request.app.state, "setup_token", "")
-    submitted_token = setup_token.strip()
-    if expected_token and not hmac.compare_digest(submitted_token, expected_token):
-        return _render_auth_error(
-            request,
-            "Setup token is missing or incorrect. Find it in your container logs "
-            "(`fly logs --app findajob-<your-handle>` on Fly, or `docker logs "
-            "findajob-<stack>-scheduler-1` on Docker) — search for FINDAJOB_SETUP_TOKEN.",
-            auth_username.strip(),
-        )
+    # Token gate applies whenever the middleware isn't already enforcing
+    # auth.  Failing closed on empty `expected_token` plugs the partial-
+    # config drive-by hole — without this, a typo'd compose.yaml that
+    # leaves the middleware fail-open AND skipped the token-generation
+    # branch would let any caller POST credentials with no token at all.
+    auth_active = bool(getattr(request.app.state, "auth_user", "")) and bool(
+        getattr(request.app.state, "auth_pass", "")
+    )
+    if not auth_active:
+        expected_token = getattr(request.app.state, "setup_token", "")
+        submitted_token = setup_token.strip()
+        if not expected_token or not hmac.compare_digest(submitted_token, expected_token):
+            return _render_auth_error(
+                request,
+                "Setup token is missing or incorrect. Find it in your container logs "
+                "(`fly logs --app findajob-<your-handle>` on Fly, or `docker logs "
+                "findajob-<stack>-scheduler-1` on Docker) — search for FINDAJOB_SETUP_TOKEN.",
+                auth_username.strip(),
+            )
 
     username = auth_username.strip()
     password = auth_password.strip()

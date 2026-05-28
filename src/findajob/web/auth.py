@@ -120,6 +120,16 @@ def install_basic_auth(
     if user and pw:
         logger.info("basic auth: ENABLED (FINDAJOB_AUTH_USER + FINDAJOB_AUTH_PASS both set)")
         return True
+
+    # Middleware is fail-open below this point — generate a one-time setup
+    # token (#895 advisor finding) so /onboarding/auth requires log-level
+    # access to complete.  Covers both no-creds and partial-creds branches
+    # — a typo'd compose.yaml leaving only USER or PASS set was previously
+    # a drive-by squat window, since the middleware passed through but no
+    # token gate was active.
+    token = secrets.token_urlsafe(24)
+    app.state.setup_token = token  # type: ignore[attr-defined]
+
     if user or pw:
         which_set = "FINDAJOB_AUTH_USER" if user else "FINDAJOB_AUTH_PASS"
         which_missing = "FINDAJOB_AUTH_PASS" if user else "FINDAJOB_AUTH_USER"
@@ -129,14 +139,12 @@ def install_basic_auth(
             which_set,
             which_missing,
         )
+        logger.info(
+            "FINDAJOB_SETUP_TOKEN=%s — paste this into the onboarding auth form to set your password",
+            token,
+        )
         return False
-    # No credentials configured — generate a one-time setup token (#895
-    # advisor finding). Anyone hitting /onboarding/auth must present this
-    # token, which is visible only in the container's stdout (`fly logs`
-    # / `docker logs`) — defends against drive-by password squat on
-    # internet-exposed instances during the unauthenticated window.
-    token = secrets.token_urlsafe(24)
-    app.state.setup_token = token  # type: ignore[attr-defined]
+
     logger.info("basic auth: DISABLED (no env vars set — set via onboarding or Fly secrets)")
     logger.info(
         "FINDAJOB_SETUP_TOKEN=%s — paste this into the onboarding auth form to set your password",
