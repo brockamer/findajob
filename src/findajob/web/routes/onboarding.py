@@ -14,6 +14,7 @@ emission back here) was removed 2026-05-02 — see CHANGELOG.
 
 from __future__ import annotations
 
+import hmac
 import os
 import sqlite3
 from datetime import UTC, datetime
@@ -39,6 +40,7 @@ from findajob.onboarding.session_store import (
     has_any_credentials,
     set_credentials,
 )
+from findajob.web.auth_env import is_auth_configured, write_auth_credentials
 
 router = APIRouter()
 
@@ -181,6 +183,8 @@ def onboarding_index(
     request: Request,
     mode: str = "",
     manual: str = "",
+    auth_error: str = "",
+    auth_username_input: str = "",
 ) -> HTMLResponse:
     """Landing page. ``mode=rerun`` flips on the backup warning.
 
@@ -228,8 +232,81 @@ def onboarding_index(
             "env_openrouter_last4": _last4(env_openrouter),
             "env_rapidapi_last4": _last4(env_rapidapi),
             "env_gemini_last4": _last4(env_gemini),
+            "auth_configured": is_auth_configured(base_root),
+            "auth_error": auth_error or None,
+            "auth_username_input": auth_username_input,
+            "setup_token_required": bool(getattr(request.app.state, "setup_token", "")),
         },
     )
+
+
+@router.post("/onboarding/auth", response_model=None)
+def onboarding_auth(
+    request: Request,
+    auth_username: str = Form(default=""),
+    auth_password: str = Form(default=""),
+    auth_password_confirm: str = Form(default=""),
+    setup_token: str = Form(default=""),
+) -> HTMLResponse | RedirectResponse:
+    """Step 0 of #895: set instance auth credentials during onboarding.
+
+    Writes ``FINDAJOB_AUTH_USER`` / ``FINDAJOB_AUTH_PASS`` to three targets:
+    ``app.state`` (immediate middleware effect), ``os.environ`` (in-process),
+    ``data/.env`` (survives restarts).  After redirect, the middleware
+    enforces auth and the browser prompts the user to log in.
+
+    Drive-by squat defense: requires the one-time setup token written to
+    container stdout at boot.  Without log access (``fly logs`` / ``docker
+    logs``) an attacker who hits a freshly-deployed unprotected instance
+    can't lock out the legitimate operator.
+    """
+    expected_token = getattr(request.app.state, "setup_token", "")
+    submitted_token = setup_token.strip()
+    if expected_token and not hmac.compare_digest(submitted_token, expected_token):
+        return _render_auth_error(
+            request,
+            "Setup token is missing or incorrect. Find it in your container logs "
+            "(`fly logs --app findajob-<your-handle>` on Fly, or `docker logs "
+            "findajob-<stack>-scheduler-1` on Docker) — search for FINDAJOB_SETUP_TOKEN.",
+            auth_username.strip(),
+        )
+
+    username = auth_username.strip()
+    password = auth_password.strip()
+    confirm = auth_password_confirm.strip()
+
+    if not username:
+        return _render_auth_error(request, "Username is required.", username)
+    if not password:
+        return _render_auth_error(request, "Password is required.", username)
+    if len(password) < 8:
+        return _render_auth_error(request, "Password must be at least 8 characters.", username)
+    if password != confirm:
+        return _render_auth_error(request, "Passwords do not match.", username)
+
+    base_root: Path = request.app.state.base_root
+    write_auth_credentials(base_root, username, password)
+
+    request.app.state.auth_user = username
+    request.app.state.auth_pass = password
+    request.app.state.setup_token = ""
+
+    return RedirectResponse(url="/onboarding/", status_code=303)
+
+
+def _render_auth_error(
+    request: Request,
+    error: str,
+    username_input: str,
+) -> HTMLResponse:
+    """Re-render the onboarding index with an auth-step error (400)."""
+    response = onboarding_index(
+        request,
+        auth_error=error,
+        auth_username_input=username_input,
+    )
+    response.status_code = 400
+    return response
 
 
 def _render_keys_error(
@@ -267,6 +344,10 @@ def _render_keys_error(
             "env_openrouter_last4": "",
             "env_rapidapi_last4": "",
             "env_gemini_last4": "",
+            "auth_configured": is_auth_configured(request.app.state.base_root),
+            "auth_error": None,
+            "auth_username_input": "",
+            "setup_token_required": bool(getattr(request.app.state, "setup_token", "")),
         },
         status_code=400,
     )

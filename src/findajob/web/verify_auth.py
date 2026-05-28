@@ -38,6 +38,16 @@ def _probe(headers: dict[str, str]) -> tuple[int, dict[str, str]]:
 
 
 def main() -> int:
+    # Load data/.env so credentials set via in-app onboarding (#895) are
+    # visible to this standalone process — os.environ only has Fly secrets
+    # or compose env_file values, not runtime-written ones.
+    try:
+        from findajob.paths import load_env
+
+        load_env()
+    except Exception:  # noqa: BLE001
+        pass  # best-effort; env vars may already be set via secrets
+
     # Match install_basic_auth's whitespace-stripping behavior so the
     # verifier's "both set" contract aligns with what the runtime actually
     # sees after the env_file parser.

@@ -16,6 +16,7 @@ import base64
 import hmac
 import logging
 import os
+import secrets
 from collections.abc import Awaitable, Callable
 
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -30,17 +31,25 @@ _ALLOWLIST_EXACT: frozenset[str] = frozenset({"/healthz", "/favicon.ico"})
 
 
 class BasicAuthMiddleware(BaseHTTPMiddleware):
+    """Always-installed middleware that reads credentials from ``app.state``.
+
+    When ``app.state.auth_user`` and ``app.state.auth_pass`` are both
+    non-empty, every non-allowlisted request must present matching HTTP
+    Basic Auth credentials.  When either is falsy the middleware passes
+    through — identical to not having auth installed at all.
+
+    This dynamic approach lets the onboarding flow set credentials at
+    runtime (writing to ``app.state`` + ``data/.env``) without a
+    container restart (#895).
+    """
+
     def __init__(
         self,
         app: ASGIApp,
         *,
-        username: str,
-        password: str,
         realm: str = "findajob",
     ) -> None:
         super().__init__(app)
-        self._username = username.encode("utf-8")
-        self._password = password.encode("utf-8")
         self._challenge = f'Basic realm="{realm}"'
 
     async def dispatch(
@@ -50,7 +59,11 @@ class BasicAuthMiddleware(BaseHTTPMiddleware):
     ) -> Response:
         if _is_allowlisted(request.url.path):
             return await call_next(request)
-        if not self._authorized(request):
+        user = getattr(request.app.state, "auth_user", "")
+        pw = getattr(request.app.state, "auth_pass", "")
+        if not user or not pw:
+            return await call_next(request)
+        if not self._authorized(request, user.encode("utf-8"), pw.encode("utf-8")):
             return Response(
                 content="Unauthorized",
                 status_code=401,
@@ -59,7 +72,7 @@ class BasicAuthMiddleware(BaseHTTPMiddleware):
             )
         return await call_next(request)
 
-    def _authorized(self, request: Request) -> bool:
+    def _authorized(self, request: Request, expected_user: bytes, expected_pw: bytes) -> bool:
         header = request.headers.get("authorization", "")
         if not header.lower().startswith("basic "):
             return False
@@ -70,7 +83,7 @@ class BasicAuthMiddleware(BaseHTTPMiddleware):
         if b":" not in decoded:
             return False
         user, _, pw = decoded.partition(b":")
-        return hmac.compare_digest(user, self._username) and hmac.compare_digest(pw, self._password)
+        return hmac.compare_digest(user, expected_user) and hmac.compare_digest(pw, expected_pw)
 
 
 def _is_allowlisted(path: str) -> bool:
@@ -85,25 +98,26 @@ def install_basic_auth(
     username: str | None = None,
     password: str | None = None,
 ) -> bool:
-    """Add `BasicAuthMiddleware` to `app` iff credentials are present.
+    """Always add ``BasicAuthMiddleware`` and seed ``app.state`` credentials.
 
-    With no kwargs, reads `FINDAJOB_AUTH_USER` / `FINDAJOB_AUTH_PASS` from the
-    environment. Returns True when middleware was installed, False otherwise.
+    With no kwargs, reads ``FINDAJOB_AUTH_USER`` / ``FINDAJOB_AUTH_PASS``
+    from the environment.  Returns True when credentials were found at
+    startup, False otherwise.
 
-    Always emits one log line so the operator can grep startup logs to confirm
-    the auth state. Partial misconfiguration (only one var set) emits a
-    WARNING — silent fail-open on a typo'd compose.yaml is a real foot-gun for
-    internet-exposed instances and observability is the cheap defense.
+    The middleware is installed unconditionally — when both
+    ``app.state.auth_user`` and ``app.state.auth_pass`` are falsy it
+    passes through (no auth enforced).  This lets the onboarding flow
+    set credentials at runtime without a container restart (#895).
     """
-    # Strip whitespace from env-derived values. Some Docker Compose versions
-    # don't strip inline comments from env_file lines, so a `KEY=    # comment`
-    # entry can land here as whitespace-only-or-junk text and trigger the
-    # auth gate with garbage credentials. Stripping makes the "both empty
-    # = no auth" contract robust to that parser variation.
     user = username if username is not None else os.environ.get("FINDAJOB_AUTH_USER", "").strip()
     pw = password if password is not None else os.environ.get("FINDAJOB_AUTH_PASS", "").strip()
+
+    app.state.auth_user = user  # type: ignore[attr-defined]
+    app.state.auth_pass = pw  # type: ignore[attr-defined]
+    app.state.setup_token = ""  # type: ignore[attr-defined]
+    app.add_middleware(BasicAuthMiddleware)  # type: ignore[attr-defined]
+
     if user and pw:
-        app.add_middleware(BasicAuthMiddleware, username=user, password=pw)  # type: ignore[attr-defined]
         logger.info("basic auth: ENABLED (FINDAJOB_AUTH_USER + FINDAJOB_AUTH_PASS both set)")
         return True
     if user or pw:
@@ -116,5 +130,16 @@ def install_basic_auth(
             which_missing,
         )
         return False
-    logger.info("basic auth: DISABLED (no env vars set)")
+    # No credentials configured — generate a one-time setup token (#895
+    # advisor finding). Anyone hitting /onboarding/auth must present this
+    # token, which is visible only in the container's stdout (`fly logs`
+    # / `docker logs`) — defends against drive-by password squat on
+    # internet-exposed instances during the unauthenticated window.
+    token = secrets.token_urlsafe(24)
+    app.state.setup_token = token  # type: ignore[attr-defined]
+    logger.info("basic auth: DISABLED (no env vars set — set via onboarding or Fly secrets)")
+    logger.info(
+        "FINDAJOB_SETUP_TOKEN=%s — paste this into the onboarding auth form to set your password",
+        token,
+    )
     return False

@@ -127,10 +127,12 @@ After the deploy finishes, navigate to your new app: click the app name in the b
    | Name | Required? | What to enter |
    |------|-----------|---------------|
    | `OPENROUTER_API_KEY` | **Yes** | Your OpenRouter API key from Step 2 |
-   | `FINDAJOB_AUTH_USER` | **Yes** | A short username for the web login (e.g. your first name) |
-   | `FINDAJOB_AUTH_PASS` | **Yes** | A strong password, 24+ characters (e.g. `correct-horse-battery-staple`) |
+   | `FINDAJOB_AUTH_USER` | Optional | A short username for the web login (e.g. your first name) — can also be set during onboarding |
+   | `FINDAJOB_AUTH_PASS` | Optional | A strong password, at least 8 characters — can also be set during onboarding |
    | `RAPIDAPI_KEY` | Optional | Your RapidAPI key from Step 3 |
    | `NTFY_TOPIC` | Optional | Your ntfy topic from Step 4 |
+
+   > **Auth credentials are optional here.** If you skip them, the onboarding flow will prompt you to choose a username and password as its first step. The auth-setup form requires a one-time setup token printed to your container logs (find it with `fly logs --app findajob-<your-handle> | grep FINDAJOB_SETUP_TOKEN`) — this stops anyone else who finds your URL from setting your password before you do.
 
 4. After adding all secrets, click the **Deploy Secrets** button at the top of the Secrets page. This restarts your app with the secrets active.
 
@@ -142,7 +144,7 @@ After the deploy finishes, navigate to your new app: click the app name in the b
 
 Open `https://findajob-<your-handle>.fly.dev/` in your browser.
 
-**What you should see:** your browser pops up a username/password dialog. Type the `FINDAJOB_AUTH_USER` + `FINDAJOB_AUTH_PASS` you set in Step 6. After signing in, the dashboard redirects to `/onboarding/` — this is the start of the in-app interview.
+**What you should see:** if you set auth credentials in Step 6, your browser pops up a username/password dialog — enter those credentials. If you skipped auth, you'll land directly on the onboarding page which will ask you to set a password first. Either way, the dashboard redirects to `/onboarding/`.
 
 **If something went wrong:** if the browser shows "Connection refused," the machine may still be restarting after the secrets deploy. Wait 60 seconds and retry.
 
@@ -154,7 +156,7 @@ Open `https://findajob-<your-handle>.fly.dev/` in your browser.
 
 Open `https://findajob-<your-handle>.fly.dev/` in your browser (if you haven't already from Step 7).
 
-**What you should see:** your browser pops up a username/password dialog (it looks slightly different in Chrome / Safari / Firefox, but always asks for the same two fields). Type the `FINDAJOB_AUTH_USER` + `FINDAJOB_AUTH_PASS` you set in Step 6.
+**What you should see:** if you set auth credentials in Step 6, the browser asks for username/password. If you skipped auth, the onboarding page prompts you to set a password as its first step — after saving, the browser will ask you to log in with those credentials.
 
 After signing in, the dashboard immediately redirects to `/onboarding/` because your stack has no profile yet.
 

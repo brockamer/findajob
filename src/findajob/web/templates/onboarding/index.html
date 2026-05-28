@@ -57,6 +57,9 @@
     </p>
   </div>
 
+  {# Step 0 — Instance password (only when no auth configured) #}
+  {% include "onboarding/_auth_form.html" %}
+
   {# Step 1 — API keys collection #}
   {% include "onboarding/_keys_form.html" %}
 

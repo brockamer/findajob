@@ -1,0 +1,104 @@
+{# Step 0 — Instance password setup (#895).
+
+Conditional — only rendered when FINDAJOB_AUTH_USER / FINDAJOB_AUTH_PASS
+are not set (neither env vars nor data/.env).  When auth is already
+configured (via Fly secrets or a prior onboarding run) this partial is
+not included at all.
+
+After submit the middleware activates immediately and the browser will
+prompt for Basic Auth on the next request — the user re-enters the
+credentials they just set (one-time confirmation).
+#}
+{% if not auth_configured %}
+<section class="bg-white border-2 border-amber-300 rounded p-4 space-y-3">
+  <h2 class="font-semibold text-amber-900">First — Set your login password</h2>
+
+  <div class="border border-amber-200 bg-amber-50 text-amber-800 px-3 py-2 rounded text-sm">
+    This instance is not yet password-protected. Anyone with the URL can
+    reach this page until you complete this step.
+  </div>
+
+  <p class="text-sm text-slate-700">
+    Choose a username and password to protect your findajob instance.
+    After saving, your browser will ask you to log in with these
+    credentials before continuing.
+  </p>
+
+  {% if setup_token_required %}
+  <div class="border border-blue-300 bg-blue-50 text-blue-900 px-3 py-2 rounded text-sm space-y-1">
+    <p class="font-medium">One-time setup token required</p>
+    <p>
+      Look at your container's startup logs and search for
+      <code>FINDAJOB_SETUP_TOKEN=</code> — paste that value below. This
+      stops anyone who scans the public URL from setting your password
+      before you do.
+    </p>
+    <p class="text-xs">
+      <strong>Fly:</strong> <code>fly logs --app findajob-&lt;your-handle&gt; | grep FINDAJOB_SETUP_TOKEN</code><br>
+      <strong>Docker:</strong> <code>docker logs &lt;container-name&gt; 2&gt;&amp;1 | grep FINDAJOB_SETUP_TOKEN</code>
+    </p>
+  </div>
+  {% endif %}
+
+  {% if auth_error %}
+  <div class="border border-red-300 bg-red-50 text-red-900 px-4 py-3 rounded text-sm">
+    <p>{{ auth_error }}</p>
+  </div>
+  {% endif %}
+
+  <form method="post" action="/onboarding/auth" class="space-y-3" hx-boost="false">
+    {% if setup_token_required %}
+    <div>
+      <label class="block text-sm font-medium" for="setup_token">
+        Setup token
+      </label>
+      <input type="text" name="setup_token" id="setup_token"
+             autocomplete="off" spellcheck="false"
+             class="w-full border rounded p-2 font-mono text-xs"
+             placeholder="from container logs"
+             required>
+    </div>
+    {% endif %}
+
+    <div>
+      <label class="block text-sm font-medium" for="auth_username">
+        Username
+      </label>
+      <input type="text" name="auth_username" id="auth_username"
+             autocomplete="username" spellcheck="false"
+             class="w-full border rounded p-2 text-sm"
+             placeholder="e.g. admin"
+             value="{{ auth_username_input|default('') }}"
+             required>
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium" for="auth_password">
+        Password
+        <span class="text-xs font-normal text-slate-600">— at least 8 characters</span>
+      </label>
+      <input type="password" name="auth_password" id="auth_password"
+             autocomplete="new-password"
+             class="w-full border rounded p-2 text-sm"
+             minlength="8"
+             required>
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium" for="auth_password_confirm">
+        Confirm password
+      </label>
+      <input type="password" name="auth_password_confirm" id="auth_password_confirm"
+             autocomplete="new-password"
+             class="w-full border rounded p-2 text-sm"
+             minlength="8"
+             required>
+    </div>
+
+    <button type="submit"
+            class="bg-amber-600 text-white px-4 py-2 rounded hover:bg-amber-700">
+      Set password and continue
+    </button>
+  </form>
+</section>
+{% endif %}

@@ -77,8 +77,8 @@ Click **Add Secrets** to add each of the following. Enter the name exactly as sh
 | Name | Required? | Value |
 |------|-----------|-------|
 | `OPENROUTER_API_KEY` | **Yes** | Your OpenRouter API key |
-| `FINDAJOB_AUTH_USER` | **Yes** | Your chosen username (e.g. `jane`) |
-| `FINDAJOB_AUTH_PASS` | **Yes** | Your chosen password (24+ characters) |
+| `FINDAJOB_AUTH_USER` | Optional | Your chosen username (e.g. `jane`) — can also be set during onboarding |
+| `FINDAJOB_AUTH_PASS` | Optional | Your chosen password (24+ characters) — can also be set during onboarding |
 | `RAPIDAPI_KEY` | Optional | Your RapidAPI key |
 | `NTFY_TOPIC` | Optional | Your ntfy topic name |
 
@@ -86,15 +86,19 @@ Click **Add Secrets** to add each of the following. Enter the name exactly as sh
 
 After adding all secrets, click the **Deploy Secrets** button at the top of the Secrets page. This restarts your machine with the secrets active — the auth gate and LLM calls will now work.
 
+> **Auth credentials are optional at deploy time.** If you skip `FINDAJOB_AUTH_USER` and `FINDAJOB_AUTH_PASS` here, the onboarding flow will prompt you to set a username and password as its first step. To prevent anyone else who finds your URL from setting your password before you do, the auth-setup form requires a one-time setup token that's printed to your container logs — find it with `fly logs --app findajob-<your-handle> | grep FINDAJOB_SETUP_TOKEN`. Setting auth secrets here avoids that step entirely.
+
 ## 4. First browser visit
 
-Open `https://findajob-<your-handle>.fly.dev/` in your browser. You'll be prompted for the basic-auth username and password you just set. After login, the dashboard redirects to `/onboarding/` — this is the start of the in-app interview.
+Open `https://findajob-<your-handle>.fly.dev/` in your browser. If you set auth credentials as secrets, you'll be prompted to log in. Otherwise, the onboarding flow will ask you to set a password first. Either way, the dashboard redirects to `/onboarding/` — this is the start of the in-app interview.
 
 ## 5. Onboarding
 
 The onboarding flow is a structured 60–90 minute LLM conversation that writes your `profile.md`, role prompts, and other config files based on your career history. Plan to sit through it in one session, or use the "resume" affordance to come back later.
 
-**Step 1 — API keys.** Your first onboarding screen detects the `OPENROUTER_API_KEY` and `RAPIDAPI_KEY` you set as secrets (read from the container's environment). It shows the last 4 characters of each as confirmation and a **Use detected keys** button. Click it to advance to Step 2 without re-typing.
+**Step 0 — Set your password** (if you didn't set `FINDAJOB_AUTH_USER` / `FINDAJOB_AUTH_PASS` as Fly secrets). The form asks for a one-time setup token from your container logs (drive-by squat defense — paste the value of `FINDAJOB_SETUP_TOKEN` from `fly logs --app findajob-<your-handle>`), then a username and password (at least 8 characters). After saving, your browser will prompt you to log in with those credentials. This step is skipped if auth credentials are already in the environment.
+
+**Step 1 — API keys.** The onboarding screen detects the `OPENROUTER_API_KEY` and `RAPIDAPI_KEY` you set as secrets (read from the container's environment). It shows the last 4 characters of each as confirmation and a **Use detected keys** button. Click it to advance to Step 2 without re-typing.
 
 **Step 2 — Run the interview.** Click "Start interview." A chat surface opens. The interviewer asks structured questions about your work history, target companies, skills, and preferences, emitting config blocks as you go. You can close the tab anytime — the session is server-side persistent:
 

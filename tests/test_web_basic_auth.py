@@ -170,7 +170,7 @@ def test_install_logs_disabled_when_unset(
     monkeypatch.delenv("FINDAJOB_AUTH_PASS", raising=False)
     with caplog.at_level(logging.INFO, logger="findajob.web.auth"):
         _make_app(tmp_path)
-    assert any("DISABLED (no env vars set)" in rec.message and rec.levelno == logging.INFO for rec in caplog.records)
+    assert any("DISABLED (no env vars set" in rec.message and rec.levelno == logging.INFO for rec in caplog.records)
 
 
 def test_empty_string_env_vars_mean_no_auth(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
