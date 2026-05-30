@@ -65,7 +65,7 @@ class IngestResult:
     prep_folder_path: str | None = None  # for not_selected materials link
 
 
-_APPLIED_STAGES = frozenset({"applied", "interview", "offer", "withdrew"})
+_APPLIED_STAGES = frozenset({"applied", "interview", "offer", "withdrawn", "withdrawn_fallback"})
 
 
 def _handle_duplicate(
