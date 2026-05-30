@@ -27,6 +27,19 @@ def _file_yyyymmdd(path: Path) -> str | None:
     return match.group(1) if match else None
 
 
+def default_source_files(base: Path) -> list[tuple[Path, str]]:
+    """The (path, label) source files to anchor against, under ``base``.
+
+    Shared by the CLI and the /tools/ web view so the anchor labels — which
+    the report keys fixes on — cannot drift between the two entry points.
+    """
+    cc = base / "candidate_context"
+    return [
+        (cc / "master_resume.md", "master_resume.md"),
+        (cc / "profile.md", "profile.md"),
+    ]
+
+
 def aggregate_corpus(
     companies_root: Path,
     source_files: list[tuple[Path, str]],

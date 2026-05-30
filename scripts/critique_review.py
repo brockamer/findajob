@@ -21,7 +21,7 @@ import argparse
 from datetime import datetime
 from pathlib import Path
 
-from findajob.critique_aggregator.pipeline import aggregate_corpus
+from findajob.critique_aggregator.pipeline import aggregate_corpus, default_source_files
 from findajob.paths import BASE
 
 
@@ -43,15 +43,11 @@ def main() -> int:
 
     base = Path(BASE)
     companies_root = base / "companies"
-    source_files = [
-        (base / "candidate_context" / "master_resume.md", "master_resume.md"),
-        (base / "candidate_context" / "profile.md", "profile.md"),
-    ]
     today = datetime.now().strftime("%Y-%m-%d")
 
     result, report = aggregate_corpus(
         companies_root,
-        source_files,
+        default_source_files(base),
         generated_for=today,
         since=args.since,
         min_companies=args.min_companies,

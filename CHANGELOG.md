@@ -10,6 +10,10 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Added
+
+- **Web view for the recruiter-critique aggregate** (#933): New `/tools/critique-review/` page renders the #265 aggregator output in the browser instead of requiring a CLI run + SSH. Computes the aggregate live on each load (fast — no LLM), and shows source-level fixes as cards (action badge · `file:line` · the source line · the recruiter's verbatim words · distinct-company chips, sorted by recurrence), a capped recurring-themes strip (top 15; the full themes-floor tuning is tracked in #932), and an empty state. Linked from the `/tools/` index. Read-only — unlike the CLI it does not write the dated report file. The page embeds real resume lines but the whole app is auth-gated, consistent with `/materials/`. The CLI and the web view share `default_source_files()` so the anchor labels can't drift between them.
+
 ## [0.31.2] — 2026-05-30
 
 ### Added

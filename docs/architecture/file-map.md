@@ -50,6 +50,7 @@ When this map drifts from the actual code (renamed file, new route module, retir
 <repo>/src/findajob/onboarding/interview_runner.py # thin shim around `findajob.llm.openrouter`; preserves InterviewRunnerError.user_message contract for chat-UI verbatim render (Sonnet 4.6 pinned, #471)
 <repo>/src/findajob/discoverer/                # company discovery library — prompt, parser, runner, writer
 <repo>/src/findajob/web/routes/healthz.py    # GET /healthz
+<repo>/src/findajob/web/routes/tools_critique.py # GET /tools/critique-review/ — live recruiter-critique aggregate view (#933)
 <repo>/src/findajob/web/routes/materials.py  # GET /materials/ — candidate materials viewer; POST /materials/{fp}/files/{name} — in-browser .md editor w/ .docx auto-regen (#210); uses folder_resolver
 <repo>/src/findajob/web/folder_resolver.py   # stage→filesystem resolver with path-traversal guards
 <repo>/src/findajob/web/templates/           # Jinja2 templates — base.html + one subdir per route group + shared _*.html partials

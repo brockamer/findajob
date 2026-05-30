@@ -19,7 +19,7 @@ _ACTION = {
 }
 
 
-def _representative_sentence(cluster: Cluster) -> str:
+def representative_sentence(cluster: Cluster) -> str:
     """The most informative verbatim recruiter sentence in the cluster."""
     return max((it.recruiter_sentence for it in cluster.items), key=len)
 
@@ -31,9 +31,13 @@ def _dominant_section(cluster: Cluster) -> str:
     return max(counts, key=lambda section: counts[section])
 
 
+def cluster_action(cluster: Cluster) -> str:
+    """The fixed-vocabulary action verb for a cluster's dominant section."""
+    return _ACTION.get(_dominant_section(cluster), "REVIEW")
+
+
 def _render_cluster(cluster: Cluster) -> str:
-    section = _dominant_section(cluster)
-    action = _ACTION.get(section, "REVIEW")
+    action = cluster_action(cluster)
     loc = f"{cluster.anchor.file}:{cluster.anchor.line_no}"
     companies = ", ".join(cluster.companies)
     return "\n".join(
@@ -41,7 +45,7 @@ def _render_cluster(cluster: Cluster) -> str:
             f"### {action}  `{loc}`",
             f"> {cluster.anchor.text}",
             "",
-            f"Recruiter: {_representative_sentence(cluster)}",
+            f"Recruiter: {representative_sentence(cluster)}",
             "",
             f"⤷ flagged by {cluster.company_count} companies: {companies}",
             "",

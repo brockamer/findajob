@@ -42,6 +42,18 @@ TILES: list[dict[str, str]] = [
         "prompt_file": "",
     },
     {
+        "slug": "critique_review",
+        "title": "Review recruiter critiques",
+        "description": (
+            "Weaknesses your recruiter critiques keep flagging across different "
+            "applications — the ones that live in your resume, profile, or role "
+            "prompts. Fix once, kill across every application."
+        ),
+        "kind": "link",
+        "href": "/tools/critique-review/",
+        "prompt_file": "",
+    },
+    {
         "slug": "profile_refresh",
         "title": "Refresh your profile",
         "description": (

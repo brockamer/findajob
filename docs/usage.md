@@ -113,7 +113,13 @@ Individually they're useful; in bulk they reveal something more: the
 which means they live at the **source** (your `master_resume.md`,
 `profile.md`, or the cover/resume role prompts), not in any one prep.
 
-Once you've accumulated ~10+ preps, run the aggregator:
+Once you've accumulated ~10+ preps, the quickest way to see this is the
+**Review recruiter critiques** tile on `/tools/` (or go straight to
+`/tools/critique-review/`) — it computes the aggregate live and renders the
+source-level fixes as cards in the browser, no terminal needed.
+
+For a written report on disk (and the `--since` / `--min-companies` knobs),
+run the CLI:
 
 ```
 python scripts/critique_review.py
