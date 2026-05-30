@@ -228,8 +228,18 @@ class TestHandleDuplicate:
         result = _submit(conn, location="United States")
         assert result.status == "already_applied"
 
-    def test_withdrew_stage_returns_already_applied(self, conn):
-        _insert_existing(conn, stage="withdrew", score=8)
+    def test_withdrawn_stage_returns_already_applied(self, conn):
+        # DB stores 'withdrawn' (per the jobs.stage CHECK); 'withdrew' is not a
+        # legal stage value and never reaches the DB (#894).
+        _insert_existing(conn, stage="withdrawn", score=8)
+        result = _submit(conn, location="United States")
+        assert result.status == "already_applied"
+
+    def test_withdrawn_fallback_stage_returns_already_applied(self, conn):
+        # withdrawn_fallback (#358) is a post-application stage parked in the
+        # operator's fallback queue. Re-ingesting it must report already_applied,
+        # not resurface (which would bump score + overwrite fields). (#894)
+        _insert_existing(conn, stage="withdrawn_fallback", score=8)
         result = _submit(conn, location="United States")
         assert result.status == "already_applied"
 

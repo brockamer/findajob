@@ -36,7 +36,7 @@ _STAGE_VALUES = (
     "waitlisted",
     "rejected",
     "not_selected",
-    "withdrew",
+    "withdrawn",
     "withdrawn_fallback",
 )
 _REMOTE_VALUES = ("Remote", "Hybrid", "On-site", "Unknown")

@@ -10,6 +10,10 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`withdrew` stage drift broke the Archive stage filter and withdrawn-job re-ingest dedup** (#894): The `jobs.stage` CHECK constraint only ever stores `withdrawn`, but two code paths referenced a non-existent `withdrew` value. (1) `_STAGE_VALUES` in `findajob.web.filters.registry` offered `withdrew` as a Stage-column enum option, so the Archive tab's `?stage=withdrawn` filter passed `withdrew` into the WHERE clause and matched zero rows. (2) `_APPLIED_STAGES` in `findajob.ingest` listed `withdrew`, so a withdrawn job that was re-ingested was treated as a fresh resurface instead of being recognized as already-applied. Both now use the DB-canonical `withdrawn`. A new regression test inserts every `_STAGE_VALUES` entry against the real migrated schema (the CHECK constraint as oracle), so any future display-vs-DB stage drift fails loudly instead of silently matching zero rows. Also folded in: `_APPLIED_STAGES` was missing `withdrawn_fallback` (#358) entirely — re-ingesting a job parked in the fallback queue bumped its score and overwrote fields instead of reporting already-applied (the stage itself was preserved, so no queue eviction); `withdrawn_fallback` is now recognized as the post-application stage it is.
+
 ## [0.31.1] — 2026-05-29
 
 ### Fixed
