@@ -27,7 +27,7 @@
 
 <!-- End machine-readable block — narrative docs follow. -->
 
-The GitHub Projects v2 board at [findajob Pipeline](https://github.com/users/brockamer/projects/1) is the **single source of truth for execution state** — what is being worked on, by whom, what state. Phase-level narrative and cross-issue decisions live in [`roadmap.md`](../roadmap.md). If it isn't on the board or in the roadmap, it isn't on the plan.
+The GitHub Projects v2 board at [findajob Pipeline](https://github.com/users/brockamer/projects/1) is the **single source of truth for execution state** — what is being worked on, by whom, what state. Phase-level narrative and cross-issue decisions live in [`roadmap.md`](roadmap.md). If it isn't on the board or in the roadmap, it isn't on the plan.
 
 This document describes the conventions so anyone (human or Claude session) can triage, prioritize, and move work consistently.
 
@@ -37,14 +37,14 @@ Drift is the main failure mode. Every fact has exactly one home. On conflict, th
 
 | Fact type | Lives in | Wins on conflict |
 |---|---|---|
-| Phase arc + phase ordering rationale | [`roadmap.md`](../roadmap.md) | roadmap |
-| Cross-issue decisions (numbered, append-only) | [`roadmap.md`](../roadmap.md) | roadmap |
-| Milestone-level acceptance criteria | [`roadmap.md`](../roadmap.md) | roadmap |
+| Phase arc + phase ordering rationale | [`roadmap.md`](roadmap.md) | roadmap |
+| Cross-issue decisions (numbered, append-only) | [`roadmap.md`](roadmap.md) | roadmap |
+| Milestone-level acceptance criteria | [`roadmap.md`](roadmap.md) | roadmap |
 | Issue Status, Priority, Milestone, labels | board | board |
 | Issue body (summary, per-issue acceptance, prose depends-on) | issue | issue |
 | Issue dependencies (`blockedBy` edges) | native GitHub dependency API | native edges |
-| Deployment / architecture facts | [`architecture.md`](../architecture.md) | canonical doc |
-| Release process | [`release-process.md`](release-process.md) | canonical doc |
+| Deployment / architecture facts | [`architecture.md`](architecture.md) | canonical doc |
+| Release process | [`release-process.md`](maintainers/release-process.md) | canonical doc |
 
 Issue bodies may *reference* the roadmap ("see Phase 4 in roadmap.md") but should not restate phase ordering or decisions. That's how drift starts. The jared sweep includes a drift-scan check for this (see `jared/references/board-sweep.md`).
 

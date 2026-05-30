@@ -139,7 +139,7 @@ Step 5: scripts/find_contacts.py (subprocess.run, check=True)
 
 ### Per-stage model selection rationale
 
-The full per-role model table lives in [`maintainers/pipeline-context.md`](maintainers/pipeline-context.md).
+The full per-role model table lives in [`CLAUDE.md` § Per-Role Model Assignments](../CLAUDE.md#per-role-model-assignments).
 The judgment behind each pick:
 
 - **Opus 4.7 for high-voice creative outputs** (`briefing_writer`, `resume_tailor`, `cover_letter_writer`, `recruiter_critic`, `outreach_drafter`) — these stages own the voice; Opus produces materials that read like they were written by someone who actually researched the company.
