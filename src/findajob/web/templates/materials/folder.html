@@ -325,7 +325,7 @@
           {% endif %}
           {# Primary action — View for .md/.txt (server-rendered HTML), Blob-download
              for binaries. Button (not anchor) so there's no native browser default
-             to race against — reverse proxies (Synology, #327) strip
+             to race against — reverse proxies (#327) strip
              Content-Disposition / rewrite Content-Type on docx responses, and any
              native navigation that slips through renders the bytes as text. The JS
              fetch builds a Blob locally and triggers a synthetic <a download> on a
