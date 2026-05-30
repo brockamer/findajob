@@ -17,6 +17,7 @@ candidate_context/discovered_companies.md
 candidate_context/discovered_companies.json
 candidate_context/voice_samples/*
 !candidate_context/voice_samples/README.md
+candidate_context/critique_aggregate/
 CLAUDE.local.md
 docs/personal/
 data/pipeline.db

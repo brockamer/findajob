@@ -55,6 +55,7 @@ When this map drifts from the actual code (renamed file, new route module, retir
 <repo>/src/findajob/web/templates/           # Jinja2 templates — base.html + one subdir per route group + shared _*.html partials
 <repo>/src/findajob/prep/orchestrator.py     # prep_application implementation (called by scripts/prep_application.py shim)
 <repo>/src/findajob/find_contacts.py         # find_contacts implementation (called by scripts/find_contacts.py shim)
+<repo>/src/findajob/critique_aggregator/      # recruiter_critic aggregator (#265) — parse, anchor (fuzzy source-line), cluster, corpus, analyze, report, pipeline
 
 # ── Entry point scripts (called by systemd / CLI) ──────────────────────────
 <repo>/scripts/triage.py                    # daily ingest → score → DB
@@ -65,6 +66,7 @@ When this map drifts from the actual code (renamed file, new route module, retir
 <repo>/scripts/notify.py                    # ntfy push notifications — subcommands: daily-stats, health-check, apply-reminder, feedback-review, send-raw
 <repo>/scripts/rename_folders.py            # rename company folders to new format (idempotent)
 <repo>/scripts/discover_companies.py            # weekly company discovery cron entry
+<repo>/scripts/critique_review.py            # entry-point shim → findajob.critique_aggregator.pipeline (#265); manual, writes gitignored report
 <repo>/scripts/seed_runtime_config.py       # entrypoint-invoked at every container start; thin shim over findajob.config_seed.seed_runtime_config (#627)
 
 # ── Candidate content (all gitignored — fill these in after cloning) ────────

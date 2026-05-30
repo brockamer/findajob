@@ -104,6 +104,41 @@ conversation in your chat LLM, then paste the result into `/config/`
 to save it. Prompt source files live in `config/tool_prompts/` and
 are editable through `/config/` like any other config file.
 
+### Aggregating recruiter critiques into source-level fixes
+
+Every prep folder gets a recruiter critique — a sharp, ≤150-word read
+from a simulated overwhelmed recruiter (the `recruiter_critic` role).
+Individually they're useful; in bulk they reveal something more: the
+*same* weaknesses keep getting flagged across different applications,
+which means they live at the **source** (your `master_resume.md`,
+`profile.md`, or the cover/resume role prompts), not in any one prep.
+
+Once you've accumulated ~10+ preps, run the aggregator:
+
+```
+python scripts/critique_review.py
+```
+
+It scans every critique, anchors each flagged line back to the exact
+source line it came from (fuzzy-matched, so paraphrases still cluster),
+and writes a dated report to
+`candidate_context/critique_aggregate/<date>.md` — gitignored, because
+it quotes your real resume. The report has three parts:
+
+- **Source-level fixes** — a resume/profile line flagged by **≥3
+  different companies**, with the exact `file:line`, the recruiter's own
+  verbatim words, and a count. Fix it once, kill it across every
+  application. These are sorted most-recurring first.
+- **Recurring themes** — words that keep showing up across many
+  critiques but don't trace to one line (often a generated cover-letter
+  pattern or a profile gap). These point at a prompt or profile fix.
+- **One-offs** — lines flagged at only one company, collapsed to a
+  count. Per-prep nitpicks, safe to ignore until they recur.
+
+Flags: `--since YYYY-MM-DD` limits to recent critiques; `--min-companies
+N` changes the recurrence floor (default 3); `--print` echoes the report
+to your terminal as well as writing the file.
+
 ---
 
 ## Operator controls at /tools/
