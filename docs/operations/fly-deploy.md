@@ -114,7 +114,7 @@ SQLite + role artifacts under `companies/` are the data layer. Because all state
     fly volumes snapshots create <volume-id>
     fly volumes snapshots list   <volume-id>
 
-Snapshots are durable, off-machine, and restorable to a new volume with `fly volumes create --snapshot-id <snap>`. See [`../maintainers/data-ownership.md`](../maintainers/data-ownership.md) for the per-path classification of what's rebuildable vs. backup-critical inside that single volume.
+Snapshots are durable, off-machine, and restorable to a new volume with `fly volumes create --snapshot-id <snap>`. See [`CLAUDE.md` § Data Ownership and Backup Classification](../../CLAUDE.md#data-ownership-and-backup-classification) for the per-path classification of what's rebuildable vs. backup-critical inside that single volume.
 
 ## Rollback
 

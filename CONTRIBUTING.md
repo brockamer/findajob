@@ -192,7 +192,7 @@ Add via `uv add <pkg>`; commit `pyproject.toml` and `uv.lock` together.
 ## Where else to look
 
 - **CLAUDE.md** — durable guidance for AI assistants working in this repo. Architectural rules + implementation guardrails + commit flow. Read it; the rules in CLAUDE.md and CONTRIBUTING.md are the same rules.
-- **`docs/maintainers/project-board.md`** — GitHub Projects v2 board conventions (columns, Priority field, labels, `gh project` CLI).
-- **`docs/maintainers/plan-conventions.md`** — what every implementation plan must contain.
+- **`docs/project-board.md`** — GitHub Projects v2 board conventions (columns, Priority field, labels, `gh project` CLI). Also jared's config file — the machine-readable header block is parsed on every board operation.
+- **CLAUDE.md `## Plan Structure`** — what every implementation plan must contain.
 - **`docs/maintainers/release-process.md`** — how releases are cut.
 - **`docs/maintainers/generalization.md`** — domain-locked content tracker (this codebase started in tech-careers; the goal is field-agnostic).

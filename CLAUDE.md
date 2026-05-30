@@ -26,7 +26,7 @@ Two categories the hook can't fully catch — be deliberate about these:
 - **Operator topology** — hostnames, deployment paths (`/opt/stacks/...`), backup destinations, consumer infra brand names (hypervisor / NAS / VPN mesh products), per-stack port numbers, the operator's domain. Setup docs use placeholders: `<deployment-host>`, `<operator-handle>`, `<operator-domain>`.
 - **Field-locked content** — hardcoded company lists, single-field title patterns, industry vocabulary in role prompts. Belong in gitignored config (`config/target_companies.md`, `config/prefilter_rules.yaml`) or referenced from the candidate profile, not enumerated in tracked files. Tracking doc: [`docs/maintainers/generalization.md`](docs/maintainers/generalization.md).
 
-Plans, specs, and experiment notes under `docs/superpowers/` are gitignored (#430). Stay off the index even for "just this PR." Plan-content conventions are documented in [`docs/maintainers/plan-conventions.md`](docs/maintainers/plan-conventions.md); the *storage* is operator-private.
+Plans, specs, and experiment notes under `docs/superpowers/` are gitignored (#430). Stay off the index even for "just this PR." Plan-content conventions are documented in [`## Plan Structure`](#plan-structure) below; the *storage* is operator-private.
 
 If you find yourself wanting to put a real name, real employer, real city, or a tech-only example into a tracked file: move it to `CLAUDE.local.md` or a gitignored config and reference it instead.
 
@@ -34,15 +34,101 @@ If you find yourself wanting to put a real name, real employer, real city, or a 
 
 ## Pipeline Context
 
-Per-role model assignments, container path shifts, and pipeline plumbing reference: [`docs/maintainers/pipeline-context.md`](docs/maintainers/pipeline-context.md). Read it when working on a specific role, fetcher, or path question.
-
-The pipeline is Docker-only: image `ghcr.io/brockamer/findajob`, supercronic + uvicorn co-process inside one container, paths under `/app/...` (override via `JSP_BASE`). All scripts use `findajob.paths.BASE` — never hardcode `/home/...` or `/app/`. All LLM calls go through `findajob.llm.openrouter.complete()`.
+The pipeline is Docker-only: image `ghcr.io/brockamer/findajob`, supercronic + uvicorn co-process inside one container, paths under `/app/...` (override via `JSP_BASE`). All scripts use `findajob.paths.BASE` — never hardcode `/home/...` or `/app/`. All LLM calls go through `findajob.llm.openrouter.complete()`. Per-role model assignments, plumbing, and container path shifts are in [`## Per-Role Model Assignments`](#per-role-model-assignments) below.
 
 ---
 
-## Data Ownership
+## Per-Role Model Assignments
 
-Per-path classification (source, backup-critical, rebuildable) lives in [`docs/maintainers/data-ownership.md`](docs/maintainers/data-ownership.md). The data layer is the only thing `docker compose pull` + a fresh interview can't regenerate.
+<!-- Absorbed from docs/maintainers/pipeline-context.md, 2026-05-27 -->
+
+Model assignment for every LLM-driven role, plus the canonical paths and conventions the pipeline depends on. Read when working on a specific role, fetcher, or path question.
+
+### Models per role
+
+| Role | Model | Notes |
+|------|-------|-------|
+| Default | `openrouter:google/gemini-3-flash-preview` | |
+| `job_scorer` | `openrouter:deepseek/deepseek-v3.2` | profile.md injected directly; `--rag` NEVER used |
+| `resume_tailor` / `cover_letter_writer` | `openrouter:anthropic/claude-opus-4.7` | `max_tokens: 4096` |
+| `briefing_writer` | `openrouter:anthropic/claude-opus-4.7` | cascades into `resume_tailor` + `cover_letter_writer` |
+| `outreach_drafter` | `openrouter:anthropic/claude-opus-4.7` | profile + voice samples injected directly |
+| `recruiter_critic` | `openrouter:anthropic/claude-opus-4.7` | `max_tokens: 1024`; sees company, title, JD, tailored resume, cover; NOT profile/briefing/fit |
+| `interview_prep` | `openrouter:anthropic/claude-opus-4.7` | `max_tokens: 4096`; fires on `applied → interview` |
+| `company_discoverer` | `openrouter:perplexity/sonar-reasoning-pro` | weekly Sun 02:00; emits `candidate_context/discovered_companies.md` + `.json`; field-agnostic, augments static `## Target Companies` |
+| `company_researcher` | `openrouter:perplexity/sonar-reasoning-pro` | |
+| `fit_analyst` | `openrouter:perplexity/sonar-reasoning-pro` | appended to company briefing |
+| `candidate_led_briefing` | `openrouter:perplexity/sonar-deep-research` | async (1–5 min); drives speculative briefing pass |
+| `speculative_roles_synth` | `openrouter:anthropic/claude-sonnet-4.6` | `max_tokens: 4096`; synthesizes 1–5 candidate-tailored role cards |
+| `resume_change_reviewer` / `network_analyst` | `openrouter:google/gemini-3-flash-preview` | |
+
+### Pipeline plumbing
+
+| Item | Value |
+|------|-------|
+| Job ingestion | Pluggable via `JobSourceAdapter` (`src/findajob/fetchers/adapters/`); jobs-api14 + JSearch ship in v0.14; per-stack active list in `config/active_sources.txt`. Greenhouse / Ashby / Lever / Gmail still function-style — migration tracked in #410. v0.15 adds `JobsApi14IndeedAdapter` (Indeed via jobs-api14 with sortType=date + post-filter). RapidAPI credentials consolidated to `RAPIDAPI_KEY` (legacy `JOBS_API14_KEY` / `JSEARCH_API_KEY` work as fallbacks) per #414. |
+| Cost tracking | Every LLM call writes `cost_log.cost_usd` from `response.usage.cost` (OpenRouter authoritative; no heuristic, no calibration). `findajob.cost_rollups` helpers (`per_job_cost`, `per_job_breakdown`, `weekly_spend`, `projected_monthly`, `spend_this_month`) sum directly from `cost_log` to back the nav spend chip, dashboard burn-rate widget, Applied cost cell, Materials breakdown, and notify-stats projection. |
+| Per-prep cost projection | `findajob.prep.cost_projection.compute_projection` runs at `_run_prep_phase_a` start and emits a `prep_cost_projection` event to `pipeline.jsonl` with `projected_cost_usd` (sum of trailing-30d per-`(role, model)` medians for the 8 prep roles), `expensive_role`, and `ceiling_usd` (1.5x trailing-30d median full-prep cost, scoring excluded). When projection > ceiling, an additional `prep_cost_projection_high` event fires — non-blocking, the operator wanted early warning not a gate. Cold start (no `cost_log` history) emits the event with `None` sentinels and `n_roles_with_history=0`. Catches per-prep cost creep earlier than "operator notices an outlier in the burn-rate widget" (#713). |
+| Package manager | `uv sync` for dev deps; `uv run` prefix for pytest/ruff/mypy/uvicorn |
+| Path resolution | `src/findajob/paths.py` — reads `config/paths.env`; BASE derived from `__file__` |
+| Roles dir | `config/roles/` |
+| Master resume | `candidate_context/master_resume.md` |
+| Profile | `candidate_context/profile.md` |
+| DB | `data/pipeline.db` |
+| Pre-filter | `src/findajob/scorer_prefilter.py` — Stage 1 regex hard reject, Stage 2 no-JD default |
+| Board writes | `src/findajob/web/routes/board_actions.py` — every STATUS / REJECT_REASON transition is a POST handler calling `findajob.actions`. SQLite is the single source of truth. |
+| Watchdog | `scripts/watchdog.py` every 10 min — resets jobs stuck in `prep_in_progress` > 60 min |
+| Scheduler | supercronic in-container; schedules declared in `ops/scheduled-jobs.yaml`, rendered to `/app/crontab` by `scripts/render_crontab.py` at entrypoint. Per-job env overrides: `FINDAJOB_<JOB>_SCHEDULE` / `FINDAJOB_<JOB>_ENABLED` (#344). |
+| ntfy topic | in `data/.env` as `NTFY_TOPIC`; also in `CLAUDE.local.md` |
+
+### Container path shifts
+
+When the pipeline runs inside the `ghcr.io/brockamer/findajob` image, paths shift:
+
+| Thing | Local clone | Container |
+|---|---|---|
+| `BASE` (from `findajob.paths`) | Repo clone path | `/app` (set via `JSP_BASE=/app` in compose) |
+| `data/pipeline.db` | `<repo>/data/pipeline.db` | `/app/data/pipeline.db` (bind-mounted from `./state/data/`) |
+| `config/roles/` | `<repo>/config/roles/` | `/app/config/roles/` (baked into image — NOT from bind mount) |
+| Personal config (`config/*.yaml|.txt|.json`) | `<repo>/config/` | `/app/config/` (bind-mounted from `./state/config/`) |
+| `candidate_context/` | `<repo>/candidate_context/` | `/app/candidate_context/` (bind-mount) |
+| `discovered_companies.{md,json}` | `<repo>/candidate_context/` (gitignored) | `/app/candidate_context/` (generated into bind-mount) |
+| `companies/` | `<repo>/companies/` | `/app/companies/` (bind-mount) |
+| Onboarding sentinel | `<repo>/data/.onboarding-complete` | `/app/data/.onboarding-complete` (bind-mount) |
+| Onboarding backups | `<repo>/.backups/{UTC-stamp}/` | `/app/.backups/` (bind-mount from `./state/.backups/`) |
+| Web viewer | `src/findajob/web/` (package) | uvicorn co-process on container port 8090 (mapped to `FINDAJOB_MATERIALS_PORT`) |
+
+### When authoring scripts or tests
+
+- Always use `findajob.paths.BASE` — never hardcode `/home/...` or `/app/`.
+- Binary subprocess calls go through `PANDOC` from `findajob.paths`.
+- LLM calls go through `findajob.llm.openrouter.complete()`.
+- Tests must not depend on absolute paths — use tmpdirs or `BASE`-relative paths.
+
+---
+
+## Data Ownership and Backup Classification
+
+<!-- Absorbed from docs/maintainers/data-ownership.md, 2026-05-27 -->
+
+Audit anchor — classifies persisted state by ownership and recoverability. The data layer is the only thing `docker compose pull` + a fresh interview can't regenerate.
+
+| Path | Source | Backup-critical? | Rebuildable if lost? |
+|---|---|---|---|
+| `data/pipeline.db` | Pipeline-generated; operator-curated via stage transitions, notes, score corrections | **Yes** | **No** — fetcher results from past dates aren't retrievable; transitions are operator decisions |
+| `candidate_context/profile.md`, `master_resume.md`, `voice_samples/` | Operator-authored | **Yes** | **No** — re-interview loses weeks of hand-tuning |
+| `candidate_context/discovered_companies.{md,json}` | Pipeline-generated (weekly cron) | No | **Yes** — next Sunday discoverer run reproduces |
+| `config/` (operator-curated subset: `target_companies.md`, `prefilter_rules.yaml`, `excluded_employers.yaml`, `feed_urls.txt`, `jsearch_queries.txt`, `target_locations.txt`, `feedback_weights.yaml`, `gmail.json`, `gsheets_creds.json`, etc.) | Operator-curated (interview-emitted seed + accumulated edits) | **Yes** | **No** — re-interview emits ~half; hand-curation gone |
+| `config/gmail_state.json` | Pipeline-generated (IMAP UID checkpoint) | No | **Yes** — re-syncs on next poll |
+| `config/roles/`, `config/scoring_schema.json`, `config/model_pricing.yaml`, `config/reference.docx`, `config/strip-bookmarks.lua` | Repo-baked (in image, not bind-mount) | No | **Yes** — `docker compose pull` restores |
+| `data/.env` | Operator-curated (API keys, NTFY_TOPIC) | **Yes** | **No** — rotation-grade pain to re-collect |
+| `data/.onboarding-complete` | Pipeline-generated sentinel | No | **Yes** — re-emit on next interview |
+| `data/connections.csv` | Operator-uploaded (LinkedIn export) | No | **Yes** — re-export from LinkedIn (minutes) |
+| `companies/` (active + `_applied/` + `_waitlisted/` + `_rejected/` + `.stale/`) | Pipeline-generated | Selective (skip `.stale/`) | **Partially** — re-runnable per-job, but stale JD URLs no longer reachable |
+| `logs/pipeline.jsonl` | Pipeline-generated | No (observability, not state) | **No** — historical observability lost if dropped |
+| `logs/{form-ingest,jobsync,poller,triage,notify,rescore_backfill}.log` | Legacy / pipeline-generated | No | **Yes** — mostly stale; safe to drop |
+
+Deep reference: `docs/superpowers/specs/2026-05-03-301-data-model-audit.md` §1 (operator-private).
 
 ---
 
@@ -264,9 +350,37 @@ The one rule worth restating here because it bites often: **Same-PR docs rule.**
 
 ## Project Board, Plans, Releases
 
-- **Project board** — GitHub Projects v2 at https://github.com/users/brockamer/projects/1 is the single source of truth. Not on the board = not on the roadmap. Conventions in [`docs/maintainers/project-board.md`](docs/maintainers/project-board.md). Use the `/jared file` skill instead of manual `gh` calls — issue creation requires both `gh issue create` AND `gh project item-add` (new issues do not auto-add).
-- **Plans, specs, experiments** — gitignored under `docs/superpowers/`. Content conventions in [`docs/maintainers/plan-conventions.md`](docs/maintainers/plan-conventions.md). A plan without a **Documentation Impact** section is incomplete — push back rather than execute it.
+- **Project board** — GitHub Projects v2 at https://github.com/users/brockamer/projects/1 is the single source of truth. Not on the board = not on the roadmap. Conventions in [`docs/project-board.md`](docs/project-board.md) (also jared's config file — the machine-readable header block is parsed on every board operation). Use the `/jared file` skill instead of manual `gh` calls — issue creation requires both `gh issue create` AND `gh project item-add` (new issues do not auto-add).
+- **Plans, specs, experiments** — gitignored under `docs/superpowers/`. Content conventions in [`## Plan Structure`](#plan-structure) below. A plan without a **Documentation Impact** section is incomplete — push back rather than execute it.
 - **Releases** — Docker image tagged from main; CHANGELOG.md is the release-notes source. PRs with schema / config / crontab / mount / compose changes get `migration-required` at PR-open time.
+
+---
+
+## Plan Structure
+
+<!-- Absorbed from docs/maintainers/plan-conventions.md, 2026-05-27 -->
+
+Implementation plans live in an operator-private location (`docs/superpowers/plans/` — gitignored; files on disk but not tracked, per #430). They are the bridge between a brainstormed spec and the actual commits. The storage location is operator-private; the content discipline below is unchanged.
+
+### Required sections
+
+Every plan must include the sections below. Skipping one is a smell — push back rather than write a plan that hides scope.
+
+1. **Goal + scope** — One paragraph: what's being built and why. One paragraph: what's intentionally NOT in scope (and links to the issues that cover the deferred work).
+2. **Tasks** — Numbered, bite-sized tasks. Each spells out **Files** to create/modify, **Steps** as a checklist, **Verification** commands and their expected outputs, and a **Commit message** body. Prescriptive enough that a fresh subagent can execute the task without re-reading the spec.
+3. **Documentation Impact** — **Mandatory, even if the answer is "none."** For each documentation surface the work touches, name the file and the change: `README.md` (install path, tech stack, quick-start), `docs/getting-started/*.md`, `CLAUDE.md` / `CLAUDE.local.md`, `CHANGELOG.md`, the spec doc in `docs/superpowers/specs/` (does this plan amend the original spec?), in-code docstrings. If an item belongs to a follow-up issue, name the issue. If no docs are touched, write "None — no user-visible or developer-facing surface changes." Don't leave it empty.
+4. **Verification gate** — The smoke checks, integration tests, or manual validations that must pass before the PR opens. Distinct from per-task verification — this is the whole-feature acceptance gate.
+5. **Self-review checklist** — Spec coverage map (every spec section → tasks that implement it), placeholder scan (no `TBD`/`TODO` left), type/contract consistency across files.
+
+**Why Documentation Impact is required:** doc drift is silent. Code reviews catch behavioral bugs but rarely a stale README or a CLAUDE.md table listing the wrong scheduler. Enumerating every surface before implementing turns "doc updates" from an afterthought into part of the task list.
+
+### Storage and naming
+
+`docs/superpowers/plans/YYYY-MM-DD-short-feature-slug.md` — one plan per feature, dated for ordering. A mid-implementation handoff uses the `-CHECKPOINT.md` suffix and is deleted once the next session resumes.
+
+### Relationship to specs
+
+Specs (`docs/superpowers/specs/`) describe **what** and **why** — the design + decision-log artifact from brainstorming. Plans describe **how** — concrete tasks with verifications. A spec without a plan can't be executed; a plan without a spec usually means the design wasn't really thought through. When a plan reveals a flaw in the spec, fix the spec in the same PR (often via a "Decisions made during implementation" subsection appended to the spec). Don't let plan and spec drift.
 
 ---
 
