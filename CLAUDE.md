@@ -50,11 +50,11 @@ Model assignment for every LLM-driven role, plus the canonical paths and convent
 |------|-------|-------|
 | Default | `openrouter:google/gemini-3-flash-preview` | |
 | `job_scorer` | `openrouter:deepseek/deepseek-v3.2` | profile.md injected directly; `--rag` NEVER used |
-| `resume_tailor` / `cover_letter_writer` | `openrouter:anthropic/claude-opus-4.7` | `max_tokens: 4096` |
-| `briefing_writer` | `openrouter:anthropic/claude-opus-4.7` | cascades into `resume_tailor` + `cover_letter_writer` |
-| `outreach_drafter` | `openrouter:anthropic/claude-opus-4.7` | profile + voice samples injected directly |
-| `recruiter_critic` | `openrouter:anthropic/claude-opus-4.7` | `max_tokens: 1024`; sees company, title, JD, tailored resume, cover; NOT profile/briefing/fit |
-| `interview_prep` | `openrouter:anthropic/claude-opus-4.7` | `max_tokens: 4096`; fires on `applied → interview` |
+| `resume_tailor` / `cover_letter_writer` | `openrouter:anthropic/claude-opus-4.8` | `max_tokens: 4096` |
+| `briefing_writer` | `openrouter:anthropic/claude-opus-4.8` | cascades into `resume_tailor` + `cover_letter_writer` |
+| `outreach_drafter` | `openrouter:anthropic/claude-opus-4.8` | profile + voice samples injected directly |
+| `recruiter_critic` | `openrouter:anthropic/claude-opus-4.8` | `max_tokens: 1024`; sees company, title, JD, tailored resume, cover; NOT profile/briefing/fit |
+| `interview_prep` | `openrouter:anthropic/claude-opus-4.8` | `max_tokens: 4096`; fires on `applied → interview` |
 | `company_discoverer` | `openrouter:perplexity/sonar-reasoning-pro` | weekly Sun 02:00; emits `candidate_context/discovered_companies.md` + `.json`; field-agnostic, augments static `## Target Companies` |
 | `company_researcher` | `openrouter:perplexity/sonar-reasoning-pro` | |
 | `fit_analyst` | `openrouter:perplexity/sonar-reasoning-pro` | appended to company briefing |

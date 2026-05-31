@@ -38,7 +38,7 @@ If you went through the `/onboarding/` interview, you were prompted in Phase 3f
 to paste long-form prose. The interview emits a `voice-samples.md` block; the
 paste-back injector runs it through a structural-cleaning pass (strips markdown
 headers, image tags, link syntax, footnotes, code fences, etc. without altering
-prose) plus an Opus 4.7 PII-generalization pass (replaces specific dates, named
+prose) plus an Opus 4.8 PII-generalization pass (replaces specific dates, named
 third parties, named places, named institutions with generic equivalents while
 preserving voice). The result lands here as `voice-samples.md`. To re-trigger,
 visit `/onboarding/?mode=rerun`.

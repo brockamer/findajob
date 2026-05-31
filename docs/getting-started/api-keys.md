@@ -51,7 +51,7 @@ findajob routes its AI features across several models — each task uses the
 model best suited to it:
 
 - **Job scoring** → DeepSeek v3.2
-- **Briefings, cover letters, resume tailoring, outreach, interview prep, recruiter critique** → Claude Opus 4.7
+- **Briefings, cover letters, resume tailoring, outreach, interview prep, recruiter critique** → Claude Opus 4.8
 - **Onboarding interview, speculative role synthesis** → Claude Sonnet 4.6
 - **Network analysis, resume change review** → Gemini 3 Flash
 - **Company research, company discovery, fit analysis** → Perplexity Sonar Reasoning Pro

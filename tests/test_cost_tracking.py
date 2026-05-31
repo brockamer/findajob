@@ -60,6 +60,7 @@ def test_role_model_frontmatter_without_model_key_returns_unknown(tmp_path: Path
         # the operator's stack (#460). Opus 4.7 + Gemini 3 Flash were corrected
         # downward (Opus 4.7 ≠ Opus 4 pricing) and upward (Gemini 3 Flash ≠
         # Gemini 2 Flash pricing) respectively from #459's initial values.
+        ("openrouter:anthropic/claude-opus-4.8", 5.0, 25.0),
         ("openrouter:anthropic/claude-opus-4.7", 5.0, 25.0),
         ("openrouter:anthropic/claude-sonnet-4.6", 3.0, 15.0),
         ("openrouter:google/gemini-3-flash-preview", 0.55, 2.20),

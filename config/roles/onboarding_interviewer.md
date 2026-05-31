@@ -1345,7 +1345,7 @@ The injector at `findajob.onboarding.injector` will:
 1. Strip markdown structure (headers, images, link syntax, bold/italic, blockquotes,
    horizontal rules, code fences, footnote markers, HTML tags, tables) via
    deterministic regex.
-2. Run the cleaned text through Opus 4.7 to generalize personal identifiers (specific
+2. Run the cleaned text through Opus 4.8 to generalize personal identifiers (specific
    dates, named third parties, exact geographic specifiers, named institutions,
    exact dollar amounts) while preserving voice, paragraph structure, and prose flow.
 3. Atomically write the result to `candidate_context/voice_samples/voice-samples.md`.

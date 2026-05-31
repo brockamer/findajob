@@ -9,7 +9,7 @@ This module turns that paste into a clean, generalized voice-samples.md file:
    horizontal rules, footnote markers, tables, HTML tags, frontmatter).
    Deterministic, no LLM, fully testable.
 
-2. ``redact_voice_samples`` — LLM-backed (Opus 4.7) generalization of personal
+2. ``redact_voice_samples`` — LLM-backed (Opus 4.8) generalization of personal
    identifiers the operator may not have thought to scrub: specific dates,
    named third parties, exact geographic specifiers, named institutions,
    exact dollar amounts. Conservative bias: preserve prose flow above all.
@@ -101,7 +101,7 @@ def redact_voice_samples(
     timeout: int = 120,
     conn: sqlite3.Connection | None = None,
 ) -> tuple[str, bool]:
-    """Generalize PII via Opus 4.7, preserving voice.
+    """Generalize PII via Opus 4.8, preserving voice.
 
     Returns ``(redacted_text, success)``. On LLM failure returns
     ``(cleaned, False)`` so the caller can degrade gracefully and warn the user.

@@ -4,11 +4,11 @@
 # to a default rate and get logged as best-effort estimates.
 #
 # Matching: cost_tracking.py looks up the longest prefix match of the
-# OpenRouter model string, so "openrouter:anthropic/claude-opus-4.7"
+# OpenRouter model string, so "openrouter:anthropic/claude-opus-4.8"
 # matches the entry below regardless of provider routing.
 #
-# Last updated: 2026-05-05 (v2 — opus-4.7 and gemini-3-flash rates corrected
-# against empirical CoreWeave prep verification, #460)
+# Last updated: 2026-05-30 (opus-4.8 row added at the same $5/$25 tier as 4.7;
+# 4.7 row retained for historical cost_log attribution, #928)
 
 default:
   input_per_mtok: 1.00
@@ -19,11 +19,18 @@ models:
   "openrouter:deepseek/deepseek-v3.2":
     input_per_mtok: 0.27
     output_per_mtok: 1.10
+  "openrouter:anthropic/claude-opus-4.8":
+    # Opus 4.8 launched at the same $5/$25 tier as 4.7 (verified against the
+    # live OpenRouter catalog 2026-05-30). All Opus-pinned roles route here
+    # as of #928. The -fast variant ($10/$50) is deliberately NOT used.
+    input_per_mtok: 5.0
+    output_per_mtok: 25.0
   "openrouter:anthropic/claude-opus-4.7":
-    # Opus 4.7 priced lower than Opus 4 ($15/$75) at launch. Empirically
-    # verified 2026-05-05 against 5 separate Opus calls in CoreWeave prep:
-    # actual cost = 0.333× of $15/$75 rate-card across 6,769–44,048 input
-    # tokens, ruling out caching as the explanation. (#460)
+    # Retained for historical cost_log attribution — pre-#928 rows reference
+    # this string. Opus 4.7 priced lower than Opus 4 ($15/$75) at launch.
+    # Empirically verified 2026-05-05 against 5 separate Opus calls in
+    # CoreWeave prep: actual cost = 0.333× of $15/$75 rate-card across
+    # 6,769–44,048 input tokens, ruling out caching as the explanation. (#460)
     input_per_mtok: 5.0
     output_per_mtok: 25.0
   "openrouter:anthropic/claude-sonnet-4.6":

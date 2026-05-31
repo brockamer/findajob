@@ -15,7 +15,7 @@ Cache_control plumbing exposes two axes:
   file is large enough to be cacheable on its own.
 
 Anthropic-only billing benefit: ``cache_control`` is honored only by
-Anthropic providers (Opus 4.7, Sonnet 4.6, Haiku 4.5). The parameter is
+Anthropic providers (Opus 4.8, Sonnet 4.6, Haiku 4.5). The parameter is
 correct for the OpenRouter API on any provider; non-Anthropic providers
 silently ignore it.
 """
