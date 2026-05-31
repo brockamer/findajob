@@ -4,7 +4,7 @@ The hosted path: findajob runs as one app per person on [Fly.io](https://fly.io/
 
 **Time to value: ~20 minutes to first onboarding screen, ~2 hours total to a populated dashboard.** Deploy takes ~10 minutes through the Fly.io web dashboard (no terminal required). The in-app onboarding interview that follows takes 60–90 minutes (one-time, ~$3–6 of OpenRouter spend — make sure you've added at least $10 of credit to your OpenRouter wallet before starting; OpenRouter is pay-as-you-go, so you're funding a balance the system draws from). Your dashboard fills overnight when the daily triage runs at midnight in your timezone.
 
-This page is for someone who has never deployed anything to Fly before. If you operate Linux servers and would rather run a docker-compose stack on a host you own, see [`install-docker.md`](install-docker.md) instead. Both paths run the same image and reach the same dashboard.
+This page is for someone who has never deployed anything to Fly before. If you operate Linux servers and would rather run a docker-compose stack on a host you own, see [`install-docker.md`](../operations/install-docker.md) instead. Both paths run the same image and reach the same dashboard.
 
 ---
 

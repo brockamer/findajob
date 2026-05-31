@@ -159,5 +159,5 @@ For the operator-tier numbers (per-tenant Fly cost across multiple instances, sn
 
 - [Capping the spend](#capping-the-spend) — set a monthly limit
 - [`install-fly.md`](install-fly.md) — Fly install runbook (links back to this doc)
-- [`install-docker.md`](install-docker.md) — self-host install (same LLM cost structure)
+- [`install-docker.md`](../operations/install-docker.md) — self-host install (same LLM cost structure)
 - `/stats/` in your running stack — real-time cost data for your own instance

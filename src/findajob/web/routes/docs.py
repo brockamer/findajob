@@ -69,6 +69,16 @@ _INDEX_GUIDES = [
         "blurb": "Running the stack by hand: manual commands, log rotation, restore, internet exposure.",
     },
     {
+        "slug": "updating",
+        "title": "Updating",
+        "blurb": "Picking up a new release — the steps differ by deploy type (Fly, or Docker with/without Watchtower).",
+    },
+    {
+        "slug": "tuning",
+        "title": "Tuning",
+        "blurb": "Read the stats pages, adjust your config when the numbers call for it, and verify the change worked.",
+    },
+    {
         "slug": "troubleshooting",
         "title": "Troubleshooting",
         "blurb": "What the health-check alerts mean and how to unstick common failures.",
