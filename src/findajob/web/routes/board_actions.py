@@ -488,6 +488,7 @@ def regenerate_confirm(
             "confirm_url": f"/board/jobs/{fingerprint}/regenerate",
             "confirm_target": "closest tr",
             "cancel_url": f"/board/jobs/{fingerprint}/regenerate/cell",
+            "modal_id": fingerprint,
         },
     )
 
@@ -951,6 +952,7 @@ def un_reject_confirm(
             "confirm_url": f"/board/jobs/{fingerprint}/un-reject",
             "confirm_target": "closest tr",
             "cancel_url": f"/board/jobs/{fingerprint}/un-reject/cell",
+            "modal_id": fingerprint,
         },
     )
 

@@ -10,16 +10,24 @@
                      row-removal actions; pass 'closest td' for cell-only swaps.
     confirm_swap — hx-swap for the confirm POST (default 'outerHTML')
     cancel_url   — URL the Cancel button GETs to restore the original cell
+    modal_id     — optional unique token (callers pass the job fingerprint) used
+                   to scope the copy/context element ids that the role="group"
+                   container references via aria-labelledby, so #944's
+                   focus-on-open announces the actual warning text rather than a
+                   generic label. Defaults to 'confirm-modal' for the single-
+                   open case if a caller omits it.
 
   The whole modal is wrapped in a <td> so it slots cleanly into a row when
   the trigger cell is swapped via outerHTML.
 #}
+{% set mid = modal_id | default('confirm-modal') %}
 <td class="px-3 py-1 align-top text-sm" data-confirm-modal>
   <div class="rounded border border-red-300 bg-red-50 p-2"
-       role="group" aria-label="Confirm action">
-    <p class="text-xs text-red-900 mb-1">{{ copy }}</p>
+       role="group"
+       aria-labelledby="confirm-{{ mid }}-copy{% if context_lines %} confirm-{{ mid }}-ctx{% endif %}">
+    <p id="confirm-{{ mid }}-copy" class="text-xs text-red-900 mb-1">{{ copy }}</p>
     {% if context_lines %}
-    <ul class="text-[11px] text-red-700 mb-2 list-disc list-inside">
+    <ul id="confirm-{{ mid }}-ctx" class="text-[11px] text-red-700 mb-2 list-disc list-inside">
       {% for line in context_lines %}<li>{{ line }}</li>{% endfor %}
     </ul>
     {% endif %}
