@@ -83,7 +83,7 @@ briefing again. Existing source-config files (`jsearch_queries.txt`,
 `.backups/{UTC-stamp}/` before being overwritten.
 
 ### Tuning your config without re-onboarding
-Visit `/tools/` for guided LLM prompts that produce config edits
+Visit `/tools/` for guided prompts that produce config edits
 without re-running the full interview. Three prompt tiles ship by
 default:
 
@@ -118,55 +118,18 @@ Once you've accumulated ~10+ preps, the quickest way to see this is the
 `/tools/critique-review/`) — it computes the aggregate live and renders the
 source-level fixes as cards in the browser, no terminal needed.
 
-For a written report on disk (and the `--since` / `--min-companies` knobs),
-run the CLI:
-
-```
-python scripts/critique_review.py
-```
-
 It scans every critique, anchors each flagged line back to the exact
-source line it came from (fuzzy-matched, so paraphrases still cluster),
-and writes a dated report to
-`candidate_context/critique_aggregate/<date>.md` — gitignored, because
-it quotes your real resume. The report has three parts:
+source line it came from, and organizes the findings into three parts:
 
 - **Source-level fixes** — a resume/profile line flagged by **≥3
-  different companies**, with the exact `file:line`, the recruiter's own
+  different companies**, with the exact location, the recruiter's own
   verbatim words, and a count. Fix it once, kill it across every
   application. These are sorted most-recurring first.
-- **Recurring themes** — words that keep showing up across many
+- **Recurring themes** — patterns that keep showing up across many
   critiques but don't trace to one line (often a generated cover-letter
   pattern or a profile gap). These point at a prompt or profile fix.
 - **One-offs** — lines flagged at only one company, collapsed to a
   count. Per-prep nitpicks, safe to ignore until they recur.
-
-Flags: `--since YYYY-MM-DD` limits to recent critiques; `--min-companies
-N` changes the recurrence floor (default 3); `--print` echoes the report
-to your terminal as well as writing the file.
-
----
-
-## Operator controls at /tools/
-
-`/tools/` is the operator console. Two panels:
-
-**Run a job now.** Buttons for the six high-value cron jobs (triage, detect-rejections, discover, notify-health, notify-stats, watchdog). Each tile shows when the cron last ran and whether one is in flight right now. Cost-bearing crons (triage, discover) ask you to confirm in the browser before launching, and refuse with a 402 page when the monthly LLM spend ceiling is reached.
-
-| Cron | When to fire manually |
-|---|---|
-| Triage | Morning after a scorer prompt change; after a JD-fetcher fix; when you want fresh data NOW instead of waiting for 00:00 PT. |
-| Detect rejections | A rejection email just landed and you want it surfaced in `/board/rejections-review/` immediately. |
-| Discover | Just edited `profile.md` or re-ran onboarding; want fresh `discovered_companies` without waiting for Sunday 02:00. |
-| Notify: health | Want to verify the health-check works before relying on the morning push. |
-| Notify: stats | Preview today's stats push on demand. |
-| Watchdog | Clear any prep job stuck in `prep_in_progress` immediately rather than wait up to 10 minutes for the next cron. |
-
-If a button is greyed out and shows "Running…", the cron is currently in flight (either fired by cron or by an earlier button click). Re-fire only after it finishes — the dispatcher will 409 a concurrent click anyway.
-
-**Pipeline log viewer** (`/tools/logs/pipeline/`). Tail of the last 200 events from `logs/pipeline.jsonl`, newest first. Replaces `ssh + tail -f` for the common case. Filter by event name via the dropdown (typeahead from observed names in the window). v1 limitations: no severity filter, no time-range filter, no auto-refresh, no rotated-file (`.gz`) traversal — refresh the page to pull new events.
-
-**Guided prompts** below the trigger panel is the original `/tools/` surface from #150 — unchanged. Use these when you want to chat with an external LLM (Claude.ai) about config edits that don't have a dedicated UI yet.
 
 ---
 
@@ -180,7 +143,7 @@ A filter row sits directly under each column header. TEXT columns (Title, Compan
 
 Below the table header, active filters appear as a chip strip — click ✕ on any chip to remove that filter, or **Clear all** to reset everything. The 🔗 Copy link button in the top-right copies the current URL (with all active filters and sort) to the clipboard, making any view bookmarkable and shareable.
 
-To browse score-5/6 jobs that the default 7+ cutoff hides (useful for triage), visit:
+To browse lower-scored jobs that the default cutoff hides (useful for triage), visit:
 `/board/dashboard?relevance_score_min=5&stage=scored,manual_review`
 
 Sort is sticky with filters — changing the sort column preserves all active filters, and adding a filter preserves the current sort.
@@ -203,7 +166,7 @@ A job scoring 9 / 9 / 9 is unusual — most good jobs score 7–8 on two of the 
 
 | Option | What happens |
 |---|---|
-| **Flag for Prep** | Starts `prep_application.py` in the background. Stage → `prep_in_progress`. You'll get an ntfy ping when it finishes (~3–5 min). |
+| **Flag for Prep** | Starts materials generation in the background. You'll get an ntfy ping when it finishes (~3–5 min). |
 | **Regenerate** | Re-runs prep with fresh output (profile changed, model flaked, first pass was off). |
 | **Applied** | You already applied through another channel; skip prep and jump straight to the Applied tab. |
 | **Waitlist** | Defer. The job stays in the DB but moves off the Dashboard. Not a rejection — see *Waitlist* below. |
@@ -235,15 +198,9 @@ A reason you remove from the taxonomy doesn't break older rejections that used i
 
 ## What happens when you Flag for Prep
 
-Prep is the heaviest LLM step — it uses Claude Opus to write a tailored resume and cover letter, Perplexity Sonar Pro for company research, and a few Sonnet roles for the outreach drafts. It costs roughly $1.50–$3.00 per job.
+Prep is the heaviest AI step — it uses Claude Opus to write a tailored resume and cover letter, Perplexity Sonar Pro for company research, and a few lighter-weight models for the outreach drafts. It costs roughly $1.50–$3.00 per job.
 
-**Stage progression:**
-
-```
-scored → prep_in_progress → materials_drafted → applied
-                         ↓
-                       (failure/timeout → scored, retry via watchdog after 60 min)
-```
+Prep runs in the background. An ntfy notification arrives when materials are ready (~3–5 minutes). If the run doesn't complete within an hour, the job returns to your dashboard automatically and you can try again.
 
 **Output:** a folder under `companies/{Company}_{AbbrevTitle}_{YYYY-MM-DD}_{HHMMSS}/` containing:
 
@@ -256,19 +213,19 @@ scored → prep_in_progress → materials_drafted → applied
 | `network_outreach_*.md` | Drafts for messaging LinkedIn connections at the company |
 | `job_description.md` | JD snapshot from ingest (so you don't re-fetch the URL) |
 
-**Viewing materials:** the web UI at `/materials/<folder>/` renders everything inline — Markdown is styled, the JD is linked, `.docx` is offered as a download. You don't need to `scp` or sync anything.
+**Viewing materials:** the web UI at `/materials/<folder>/` renders everything inline — Markdown is styled, the JD is linked, `.docx` is offered as a download. You don't need to sync or copy anything.
 
 ---
 
 ## The Review tab (`/board/review`)
 
-Jobs land here when the scorer's output couldn't be confidently validated — the LLM said "needs human review," or returned a low-confidence fit/probability split, or the JD was thin. `stage = manual_review`.
+Jobs land here when the scorer's output couldn't be confidently validated — the AI said "needs human review," or returned a low-confidence fit/probability split, or the JD was thin.
 
 The tab has the same per-column filter row as the Dashboard: substring inputs for Title and Company, a popover (▾) for Source and Date. Active-filter chips appear below the header with ✕ to dismiss individually or **Clear all** to reset. The 🔗 Copy link button copies the current filtered URL to the clipboard.
 
 Use the tab to:
 
-- **Promote** → move the job to `scored` so it appears on the Dashboard.
+- **Promote** → move the job to your Dashboard for consideration.
 - **Reject** → same rejection flow as the Dashboard; pick a reason.
 
 A healthy pipeline has a small (under 20) steady state on Review. If the queue grows past 100, the health check fires a warning — tune the profile or adjust the scoring threshold.
@@ -285,9 +242,9 @@ A filter row sits under each column header: substring inputs for Title, Company,
 
 | Option | What it means |
 |---|---|
-| **Interviewing** | Got a reply, scheduled something. Row turns purple. |
+| **Interviewing** | Got a reply, scheduled something. Row turns purple. findajob also generates interview-prep materials in your folder for that job. |
 | **Offer** | Got the offer. Row turns gold. |
-| **Not Selected** | Company passed. Use the REJECT_REASON dropdown to record why (ghosted → "Other" with a note, formal rejection → pick the closest reason). The job stays on Applied — rejections from companies don't feed the scorer the way your own reject-with-reason calls do. |
+| **Not Selected** | Company passed. Use the REJECT_REASON dropdown to record why (ghosted → "Other" with a note, formal rejection → pick the closest reason). The job stays on Applied — company rejections don't feed the scorer the way your own reject-with-reason calls do. |
 | **Withdrew** | You pulled out. |
 
 ### Row color coding (silent = likely ghosted)
@@ -303,11 +260,11 @@ A filter row sits under each column header: substring inputs for Title, Company,
 
 ### `days_since_applied` is live
 
-The column renders from the DB on every page load, so it's always current.
+The column renders from the database on every page load, so it's always current.
 
 ### `user_notes` — free text
 
-The notes field saves on 800 ms debounce. Type, pause, it's written. Useful for logging follow-up dates, interview feedback, or "Jess gave me a referral link 2026-05-02."
+The notes field saves on 800 ms debounce. Type, pause, it's written. Useful for logging follow-up dates, interview feedback, or "Alex gave me a referral link 2026-05-02."
 
 ---
 
@@ -317,11 +274,11 @@ Waitlisted jobs are jobs you didn't want to reject — maybe the role is good bu
 
 The tab has the same per-column filter row: substring inputs for Title, Company, and Location; min/max range inputs for Rel, Fit, and Likelihood; a popover (▾) for Remote and Date. Active-filter chips and the 🔗 Copy link button work the same way as on the Dashboard.
 
-**Waitlist is not rejection.** It does *not* write to the feedback log. The scorer never sees it.
+**Waitlist is not rejection.** Your waitlisted jobs never feed back into the scorer's training.
 
 From the tab:
 
-- **Reactivate** → back to `scored`, appears on the Dashboard again.
+- **Reactivate** → back on the Dashboard again.
 - **Reject** → standard reject flow; pick a reason.
 
 **Waitlist resurface:** when an active application at the same company ends in rejection or withdrawal, ntfy fires a notification pointing back at the waitlisted job. ("You waitlisted *Acme — Ops Lead*. Your *Acme — Site Manager* application was just rejected. Reconsider?")
@@ -339,10 +296,10 @@ Jobs you withdrew from but might revisit if your other opportunities fall throug
 **What you see:** title, company, withdraw reason, withdraw date, relevance score, location, remote status, and notes. The same per-column filter framework as other tabs.
 
 **Actions:**
-- **Promote** — restores the job to its prior stage (usually `applied` or `interview`). The row leaves the Fallback tab.
-- **Reject** — rejects the job normally (writes `feedback_log`, moves folder to `_rejected/`).
+- **Promote** — restores the job to its prior stage (usually Applied or Interviewing). The row leaves the Fallback tab.
+- **Reject** — rejects the job normally (reasons feed the scorer).
 
-**Fallback is not rejection.** It does *not* write to `feedback_log`. The scorer never sees it.
+**Fallback is not rejection.** Your fallback jobs never feed back into the scorer's training.
 
 ---
 
@@ -354,13 +311,13 @@ Every job the pipeline has ever ingested, in one paginated, filterable, sortable
 
 ## The Rejected tab (`/board/rejected`)
 
-Every rejection, including rejections *from* you (stage = `rejected`) and rejections *from companies* (stage = `not_selected`). The per-column filter row lets you narrow by Title or Company (substring), Reject Reason (popover multi-select), Stage (rejected vs. not_selected), and Date range. Active-filter chips appear below the header with ✕ to clear individual filters or **Clear all** to reset. The 🔗 Copy link button copies the current filtered URL. Useful for catching patterns — if `Skills Mismatch` is spiking, the profile's wrong; if `Geography/Onsite` is spiking, the search queries are.
+Every rejection, including rejections *from* you and rejections *from companies*. The per-column filter row lets you narrow by Title or Company (substring), Reject Reason (popover multi-select), Stage, and Date range. Active-filter chips appear below the header with ✕ to clear individual filters or **Clear all** to reset. The 🔗 Copy link button copies the current filtered URL. Useful for catching patterns — if `Skills Mismatch` is spiking, the profile's wrong; if `Geography/Onsite` is spiking, the search queries are.
 
 ---
 
 ## Auto-detected company rejections (`/board/rejections-review/`)
 
-When Gmail integration is configured, a background scan runs every 30 minutes against your inbox looking for company rejection emails (Greenhouse, Ashby, Lever, Workday-style, in-house ATS senders). Hits are matched against your active applications and surfaced as a review queue — **never auto-applied**. You confirm with one click and the row transitions to `not_selected` through the same `handle_not_selected` path the manual Reject button uses, with `audit_log.changed_by='gmail_rejection_detector'` so the trail distinguishes Gmail-confirmed from manual transitions later.
+When Gmail integration is configured, a background scan runs every 30 minutes against your inbox looking for company rejection emails (Greenhouse, Ashby, Lever, Workday-style, and in-house ATS senders). Hits are matched against your active applications and surfaced as a review queue — **never auto-applied**. You confirm with one click and the row transitions to Not Selected the same way the manual button does.
 
 **Where to find it:**
 
@@ -369,30 +326,23 @@ When Gmail integration is configured, a background scan runs every 30 minutes ag
 
 **Per-card actions:**
 
-- **Confirm** — applies `not_selected` to the matched job. The matched-job stage must be `applied`/`interview`/`offer`; otherwise the endpoint 409s and you reattribute.
-- **Dismiss** — operator says "this isn't a rejection." The job's stage stays put; the suggestion is marked `dismissed`.
-- **Reattribute** — paste a different `jobs.id` if the matcher picked the wrong row (e.g. a duplicate application at the same company). Applies `not_selected` to the chosen job and records `user_chose_job_id` for traceability.
+- **Confirm** — marks the matched job as Not Selected.
+- **Dismiss** — says "this isn't a rejection." The job's stage stays put; the suggestion is archived.
+- **Reattribute** — paste a different job ID if the matcher picked the wrong row (e.g. a duplicate application at the same company).
 
-Rows that the matcher couldn't auto-link to a current application surface as `unmatched` cards — Confirm is hidden, Reattribute or Dismiss are the only paths. The most common cause is **company-name aliasing**: the email's sender display name or body refers to a brand name that doesn't match `jobs.company`. To fix, add an entry to `config/company_aliases.yaml` via the `/config/` editor (the matcher hot-reloads on every cycle — no redeploy):
+Rows that the matcher couldn't automatically link to a current application show as unmatched cards — Confirm is hidden; Reattribute or Dismiss are the only paths. The most common cause is **company-name aliasing**: the email's sender display name doesn't match the company name stored for the job. To fix, add an entry to `config/company_aliases.yaml` via the `/config/` editor (the matcher reloads on every scan — no redeploy):
 
 ```yaml
 # alias-or-display-name: canonical-DB-company
 cobot: collaborative robotics
 ```
 
-**Schedule and triggers:**
-
-- Steady-state: every 30 minutes via supercronic (`detect-rejections` job in `ops/scheduled-jobs.yaml`). Per-stack timeout override via `FINDAJOB_DETECT_REJECTIONS_TIMEOUT` in `data/.env`.
-- First run on a stack: a backlog sweep over the prior 30 days (capped at 60) so existing inbox rejections aren't lost. Sentinel `gmail_state.json:rejection_backlog_scan_complete` flips on success.
-- One-shot historical rescan: `docker exec -u 1000 <container> python scripts/detect_rejections.py --since-days N` bypasses the UID checkpoint and date-windows the IMAP search to the prior `N` days (capped at 60). Use after adding a sender to the allowlist to resurface emails that arrived before the addition. The `-u 1000` is required — bare `docker exec` runs as root and would write a root-owned `gmail_state.json`, breaking subsequent cron ticks. Does not mutate the backlog sentinel or roll the UID checkpoint backward; `INSERT OR IGNORE` on `gmail_message_id` makes the operation safe to re-run.
-- A single ntfy notification fires when new suggestions land — opens directly to the review queue.
-
 **Caveats:**
 
 - **LinkedIn doesn't relay rejection emails** — applications submitted via LinkedIn's apply-on-LinkedIn flow get application receipts but not company-side rejections. This is a structural coverage gap, not a detector flaw. For LinkedIn-applied jobs, manual flips remain the path.
-- **HTML-only senders** (some Microsoft / Oracle / Smartrecruiters templates) are handled by a `bs4` fallback in the parser; if a particular sender shape produces empty bodies, you'll see it in `pipeline.jsonl` and the suggestion just won't surface — log a follow-up issue.
-- **Confirmed and dismissed rows are kept** as a write-once dedup log keyed by `gmail_message_id` (so re-running the scan doesn't re-suggest the same email). They don't appear in the queue but are queryable in `rejection_suggestions`.
-- **Already-handled rejections** (the operator already moved the job to `not_selected`/`rejected` before the detector caught up) emit a `rejection_email_corroborated` event in `pipeline.jsonl` and skip the queue, so the review surface stays focused on actionable rows.
+- **HTML-only senders** (some Microsoft / Oracle / Smartrecruiters templates) are handled by a fallback parser; if a particular sender shape produces empty bodies, you'll see it in the pipeline log and the suggestion just won't surface — log a follow-up issue.
+- **Confirmed and dismissed rows are kept** as a dedup log so re-running the scan doesn't re-suggest the same email. They don't appear in the queue.
+- **Already-handled rejections** (you already moved the job to Not Selected before the detector caught up) are skipped silently, so the review surface stays focused on actionable rows.
 
 ---
 
@@ -403,6 +353,10 @@ Three ways to get here:
 - Click the company name on any Dashboard / Applied / Waitlist row — the cell is a link to the materials folder.
 - Click a materials-folder name directly in the URL bar.
 - `/materials/` root → index of every folder ever created.
+
+Each folder renders its Markdown files inline and offers `.docx` downloads. The JD is linked back to the original posting URL. All served locally — no Drive sync, no rclone.
+
+**Interview prep:** when you mark a job as Interviewing, findajob generates an interview-prep document in the folder — company background, likely question themes, and talking-point prompts tailored to the role. If a recruiter sends updated panel details or you want a fresh pass, click **Re-run interview prep** on the materials page to regenerate it. The button appears whenever the job is at the Interviewing stage.
 
 ---
 
@@ -422,68 +376,14 @@ When you want to reach out to a company that isn't currently posting a matching 
 5. Three actions:
    - **Approve kept cards** — each kept card becomes a `[SPEC]`-prefixed row on the dashboard, ready for prep. Trashed cards are dropped silently.
    - **Regenerate** — re-runs the synthesizer (briefing is preserved on retries to save the expensive Deep Research call). Status page polls again.
-   - **Trash** — drops the whole submission. No `jobs` rows are written.
+   - **Trash** — drops the whole submission. No rows are written.
 6. Approved rows show on the **Dashboard** with a small purple **SPEC** badge and the `[SPEC]` title prefix. Flag them for prep just like a real row. The cover letter and outreach draft will be written in cold-outreach mode automatically (acknowledges no posting exists, leads with hiring-signal from the briefing, ends with a low-pressure ask).
 7. Send the outreach. Then click **Sent Outreach** on that row (replaces the **Applied** dropdown option for speculative rows). The transition counts toward the apply-gate the same way a normal application does.
 
-**Costs:** ~$0.25–$0.75 per speculative submission (Perplexity Deep Research is more expensive than the regular `sonar-reasoning-pro`). The form soft-warns you if you've already submitted today; there's no hard cap.
+**Costs:** ~$0.25–$0.75 per speculative submission (Perplexity Deep Research is more expensive than the regular search option). The form soft-warns you if you've already submitted today; there's no hard cap.
 
 **Failure modes:**
-- If research fails (LLM error, rate limit), the status page shows the error with **Retry** and **Trash** buttons. Retry skips the briefing call if it already succeeded; only the cheap synth step re-runs.
-- If the subprocess dies silently (OOM, container restart), the watchdog flips rows stuck in `researching` for >10 minutes to `failed` so the status page surfaces the retry option instead of polling forever.
+- If research fails (AI error, rate limit), the status page shows the error with **Retry** and **Trash** buttons. Retry skips the briefing call if it already succeeded; only the cheaper synthesis step re-runs.
+- If the process stops unexpectedly (server restart), the watchdog surfaces a retry option within 10 minutes instead of leaving the status page polling forever.
 
-**Synthetic rows are firewalled from the scorer:** rejecting a `[SPEC]` row never writes to `feedback_log`, so synthesizer hallucinations cannot drift the scorer's training history. The guard is enforced at write time (`handle_rejection`) and read time (scorer feedback loader).
-
-Each folder renders its Markdown files inline and offers `.docx` downloads. The JD is linked back to the original posting URL. All served locally — no Drive sync, no rclone.
-
----
-
-<details>
-<summary><strong>For advanced users: stage names and POST handlers</strong></summary>
-
-**Canonical stage names in the DB** (`jobs.stage` column):
-
-| Stage | Meaning |
-|---|---|
-| `scored` | Triaged, LLM-scored, appears on Dashboard |
-| `manual_review` | Scorer flagged as uncertain; appears on Review tab |
-| `prep_in_progress` | `prep_application.py` running; watchdog clears stuck jobs after 60 min |
-| `materials_drafted` | Prep completed; materials folder exists; Dashboard STATUS shows *Ready to Apply* |
-| `applied` | You submitted; appears on Applied |
-| `interview` / `offer` | Post-application progress; appears on Applied |
-| `rejected` | User rejection with reason; writes to `feedback_log`; folder moves to `companies/_rejected/` |
-| `not_selected` | Company rejection; does NOT write to `feedback_log` (don't poison the scorer); folder stays in `companies/_applied/` with a `NOT_SELECTED_*.txt` marker |
-| `withdrawn_fallback` | Withdrew but might revisit; folder stays in `companies/_applied/`; scorer never sees it |
-| `waitlisted` | Deferred; folder moves to `companies/_waitlisted/`; scorer never sees it |
-
-**Every STATUS dropdown action is a POST handler.** `findajob.web.routes.board_actions` contains one handler per transition; each calls straight into `findajob.actions` and responds in the same request. The handlers are:
-
-- `/board/jobs/{fp}/prep` — Flag for Prep
-- `/board/jobs/{fp}/regenerate` — Regenerate
-- `/board/jobs/{fp}/apply` — Applied
-- `/board/jobs/{fp}/waitlist` — Waitlist
-- `/board/jobs/{fp}/reject` — Reject (with REJECT_REASON)
-- `/board/jobs/{fp}/interview` / `/offer` / `/withdraw` — post-application
-- `/board/jobs/{fp}/withdraw-as-fallback` — Withdraw as Fallback (Applied tab)
-- `/board/jobs/{fp}/not-selected` — Not Selected (with REJECT_REASON)
-- `/board/jobs/{fp}/promote` — Review → scored
-- `/board/jobs/{fp}/reactivate` — Waitlist → scored
-- `/board/jobs/{fp}/mark-as-fallback` — Archive withdrawn → Fallback
-- `/board/jobs/{fp}/promote-from-fallback` — Fallback → prior stage
-- `/board/jobs/{fp}/notes` — user_notes save
-
-No poll cycle. The web UI is the canonical surface for everything — board state, materials, stats, ingest.
-
-**Scheduler timing:**
-
-| Timer | Cadence | What it does |
-|---|---|---|
-| triage | 00:00 daily | Fetch + clean + score; writes `pipeline_complete` event |
-| watchdog | every 10 min | Resets jobs stuck in `prep_in_progress` > 60 min |
-| notify-apply | 06:00 daily | "Time to triage" ntfy |
-| notify-stats | 06:15 daily | Morning funnel summary |
-| notify-health | 07:00 daily | Health-check alerts via ntfy |
-
-Running inside the container as supercronic jobs; `docker compose logs scheduler` to see them fire.
-
-</details>
+**Speculative rejections don't affect your scorer:** rejecting a `[SPEC]` row never feeds the scorer's training history, so synthesizer guesses can't distort your future recommendations.

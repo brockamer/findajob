@@ -26,6 +26,7 @@ _PAGES: dict[str, str] = {
     "usage/expanding-sources": "usage/expanding-sources.md",
     "tuning": "tuning.md",
     "troubleshooting": "troubleshooting.md",
+    "updating": "updating.md",
     # Operations
     "operations": "operations/README.md",
     "operations/fly-deploy": "operations/fly-deploy.md",
