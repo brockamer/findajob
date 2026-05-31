@@ -4,6 +4,8 @@ Welcome. This file is for people who want to contribute code, docs, or bug repor
 
 If you're trying to *use* findajob, you want [`docs/getting-started/`](docs/getting-started/), not this file.
 
+**New here?** Read [`docs/architecture.md`](docs/architecture.md) first — it walks the system design, the prep pipeline's stage-by-stage data flow, the data model, and the rationale behind the key design choices. It's the fastest way to understand how the whole thing fits together before you touch code.
+
 ---
 
 ## Reporting bugs and proposing features
@@ -191,6 +193,7 @@ Add via `uv add <pkg>`; commit `pyproject.toml` and `uv.lock` together.
 
 ## Where else to look
 
+- **[`docs/architecture.md`](docs/architecture.md)** — system design, the prep pipeline's stage-by-stage data flow, the SQLite data model, and why the design choices hang together. Start here for "how does this work?"
 - **CLAUDE.md** — durable guidance for AI assistants working in this repo. Architectural rules + implementation guardrails + commit flow. Read it; the rules in CLAUDE.md and CONTRIBUTING.md are the same rules.
 - **`docs/project-board.md`** — GitHub Projects v2 board conventions (columns, Priority field, labels, `gh project` CLI). Also jared's config file — the machine-readable header block is parsed on every board operation.
 - **CLAUDE.md `## Plan Structure`** — what every implementation plan must contain.
