@@ -10,6 +10,14 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Added
+
+- **`/docs/updating` page** (#910, part of epic #923): New "How to update findajob" doc covering the three update paths — Fly (`fly deploy --config ops/fly.toml`), Docker with Watchtower (automatic within an hour), and Docker without Watchtower (`docker compose pull && docker compose up -d`) — what an update preserves (everything in `state/`: data, config, interview answers, prep materials), and how to check the running version. Registered in the `/docs/` route allowlist and the container-integration smoke slug loop.
+
+### Changed
+
+- **Documentation v2 — core docs rewritten for a non-technical job-seeker audience** (epic #923): `getting-started/api-keys.md` leads with the one required account (OpenRouter), frames RapidAPI as optional with the consequence of skipping it spelled out, and moves legacy per-adapter env vars + pagination tuning behind an Advanced fold. `usage.md` drops the operator-only POST-handler/stage-name tables and the `/tools/` operator-controls section, keeping the daily-loop walkthrough and tab-by-tab guide. `CONTRIBUTING.md` slims to ~60 lines (dev setup, commit conventions, PR process) and points at `CLAUDE.md` and `architecture.md` for invariants and design rather than restating them. `maintainers/generalization.md` gains contributor-audience framing and trims shipped items to one line each. `operations/README.md` trims to the operator essentials with Docker+Fly command pairs; its script-reference section moves into `CLAUDE.md` § Scripts Reference so the operator audience and the agent audience read it from one place.
+
 ## [0.31.3] — 2026-05-30
 
 ### Added
