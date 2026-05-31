@@ -1,8 +1,28 @@
 # Architecture
 
-The pipeline runs as a single Docker container (`ghcr.io/brockamer/findajob`)
-with supercronic and uvicorn as co-processes. For setup, see
-[`operations/install-docker.md`](operations/install-docker.md).
+findajob is a single-container pipeline that turns raw job postings into
+tailored application materials. Two scheduler-driven workflows do the work: a
+nightly **triage** pass that ingests, deduplicates, and LLM-scores hundreds of
+postings, and an on-demand **prep** pass that researches a company and drafts a
+tailored resume, cover letter, briefing, and outreach messages for a single
+role. SQLite sits between them as the only source of truth.
+
+The whole system runs as one Docker image (`ghcr.io/brockamer/findajob`) with
+**supercronic** (cron) and **uvicorn** (the web UI) as co-processes — no
+external database, message broker, or object store. State is a single SQLite
+file plus a tree of generated folders on a mounted volume, so the entire
+deployment reduces to "pull the image, mount a volume, set a few API keys."
+For setup, see [`operations/install-docker.md`](operations/install-docker.md).
+
+If you're evaluating the design, the thing to notice is *where the determinism
+lives*. LLM calls are expensive and non-deterministic, so they are fenced on
+both sides: hard rejects happen in code **before** any model is called, every
+scoring response is schema-validated **after**, and prompt context is injected
+directly rather than retrieved through a vector store. Every state change flows
+through a single web write-surface and is recorded in an append-only audit log.
+The payoff is a system whose failures are diagnosable by reading — you can see
+exactly what each stage received and produced — rather than by re-running a
+black box.
 
 ## Scheduler
 
@@ -33,20 +53,19 @@ Everything between them is mediated by SQLite.
 │  triage.py (00:00 daily — supercronic)  │
 └──────────────────────┬──────────────────────────────────┘
                        │
-          ┌────────────┴────────────┐
-          │                         │
-  ┌───────▼──────────┐   ┌──────────▼──────────┐
-  │  Gmail OAuth2    │   │  jobs-api14 RapidAPI │
-  │  - LinkedIn jobs │   │  - LinkedIn search   │
-  │  - Indeed digest │   │  - Indeed search     │
-  │  - Recruiter msg │   │  - /v2/linkedin/get  │
-  └───────┬──────────┘   └──────────┬──────────┘
-          └────────────┬────────────┘
-                       │
-          ┌────────────▼────────────────┐
-          │  Greenhouse JSON API        │
-          │  (per slug in feed_urls.txt)│
-          └────────────┬────────────────┘
+          ┌────────────▼─────────────────────────────────┐
+          │  Source adapters — JobSourceAdapter registry  │
+          │  (src/findajob/fetchers/adapters/)            │
+          │    RapidAPI: jobs-api14 · -indeed · -bing ·   │
+          │              jsearch                          │
+          │    ATS:      greenhouse · ashby · lever ·     │
+          │              workday-cxs · gem                │
+          │    Boards:   remote-ok · remotive ·           │
+          │              we-work-remotely · himalayas ·   │
+          │              jobicy · algora · hn             │
+          │    Gmail IMAP (LinkedIn / Indeed alerts)      │
+          │  active set ← config/active_sources.txt       │
+          └────────────┬─────────────────────────────────┘
                        │
           ┌────────────▼────────────────┐
           │  clean_title() + clean_company() │
@@ -78,6 +97,14 @@ Everything between them is mediated by SQLite.
           │  Review, Waitlist tabs      │
           └─────────────────────────────┘
 ```
+
+Every source implements one `JobSourceAdapter` protocol
+(`src/findajob/fetchers/adapters/base.py`); adding a feed is one new adapter
+file plus one entry in `REGISTERED_ADAPTERS`. `triage.py` iterates the
+registry — there are no per-source branches in the triage path. Which adapters
+actually run on a given stack is gated by `config/active_sources.txt` and each
+adapter's own `is_configured()` check, so an unconfigured source is skipped
+rather than erroring.
 
 ---
 
@@ -180,45 +207,70 @@ stderr tail) and emits `prep_subprocess_failed` — no waiting for the
 If `profile.md` or `master_resume.md` are missing, prep aborts before any
 LLM call, rolls stage back to `scored`, and notifies via ntfy.
 
+### Post-apply: interview prep
+
+Distinct from the prep pipeline above, an interview-prep generator fires on the
+`applied → interview` transition (`scripts/interview_prep.py`): it produces a
+study guide, an Anki flashcard deck, and a two-speaker audio podcast for the
+role. Re-running it (e.g. after a recruiter shares panel details) is a button
+on the materials page. These long-running generators, along with prep and
+speculative research, are tracked in the `background_tasks` table so the UI can
+show progress and a watchdog can reap stalled runs.
+
 ---
 
 ## Data Model
 
-### SQLite Tables
+SQLite is the single source of truth. The schema is defined by the numbered
+migrations in **`src/findajob/migrations/`**, applied in order at startup —
+that directory, not this document, is the canonical, column-level reference.
+The tables below are summarized for orientation; consult the migrations for
+exact types, defaults, and `CHECK` constraints.
 
-**`jobs`** — one row per unique job posting
+### Core tables
+
+The four tables a contributor reads or queries most often:
+
+**`jobs`** — one row per unique job posting; the spine of the whole system
 ```
-id TEXT PRIMARY KEY          -- generated UUID or "manual-{hex}"
-fingerprint TEXT UNIQUE      -- SHA-256[:16] of normalized title+company+url
-source TEXT                  -- linkedin_jobsapi | indeed | greenhouse | gmail_linkedin | gmail_google | manual | manual_form
-title TEXT
-company TEXT
-location TEXT
-remote_status TEXT           -- Remote | Hybrid | On-site | Unknown
+id TEXT PRIMARY KEY              -- UUID, or "manual-{hex}" for hand-added rows
+fingerprint TEXT UNIQUE          -- SHA-256[:16] of normalized title+company+url (Tier-1 dedup)
+loose_fingerprint TEXT           -- title+company only (Tier-2 cross-source dedup)
+source TEXT                      -- adapter id: jobs-api14 | greenhouse | ashby | gmail_linkedin | web_speculative | ...
+title / company / location TEXT
 url TEXT
-raw_jd_text TEXT             -- full JD text fetched at ingest time
-relevance_score INTEGER      -- 1–10 from LLM scorer
-interview_likelihood INTEGER -- 1–10 from LLM scorer
-ai_notes TEXT                -- LLM rationale
-score_status TEXT            -- scored | manual_review | prefiltered
-stage TEXT                   -- discovered | enriched | scored | manual_review |
-                             --   prep_in_progress | materials_drafted | waitlisted |
-                             --   applied | interview | offer | withdrawn | rejected
-apply_flag INTEGER           -- 0/1, mirrors Dashboard STATUS
+raw_jd_text TEXT                 -- full JD captured at ingest (prep reads this, never re-fetches)
+remote_status TEXT               -- Remote | Hybrid | On-site | Unknown
+relevance_score INTEGER          -- 1–10 from LLM scorer
+interview_likelihood INTEGER     -- 1–10 from LLM scorer
+strengths_alignment TEXT
+industry_sector TEXT
+ai_notes TEXT                    -- LLM rationale
+score_status TEXT                -- scored | manual_review
+score_flag_reason TEXT
+company_tier TEXT                -- target-company signal (tuning loop)
+scored_by TEXT                   -- scorer model/version provenance
+stage TEXT                       -- lifecycle; full enum in 0001_initial.sql's CHECK:
+                                 --   discovered → scored → prep_in_progress → briefing_ready →
+                                 --   materials_drafted → applied → interview → offer, plus
+                                 --   waitlisted / rejected / not_selected / withdrawn[_fallback]
+status TEXT                      -- coarse legacy status (active | applied | rejected | ...)
+apply_flag INTEGER               -- 0/1, mirrors Dashboard STATUS
 reject_reason TEXT
 comp_estimate TEXT
+network_depth INTEGER            -- connection proximity from connections.csv
 known_contacts TEXT
-user_notes TEXT              -- free text set via Applied tab col I
-stage_updated TEXT           -- ISO timestamp of last stage change
-prep_folder_path TEXT        -- absolute path to companies/ subfolder
-gdrive_folder_url TEXT       -- legacy column, unused (Drive sync retired)
-fit_score REAL               -- 0-100% avg from fit_analyst
-probability_score REAL       -- 0-100% avg from fit_analyst
-created_at TEXT
-updated_at TEXT
+user_notes TEXT                  -- free text from the board Notes column
+fit_score / probability_score REAL  -- 0–100% averages from fit_analyst
+prep_folder_path TEXT            -- absolute path to the companies/ subfolder
+synthetic INTEGER                -- 1 for speculative cold-outreach rows
+speculative_briefing_folder TEXT -- reused briefing for synthetic rows
+dupe_of TEXT
+gdrive_folder_url TEXT           -- legacy, unused (Drive sync retired)
+stage_updated / created_at / updated_at TEXT
 ```
 
-**`audit_log`** — immutable record of every field change
+**`audit_log`** — append-only record of every field change
 ```
 id INTEGER PRIMARY KEY AUTOINCREMENT
 job_id TEXT
@@ -226,19 +278,52 @@ field_changed TEXT
 old_value TEXT
 new_value TEXT
 changed_at TEXT DEFAULT (datetime('now'))
+changed_by TEXT DEFAULT 'system' -- 'user' | 'outreach_button' | 'gmail_rejection_detector' | ...
 ```
 
-**`feedback_log`** — rejection history for pattern analysis
+**`cost_log`** — one row per LLM call; the authoritative spend ledger
+```
+id INTEGER PRIMARY KEY AUTOINCREMENT
+job_id TEXT                      -- nullable (some calls aren't job-scoped)
+operation TEXT                   -- role name, e.g. job_scorer / briefing_writer
+model TEXT
+latency_ms INTEGER
+success INTEGER
+error_message TEXT
+input_tokens / output_tokens INTEGER
+cost_usd REAL                    -- from OpenRouter's response.usage.cost — no heuristic
+logged_at TEXT DEFAULT (datetime('now'))
+```
+
+**`feedback_log`** — rejection history that feeds scorer tuning
 ```
 id INTEGER PRIMARY KEY AUTOINCREMENT
 job_id TEXT
-title TEXT
-company TEXT
+title / company TEXT
 relevance_score INTEGER
 reject_reason TEXT
-jd_excerpt TEXT              -- first 500 chars of JD
-logged_at TEXT DEFAULT (datetime('now'))
+jd_excerpt TEXT
+created_at TEXT DEFAULT (datetime('now'))
 ```
+
+> Only *user* rejections write here; company rejections (`not_selected`) and
+> waitlist/fallback transitions deliberately do not, so they never contaminate
+> the scorer's feedback loop.
+
+### Supporting tables
+
+| Table | Purpose |
+|---|---|
+| `notifications` | In-app + ntfy notification log — kind, priority, delivery status, read state |
+| `background_tasks` | Tracks detached generators (`prep`, `prep_phase_b`, `interview_prep`, `speculative_research`, `podcast`) — pid, status, timing |
+| `speculative_requests` | Cold-outreach research requests and their async lifecycle (`researching → ready_for_review → approved`) |
+| `rejection_suggestions` | Gmail-detected rejection emails awaiting operator confirmation |
+| `notes_history` | Audit trail of edits to a job's `user_notes` |
+| `view_prefs` | Per-board-tab persisted filter / column / sort state |
+| `duplicate_groups` | Maps duplicate job ids to their canonical fingerprint |
+| `onboarding_sessions` | First-run chat-interview state, captured profile blocks, per-user API keys, cumulative cost |
+| `config_changes` | Tuning-loop ledger of scorer-config edits |
+| `recall_audit` | Tuning-loop re-scoring audit — original vs. audited score per job |
 
 ---
 
@@ -253,3 +338,31 @@ logged_at TEXT DEFAULT (datetime('now'))
 | Web materials viewer (not Drive) | Prep folders are served locally via uvicorn/FastAPI — no cloud sync dependency. Markdown rendered inline; `.docx` offered as download. Eliminates rclone auth complexity and Drive quota issues. |
 | Web POST handlers are the sole write surface | Every handler in `findajob.web.routes.board_actions` calls straight into `findajob.actions` and responds in the same request — no poll cycle, no mirror table, single source of truth in SQLite. |
 | `abbrev_title()` in folder names | Same-day preps for the same company would overwrite each other without title disambiguation. HHMMSS suffix prevents same-title same-day overwrites. |
+
+### Why these choices hang together
+
+These decisions aren't independent — they reinforce one principle: **keep the
+non-deterministic parts small, fenced, and observable.**
+
+SQLite as the canonical store is what makes the single-container deployment
+possible at all. With no external database to provision, "the system" is one
+image and one volume, and every other component — the web write-surface, the
+audit log, the cost ledger — is a table away rather than a network hop away.
+That proximity is also why the write-surface can answer in the same request
+instead of reconciling a mirror table later.
+
+The fences around the LLM follow from the same instinct. A two-stage prefilter
+in code means the model never sees the easy rejects, which saves money and
+keeps the nightly run fast; JSON-schema validation means a malformed response
+degrades to `manual_review` instead of crashing a several-hundred-job batch;
+and direct context injection rather than RAG means a stage's input is something
+a maintainer can read in full, not a similarity-ranked guess. Each fence trades
+a little flexibility for a lot of diagnosability.
+
+Finally, routing every state change through one web handler and recording it in
+an append-only audit log means the question "why is this job in this state?"
+always has an answer on disk. Combined with the local materials viewer — which
+removes the last external dependency, cloud file sync — the whole system stays
+inspectable end to end by one person reading a SQLite file and a folder tree.
+For a project meant to be self-hosted and forked, that inspectability *is* a
+feature.

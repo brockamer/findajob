@@ -2,7 +2,8 @@
 
 If you're trying to *use* findajob, start with [`docs/getting-started/`](docs/getting-started/), not this file.
 
-For how the codebase works, see [`docs/architecture.md`](docs/architecture.md).
+**New here?** Read [`docs/architecture.md`](docs/architecture.md) first — it walks the system design, the prep pipeline's stage-by-stage data flow, the data model, and the rationale behind the key design choices. It's the fastest way to understand how the whole thing fits together before you touch code.
+
 Architectural invariants, code-style patterns, and implementation guardrails live in [`CLAUDE.md`](CLAUDE.md).
 Board conventions and project roadmap live at [`docs/project-board.md`](docs/project-board.md) and the [GitHub project board](https://github.com/users/brockamer/projects/1).
 
