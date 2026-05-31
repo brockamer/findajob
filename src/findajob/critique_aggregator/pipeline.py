@@ -47,12 +47,15 @@ def aggregate_corpus(
     generated_for: str,
     since: str | None = None,
     min_companies: int = 3,
+    min_theme_companies: int | None = None,
 ) -> tuple[AggregateResult, str]:
     """Run the full aggregation and return ``(result, markdown_report)``.
 
     ``source_files`` is a list of ``(path, label)``; missing files are skipped.
     ``since`` is an inclusive ``YYYY-MM-DD`` floor on the critique's filename
     stamp — files without a parseable stamp are kept (never silently dropped).
+    ``min_companies`` is the source-cluster floor; ``min_theme_companies``
+    overrides the corpus-scaled themes floor when set (``None`` = scale, #932).
     """
     source_lines = []
     for path, label in source_files:
@@ -65,6 +68,11 @@ def aggregate_corpus(
         files = [f for f in files if (_file_yyyymmdd(f) or floor) >= floor]
 
     items = build_flagged_items(files, source_lines)
-    result = aggregate(items, total_critiques=len(files), min_companies=min_companies)
+    result = aggregate(
+        items,
+        total_critiques=len(files),
+        min_companies=min_companies,
+        min_theme_companies=min_theme_companies,
+    )
     report = render_report(result, generated_for=generated_for)
     return result, report

@@ -18,6 +18,12 @@ _ACTION = {
     "missing": "ADD",
 }
 
+# Cap the themes surface to a readable shortlist; the analyze-side floor (#932)
+# already scales with corpus size, but a hard display cap guarantees a ceiling
+# and any overflow is surfaced as an explicit count — never a silent drop.
+# Mirrors the /tools/critique-review/ web view's cap so CLI and UI agree.
+DEFAULT_MAX_THEMES = 15
+
 
 def representative_sentence(cluster: Cluster) -> str:
     """The most informative verbatim recruiter sentence in the cluster."""
@@ -53,7 +59,7 @@ def _render_cluster(cluster: Cluster) -> str:
     )
 
 
-def render_report(result: AggregateResult, *, generated_for: str) -> str:
+def render_report(result: AggregateResult, *, generated_for: str, max_themes: int = DEFAULT_MAX_THEMES) -> str:
     lines: list[str] = [
         f"# Recruiter-Critique Aggregate — {generated_for}",
         "",
@@ -73,9 +79,14 @@ def render_report(result: AggregateResult, *, generated_for: str) -> str:
     lines.append("## Recurring themes — no single source line (prompt / profile level)")
     lines.append("")
     if result.recurring_themes:
-        for theme in result.recurring_themes:
+        shown = result.recurring_themes[:max_themes]
+        hidden = len(result.recurring_themes) - len(shown)
+        for theme in shown:
             companies = ", ".join(theme.companies)
             lines.append(f"- **{theme.term}** — {theme.company_count} companies: {companies}")
+        if hidden:
+            lines.append("")
+            lines.append(f"_… {hidden} more theme(s) below the displayed cap of {max_themes}._")
     else:
         lines.append("No recurring unanchored themes above the floor.")
     lines.append("")

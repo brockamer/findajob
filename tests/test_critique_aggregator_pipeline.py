@@ -41,6 +41,10 @@ def test_full_pipeline_surfaces_recurring_source_line(tmp_path):
         [(master, "master_resume.md"), (tmp_path / "missing_profile.md", "profile.md")],
         generated_for="2026-05-30",
         min_companies=3,
+        # Explicit low theme floor: this 3-company fixture is below the
+        # corpus-scaled default (≥8, #932), so override to exercise the
+        # anchored-vs-theme split the test is actually asserting.
+        min_theme_companies=3,
     )
 
     assert result.total_critiques == 3

@@ -12,7 +12,8 @@ Read-only over the corpus; writes a dated markdown report to the gitignored
 ``candidate_context/critique_aggregate/`` (the report embeds real resume lines).
 
 Usage:
-    python scripts/critique_review.py [--since YYYY-MM-DD] [--min-companies N] [--print]
+    python scripts/critique_review.py [--since YYYY-MM-DD] [--min-companies N]
+        [--min-theme-companies N] [--print]
 """
 
 from __future__ import annotations
@@ -32,7 +33,17 @@ def main() -> int:
         "--min-companies",
         type=int,
         default=3,
-        help="Recurrence floor — distinct companies a line must be flagged by (default 3).",
+        help="Source-cluster floor — distinct companies a line must be flagged by (default 3).",
+    )
+    parser.add_argument(
+        "--min-theme-companies",
+        type=int,
+        default=None,
+        help=(
+            "Themes floor — distinct companies an unanchored term must recur "
+            "across. Default scales with corpus size (#932); pass an int to "
+            "override (e.g. a lower value to inspect the long tail)."
+        ),
     )
     parser.add_argument(
         "--print",
@@ -51,6 +62,7 @@ def main() -> int:
         generated_for=today,
         since=args.since,
         min_companies=args.min_companies,
+        min_theme_companies=args.min_theme_companies,
     )
 
     outdir = base / "candidate_context" / "critique_aggregate"

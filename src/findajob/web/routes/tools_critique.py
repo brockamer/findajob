@@ -15,13 +15,18 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
 from findajob.critique_aggregator.pipeline import aggregate_corpus, default_source_files
-from findajob.critique_aggregator.report import cluster_action, representative_sentence
+from findajob.critique_aggregator.report import (
+    DEFAULT_MAX_THEMES,
+    cluster_action,
+    representative_sentence,
+)
 
 router = APIRouter()
 
-# Cap the noisy themes surface in the view (the CLI report keeps them all;
-# tuning the floor itself is tracked in #932).
-_MAX_THEMES = 15
+# Cap the themes surface in the view. Shared with the CLI report's cap so the
+# two surfaces can't drift; the analyze-side themes floor scales with corpus
+# size (#932), and this guarantees a hard display ceiling on top of that.
+_MAX_THEMES = DEFAULT_MAX_THEMES
 
 
 @router.get("/tools/critique-review/", response_class=HTMLResponse)
