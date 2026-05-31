@@ -22,7 +22,7 @@
         {% elif error_kind == "rate_limit" %}Rate-limited
         {% elif error_kind == "upstream" %}OpenRouter / model error
         {% elif error_kind == "network" %}Network error
-        {% elif error_kind == "malformed" %}Unexpected response shape
+        {% elif error_kind == "malformed" %}Something unexpected
         {% elif error_kind == "config" %}Configuration error
         {% else %}Error
         {% endif %}
@@ -33,7 +33,7 @@
       {% if error_kind == "auth" or error_kind == "payment" %}
       <p class="text-xs text-red-800 mt-2">
         This is on the operator's side, not yours. The administrator of this
-        findajob deployment can fix it at
+        findajob can fix it at
         <a class="underline" target="_blank"
            href="{% if error_kind == 'payment' %}https://openrouter.ai/credits{% else %}https://openrouter.ai/keys{% endif %}">
           openrouter.ai/{% if error_kind == 'payment' %}credits{% else %}keys{% endif %}</a>.

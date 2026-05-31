@@ -10,7 +10,9 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
-## [0.31.3] — 2026-05-30
+### Changed
+
+- **Onboarding copy humanized** (#917): Plain-English rewrite of the developer jargon every new user reads during onboarding. "Your seven config files are installed" → "Your profile and settings are saved"; "Discovery deferred to the weekly cron … the next Sunday 02:00 cron run" → "We'll look for companies automatically once a week … the next weekly run (Sunday mornings)"; "All required blocks have been emitted … write your config files atomically" → "Everything we need is ready … save your settings"; "this container's environment" / "this stack's `data/.env`" / "per-stack key isolation" → "your findajob". The length-error recovery message drops `max_tokens`/`emit` wording. Malformed-response errors no longer show the user the raw upstream body and "unexpected response shape" jargon: the interview-turn error and the Step 1 key-verification smoke check (which deliberately share wording) both now say a plain "Something unexpected happened. Try again." / "OpenRouter sent back a response findajob couldn't read…", with the diagnostic detail moved to a `logging.warning` for the operator. The jargon term `container` survives only in a literal `docker logs` command example. "your findajob" is adopted as the canonical phrasing the deferred per-surface polish (#919) will apply consistently elsewhere.
 
 ### Added
 

@@ -21,9 +21,9 @@
   </div>
 
   <p class="text-sm text-slate-600">
-    Work through the interview at your pace — answers persist server-side, so
-    you can close this tab and resume later by reloading this URL. When the
-    LLM emits the file blocks, the Finalize box below will unhide.
+    Work through the interview at your pace — your answers are saved as you go,
+    so you can close this tab and pick up later by reloading this page. Once
+    you've answered everything we need, the Finalize button below will appear.
   </p>
 
   {# #623: slot is always present so _turn.html can OOB-empty it on success.
@@ -105,9 +105,9 @@
     {% if finalize_ready %}
     <h2 class="font-semibold text-green-900">Finalize onboarding</h2>
     <p class="text-sm text-green-900">
-      All required blocks have been emitted. Click Finalize and we'll verify
-      your OpenRouter key, write your config files atomically, and back up any
-      existing files first.
+      Everything we need is ready. Click Finalize and we'll check your
+      OpenRouter key and save your settings — any existing files are backed
+      up first.
     </p>
     {% if keys_collected %}
     <p class="text-xs text-green-900">

@@ -7,8 +7,8 @@
   <h1 class="text-2xl font-semibold">Onboarding complete</h1>
 
   <p class="text-slate-700">
-    Your seven config files are installed. The pipeline is ready to run on
-    its next scheduled tick.
+    Your profile and settings are saved. findajob is ready and will start
+    working on its next scheduled run.
   </p>
 
   <div class="rounded-lg border border-slate-200 bg-white p-4 space-y-2">
@@ -20,14 +20,15 @@
       </p>
     {% else %}
       <p class="text-amber-700">
-        Discovery deferred to the weekly cron. Reason:
+        We'll look for companies automatically once a week — it didn't run
+        just now. Reason:
         <code class="text-xs">{{ discovery_error or "unknown" }}</code>
       </p>
       <p class="text-slate-600 text-sm">
-        Your pipeline will work without the discovered set; the next Sunday
-        02:00 cron run will produce one. You can also run
-        <code>python3 scripts/discover_companies.py</code> manually if your
-        environment supports it.
+        findajob works fine in the meantime; the next weekly run (Sunday
+        mornings) will produce one. If you're comfortable with the command
+        line, you can also run
+        <code>python3 scripts/discover_companies.py</code> yourself.
       </p>
     {% endif %}
   </div>

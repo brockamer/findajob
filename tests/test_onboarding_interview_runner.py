@@ -238,53 +238,72 @@ def test_translates_network_urlerror() -> None:
     assert "Check the deployment's network connectivity and try again." in e.user_message
 
 
+# #917: all malformed sub-cases surface one plain user message; the
+# upstream-shape detail moves to a logged diagnostic (see _map_malformed).
+_MALFORMED_USER_MSG = "Something unexpected happened. Try again."
+
+
 def test_translates_malformed_non_json() -> None:
-    """malformed (non-JSON) → Phase 1's 'non-JSON response' string prefix."""
+    """malformed (non-JSON) → kind=malformed + plain user message (#917)."""
     with patch(_URLOPEN, return_value=_FakeResp(b"<html>500 Bad Gateway</html>")):
         with pytest.raises(InterviewRunnerError) as excinfo:
             run_turn(api_key="sk-or-v1-test", history=[], user_message="hi")
     e = excinfo.value
     assert e.kind == "malformed"
-    assert "non-JSON" in e.user_message
+    assert e.user_message == _MALFORMED_USER_MSG
 
 
 def test_translates_malformed_unexpected_shape() -> None:
-    """malformed (no choices) → Phase 1's 'unexpected response shape' string."""
+    """malformed (no choices) → kind=malformed + plain user message (#917)."""
     with patch(_URLOPEN, return_value=_ok_resp({"unexpected": "shape"})):
         with pytest.raises(InterviewRunnerError) as excinfo:
             run_turn(api_key="sk-or-v1-test", history=[], user_message="hi")
     e = excinfo.value
     assert e.kind == "malformed"
-    assert "unexpected response shape" in e.user_message.lower()
+    assert e.user_message == _MALFORMED_USER_MSG
 
 
 def test_translates_malformed_empty_choices() -> None:
     with patch(_URLOPEN, return_value=_ok_resp({"choices": []})):
         with pytest.raises(InterviewRunnerError) as excinfo:
             run_turn(api_key="sk-or-v1-test", history=[], user_message="hi")
-    assert excinfo.value.kind == "malformed"
+    e = excinfo.value
+    assert e.kind == "malformed"
+    assert e.user_message == _MALFORMED_USER_MSG
 
 
 def test_translates_malformed_missing_message_content() -> None:
-    """malformed (content parse fail) → Phase 1's 'Could not parse assistant content' string."""
+    """malformed (content parse fail) → kind=malformed + plain user message (#917)."""
     body = {"choices": [{"index": 0, "finish_reason": "stop"}]}
     with patch(_URLOPEN, return_value=_ok_resp(body)):
         with pytest.raises(InterviewRunnerError) as excinfo:
             run_turn(api_key="sk-or-v1-test", history=[], user_message="hi")
     e = excinfo.value
     assert e.kind == "malformed"
-    assert "Could not parse assistant content" in e.user_message
+    assert e.user_message == _MALFORMED_USER_MSG
 
 
 def test_translates_malformed_non_string_content() -> None:
-    """malformed (content not a string) → Phase 1's 'not a string' string."""
+    """malformed (content not a string) → kind=malformed + plain user message (#917)."""
     body = {"choices": [{"message": {"role": "assistant", "content": [{"type": "text", "text": "hi"}]}}]}
     with patch(_URLOPEN, return_value=_ok_resp(body)):
         with pytest.raises(InterviewRunnerError) as excinfo:
             run_turn(api_key="sk-or-v1-test", history=[], user_message="hi")
     e = excinfo.value
     assert e.kind == "malformed"
-    assert "not a string" in e.user_message
+    assert e.user_message == _MALFORMED_USER_MSG
+
+
+def test_map_malformed_preserves_diagnostic_detail() -> None:
+    """The plain user message hides the shape, but _map_malformed still
+    expands each upstream prefix into a distinct diagnostic for the log
+    line (#917) — so operator-facing debuggability is retained."""
+    from findajob.onboarding.interview_runner import _map_malformed
+
+    assert "non-JSON response" in _map_malformed("Non-JSON response: <html>")
+    assert "unexpected response shape" in _map_malformed("Unexpected shape: {}")
+    assert "Could not parse assistant content" in _map_malformed("Could not parse content: x")
+    assert "not a string" in _map_malformed("Content not a string: list")
 
 
 def test_translates_config_missing_key() -> None:

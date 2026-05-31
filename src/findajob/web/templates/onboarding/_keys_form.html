@@ -10,7 +10,7 @@ Three render branches:
 
 2. `env_keys_available=True` (#676) — OPENROUTER_API_KEY / RAPIDAPI_KEY are
    present in `os.environ` (Fly secrets, compose env_file, or any other
-   delivery path that reaches the container's environment) AND no SQLite
+   delivery path that reaches the process environment) AND no SQLite
    credentials row exists yet. Renders masked tails + a "Use detected
    keys" button (POST /onboarding/keys/use-detected — re-reads env vars
    server-side, no secrets in hidden inputs) and an "Enter keys manually"
@@ -28,7 +28,7 @@ Three render branches:
   {% if keys_collected %}
   <div class="space-y-2 text-sm">
     <p class="text-slate-700">
-      Your keys are collected and ready. They live only in this stack's <code>data/.env</code>.
+      Your keys are saved and ready. They're stored privately in your own findajob — nowhere else.
     </p>
     <ul class="list-disc list-inside text-slate-700">
       <li>OpenRouter — <code>***{{ openrouter_last4 }}</code></li>
@@ -53,7 +53,7 @@ Three render branches:
   {% elif env_keys_available %}
   <div class="space-y-3 text-sm">
     <p class="text-slate-700">
-      Detected API keys already set in this container's environment (e.g. Fly secrets,
+      We found API keys already set up for your findajob (for example, Fly secrets or a
       <code>compose env_file</code>). Use these to skip re-entering them:
     </p>
     <ul class="list-disc list-inside text-slate-700">
@@ -90,7 +90,7 @@ Three render branches:
   {% endif %}
 
   <p class="text-sm text-slate-700">
-    Provide your own API keys so this stack runs on your accounts, not someone
+    Provide your own API keys so your findajob runs on your accounts, not someone
     else's. Full walk-through:
     <a class="underline" href="/docs/getting-started/api-keys" target="_blank" rel="noopener">how to get each key</a>.
   </p>

@@ -12,6 +12,7 @@ Pure stdlib (urllib + json) — no new dependencies.
 from __future__ import annotations
 
 import json
+import logging
 import urllib.error
 import urllib.request
 
@@ -92,15 +93,19 @@ def verify_openrouter_key(api_key: str) -> tuple[bool, str | None]:
     try:
         data = json.loads(body)
     except json.JSONDecodeError:
+        logging.getLogger(__name__).warning("OpenRouter key smoke: non-JSON response: %s", body[:200])
         return False, (
-            f"OpenRouter returned non-JSON response: {body[:200]}. "
-            "Check OpenRouter status at https://status.openrouter.ai/."
+            "OpenRouter sent back a response findajob couldn't read — this "
+            "usually means OpenRouter is having a problem. Check its status "
+            "at https://status.openrouter.ai/ and try again."
         )
 
     if not isinstance(data, dict) or not data.get("choices"):
+        logging.getLogger(__name__).warning("OpenRouter key smoke: unexpected response shape: %s", body[:200])
         return False, (
-            f"OpenRouter returned unexpected response shape: {body[:200]}. "
-            "Check OpenRouter status at https://status.openrouter.ai/."
+            "OpenRouter sent back an unexpected response — this usually means "
+            "OpenRouter is having a problem. Check its status at "
+            "https://status.openrouter.ai/ and try again."
         )
 
     return True, None

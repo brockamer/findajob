@@ -9,7 +9,7 @@
      user_message        — raw user text (auto-escaped in bubble)
      assistant_message   — raw assistant text (stored in DB)
      assistant_message_html — pre-rendered HTML from render_chat_assistant_html()
-                              (emitted via | safe in bubble)
+                              (rendered via | safe in bubble)
 
    When the latest captured-blocks count satisfies ALLOWED_FILENAMES, an OOB
    swap injects the finalize block into #finalize-slot in interview.html.
@@ -46,8 +46,8 @@
          class="border border-green-300 bg-green-50 rounded p-4 space-y-3 mt-4">
   <h2 class="font-semibold text-green-900">Finalize onboarding</h2>
   <p class="text-sm text-green-900">
-    All required blocks have been emitted. Click Finalize and we'll verify
-    your OpenRouter key and write your config files.
+    Everything we need is ready. Click Finalize and we'll check your
+    OpenRouter key and save your settings.
   </p>
   {% if keys_collected %}
   <p class="text-xs text-green-900">

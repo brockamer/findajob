@@ -1,9 +1,9 @@
 {# Step 0 — Instance password setup (#895).
 
 Conditional — only rendered when FINDAJOB_AUTH_USER / FINDAJOB_AUTH_PASS
-are not set (neither env vars nor data/.env).  When auth is already
-configured (via Fly secrets or a prior onboarding run) this partial is
-not included at all.
+are not set (neither as environment variables nor in the saved config).
+When auth is already configured (via Fly secrets or a prior onboarding
+run) this partial is not included at all.
 
 After submit the middleware activates immediately and the browser will
 prompt for Basic Auth on the next request — the user re-enters the
@@ -28,9 +28,9 @@ credentials they just set (one-time confirmation).
   <div class="border border-blue-300 bg-blue-50 text-blue-900 px-3 py-2 rounded text-sm space-y-1">
     <p class="font-medium">One-time setup token required</p>
     <p>
-      Look at your container's startup logs and search for
+      Look at your findajob's startup logs and search for
       <code>FINDAJOB_SETUP_TOKEN=</code> — paste that value below. This
-      stops anyone who scans the public URL from setting your password
+      stops anyone who finds the public URL from setting your password
       before you do.
     </p>
     <p class="text-xs">
@@ -55,7 +55,7 @@ credentials they just set (one-time confirmation).
       <input type="text" name="setup_token" id="setup_token"
              autocomplete="off" spellcheck="false"
              class="w-full border rounded p-2 font-mono text-xs"
-             placeholder="from container logs"
+             placeholder="from your startup logs"
              required>
     </div>
     {% endif %}

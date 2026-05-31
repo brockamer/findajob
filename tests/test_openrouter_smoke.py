@@ -116,6 +116,9 @@ def test_unexpected_response_shape_returns_false() -> None:
         ok, err = verify_openrouter_key("sk-or-v1-good")
     assert ok is False
     assert err is not None
+    # #917: humanized — names the service, no raw body leaked to the user.
+    assert "OpenRouter" in err
+    assert "other-shape" not in err
 
 
 def test_non_json_response_returns_false() -> None:
@@ -138,4 +141,8 @@ def test_non_json_response_returns_false() -> None:
         ok, err = verify_openrouter_key("sk-or-v1-good")
     assert ok is False
     assert err is not None
-    assert "non-JSON" in err or "JSON" in err
+    # #917: humanized — names the service + actionable status link, and no
+    # longer leaks the raw upstream body to the user.
+    assert "OpenRouter" in err
+    assert "status.openrouter.ai" in err
+    assert "<html>" not in err

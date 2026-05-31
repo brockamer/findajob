@@ -11,6 +11,8 @@ directly. Callers (``routes/onboarding_interview.py``) must drop that argument.
 
 from __future__ import annotations
 
+import logging
+
 from findajob.llm.openrouter import LLMSpendCeilingExceeded, OpenRouterError, complete
 
 # Model pin retained as module-level constants so existing imports in
@@ -51,10 +53,11 @@ class InterviewRunnerError(Exception):
 def _translate(e: OpenRouterError | LLMSpendCeilingExceeded) -> InterviewRunnerError:
     """Map OpenRouterError or LLMSpendCeilingExceeded to an InterviewRunnerError.
 
-    Strings are byte-identical to the messages that the Phase 1 inline HTTP
-    client produced. Dynamic data (status_code, reason, body snippet) is
-    reconstructed from the wrapper's kind/status_code/message fields so the
-    chat UI banner renders the same text it always has.
+    Most user messages mirror the Phase 1 inline HTTP client's text, with
+    dynamic data (status_code, reason) reconstructed from the wrapper's
+    kind/status_code/message fields. The ``malformed`` and ``length`` cases
+    were humanized for non-technical onboarding users (#917) — the malformed
+    upstream detail now goes to a log line rather than the chat UI banner.
     """
     if isinstance(e, LLMSpendCeilingExceeded):
         msg = (
@@ -100,8 +103,10 @@ def _translate(e: OpenRouterError | LLMSpendCeilingExceeded) -> InterviewRunnerE
         reason = _extract_network_reason(raw)
         msg = f"Could not reach OpenRouter ({reason}). Check the deployment's network connectivity and try again."
     elif kind == "malformed":
-        # Wrapper uses short prefixes; map to Phase 1's longer strings.
-        msg = _map_malformed(raw)
+        # The exact upstream shape isn't actionable for the user — show a
+        # plain message and keep the diagnostic detail in the logs (#917).
+        logging.getLogger(__name__).warning("malformed interview response: %s", _map_malformed(raw))
+        msg = "Something unexpected happened. Try again."
     elif kind == "config":
         msg = (
             "No OpenRouter key on file for this stack. Visit /onboarding/ "
@@ -110,9 +115,8 @@ def _translate(e: OpenRouterError | LLMSpendCeilingExceeded) -> InterviewRunnerE
         )
     elif kind == "length":
         msg = (
-            "OpenRouter capped this response at the max_tokens limit — your "
-            "input is too long for a single emit. Trim the longest block "
-            "(usually voice samples) to a shorter version and try again."
+            "Your reply was too long and got cut off. Trim the longest part "
+            "(usually your voice samples) to something shorter and try again."
         )
     else:
         raw_msg = raw.removeprefix("Unexpected error: ")
@@ -131,8 +135,12 @@ def _extract_network_reason(raw: str) -> str:
 
 
 def _map_malformed(raw: str) -> str:
-    """Map wrapper's short malformed messages to Phase 1's longer strings."""
-    # Wrapper prefix → Phase 1 prefix mapping
+    """Expand the wrapper's short malformed prefixes into a diagnostic string.
+
+    The result is logged for operator diagnosis, not shown to the user — the
+    user sees a plain "Something unexpected happened" message (#917).
+    """
+    # Wrapper prefix → diagnostic detail mapping
     if raw.startswith("Non-JSON response:"):
         body_snippet = raw[len("Non-JSON response:") :].lstrip()
         return f"OpenRouter returned non-JSON response: {body_snippet}"
