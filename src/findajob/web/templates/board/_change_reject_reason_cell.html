@@ -15,6 +15,7 @@
   {% if row.stage == 'rejected' %}
   <select
     class="block rounded border-slate-300 bg-white px-2 py-1 text-xs"
+    aria-label="Change reject reason"
     data-fp="{{ row.fingerprint }}"
     hx-post="/board/jobs/{{ row.fingerprint }}/change-reject-reason"
     hx-trigger="change"

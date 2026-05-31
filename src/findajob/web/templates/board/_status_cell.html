@@ -23,6 +23,7 @@
       {% endif %}
       <select
         class="block rounded border-slate-300 bg-white px-2 py-1 text-xs"
+        aria-label="Change status"
         data-fp="{{ fp }}"
         onchange="if(!this.value)return;
           const v=this.value;this.value='';
@@ -61,6 +62,7 @@
        (see _reject_cell.html). #}
     <select
       class="block rounded border-slate-300 bg-white px-2 py-1 text-xs"
+      aria-label="Change status"
       data-fp="{{ fp }}"
       onchange="if(!this.value)return;
         const tr=this.closest('tr');

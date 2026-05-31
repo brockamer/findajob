@@ -21,6 +21,7 @@
   {% else %}
   <select
     class="block rounded border-slate-300 bg-white px-2 py-1 text-xs"
+    aria-label="Reject with reason"
     data-fp="{{ fp }}"
     onchange="if(this.value){
       const tr=this.closest('tr');

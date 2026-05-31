@@ -20,6 +20,7 @@
   <input
     type="text"
     class="w-full rounded border-slate-300 bg-white px-2 py-1 text-sm"
+    aria-label="Edit notes"
     name="notes"
     value="{{ row.user_notes or '' }}"
     hx-post="/board/jobs/{{ row.fingerprint }}/notes"

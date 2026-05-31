@@ -11,8 +11,9 @@
     row — sqlite3.Row with .fingerprint, .title, .company
 #}
 <td class="px-3 py-1 align-top text-sm">
-  <div class="rounded border border-amber-300 bg-amber-50 p-2">
-    <p class="text-xs text-amber-900 mb-1">
+  <div class="rounded border border-amber-300 bg-amber-50 p-2"
+       role="group" aria-labelledby="reattribute-{{ row.fingerprint }}-desc">
+    <p id="reattribute-{{ row.fingerprint }}-desc" class="text-xs text-amber-900 mb-1">
       Reattribute this rejection to a different job. The current row
       (<span class="font-medium">{{ row.title }} @ {{ row.company }}</span>)
       will be un-not-selected and the target will be marked not_selected
