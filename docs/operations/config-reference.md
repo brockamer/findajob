@@ -193,7 +193,7 @@ Claude Code loads `CLAUDE.md` and then appends `CLAUDE.local.md` (via the `@CLAU
 
 ## Voice Samples
 
-Place writing samples in `candidate_context/voice_samples/` as plain text `.txt` files. The cover letter writer role uses these for voice calibration (available via RAG in REPL mode).
+Place writing samples in `candidate_context/voice_samples/` as plain text `.txt` files. The cover letter writer role uses these for voice calibration.
 
 Good samples:
 - Cover letters you've written and sent

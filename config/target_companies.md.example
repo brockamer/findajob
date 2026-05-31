@@ -1,6 +1,5 @@
 # Target Companies / Organizations — EXAMPLE
 # Copy this file to config/target_companies.md and replace with your list.
-# Also copy to rag_sources/target_companies.md (used in RAG context for REPL mode).
 #
 # The pipeline is field-agnostic. Replace the placeholders below with employers
 # relevant to YOUR field — companies, nonprofits, school districts, government

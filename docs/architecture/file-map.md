@@ -8,7 +8,7 @@ When this map drifts from the actual code (renamed file, new route module, retir
 
 ```
 # ── Package (uv sync for dev; pip install -e . inside Docker image) ────────
-<repo>/src/findajob/paths.py                # central path resolver — from findajob.paths import BASE, AICHAT, PANDOC
+<repo>/src/findajob/paths.py                # central path resolver — from findajob.paths import BASE, PANDOC
 <repo>/src/findajob/utils.py                # shared utilities: log_event(), write_audit(), load_env()
 <repo>/src/findajob/cleaning.py             # normalize, fingerprint, clean_title, clean_company
 <repo>/src/findajob/config_seed.py          # seed_runtime_config() — entrypoint-invoked .example→live materialization for configs with hard 500-on-missing paths (#627)
@@ -72,8 +72,8 @@ When this map drifts from the actual code (renamed file, new route module, retir
 
 # ── Candidate content (all gitignored — fill these in after cloning) ────────
 <repo>/candidate_context/profile.md         # candidate profile — injected into scoring, resume, CL, outreach
-<repo>/candidate_context/master_resume.md   # master resume — injected into prep; also indexed for REPL RAG
-<repo>/candidate_context/voice_samples/     # writing samples for CL voice calibration (REPL RAG only)
+<repo>/candidate_context/master_resume.md   # master resume — injected into prep
+<repo>/candidate_context/voice_samples/     # writing samples for CL voice calibration
 
 # ── Config (pipeline operation — mostly gitignored) ──────────────────────────
 <repo>/config/paths.env                     # binary path overrides (gitignored; see paths.env.example)

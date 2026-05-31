@@ -28,7 +28,3 @@ Active job search targeting: [list your top 10–15 target companies]
 
 - Form responses sheet ID: in `config/form_responses_sheet_id.txt`
 - Form URL: [your Google Form URL]
-
-## aichat-ng Config Location
-
-`~/.config/aichat_ng/`
