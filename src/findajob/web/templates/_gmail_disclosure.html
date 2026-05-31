@@ -9,7 +9,7 @@
     findajob reads job-alert emails from senders you list (LinkedIn by
     default) so it can score them and surface them on your board. It
     <strong>does not</strong> read other mail, send mail, modify labels,
-    or move messages. Your app password lives only on this stack — never
+    or move messages. Your app password lives only in your findajob — never
     on a server we control.
   </p>
   <p class="mt-2 text-sm text-slate-700">
@@ -67,7 +67,7 @@
       <div>
         <p class="font-semibold">3. Where your credentials live</p>
         <ul class="list-disc pl-6">
-          <li><code>config/gmail.json</code> on this stack only (chmod 600).
+          <li><code>config/gmail.json</code> in your findajob only (chmod 600).
             Bind-mounted to the host filesystem at
             <code>state/config/gmail.json</code>. Never transmitted off this
             machine. Never logged. Never sent to any LLM, scoring service, or
@@ -86,7 +86,7 @@
                href="https://myaccount.google.com/apppasswords"
                target="_blank" rel="noopener">myaccount.google.com/apppasswords</a>
             → revoke the app password labeled <code>findajob-&lt;your-handle&gt;</code>.</li>
-          <li><strong>In findajob (instant, this stack only):</strong>
+          <li><strong>In findajob (instant, your copy only):</strong>
             click <em>Disconnect Gmail integration</em> on
             <code>/config/gmail/</code>. Wipes both config files.
             Google-side app password remains valid until separately

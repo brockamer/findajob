@@ -6,7 +6,7 @@
     <h1 class="text-2xl font-semibold mb-1">LinkedIn connections</h1>
     <p class="text-sm text-slate-600">
       Your <code>Connections.csv</code> export drives outreach drafting. The file
-      lives on this stack and is never sent anywhere — findajob just reads it
+      lives in your findajob and is never sent anywhere — findajob just reads it
       when generating outreach messages for jobs at companies where you have
       contacts.
     </p>
@@ -45,7 +45,7 @@
     </dl>
     {% else %}
     <p class="text-sm text-slate-600">
-      No connections file on this stack. Upload one below to enable outreach
+      No connections file in your findajob yet. Upload one below to enable outreach
       drafting on every prep run.
     </p>
     {% endif %}
@@ -73,7 +73,7 @@
         {% if file_present %}Replace file{% else %}Upload{% endif %}
       </button>
       <span class="text-xs text-slate-500 self-center">
-        Validated locally before save; nothing leaves this stack.
+        Validated locally before save; nothing leaves your findajob.
       </span>
     </div>
   </form>

@@ -264,7 +264,7 @@ _STAGE_SWAP_DOM_WITH_TOAST = """
 <html>
   <body>
     <div id="undo-toast">
-      <span>Applied. Folder moved and snapshot saved.</span>
+      <span>Marked as applied.</span>
       <button>Undo (30s)</button>
     </div>
     <table>
@@ -322,7 +322,7 @@ def test_evaluate_action_without_confirmation_clears_when_toast_present():
     fake_llm = MagicMock()
     fake_llm.text = (
         '{"is_loose_end": false, "confidence": "high", '
-        '"rationale": "Undo toast announces \'Applied. Folder moved and snapshot saved.\'", '
+        '"rationale": "Undo toast announces \'Marked as applied.\'", '
         '"suggested_surface": ""}'
     )
     fake_llm.cost_usd = 0.02

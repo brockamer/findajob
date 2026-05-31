@@ -48,7 +48,8 @@
             placeholder="Reason label"
             class="flex-1 rounded border-slate-300 shadow-sm focus:border-slate-500 focus:ring-slate-500 text-sm"
           />
-          <label class="flex items-center gap-1.5 text-sm text-slate-700 whitespace-nowrap">
+          <label class="flex items-center gap-1.5 text-sm text-slate-700 whitespace-nowrap"
+                 title="Internally called a 'title-signal' reason: the title looked like a match but the job wasn't, so findajob learns to filter similar titles.">
             <input
               type="checkbox"
               :name="'title_signal_' + i"
@@ -56,7 +57,7 @@
               value="on"
               class="rounded border-slate-400 text-slate-700 focus:ring-slate-500"
             />
-            title-signal
+            Title looked right, job wasn't
           </label>
           <button
             type="button"

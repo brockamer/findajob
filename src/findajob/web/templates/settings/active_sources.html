@@ -11,7 +11,7 @@
   </p>
   <p class="text-sm text-slate-600 mb-6">
     The <strong>Fetchable</strong> badge shows whether a source can actually
-    run on this stack right now (env keys present, config files in place).
+    run in your findajob right now (keys present, config files in place).
     You can still tick a source that's <em>Not configured</em> — it just
     won't return anything until you set up its credentials.
     {% if not file_present %}
@@ -46,7 +46,7 @@
         ✓ Fetchable
       </span>
       {% else %}
-      <span class="text-xs px-2 py-0.5 rounded-full bg-slate-50 text-slate-600 border border-slate-200" title="Adapter is registered but its credentials or config aren't set up on this stack. Enabling it is harmless — it'll be a no-op until configured.">
+      <span class="text-xs px-2 py-0.5 rounded-full bg-slate-50 text-slate-600 border border-slate-200" title="This source is available but its keys or config aren't set up yet in your findajob. Enabling it is harmless — it does nothing until configured.">
         ✗ Not configured
       </span>
       {% endif %}

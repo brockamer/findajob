@@ -99,7 +99,7 @@ def test_get_empty_state_shows_upload_and_explainer_no_remove(client: TestClient
     assert response.status_code == 200
     body = response.text
     assert "LinkedIn connections" in body
-    assert "No connections file on this stack" in body
+    assert "No connections file in your findajob yet" in body
     assert 'action="/settings/connections/upload"' in body
     # Explainer included from the shared partial.
     assert "linkedin.com/mypreferences/d/download-my-data" in body
@@ -193,7 +193,7 @@ def test_get_remove_confirm_renders_confirm_zone(client: TestClient, base_root: 
     response = client.get("/settings/connections/remove/confirm")
     assert response.status_code == 200
     body = response.text
-    assert "Remove connections.csv from this stack?" in body
+    assert "Remove connections.csv from your findajob?" in body
     assert "Current rows: 2" in body
     assert "re-export from LinkedIn" in body
     # File still on disk — confirm is a UI-only swap.
@@ -218,7 +218,7 @@ def test_post_remove_deletes_file_and_renders_success(client: TestClient, base_r
     assert response.status_code == 200
     body = response.text
     assert "Removed." in body
-    assert "No connections file on this stack" in body
+    assert "No connections file in your findajob yet" in body
     assert not (base_root / "data" / "connections.csv").exists()
 
 

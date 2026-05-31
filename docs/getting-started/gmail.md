@@ -24,7 +24,7 @@ test mechanic are identical.
 findajob reads job-alert emails from senders you list (LinkedIn by
 default) so it can score them and surface them on your board. It
 **does not** read other mail, send mail, modify labels, or move
-messages. Your app password lives only on this stack — never on a
+messages. Your app password lives only in your findajob — never on a
 server we control.
 
 findajob is open source. You can audit the exact code that touches
@@ -53,13 +53,13 @@ That is the entire wire protocol. No `STORE`, no `COPY`, no `EXPUNGE`, no `APPEN
 
 ### 3. Where your credentials live
 
-- `config/gmail.json` on this stack only (chmod 600). Bind-mounted to the host filesystem at `state/config/gmail.json`. Never transmitted off this machine. Never logged. Never sent to any LLM, scoring service, or external API.
+- `config/gmail.json` in your findajob only (chmod 600). Bind-mounted to the host filesystem at `state/config/gmail.json`. Never transmitted off this machine. Never logged. Never sent to any LLM, scoring service, or external API.
 - Both `config/gmail.json` and `config/gmail_state.json` are gitignored — they cannot be accidentally committed.
 
 ### 4. How to revoke access
 
 - **At Google (instant, total revocation):** [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) — revoke the app password labeled `findajob-<your-handle>`.
-- **In findajob (instant, this stack only):** click *Disconnect Gmail integration* on `/config/gmail/`. Wipes both config files. Google-side app password remains valid until separately revoked there.
+- **In findajob (instant, your copy only):** click *Disconnect Gmail integration* on `/config/gmail/`. Wipes both config files. Google-side app password remains valid until separately revoked there.
 - **Recommendation:** revoke at Google for any "I want this to stop now" scenario.
 
 </details>
@@ -130,7 +130,7 @@ See **§4 How to revoke access** in the disclosure above. Two surfaces:
 1. **At Google** — instant, total revocation:
    <https://myaccount.google.com/apppasswords>.
 2. **In findajob** — Disconnect button on `/config/gmail/`. Wipes both
-   config files on this stack only; Google-side app password remains
+   config files in your findajob only; Google-side app password remains
    valid until separately revoked.
 
 ## Authoritative sources

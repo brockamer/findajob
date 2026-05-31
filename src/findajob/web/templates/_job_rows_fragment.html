@@ -2,5 +2,5 @@
   {% include "_job_row.html" %}
 {% else %}
   {% set spec_count = (specs | selectattr('name', 'in', visible) | list | length) %}
-  <tr><td colspan="{{ spec_count + 2 }}" class="px-3 py-4 text-slate-500">No matches.</td></tr>
+  <tr><td colspan="{{ spec_count + 2 }}" class="px-3 py-4 text-slate-500">No jobs match your current filters.</td></tr>
 {% endfor %}

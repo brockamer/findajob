@@ -2338,11 +2338,11 @@ class TestJobsSearch:
         assert response.status_code == 200
 
     def test_no_matches_shows_no_matches_message(self, client: TestClient):
-        """A non-blank query with no DB matches renders the 'No matches' span."""
+        """A non-blank query with no DB matches renders the empty-state span."""
         response = client.get("/board/jobs/search?search=xyzzy_nomatch_guaranteed")
 
         assert response.status_code == 200
-        assert "No matches" in response.text
+        assert "No jobs match your search" in response.text
 
 
 # ── GET /reattribute/modal handler ───────────────────────────────────────

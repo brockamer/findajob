@@ -23,7 +23,7 @@
         {% elif error_kind == "upstream" %}OpenRouter / model error
         {% elif error_kind == "network" %}Network error
         {% elif error_kind == "malformed" %}Something unexpected
-        {% elif error_kind == "config" %}Configuration error
+        {% elif error_kind == "config" %}Setup issue
         {% else %}Error
         {% endif %}
         {% if status_code %}<span class="ml-1 text-red-500">({{ status_code }})</span>{% endif %}
