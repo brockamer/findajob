@@ -14,7 +14,6 @@ On failure mid-swap, the rollback dir allows recovery.
 
 from __future__ import annotations
 
-import os
 import shutil
 import stat
 import tarfile
@@ -106,6 +105,23 @@ def restore_from_tarball(raw: bytes, base: Path) -> RestoreResult:
                 if not stripped:
                     continue
 
+                # findajob backups never contain symlinks or hardlinks
+                # (backup.py only ever tars regular files and directories), so
+                # any link member is anomalous. Reject the whole restore rather
+                # than materialize it: an unvalidated symlink target can escape
+                # the state root, and a planted symlink-to-dir enables a
+                # write-through escape via a following file member. Refusing
+                # outright is stronger than target validation — there is no link
+                # to validate, so there is no bypass to find.
+                if member.issym() or member.islnk():
+                    return RestoreResult(
+                        success=False,
+                        error=(
+                            f"Unsafe link member in tarball: {member.name} -> "
+                            f"{member.linkname}. findajob backups never contain links."
+                        ),
+                    )
+
                 if not _is_path_safe(
                     tarfile.TarInfo(name=stripped),
                     staging,
@@ -130,10 +146,6 @@ def restore_from_tarball(raw: bytes, base: Path) -> RestoreResult:
                     f = tar.extractfile(member)
                     if f is not None:
                         dest.write_bytes(f.read())
-                elif member.issym():
-                    dest = staging / stripped
-                    dest.parent.mkdir(parents=True, exist_ok=True)
-                    os.symlink(member.linkname, dest)
 
         rollback.mkdir(parents=True, exist_ok=True)
 

@@ -140,6 +140,89 @@ class TestRestoreFromTarball:
         assert result.success is False
         assert "unsafe" in (result.error or "").lower()
 
+    def test_rejects_symlink_relative_escape(self, tmp_path: Path) -> None:
+        base = tmp_path / "base"
+        base.mkdir()
+
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+            for name, data in [
+                ("state/data/pipeline.db", _make_real_db_bytes()),
+                ("state/data/.onboarding-complete", b"ts\n"),
+            ]:
+                info = tarfile.TarInfo(name=name)
+                info.size = len(data)
+                tar.addfile(info, io.BytesIO(data))
+            link = tarfile.TarInfo(name="state/data/evil")
+            link.type = tarfile.SYMTYPE
+            link.linkname = "../../../../etc/passwd"
+            tar.addfile(link)
+
+        result = restore_from_tarball(buf.getvalue(), base)
+        assert result.success is False
+        assert "link" in (result.error or "").lower()
+        # No escaping symlink may be created.
+        assert not (base / "data" / "evil").exists()
+        assert not (base / "data" / "evil").is_symlink()
+
+    def test_rejects_symlink_absolute_target(self, tmp_path: Path) -> None:
+        base = tmp_path / "base"
+        base.mkdir()
+
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+            for name, data in [
+                ("state/data/pipeline.db", _make_real_db_bytes()),
+                ("state/data/.onboarding-complete", b"ts\n"),
+            ]:
+                info = tarfile.TarInfo(name=name)
+                info.size = len(data)
+                tar.addfile(info, io.BytesIO(data))
+            link = tarfile.TarInfo(name="state/data/evil")
+            link.type = tarfile.SYMTYPE
+            link.linkname = "/etc/passwd"
+            tar.addfile(link)
+
+        result = restore_from_tarball(buf.getvalue(), base)
+        assert result.success is False
+        assert "link" in (result.error or "").lower()
+        assert not (base / "data" / "evil").exists()
+        assert not (base / "data" / "evil").is_symlink()
+
+    def test_symlink_write_through_escape_blocked(self, tmp_path: Path) -> None:
+        # Variant-2 attack: a symlink to an out-of-tree directory followed by a
+        # file member that would be written *through* the symlink, escaping the
+        # state root. Rejecting the symlink member must leave the sentinel intact.
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        sentinel = outside / "secret.txt"
+        sentinel.write_text("untouched")
+
+        base = tmp_path / "base"
+        base.mkdir()
+
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+            for name, data in [
+                ("state/data/pipeline.db", _make_real_db_bytes()),
+                ("state/data/.onboarding-complete", b"ts\n"),
+            ]:
+                info = tarfile.TarInfo(name=name)
+                info.size = len(data)
+                tar.addfile(info, io.BytesIO(data))
+            link = tarfile.TarInfo(name="state/data/link")
+            link.type = tarfile.SYMTYPE
+            link.linkname = str(outside)
+            tar.addfile(link)
+            payload = b"PWNED"
+            evil = tarfile.TarInfo(name="state/data/link/secret.txt")
+            evil.size = len(payload)
+            tar.addfile(evil, io.BytesIO(payload))
+
+        result = restore_from_tarball(buf.getvalue(), base)
+        assert result.success is False
+        assert sentinel.read_text() == "untouched"
+
     def test_staging_and_rollback_cleaned_up(self, tmp_path: Path) -> None:
         base = tmp_path / "base"
         base.mkdir()
