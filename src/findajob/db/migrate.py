@@ -18,10 +18,13 @@ Algorithm:
 2. Read ``_meta.schema_version``.
    - If absent, run the **heuristic backfill** to determine the stack's
      starting state and stamp it. See :func:`_infer_baseline_version`.
-3. Apply every numbered migration with version > current. Each runs in
-   its own transaction; the version row is updated within the same
-   transaction so a half-applied migration cannot leave the DB at the
-   later version.
+3. Apply every numbered migration with version > current. Transaction
+   control (``BEGIN``/``COMMIT``) is embedded in the script handed to
+   ``executescript`` — not hand-rolled around it, which ``executescript``'s
+   implicit pre-COMMIT silently defeats. The ``schema_version`` bump is
+   written inside that same transaction, so a migration's statements and
+   its version row commit (or roll back) as one unit and a half-applied
+   migration can never leave the DB stamped at the later version.
 
 The heuristic exists because real production stacks have no ``_meta``
 table on first contact with this runner. The migration runner bumps
@@ -32,6 +35,14 @@ and all subsequent boots are no-ops.
 Migration files live in ``$BASE/migrations/{NNNN}_{slug}.sql``. Numbering
 starts at 0001. The scheme is intentionally append-only: never rename or
 edit an applied migration; ship a new numbered file instead.
+
+Because the runner now wraps each migration in a transaction (step 3), a
+``.sql`` migration must NOT contain connection-level PRAGMAs that only
+take effect outside a transaction — ``PRAGMA foreign_keys=...`` and
+``PRAGMA journal_mode=...`` are silently ignored mid-transaction. If a
+future migration needs FK enforcement toggled (e.g. for a
+rename-create-copy-drop table rebuild), do it in a Python hook around the
+apply pass, not inside the migration script.
 """
 
 from __future__ import annotations
@@ -642,11 +653,26 @@ def apply_pending(conn: sqlite3.Connection, *, dry_run: bool = False) -> list[Ap
             applied.append(AppliedMigration(version=version, name=slug, path=path, skipped=True))
             continue
         sql = path.read_text(encoding="utf-8")
+        # ``executescript`` issues an implicit COMMIT before running, so a
+        # hand-rolled ``conn.execute("BEGIN")`` is committed away to nothing
+        # and the statements then run in autocommit — a partial apply cannot
+        # be rolled back. The fix is to put transaction control *inside* the
+        # script ``executescript`` runs, where SQLite honors it. The
+        # ``schema_version`` stamp is folded into the same transaction so the
+        # version bump and the migration's statements commit (or roll back)
+        # as one unit — no window where the schema advanced but the version
+        # row didn't. On failure the transaction is left open; ``rollback``
+        # discards every statement, including the version stamp.
+        script = (
+            "BEGIN;\n"
+            f"{sql}\n"
+            "INSERT INTO _meta(key, value) "
+            f"VALUES('schema_version', '{int(version)}') "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value;\n"
+            "COMMIT;\n"
+        )
         try:
-            conn.execute("BEGIN")
-            conn.executescript(sql)
-            _write_schema_version(conn, version)
-            conn.commit()
+            conn.executescript(script)
         except sqlite3.Error:
             conn.rollback()
             raise

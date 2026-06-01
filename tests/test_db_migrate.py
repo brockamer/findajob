@@ -117,6 +117,57 @@ def test_idempotent_second_run_is_noop(tmp_path: Path) -> None:
         conn.close()
 
 
+def test_failing_migration_leaves_nothing_applied(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Per-migration atomicity (#954): a migration whose second statement
+    fails must leave *none* of its statements applied and must not advance
+    ``schema_version``.
+
+    Regresses the ``executescript`` footgun — it issues an implicit COMMIT
+    before running, so the hand-rolled ``conn.execute("BEGIN")`` was
+    committed away and the ``except: rollback()`` could not undo a
+    statement that had already run in autocommit.
+    """
+    db = tmp_path / "atomic.db"
+    conn = sqlite3.connect(str(db))
+    try:
+        apply_pending(conn)  # bring the DB to HEAD_VERSION first
+    finally:
+        conn.close()
+
+    # First statement is valid (creates a canary table); second is
+    # malformed, so the migration must fail partway through.
+    bad_sql = tmp_path / f"{HEAD_VERSION + 1:04d}_canary.sql"
+    bad_sql.write_text(
+        "CREATE TABLE canary_954 (id INTEGER);\nINSERT INTO no_such_table_954 VALUES (1);\n",
+        encoding="utf-8",
+    )
+
+    import findajob.db.migrate as migrate_mod
+
+    monkeypatch.setattr(
+        migrate_mod,
+        "_list_migrations",
+        lambda: [(HEAD_VERSION + 1, "canary", bad_sql)],
+    )
+
+    conn = sqlite3.connect(str(db))
+    try:
+        with pytest.raises(sqlite3.Error):
+            apply_pending(conn)
+    finally:
+        conn.close()
+
+    conn = sqlite3.connect(str(db))
+    try:
+        assert not _has_table(conn, "canary_954"), (
+            "migration's first statement leaked despite the second failing — "
+            "executescript committed it away from the BEGIN guard (#954)"
+        )
+        assert _read_version(conn) == HEAD_VERSION, "schema_version must not advance when a migration fails mid-apply"
+    finally:
+        conn.close()
+
+
 def test_legacy_v0_10_bridges_to_equilibrium(tmp_path: Path) -> None:
     """v0.10 fixture has missing columns + missing tables + cost_calibration
     + tester_google_key. The runner's heuristic detects drift, runs the
