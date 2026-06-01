@@ -2629,26 +2629,26 @@ class TestWaitlistTabRendersFlagForPrepButton:
 
 class TestReactivateAndPrep:
     def test_happy_path_without_folder(self, client: TestClient, popen_calls):
-        """Waitlisted job with no prep folder: handle_reactivate flips waitlisted→scored,
-        then the route flips scored→prep_in_progress and spawns prep_application.py.
-        Two audit rows written for clean traceability."""
+        """Waitlisted job with no prep folder: the route atomically claims it
+        straight from waitlisted→prep_in_progress and spawns prep_application.py.
+        Post-#957 the claim is the first mutation, so a single audit row is written
+        (the old two-row waitlisted→scored→prep_in_progress trail is intentionally
+        collapsed — see #957 / #958)."""
         response = client.post("/board/jobs/fp_waitlisted/reactivate-and-prep")
         assert response.status_code == 200
         assert response.text == ""
         assert _fetch_stage(client, "fp_waitlisted") == "prep_in_progress"
 
         audit = _fetch_audit(client, "fp_waitlisted")
-        # Reactivate row + prep row, in order
-        assert ("stage", "waitlisted", "scored") in audit
-        assert ("stage", "scored", "prep_in_progress") in audit
+        assert ("stage", "waitlisted", "prep_in_progress") in audit
 
         prep_calls = [c for c in popen_calls if "prep_application.py" in c[1]]
         assert len(prep_calls) == 1
 
     def test_happy_path_with_folder(self, client: TestClient, popen_calls):
-        """Waitlisted job with a folder in _waitlisted/: handle_reactivate moves
-        the folder back to companies/ and flips to materials_drafted; route then
-        flips to prep_in_progress."""
+        """Waitlisted job with a folder in _waitlisted/: the route claims it
+        atomically (waitlisted→prep_in_progress), relocates the prep folder back to
+        companies/, and spawns prep. Single audit row post-#957."""
         wl_dir = client._tmp_path / "companies" / "_waitlisted"
         wl_dir.mkdir(parents=True)
         folder = wl_dir / "Acme_waitlist_prep"
@@ -2667,11 +2667,11 @@ class TestReactivateAndPrep:
         assert _fetch_stage(client, "fp_waitlisted") == "prep_in_progress"
 
         audit = _fetch_audit(client, "fp_waitlisted")
-        assert ("stage", "waitlisted", "materials_drafted") in audit
-        assert ("stage", "materials_drafted", "prep_in_progress") in audit
+        assert ("stage", "waitlisted", "prep_in_progress") in audit
 
-        # Folder moved back out of _waitlisted/
+        # Folder relocated out of _waitlisted/ back into companies/
         assert not folder.exists()
+        assert (client._tmp_path / "companies" / "Acme_waitlist_prep").is_dir()
 
         prep_calls = [c for c in popen_calls if "prep_application.py" in c[1]]
         assert len(prep_calls) == 1

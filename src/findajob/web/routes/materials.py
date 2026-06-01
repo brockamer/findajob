@@ -635,11 +635,7 @@ def regenerate_from_materials(
     returning the dashboard's HTMX row. Side effects route through the shared
     ``_execute_regenerate`` helper so prep-launch state stays in one place.
     """
-    from findajob.web.routes.board_actions import (
-        MAX_CONCURRENT_PREPS,
-        _execute_regenerate,
-        _prep_in_flight,
-    )
+    from findajob.web.routes.board_actions import _execute_regenerate
 
     job = db.execute(
         "SELECT id, title, company, url, stage, prep_folder_path FROM jobs WHERE fingerprint=?",
@@ -651,10 +647,12 @@ def regenerate_from_materials(
     if job["stage"] == "prep_in_progress":
         return RedirectResponse(url=f"/materials/{fingerprint}", status_code=303)
 
-    if _prep_in_flight(db) >= MAX_CONCURRENT_PREPS:
+    # Atomic claim + cap enforcement live inside _execute_regenerate (#957).
+    outcome = _execute_regenerate(db, job, source_event="web_regen_dispatched_from_materials")
+    if outcome == "queue_full":
         return RedirectResponse(url="/materials/?regen_error=queue_full", status_code=303)
-
-    _execute_regenerate(db, job, source_event="web_regen_dispatched_from_materials")
+    if outcome == "invalid_stage":
+        return RedirectResponse(url=f"/materials/{fingerprint}", status_code=303)
 
     return RedirectResponse(url="/materials/", status_code=303)
 
@@ -732,11 +730,7 @@ def continue_prep_from_materials(
     convention).
     """
     from findajob.spend_ceiling import check_launch_gate
-    from findajob.web.routes.board_actions import (
-        MAX_CONCURRENT_PREPS,
-        _launch_prep_subprocess,
-        _prep_in_flight,
-    )
+    from findajob.web.routes.board_actions import _claim_prep_slot, _launch_prep_subprocess
 
     job = db.execute(
         "SELECT id, fingerprint, title, company, url, stage FROM jobs WHERE fingerprint=?",
@@ -762,15 +756,14 @@ def continue_prep_from_materials(
         # follows the same convention as `?regen_error=queue_full`.
         return RedirectResponse(url="/materials/?continue_prep_error=spend_ceiling", status_code=303)
 
-    if _prep_in_flight(db) >= MAX_CONCURRENT_PREPS:
+    # Atomic claim from briefing_ready (#957) — cap enforced in the same statement,
+    # replacing the old _prep_in_flight read + separate UPDATE.
+    claim = _claim_prep_slot(db, job["id"], from_stages=("briefing_ready",))
+    if claim == "queue_full":
         return RedirectResponse(url="/materials/?continue_prep_error=queue_full", status_code=303)
+    if claim == "invalid_stage":
+        return RedirectResponse(url=f"/materials/{fingerprint}", status_code=303)
 
-    now = datetime.now(UTC).isoformat()
-    db.execute(
-        "UPDATE jobs SET stage='prep_in_progress', stage_updated=?, updated_at=? WHERE id=?",
-        (now, now, job["id"]),
-    )
-    db.commit()
     from findajob.audit import log_event, write_audit
 
     write_audit(db, job["id"], "stage", job["stage"], "prep_in_progress")

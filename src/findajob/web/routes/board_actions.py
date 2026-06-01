@@ -71,6 +71,59 @@ def _prep_queue_full_response() -> HTMLResponse:
     )
 
 
+def _claim_prep_slot(
+    db: sqlite3.Connection,
+    job_id: str,
+    *,
+    from_stages: tuple[str, ...],
+    exclude: bool = False,
+) -> str:
+    """Atomically claim a job for prep by flipping its stage to prep_in_progress.
+
+    A single conditional ``UPDATE`` collapses the stage check, the concurrency-cap
+    check, and the write into one statement, so a concurrent double-click or burst
+    wins at most one slot (#957). The claim is the FIRST state mutation in every
+    prep-launching handler — folder ops and subprocess launches run only for the
+    ``"claimed"`` winner — which is why two simultaneous ``/prep`` POSTs can no
+    longer both reach ``_launch_prep_subprocess``.
+
+    ``from_stages`` is the set of stages a job may be claimed from. With
+    ``exclude=False`` (default) the claim requires ``stage IN from_stages``
+    (continue_prep: only ``briefing_ready``; reactivate_and_prep: only
+    ``waitlisted``). With ``exclude=True`` it requires ``stage NOT IN from_stages``
+    (prep / regenerate, which proceed from any non-idempotent stage).
+
+    The cap predicate is byte-identical to :func:`_prep_in_flight`; the claimed job
+    self-excludes because it is not yet ``prep_in_progress``, so ``< MAX`` holds the
+    cap at exactly ``MAX_CONCURRENT_PREPS``.
+
+    Returns one of:
+      ``"claimed"``       — this caller won; stage is now ``prep_in_progress``.
+      ``"queue_full"``    — claim missed and the concurrency cap is saturated.
+      ``"invalid_stage"`` — claim missed because the stage was not claimable
+                            (e.g. a concurrent caller already claimed it).
+
+    The miss disambiguation re-reads the in-flight count purely to pick the right
+    response (429 vs an idempotent row); the claim itself is authoritative, so a
+    TOCTOU on that re-read is harmless.
+    """
+    op = "NOT IN" if exclude else "IN"
+    placeholders = ",".join("?" * len(from_stages))
+    now = datetime.now(UTC).isoformat()
+    cur = db.execute(
+        f"UPDATE jobs SET stage='prep_in_progress', stage_updated=?, updated_at=? "
+        f"WHERE id=? AND stage {op} ({placeholders}) "
+        f"AND (SELECT COUNT(*) FROM jobs WHERE stage='prep_in_progress') < ?",
+        (now, now, job_id, *from_stages, MAX_CONCURRENT_PREPS),
+    )
+    db.commit()
+    if cur.rowcount == 1:
+        return "claimed"
+    if _prep_in_flight(db) >= MAX_CONCURRENT_PREPS:
+        return "queue_full"
+    return "invalid_stage"
+
+
 def _launch_prep_subprocess(
     db: sqlite3.Connection,
     job: sqlite3.Row,
@@ -328,19 +381,25 @@ def prep(
     if row["stage"] in ("prep_in_progress", "materials_drafted"):
         return _render_dashboard_row(request, row, db)
 
-    if _prep_in_flight(db) >= MAX_CONCURRENT_PREPS:
-        return _prep_queue_full_response()
-
     job = db.execute(
         "SELECT id, title, company, url, stage FROM jobs WHERE fingerprint=?",
         (fingerprint,),
     ).fetchone()
 
-    now = datetime.now(UTC).isoformat()
-    db.execute(
-        "UPDATE jobs SET stage='prep_in_progress', apply_flag=1, stage_updated=?, updated_at=? WHERE id=?",
-        (now, now, job["id"]),
-    )
+    # Atomic claim: a single conditional UPDATE flips stage to prep_in_progress
+    # only if the job is still claimable and the cap has room, so a double-click /
+    # HTMX retry can win at most one slot (#957). Replaces the old non-atomic
+    # check-then-act (_prep_in_flight read, then a separate UPDATE).
+    claim = _claim_prep_slot(db, job["id"], from_stages=("prep_in_progress", "materials_drafted"), exclude=True)
+    if claim == "queue_full":
+        return _prep_queue_full_response()
+    if claim == "invalid_stage":
+        # Lost the race to a concurrent claim — render the current row unchanged.
+        current = _fetch_dashboard_row(db, fingerprint)
+        assert current is not None
+        return _render_dashboard_row(request, current, db)
+
+    db.execute("UPDATE jobs SET apply_flag=1 WHERE id=?", (job["id"],))
     db.commit()
     write_audit(db, job["id"], "stage", job["stage"], "prep_in_progress")
     log_event(
@@ -385,40 +444,51 @@ def regenerate(
     if row["stage"] == "prep_in_progress":
         return _render_dashboard_row(request, row, db)
 
-    if _prep_in_flight(db) >= MAX_CONCURRENT_PREPS:
-        return _prep_queue_full_response()
-
     job = db.execute(
         "SELECT id, title, company, url, stage, prep_folder_path FROM jobs WHERE fingerprint=?",
         (fingerprint,),
     ).fetchone()
 
-    _execute_regenerate(db, job, source_event="web_regen_dispatched")
+    # Atomic claim lives inside _execute_regenerate (#957); the cap is enforced
+    # there, so no separate _prep_in_flight pre-check.
+    outcome = _execute_regenerate(db, job, source_event="web_regen_dispatched")
+    if outcome == "queue_full":
+        return _prep_queue_full_response()
 
+    # claimed, or invalid_stage (a concurrent claim already grabbed it) — either
+    # way render the current row.
     updated = _fetch_dashboard_row(db, fingerprint)
     assert updated is not None
     return _render_dashboard_row(request, updated, db)
 
 
-def _execute_regenerate(db: sqlite3.Connection, job: sqlite3.Row, *, source_event: str) -> None:
-    """Side effects of regenerate after gates have passed.
+def _execute_regenerate(db: sqlite3.Connection, job: sqlite3.Row, *, source_event: str) -> str:
+    """Claim a job for regeneration, then (on success) delete the old prep folder
+    and launch a fresh prep run.
 
-    Caller must already have verified: job exists, ``stage != 'prep_in_progress'``,
-    and prep queue is below ``MAX_CONCURRENT_PREPS``. Used by both the dashboard
-    handler (returns HTMX row) and the materials-page handler (returns redirect)
-    so the side-effect sequence stays in one place.
+    The atomic claim is the FIRST mutation (#957): the destructive ``rmtree`` and
+    the subprocess launch run only for the ``"claimed"`` winner, so two concurrent
+    regenerates can't both delete the folder and both launch. regenerate proceeds
+    from any stage except ``prep_in_progress`` (the caller's idempotency fast-path
+    already returned for live runs).
+
+    Returns the claim outcome (``"claimed" | "queue_full" | "invalid_stage"``) so
+    the dashboard handler (HTMX row) and the materials-page handler (redirect) can
+    render their own response shapes. Shared by both so the side-effect sequence —
+    and now the claim — lives in one place.
     """
+    claim = _claim_prep_slot(db, job["id"], from_stages=("prep_in_progress",), exclude=True)
+    if claim != "claimed":
+        return claim
+
     folder = job["prep_folder_path"]
     if folder and os.path.isdir(folder):
         shutil.rmtree(folder)
         log_event("folder_removed_for_regen", job_id=job["id"], folder=os.path.basename(folder))
 
-    now = datetime.now(UTC).isoformat()
     db.execute(
-        "UPDATE jobs SET stage='prep_in_progress', prep_folder_path=NULL, "
-        "apply_flag=1, stage_updated=?, updated_at=? "
-        "WHERE id=?",
-        (now, now, job["id"]),
+        "UPDATE jobs SET prep_folder_path=NULL, apply_flag=1 WHERE id=?",
+        (job["id"],),
     )
     db.commit()
     write_audit(db, job["id"], "stage", job["stage"], "prep_in_progress")
@@ -430,6 +500,7 @@ def _execute_regenerate(db: sqlite3.Connection, job: sqlite3.Row, *, source_even
     )
 
     _launch_prep_subprocess(db, job)
+    return "claimed"
 
 
 @router.get("/board/jobs/{fingerprint}/regenerate/confirm", response_class=HTMLResponse)
@@ -558,20 +629,21 @@ def continue_prep(
             detail="Continue-prep only valid for jobs at stage='briefing_ready'",
         )
 
-    if _prep_in_flight(db) >= MAX_CONCURRENT_PREPS:
-        return _prep_queue_full_response()
-
     job = db.execute(
         "SELECT id, title, company, url, stage FROM jobs WHERE fingerprint=?",
         (fingerprint,),
     ).fetchone()
 
-    now = datetime.now(UTC).isoformat()
-    db.execute(
-        "UPDATE jobs SET stage='prep_in_progress', stage_updated=?, updated_at=? WHERE id=?",
-        (now, now, job["id"]),
-    )
-    db.commit()
+    # Atomic claim from briefing_ready (#957) — the cap is enforced inside the
+    # claim, replacing the old _prep_in_flight read + separate UPDATE.
+    claim = _claim_prep_slot(db, job["id"], from_stages=("briefing_ready",))
+    if claim == "queue_full":
+        return _prep_queue_full_response()
+    if claim == "invalid_stage":
+        current = _fetch_dashboard_row(db, fingerprint)
+        assert current is not None
+        return _render_dashboard_row(request, current, db)
+
     write_audit(db, job["id"], "stage", job["stage"], "prep_in_progress")
     log_event(
         "web_continue_prep_dispatched",
@@ -812,22 +884,33 @@ def reactivate_and_prep(
             ),
         )
 
-    if _prep_in_flight(db) >= MAX_CONCURRENT_PREPS:
+    # Atomic claim from waitlisted (#957) — the first mutation, so a concurrent
+    # double-click can't double-move the folder or double-launch; the cap is
+    # enforced in the same statement. Previously handle_reactivate ran first and
+    # wrote two audit rows (waitlisted→intermediate, intermediate→prep_in_progress);
+    # claiming straight from waitlisted collapses that to a single
+    # waitlisted→prep_in_progress row — an intentional interaction with the
+    # audit-trail work tracked in #958.
+    claim = _claim_prep_slot(db, job["id"], from_stages=("waitlisted",))
+    if claim == "queue_full":
         return _prep_queue_full_response()
+    if claim == "invalid_stage":
+        # Lost the race to a concurrent claim — idempotent no-op.
+        return HTMLResponse("")
 
-    handle_reactivate(db, job)
+    # Relocate the prep folder back from companies/_waitlisted/ to companies/.
+    # Minimal duplication of handle_reactivate's folder move, which stays canonical
+    # for the plain /reactivate route (that route still transitions out of
+    # waitlisted and must keep its own audit/log semantics).
+    folder = db.execute("SELECT prep_folder_path FROM jobs WHERE id=?", (job["id"],)).fetchone()[0]
+    if folder and os.path.isdir(folder):
+        dest = os.path.join(BASE, "companies", os.path.basename(folder))
+        shutil.move(folder, dest)
+        db.execute("UPDATE jobs SET prep_folder_path=? WHERE id=?", (dest, job["id"]))
 
-    # Re-read intermediate stage so the audit row's old_value matches whatever
-    # handle_reactivate landed on (scored if no folder, materials_drafted if folder).
-    intermediate_stage = db.execute("SELECT stage FROM jobs WHERE id=?", (job["id"],)).fetchone()[0]
-
-    now = datetime.now(UTC).isoformat()
-    db.execute(
-        "UPDATE jobs SET stage='prep_in_progress', apply_flag=1, stage_updated=?, updated_at=? WHERE id=?",
-        (now, now, job["id"]),
-    )
+    db.execute("UPDATE jobs SET apply_flag=1 WHERE id=?", (job["id"],))
     db.commit()
-    write_audit(db, job["id"], "stage", intermediate_stage, "prep_in_progress")
+    write_audit(db, job["id"], "stage", "waitlisted", "prep_in_progress")
     log_event(
         "web_reactivate_and_prep_dispatched",
         job_id=job["id"],
