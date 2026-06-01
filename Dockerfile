@@ -1,9 +1,21 @@
 # syntax=docker/dockerfile:1.7
 
 # findajob image
-# Base: Python 3.12 on Debian slim. Single stage — supercronic is a prebuilt
-# binary. No compilation needed.
+# Base: Python 3.12 on Debian slim. A throwaway `deps` stage resolves the
+# locked dependency set from uv.lock; the runtime stage installs from it,
+# keeping uv and build tooling out of the final image.
 
+# deps — resolve uv.lock into a pinned, hashed requirements file. `uv export
+# --locked` fails the build loudly if uv.lock has drifted from pyproject.toml
+# (vs --frozen, which would silently use a stale lock). uv is pinned from PyPI
+# so this needs no external image tag.
+FROM python:3.12-slim-bookworm AS deps
+WORKDIR /app
+COPY pyproject.toml uv.lock ./
+RUN pip install --no-cache-dir --break-system-packages uv==0.11.7 \
+    && uv export --locked --no-dev --no-emit-project -o /app/requirements.txt
+
+# runtime image.
 FROM python:3.12-slim-bookworm
 
 # TARGETARCH is set automatically by buildx when --platform is passed
@@ -49,14 +61,17 @@ RUN set -eux; \
         /usr/local/bin/supercronic -test /tmp/probe-crontab && \
         rm /tmp/probe-crontab
 
-# Editable install — src/ must be present before pip install -e . can register
-# the findajob package. Copy pyproject.toml + src/ together, install, then copy
-# the rest of the app so source edits (scripts, ops) don't invalidate the
-# pip layer cache unnecessarily.
+# Install the locked dependency set (pinned + hashed, from the deps stage)
+# first, then editable-install findajob itself with --no-deps so uv.lock is the
+# single resolution source. src/ must be present before `pip install -e .` can
+# register the findajob package. Copy order keeps source edits (scripts, ops)
+# from invalidating the dependency pip layer.
 WORKDIR /app
+COPY --from=deps /app/requirements.txt /app/requirements.txt
 COPY pyproject.toml /app/
 COPY src/ /app/src/
-RUN pip install --no-cache-dir --break-system-packages -e .
+RUN pip install --no-cache-dir --break-system-packages --require-hashes -r /app/requirements.txt \
+    && pip install --no-cache-dir --break-system-packages -e . --no-deps
 
 # App code and bundled config.
 # /opt/findajob/bundled-config/ holds tracked config files (roles/,

@@ -16,8 +16,18 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install dependencies
-        run: pip install -e ".[dev]"
+      - name: Install dependencies (from locked uv.lock)
+        # Resolve from the committed lockfile, not the >= floors in pyproject.
+        # `uv export --locked` fails loudly if uv.lock has drifted from
+        # pyproject (vs --frozen, which silently uses a stale lock). The export
+        # carries hashes, so pip installs in --require-hashes mode. findajob
+        # itself is installed editable separately (--no-deps) because the
+        # project has no [build-system] and is excluded via --no-emit-project.
+        run: |
+          pip install uv==0.11.7
+          uv export --locked --extra dev --no-emit-project -o requirements-dev.txt
+          pip install --require-hashes -r requirements-dev.txt
+          pip install -e . --no-deps
 
       - name: Lint
         run: ruff check src/ scripts/ tests/
