@@ -10,7 +10,9 @@ Built and operated daily; pre-1.0 means active development.
 
 *Fictional demo data spanning data-center ops, social services, and K-12 education — the same pipeline works for every field, only your candidate profile changes.*
 
-**→ [Deploy in about 20 minutes, no terminal needed](docs/getting-started/start-here-fly.md)**
+[![Deploy to Fly.io](https://img.shields.io/badge/Deploy%20to%20Fly.io-8B5CF6?style=for-the-badge&logo=flydotio&logoColor=white)](docs/getting-started/start-here-fly.md)
+
+*No terminal needed — about 20 minutes, start to finish.*
 
 ---
 
