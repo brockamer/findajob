@@ -135,12 +135,12 @@ def before_after_metrics(
         (
             "before",
             f"date(changed_at) >= date(?, '-{window_days} days') AND date(changed_at) < date(?)",
-            f"date(timestamp) >= date(?, '-{window_days} days') AND date(timestamp) < date(?)",
+            f"date(logged_at) >= date(?, '-{window_days} days') AND date(logged_at) < date(?)",
         ),
         (
             "after",
             f"date(changed_at) >= date(?) AND date(changed_at) < date(?, '+{window_days} days')",
-            f"date(timestamp) >= date(?) AND date(timestamp) < date(?, '+{window_days} days')",
+            f"date(logged_at) >= date(?) AND date(logged_at) < date(?, '+{window_days} days')",
         ),
     ]:
         scored_row = conn.execute(

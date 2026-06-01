@@ -13,6 +13,7 @@ from findajob.metrics.stats import (
     wilson_ci,
     wilson_ci_pct,
 )
+from tests.conftest import init_test_db
 
 
 class TestWilsonCI:
@@ -150,27 +151,15 @@ class TestConfigChangeMarkers:
 
 class TestBeforeAfterMetrics:
     @pytest.fixture
-    def db(self):
-        conn = sqlite3.connect(":memory:")
+    def db(self, tmp_path):
+        # Build the real schema via the production migration chain rather
+        # than hand-rolling CREATE TABLE — a fabricated cost_log with a
+        # nonexistent `timestamp` column masked #953. init_test_db is the
+        # documented anti-fragility helper (#721).
+        db_path = tmp_path / "pipeline.db"
+        init_test_db(db_path)
+        conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
-        conn.executescript("""
-            CREATE TABLE audit_log (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                job_id TEXT,
-                field_changed TEXT,
-                old_value TEXT,
-                new_value TEXT,
-                changed_at TEXT,
-                changed_by TEXT DEFAULT 'test'
-            );
-            CREATE TABLE cost_log (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp TEXT,
-                cost_usd REAL,
-                role TEXT,
-                job_id TEXT
-            );
-        """)
         return conn
 
     def test_empty_tables(self, db):
@@ -206,12 +195,12 @@ class TestBeforeAfterMetrics:
 
     def test_cost_in_both_windows(self, db):
         db.execute(
-            "INSERT INTO cost_log (timestamp, cost_usd, role) VALUES (?, ?, ?)",
-            ("2026-05-12 10:00:00", 1.50, "scorer"),
+            "INSERT INTO cost_log (logged_at, cost_usd, operation, model) VALUES (?, ?, ?, ?)",
+            ("2026-05-12 10:00:00", 1.50, "score", "scorer"),
         )
         db.execute(
-            "INSERT INTO cost_log (timestamp, cost_usd, role) VALUES (?, ?, ?)",
-            ("2026-05-17 10:00:00", 2.50, "scorer"),
+            "INSERT INTO cost_log (logged_at, cost_usd, operation, model) VALUES (?, ?, ?, ?)",
+            ("2026-05-17 10:00:00", 2.50, "score", "scorer"),
         )
         db.execute(
             "INSERT INTO audit_log (job_id, field_changed, new_value, changed_at) VALUES (?, 'stage', 'applied', ?)",

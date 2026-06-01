@@ -10,6 +10,10 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`/stats/config-change/{date}` popover 500** (#953): `metrics/stats.py`'s before/after cost query filtered on `cost_log.timestamp`, a column that does not exist — the real column is `logged_at` (as `cost_rollups.py` uses everywhere). Every config-change marker popover on the funnel/feedback/throughput charts returned a 500. A unit fixture that hand-rolled a fabricated `cost_log` schema with a `timestamp` column kept the suite green over the production break (the `feedback_test_real_codepath_when_extracting` anti-pattern, #610/#611, recurring); the test now builds the real schema via `init_test_db`, and a new route-level regression test (`tests/test_web_stats_config_change.py`) asserts the popover returns 200.
+
 ### Migration required
 
 - **Schema 0009 — `jobs.gdrive_folder_url` dropped** (#966): the dead Google Drive sync column is removed via `migrations/0009_drop_gdrive_folder_url.sql`. It held the per-job Drive folder link from the rclone/Drive materials-sync era, retired when the local web materials viewer shipped; it has been NULL in every row since and no code reads it. **Auto-applied on next startup — no operator action, no data loss.** Fresh installs never carry the column.
