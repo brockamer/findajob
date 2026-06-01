@@ -758,15 +758,15 @@ def continue_prep_from_materials(
 
     # Atomic claim from briefing_ready (#957) — cap enforced in the same statement,
     # replacing the old _prep_in_flight read + separate UPDATE.
-    claim = _claim_prep_slot(db, job["id"], from_stages=("briefing_ready",))
+    claim = _claim_prep_slot(db, job["id"], from_stages=("briefing_ready",), audit_old_value=job["stage"])
     if claim == "queue_full":
         return RedirectResponse(url="/materials/?continue_prep_error=queue_full", status_code=303)
     if claim == "invalid_stage":
         return RedirectResponse(url=f"/materials/{fingerprint}", status_code=303)
 
-    from findajob.audit import log_event, write_audit
+    # Stage change + its audit row were committed atomically inside the claim (#958).
+    from findajob.audit import log_event
 
-    write_audit(db, job["id"], "stage", job["stage"], "prep_in_progress")
     log_event(
         "web_continue_prep_dispatched_from_materials",
         job_id=job["id"],

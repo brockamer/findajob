@@ -76,7 +76,9 @@ def _claim_prep_slot(
     job_id: str,
     *,
     from_stages: tuple[str, ...],
+    audit_old_value: str,
     exclude: bool = False,
+    changed_by: str | None = None,
 ) -> str:
     """Atomically claim a job for prep by flipping its stage to prep_in_progress.
 
@@ -97,8 +99,18 @@ def _claim_prep_slot(
     self-excludes because it is not yet ``prep_in_progress``, so ``< MAX`` holds the
     cap at exactly ``MAX_CONCURRENT_PREPS``.
 
+    On a successful claim the stage audit row is written *inside the claim's
+    transaction* (``audit_old_value`` → ``prep_in_progress``, attributed to
+    ``changed_by``) and committed together with the ``UPDATE`` — so there is no
+    window where the stage changed without its audit row (#958). This is
+    concurrency-safe: the conditional ``UPDATE`` holds the RESERVED lock across the
+    audit INSERT to the single commit, so a concurrent caller blocks on its own
+    ``UPDATE`` until both land, then re-evaluates to 0 rows. Callers must therefore
+    NOT write their own stage audit row — doing so would double it.
+
     Returns one of:
-      ``"claimed"``       — this caller won; stage is now ``prep_in_progress``.
+      ``"claimed"``       — this caller won; stage is now ``prep_in_progress`` and
+                            its audit row is written.
       ``"queue_full"``    — claim missed and the concurrency cap is saturated.
       ``"invalid_stage"`` — claim missed because the stage was not claimable
                             (e.g. a concurrent caller already claimed it).
@@ -116,9 +128,12 @@ def _claim_prep_slot(
         f"AND (SELECT COUNT(*) FROM jobs WHERE stage='prep_in_progress') < ?",
         (now, now, job_id, *from_stages, MAX_CONCURRENT_PREPS),
     )
-    db.commit()
     if cur.rowcount == 1:
+        # Fold the audit row into the claim's transaction (one commit) — see #958.
+        write_audit(db, job_id, "stage", audit_old_value, "prep_in_progress", changed_by=changed_by, commit=False)
+        db.commit()
         return "claimed"
+    db.commit()  # release the (no-op) transaction before disambiguating
     if _prep_in_flight(db) >= MAX_CONCURRENT_PREPS:
         return "queue_full"
     return "invalid_stage"
@@ -316,7 +331,8 @@ def _transition_stage(
         "UPDATE jobs SET stage=?, stage_updated=?, updated_at=? WHERE id=?",
         (new_stage, now, now, job["id"]),
     )
-    db.commit()
+    # Stage UPDATE + audit row commit as one transaction (#958): write_audit's
+    # default commit flushes both, so the stage never lands without its audit row.
     write_audit(db, job["id"], "stage", job["stage"], new_stage, changed_by=changed_by)
     log_event(
         event_name,
@@ -390,7 +406,13 @@ def prep(
     # only if the job is still claimable and the cap has room, so a double-click /
     # HTMX retry can win at most one slot (#957). Replaces the old non-atomic
     # check-then-act (_prep_in_flight read, then a separate UPDATE).
-    claim = _claim_prep_slot(db, job["id"], from_stages=("prep_in_progress", "materials_drafted"), exclude=True)
+    claim = _claim_prep_slot(
+        db,
+        job["id"],
+        from_stages=("prep_in_progress", "materials_drafted"),
+        exclude=True,
+        audit_old_value=job["stage"],
+    )
     if claim == "queue_full":
         return _prep_queue_full_response()
     if claim == "invalid_stage":
@@ -399,9 +421,9 @@ def prep(
         assert current is not None
         return _render_dashboard_row(request, current, db)
 
+    # Stage change + its audit row were committed atomically inside the claim (#958).
     db.execute("UPDATE jobs SET apply_flag=1 WHERE id=?", (job["id"],))
     db.commit()
-    write_audit(db, job["id"], "stage", job["stage"], "prep_in_progress")
     log_event(
         "web_prep_dispatched",
         job_id=job["id"],
@@ -477,10 +499,13 @@ def _execute_regenerate(db: sqlite3.Connection, job: sqlite3.Row, *, source_even
     render their own response shapes. Shared by both so the side-effect sequence —
     and now the claim — lives in one place.
     """
-    claim = _claim_prep_slot(db, job["id"], from_stages=("prep_in_progress",), exclude=True)
+    claim = _claim_prep_slot(
+        db, job["id"], from_stages=("prep_in_progress",), exclude=True, audit_old_value=job["stage"]
+    )
     if claim != "claimed":
         return claim
 
+    # Stage change + its audit row were committed atomically inside the claim (#958).
     folder = job["prep_folder_path"]
     if folder and os.path.isdir(folder):
         shutil.rmtree(folder)
@@ -491,7 +516,6 @@ def _execute_regenerate(db: sqlite3.Connection, job: sqlite3.Row, *, source_even
         (job["id"],),
     )
     db.commit()
-    write_audit(db, job["id"], "stage", job["stage"], "prep_in_progress")
     log_event(
         source_event,
         job_id=job["id"],
@@ -636,7 +660,7 @@ def continue_prep(
 
     # Atomic claim from briefing_ready (#957) — the cap is enforced inside the
     # claim, replacing the old _prep_in_flight read + separate UPDATE.
-    claim = _claim_prep_slot(db, job["id"], from_stages=("briefing_ready",))
+    claim = _claim_prep_slot(db, job["id"], from_stages=("briefing_ready",), audit_old_value=job["stage"])
     if claim == "queue_full":
         return _prep_queue_full_response()
     if claim == "invalid_stage":
@@ -644,7 +668,7 @@ def continue_prep(
         assert current is not None
         return _render_dashboard_row(request, current, db)
 
-    write_audit(db, job["id"], "stage", job["stage"], "prep_in_progress")
+    # Stage change + its audit row were committed atomically inside the claim (#958).
     log_event(
         "web_continue_prep_dispatched",
         job_id=job["id"],
@@ -886,12 +910,11 @@ def reactivate_and_prep(
 
     # Atomic claim from waitlisted (#957) — the first mutation, so a concurrent
     # double-click can't double-move the folder or double-launch; the cap is
-    # enforced in the same statement. Previously handle_reactivate ran first and
-    # wrote two audit rows (waitlisted→intermediate, intermediate→prep_in_progress);
-    # claiming straight from waitlisted collapses that to a single
-    # waitlisted→prep_in_progress row — an intentional interaction with the
-    # audit-trail work tracked in #958.
-    claim = _claim_prep_slot(db, job["id"], from_stages=("waitlisted",))
+    # enforced in the same statement. Claiming straight from waitlisted (rather than
+    # the former handle_reactivate-then-UPDATE flow) collapses the audit trail to a
+    # single waitlisted→prep_in_progress row, which the claim now writes atomically
+    # with the stage change (#957 / #958).
+    claim = _claim_prep_slot(db, job["id"], from_stages=("waitlisted",), audit_old_value="waitlisted")
     if claim == "queue_full":
         return _prep_queue_full_response()
     if claim == "invalid_stage":
@@ -910,7 +933,6 @@ def reactivate_and_prep(
 
     db.execute("UPDATE jobs SET apply_flag=1 WHERE id=?", (job["id"],))
     db.commit()
-    write_audit(db, job["id"], "stage", "waitlisted", "prep_in_progress")
     log_event(
         "web_reactivate_and_prep_dispatched",
         job_id=job["id"],

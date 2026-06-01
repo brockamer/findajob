@@ -145,6 +145,9 @@ class TestPrep:
 
         audit = _fetch_audit(client, "fp_scored")
         assert any(a == ("stage", "scored", "prep_in_progress") for a in audit)
+        # #958: the claim folds the stage audit into its transaction — exactly one
+        # stage→prep_in_progress row, not a duplicate from a stray caller write_audit.
+        assert sum(1 for a in audit if a[0] == "stage" and a[2] == "prep_in_progress") == 1
 
         assert len(popen_calls) == 1
         args = popen_calls[0]
@@ -742,6 +745,8 @@ class TestContinuePrep:
         assert _fetch_stage(client, "fp_briefing") == "prep_in_progress"
         audit = _fetch_audit(client, "fp_briefing")
         assert any(a == ("stage", "briefing_ready", "prep_in_progress") for a in audit)
+        # #958: exactly one stage→prep_in_progress row (claim folds the audit in).
+        assert sum(1 for a in audit if a[0] == "stage" and a[2] == "prep_in_progress") == 1
 
     def test_subprocess_launched_with_phase_b_flag(self, client: TestClient, popen_calls):
         """Phase B is dispatched by passing --phase=b to prep_application.py;
@@ -2641,6 +2646,8 @@ class TestReactivateAndPrep:
 
         audit = _fetch_audit(client, "fp_waitlisted")
         assert ("stage", "waitlisted", "prep_in_progress") in audit
+        # #958: single stage row (claim folds the audit in; no separate caller write).
+        assert sum(1 for a in audit if a[0] == "stage" and a[2] == "prep_in_progress") == 1
 
         prep_calls = [c for c in popen_calls if "prep_application.py" in c[1]]
         assert len(prep_calls) == 1
@@ -2668,6 +2675,8 @@ class TestReactivateAndPrep:
 
         audit = _fetch_audit(client, "fp_waitlisted")
         assert ("stage", "waitlisted", "prep_in_progress") in audit
+        # #958: single stage row (claim folds the audit in; no separate caller write).
+        assert sum(1 for a in audit if a[0] == "stage" and a[2] == "prep_in_progress") == 1
 
         # Folder relocated out of _waitlisted/ back into companies/
         assert not folder.exists()

@@ -160,9 +160,10 @@ def handle_rejection(
         conn.execute("UPDATE jobs SET prep_folder_path=? WHERE id=?", (dest, job["id"]))
         folder_moved = True
 
-    if own_transaction:
-        conn.commit()
-    write_audit(conn, job["id"], "stage", old_stage, "rejected", commit=own_transaction)
+    # Stage UPDATE + audit rows commit as one transaction (#958): no pre-commit, and
+    # only the last write_audit commits, so the stage change is never durable without
+    # its audit rows.
+    write_audit(conn, job["id"], "stage", old_stage, "rejected", commit=False)
     write_audit(conn, job["id"], "reject_reason", "", reason, commit=own_transaction)
     log_event("job_rejected", job_id=job["id"], company=job["company"], title=job["title"], reason=reason)
 
@@ -230,9 +231,8 @@ def handle_not_selected(
 
         fs_ops.append(_write_marker)
 
-    if own_transaction:
-        conn.commit()
-    write_audit(conn, job["id"], "stage", old_stage, "not_selected", changed_by=changed_by, commit=own_transaction)
+    # Stage UPDATE + audit rows commit as one transaction (#958).
+    write_audit(conn, job["id"], "stage", old_stage, "not_selected", changed_by=changed_by, commit=False)
     write_audit(conn, job["id"], "reject_reason", "", reason, changed_by=changed_by, commit=own_transaction)
     log_event("job_not_selected", job_id=job["id"], company=job["company"], title=job["title"], reason=reason)
 
@@ -291,8 +291,8 @@ def handle_waitlist(
         conn.execute("UPDATE jobs SET prep_folder_path=? WHERE id=?", (dest, job["id"]))
         folder_moved = True
 
-    if own_transaction:
-        conn.commit()
+    # Stage UPDATE + audit row commit as one transaction (#958): the lone write_audit
+    # is the single commit (own_transaction), so the stage change carries its audit row.
     write_audit(conn, job["id"], "stage", old_stage, "waitlisted", commit=own_transaction)
     log_event("job_waitlisted", job_id=job["id"], company=job["company"], title=job["title"])
 
@@ -344,8 +344,7 @@ def handle_reactivate(
         conn.execute("UPDATE jobs SET stage=?, updated_at=? WHERE id=?", ("scored", now, job["id"]))
         new_stage = "scored"
 
-    if own_transaction:
-        conn.commit()
+    # Stage UPDATE + audit row commit as one transaction (#958).
     write_audit(conn, job["id"], "stage", "waitlisted", new_stage, commit=own_transaction)
     log_event("job_reactivated", job_id=job["id"], company=job["company"], title=job["title"], stage=new_stage)
 
@@ -393,9 +392,10 @@ def reset_prep_to_scored(
         "stage_updated=?, updated_at=? WHERE id=? AND stage='prep_in_progress'",
         (now, now, job_id),
     )
-    conn.commit()
     if cur.rowcount == 0:
+        conn.commit()  # release the no-op transaction
         return False
+    # Stage UPDATE + audit row commit together (#958): write_audit's commit flushes both.
     write_audit(conn, job_id, "stage", "prep_in_progress", "scored")
     log_event("prep_failed_reset", job_id=job_id, reason=reason)
     return True
@@ -428,9 +428,10 @@ def reset_prep_to_briefing_ready(
         "UPDATE jobs SET stage='briefing_ready', stage_updated=?, updated_at=? WHERE id=? AND stage='prep_in_progress'",
         (now, now, job_id),
     )
-    conn.commit()
     if cur.rowcount == 0:
+        conn.commit()  # release the no-op transaction
         return False
+    # Stage UPDATE + audit row commit together (#958).
     write_audit(conn, job_id, "stage", "prep_in_progress", "briefing_ready")
     log_event("prep_phase_b_failed_reset", job_id=job_id, reason=reason)
     return True
@@ -461,9 +462,10 @@ def reset_briefing_ready_to_scored(
         "UPDATE jobs SET stage='scored', stage_updated=?, updated_at=? WHERE id=? AND stage='briefing_ready'",
         (now, now, job_id),
     )
-    conn.commit()
     if cur.rowcount == 0:
+        conn.commit()  # release the no-op transaction
         return False
+    # Stage UPDATE + audit row commit together (#958).
     write_audit(conn, job_id, "stage", "briefing_ready", "scored")
     log_event("briefing_ready_stale_reset", job_id=job_id, reason=reason)
     return True
@@ -493,7 +495,7 @@ def promote_to_scored(
            WHERE id=?""",
         (reason, now, now, job["id"]),
     )
-    conn.commit()
+    # Stage UPDATE + audit row commit together (#958): write_audit's commit flushes both.
     write_audit(conn, job["id"], "stage", old_stage, "scored")
     log_event("review_promoted", job_id=job["id"], company=job["company"], title=job["title"])
 
@@ -565,9 +567,8 @@ def un_reject_job(
         fs_ops.append(_move_from_rejected)
         conn.execute("UPDATE jobs SET prep_folder_path=? WHERE id=?", (dest, job["id"]))
 
-    if own_transaction:
-        conn.commit()
-    write_audit(conn, job["id"], "stage", "rejected", "scored", commit=own_transaction)
+    # Stage UPDATE + audit rows commit as one transaction (#958).
+    write_audit(conn, job["id"], "stage", "rejected", "scored", commit=False)
     write_audit(conn, job["id"], "reject_reason", job["reject_reason"] or "", "", commit=own_transaction)
     log_event("job_un_rejected", job_id=job["id"], company=job["company"], title=job["title"])
 
@@ -608,7 +609,7 @@ def un_not_selected_job(
     prior = conn.execute(
         "SELECT old_value FROM audit_log "
         "WHERE job_id=? AND field_changed='stage' AND new_value='not_selected' "
-        "ORDER BY changed_at DESC LIMIT 1",
+        "ORDER BY changed_at DESC, id DESC LIMIT 1",
         (job["id"],),
     ).fetchone()
     restored_stage = prior[0] if prior and prior[0] else "applied"
@@ -645,9 +646,8 @@ def un_not_selected_job(
 
             fs_ops.append(_remove_marker)
 
-    if own_transaction:
-        conn.commit()
-    write_audit(conn, job["id"], "stage", "not_selected", restored_stage, changed_by="user", commit=own_transaction)
+    # Stage UPDATE + audit rows commit as one transaction (#958).
+    write_audit(conn, job["id"], "stage", "not_selected", restored_stage, changed_by="user", commit=False)
     write_audit(
         conn, job["id"], "reject_reason", job["reject_reason"] or "", "", changed_by="user", commit=own_transaction
     )
@@ -698,7 +698,7 @@ def un_withdraw_job(
     prior = conn.execute(
         "SELECT old_value FROM audit_log "
         "WHERE job_id=? AND field_changed='stage' AND new_value='withdrawn' "
-        "ORDER BY changed_at DESC LIMIT 1",
+        "ORDER BY changed_at DESC, id DESC LIMIT 1",
         (job["id"],),
     ).fetchone()
     restored_stage = prior[0] if prior and prior[0] else "applied"
@@ -707,8 +707,7 @@ def un_withdraw_job(
         "UPDATE jobs SET stage=?, updated_at=? WHERE id=?",
         (restored_stage, now, job["id"]),
     )
-    if own_transaction:
-        conn.commit()
+    # Stage UPDATE + audit row commit as one transaction (#958).
     write_audit(conn, job["id"], "stage", "withdrawn", restored_stage, changed_by="user", commit=own_transaction)
     log_event(
         "job_un_withdrawn", job_id=job["id"], company=job["company"], title=job["title"], restored_stage=restored_stage
@@ -736,7 +735,7 @@ def un_interview_job(
     prior = conn.execute(
         "SELECT old_value FROM audit_log "
         "WHERE job_id=? AND field_changed='stage' AND new_value='interview' "
-        "ORDER BY changed_at DESC LIMIT 1",
+        "ORDER BY changed_at DESC, id DESC LIMIT 1",
         (job["id"],),
     ).fetchone()
     restored_stage = prior[0] if prior and prior[0] else "applied"
@@ -745,8 +744,7 @@ def un_interview_job(
         "UPDATE jobs SET stage=?, updated_at=? WHERE id=?",
         (restored_stage, now, job["id"]),
     )
-    if own_transaction:
-        conn.commit()
+    # Stage UPDATE + audit row commit as one transaction (#958).
     write_audit(conn, job["id"], "stage", "interview", restored_stage, changed_by="user", commit=own_transaction)
     log_event(
         "job_un_interview", job_id=job["id"], company=job["company"], title=job["title"], restored_stage=restored_stage
@@ -823,8 +821,7 @@ def un_apply_job(
         "stage_updated=?, updated_at=? WHERE id=?",
         (new_path, now, now, job["id"]),
     )
-    if own_transaction:
-        conn.commit()
+    # Stage UPDATE + audit row commit as one transaction (#958).
     write_audit(
         conn, job["id"], "stage", "applied", "materials_drafted", changed_by="web_un_apply", commit=own_transaction
     )
@@ -859,8 +856,8 @@ def handle_withdraw_as_fallback(
         "UPDATE jobs SET stage=?, reject_reason=?, updated_at=? WHERE id=?",
         ("withdrawn_fallback", reason, now, job["id"]),
     )
-    conn.commit()
-    write_audit(conn, job["id"], "stage", old_stage, "withdrawn_fallback")
+    # Stage UPDATE + audit rows commit as one transaction (#958).
+    write_audit(conn, job["id"], "stage", old_stage, "withdrawn_fallback", commit=False)
     write_audit(conn, job["id"], "reject_reason", "", reason)
     log_event(
         "job_withdrawn_as_fallback",
@@ -886,7 +883,7 @@ def mark_as_fallback(
         "UPDATE jobs SET stage=?, updated_at=? WHERE id=?",
         ("withdrawn_fallback", now, job["id"]),
     )
-    conn.commit()
+    # Stage UPDATE + audit row commit as one transaction (#958).
     write_audit(conn, job["id"], "stage", "withdrawn", "withdrawn_fallback")
     log_event(
         "job_marked_as_fallback",
@@ -920,7 +917,7 @@ def promote_from_fallback(
     prior = conn.execute(
         "SELECT old_value FROM audit_log "
         "WHERE job_id=? AND field_changed='stage' AND new_value='withdrawn_fallback' "
-        "ORDER BY changed_at DESC LIMIT 1",
+        "ORDER BY changed_at DESC, id DESC LIMIT 1",
         (job["id"],),
     ).fetchone()
     restored_stage = prior[0] if prior and prior[0] else "applied"
@@ -929,7 +926,7 @@ def promote_from_fallback(
         pre_withdraw = conn.execute(
             "SELECT old_value FROM audit_log "
             "WHERE job_id=? AND field_changed='stage' AND new_value='withdrawn' "
-            "ORDER BY changed_at DESC LIMIT 1",
+            "ORDER BY changed_at DESC, id DESC LIMIT 1",
             (job["id"],),
         ).fetchone()
         restored_stage = pre_withdraw[0] if pre_withdraw and pre_withdraw[0] else "applied"
@@ -938,7 +935,7 @@ def promote_from_fallback(
         "UPDATE jobs SET stage=?, reject_reason='', updated_at=? WHERE id=?",
         (restored_stage, now, job["id"]),
     )
-    conn.commit()
+    # Stage UPDATE + audit row commit as one transaction (#958).
     write_audit(conn, job["id"], "stage", "withdrawn_fallback", restored_stage, changed_by="user")
     log_event(
         "job_promoted_from_fallback",
@@ -997,8 +994,7 @@ def reactivate_from_ingest(
         fs_ops.append(_move_from_waitlisted)
         conn.execute("UPDATE jobs SET prep_folder_path=? WHERE id=?", (dest, job["id"]))
 
-    if own_transaction:
-        conn.commit()
+    # Stage UPDATE + audit row commit as one transaction (#958).
     write_audit(conn, job["id"], "stage", "waitlisted", "scored", commit=own_transaction)
     log_event("job_reactivated_via_ingest", job_id=job["id"], company=job["company"], title=job["title"])
 
@@ -1032,10 +1028,13 @@ def refresh_active_job(conn: sqlite3.Connection, job: Any, overwrite_fields: dic
     params.append(job["id"])
 
     conn.execute(f"UPDATE jobs SET {', '.join(set_parts)} WHERE id=?", params)
-    conn.commit()
 
+    # When the stage changes, its audit row commits in the same transaction as the
+    # UPDATE (#958); with no stage change there's no audit row, so commit directly.
     if new_stage != old_stage:
         write_audit(conn, job["id"], "stage", old_stage, new_stage)
+    else:
+        conn.commit()
     log_event(
         "job_refreshed_via_ingest",
         job_id=job["id"],

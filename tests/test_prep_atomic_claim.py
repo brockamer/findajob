@@ -78,7 +78,9 @@ def test_claim_succeeds_from_valid_stage(db_path: Path) -> None:
     conn = _connect(db_path)
     _insert_job(conn, job_id="j1", stage="scored")
 
-    outcome = _claim_prep_slot(conn, "j1", from_stages=("prep_in_progress", "materials_drafted"), exclude=True)
+    outcome = _claim_prep_slot(
+        conn, "j1", from_stages=("prep_in_progress", "materials_drafted"), exclude=True, audit_old_value="scored"
+    )
 
     assert outcome == "claimed"
     assert _stage(db_path, "j1") == "prep_in_progress"
@@ -89,7 +91,13 @@ def test_second_claim_on_in_progress_is_invalid_stage(db_path: Path) -> None:
     conn = _connect(db_path)
     _insert_job(conn, job_id="j1", stage="prep_in_progress")
 
-    outcome = _claim_prep_slot(conn, "j1", from_stages=("prep_in_progress", "materials_drafted"), exclude=True)
+    outcome = _claim_prep_slot(
+        conn,
+        "j1",
+        from_stages=("prep_in_progress", "materials_drafted"),
+        exclude=True,
+        audit_old_value="prep_in_progress",
+    )
 
     assert outcome == "invalid_stage"
 
@@ -100,8 +108,12 @@ def test_inclusive_from_stages_rejects_other_stages(db_path: Path) -> None:
     _insert_job(conn, job_id="ready", stage="briefing_ready")
     _insert_job(conn, job_id="scored", stage="scored")
 
-    assert _claim_prep_slot(conn, "ready", from_stages=("briefing_ready",)) == "claimed"
-    assert _claim_prep_slot(conn, "scored", from_stages=("briefing_ready",)) == "invalid_stage"
+    assert (
+        _claim_prep_slot(conn, "ready", from_stages=("briefing_ready",), audit_old_value="briefing_ready") == "claimed"
+    )
+    assert (
+        _claim_prep_slot(conn, "scored", from_stages=("briefing_ready",), audit_old_value="scored") == "invalid_stage"
+    )
     assert _stage(db_path, "scored") == "scored"
 
 
@@ -111,7 +123,9 @@ def test_claim_denied_when_cap_reached(db_path: Path) -> None:
         _insert_job(conn, job_id=f"busy{i}", stage="prep_in_progress")
     _insert_job(conn, job_id="waiting", stage="scored")
 
-    outcome = _claim_prep_slot(conn, "waiting", from_stages=("prep_in_progress", "materials_drafted"), exclude=True)
+    outcome = _claim_prep_slot(
+        conn, "waiting", from_stages=("prep_in_progress", "materials_drafted"), exclude=True, audit_old_value="scored"
+    )
 
     assert outcome == "queue_full"
     assert _stage(db_path, "waiting") == "scored"
@@ -140,6 +154,7 @@ def test_concurrent_claims_same_job_single_winner(db_path: Path) -> None:
                     "j1",
                     from_stages=("prep_in_progress", "materials_drafted"),
                     exclude=True,
+                    audit_old_value="scored",
                 )
             )
         finally:
@@ -180,6 +195,7 @@ def test_concurrent_burst_respects_cap(db_path: Path) -> None:
                     jid,
                     from_stages=("prep_in_progress", "materials_drafted"),
                     exclude=True,
+                    audit_old_value="scored",
                 )
             )
         finally:
