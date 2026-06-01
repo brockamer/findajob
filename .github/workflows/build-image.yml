@@ -30,7 +30,7 @@ jobs:
       # arm64 runners would be faster but require self-hosted infra; qemu
       # emulation is the right default at our build cadence.
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
