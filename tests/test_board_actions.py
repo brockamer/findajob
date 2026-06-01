@@ -511,7 +511,7 @@ class TestRegenerate:
         (folder / "resume.pdf").touch()
         conn = sqlite3.connect(client._db_path)
         conn.execute(
-            "UPDATE jobs SET prep_folder_path=?, gdrive_folder_url='https://drive/abc' WHERE fingerprint=?",
+            "UPDATE jobs SET prep_folder_path=? WHERE fingerprint=?",
             (str(folder), fingerprint),
         )
         conn.commit()
@@ -528,13 +528,12 @@ class TestRegenerate:
 
         conn = sqlite3.connect(client._db_path)
         row = conn.execute(
-            "SELECT stage, prep_folder_path, gdrive_folder_url, apply_flag FROM jobs WHERE fingerprint='fp_drafted'"
+            "SELECT stage, prep_folder_path, apply_flag FROM jobs WHERE fingerprint='fp_drafted'"
         ).fetchone()
         conn.close()
         assert row[0] == "prep_in_progress"
         assert row[1] is None
-        assert row[2] is None
-        assert row[3] == 1
+        assert row[2] == 1
 
         assert len(popen_calls) == 1
         assert "prep_application.py" in popen_calls[0][1]

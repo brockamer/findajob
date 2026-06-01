@@ -10,6 +10,15 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Migration required
+
+- **Schema 0009 — `jobs.gdrive_folder_url` dropped** (#966): the dead Google Drive sync column is removed via `migrations/0009_drop_gdrive_folder_url.sql`. It held the per-job Drive folder link from the rclone/Drive materials-sync era, retired when the local web materials viewer shipped; it has been NULL in every row since and no code reads it. **Auto-applied on next startup — no operator action, no data loss.** Fresh installs never carry the column.
+
+### Removed
+
+- **`jobs.gdrive_folder_url` column** and its last writer (a `gdrive_folder_url=NULL` clause in `board_actions._regenerate`) — see *Migration required* above (#966).
+- **Stale `analyze_feedback` mypy override** in `pyproject.toml`: the #558 extraction it guarded shipped (`scripts/analyze_feedback.py` is now a thin shim importing `findajob.analyze_feedback`), so the override suppressed nothing. (#966)
+
 ### Added
 
 - **Keyboard/screen-reader focus management for board action panels** (#944): The board's HTMX cell-swap panels (add-exclusion-rule, reattribute, generic confirm, and the change-reason `<select>` re-render) now move keyboard focus when they open and return it when they close. Builds directly on #886's `role="group"` panel markers: a small global `htmx:afterSettle` handler (`static/focus_panels.js`) reads the live swapped-in `<td>` (`evt.detail.elt` — not the detached `evt.detail.target`), and on open moves focus to the labelled panel **container** via `tabindex="-1"` rather than its first control, so a screen reader announces the panel's purpose and no destructive button (e.g. the confirm modal's "Confirm", which deletes a `feedback_log` row or re-runs paid prep) is pre-armed. The generic confirm modal — previously `aria-label="Confirm action"`, which would have announced only that generic label on focus — now labels its container via `aria-labelledby` pointing at the warning copy (and any context lines), scoped by a `modal_id` (the job fingerprint) the callers pass, so focusing it actually reads out the consequence being confirmed. On cancel/submit — or when a change-reason select re-renders itself — focus returns to the restored cell's first interactive control instead of being stranded on `<body>`. Scoped to `<td>`-level swaps, so row-level actions (`closest tr`) and the dashboard `/rows` refresh never hijack focus. Focus landing on exclude/reattribute/confirm/change-reason verified via `document.activeElement`; the real VoiceOver/NVDA announcement smoke is the one acceptance check that requires a live screen reader.

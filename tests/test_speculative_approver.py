@@ -36,7 +36,6 @@ CREATE TABLE jobs (
     apply_flag INTEGER DEFAULT 0,
     reject_reason TEXT DEFAULT '',
     prep_folder_path TEXT,
-    gdrive_folder_url TEXT,
     fit_score REAL,
     probability_score REAL,
     user_notes TEXT DEFAULT '',

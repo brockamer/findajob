@@ -47,7 +47,6 @@ CREATE TABLE jobs (
     prep_folder_path TEXT,
     fit_score REAL,
     probability_score REAL,
-    gdrive_folder_url TEXT,
     updated_at TEXT DEFAULT (datetime('now')),
     synthetic INTEGER NOT NULL DEFAULT 0
 );
@@ -83,15 +82,14 @@ def insert_job(
     folder=None,
     fit_score=None,
     prob_score=None,
-    gdrive_url=None,
 ):
     """Insert a job with sane defaults; returns the job_id."""
     job_id = str(uuid.uuid4())[:8]
     fp = f"fp_{job_id}"
     conn.execute(
         """INSERT INTO jobs (id, fingerprint, url, title, company, relevance_score,
-                             stage, prep_folder_path, fit_score, probability_score, gdrive_folder_url)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                             stage, prep_folder_path, fit_score, probability_score)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             job_id,
             fp,
@@ -103,7 +101,6 @@ def insert_job(
             folder,
             fit_score,
             prob_score,
-            gdrive_url,
         ),
     )
     conn.commit()
@@ -371,41 +368,18 @@ class TestDBStateTransitions:
         assert row["fit_score"] == 76.7
         assert row["probability_score"] == 60.0
 
-    def test_gdrive_url_stored_on_success(self, db):
-        """Drive URL stored in DB when gdrive_folder_url is set."""
-        job_id = insert_job(
-            db, stage="materials_drafted", folder="/home/user/companies/Acme_Ops_Manager_2026-04-13_140000"
-        )
-        drive_url = "https://drive.google.com/drive/folders/abc123"
-
-        db.execute("UPDATE jobs SET gdrive_folder_url=? WHERE id=?", (drive_url, job_id))
-        db.commit()
-
-        row = db.execute("SELECT gdrive_folder_url FROM jobs WHERE id=?", (job_id,)).fetchone()
-        assert row["gdrive_folder_url"] == drive_url
-
-    def test_gdrive_url_stays_null_when_not_set(self, db):
-        """Drive URL stays NULL when no update is executed."""
-        job_id = insert_job(
-            db, stage="materials_drafted", folder="/home/user/companies/Acme_Ops_Manager_2026-04-13_140000"
-        )
-        # No UPDATE issued — URL should remain NULL
-        row = db.execute("SELECT gdrive_folder_url FROM jobs WHERE id=?", (job_id,)).fetchone()
-        assert row["gdrive_folder_url"] is None
-
     def test_regenerate_clears_prep_state(self, db):
-        """Regeneration clears folder path, Drive URL, and resets stage to prep_in_progress."""
+        """Regeneration clears folder path and resets stage to prep_in_progress."""
         job_id = insert_job(
             db,
             stage="materials_drafted",
             folder="/home/user/companies/Acme_Ops_Manager_2026-04-13_140000",
             fit_score=76.7,
             prob_score=60.0,
-            gdrive_url="https://drive.google.com/drive/folders/abc123",
         )
 
         db.execute(
-            """UPDATE jobs SET prep_folder_path=NULL, gdrive_folder_url=NULL,
+            """UPDATE jobs SET prep_folder_path=NULL,
                    stage='prep_in_progress' WHERE id=?""",
             (job_id,),
         )
@@ -414,7 +388,6 @@ class TestDBStateTransitions:
         row = db.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
         assert row["stage"] == "prep_in_progress"
         assert row["prep_folder_path"] is None
-        assert row["gdrive_folder_url"] is None
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

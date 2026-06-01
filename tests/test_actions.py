@@ -42,7 +42,6 @@ CREATE TABLE jobs (
     reject_reason TEXT DEFAULT '',
     fit_score REAL,
     probability_score REAL,
-    gdrive_folder_url TEXT,
     remote_status TEXT DEFAULT 'Unknown',
     ai_notes TEXT,
     comp_estimate TEXT DEFAULT '',
@@ -106,7 +105,6 @@ def insert_job(
     raw_jd_text=None,
     score_status="scored",
     apply_flag=0,
-    gdrive_url=None,
 ):
     """Insert a job with sane defaults; returns the row as sqlite3.Row."""
     job_id = str(uuid.uuid4())[:8]
@@ -114,8 +112,8 @@ def insert_job(
     conn.execute(
         """INSERT INTO jobs (id, fingerprint, url, title, company, relevance_score,
                              stage, prep_folder_path, raw_jd_text, score_status,
-                             apply_flag, gdrive_folder_url)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                             apply_flag)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             job_id,
             fp,
@@ -128,7 +126,6 @@ def insert_job(
             raw_jd_text,
             score_status,
             apply_flag,
-            gdrive_url,
         ),
     )
     conn.commit()

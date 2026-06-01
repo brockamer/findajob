@@ -1,0 +1,14 @@
+-- 0009_drop_gdrive_folder_url.sql — drop the dead Google Drive sync column.
+--
+-- ``jobs.gdrive_folder_url`` held the per-job Google Drive folder link from
+-- the rclone/Drive materials-sync era. That layer was retired when the local
+-- web materials viewer shipped (see docs/architecture.md). The column has
+-- been NULL in every row since; no code reads it, and the last writer (a
+-- ``gdrive_folder_url=NULL`` clause in board_actions._regenerate) is removed
+-- in the same change as this migration.
+--
+-- Single statement — atomic on its own (no dependence on the migration
+-- runner wrapping multiple statements). Fresh installs create the column in
+-- 0001 and drop it here; existing stacks drop it on next startup. No data
+-- loss: the column is NULL everywhere.
+ALTER TABLE jobs DROP COLUMN gdrive_folder_url;

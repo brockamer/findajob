@@ -266,7 +266,6 @@ prep_folder_path TEXT            -- absolute path to the companies/ subfolder
 synthetic INTEGER                -- 1 for speculative cold-outreach rows
 speculative_briefing_folder TEXT -- reused briefing for synthetic rows
 dupe_of TEXT
-gdrive_folder_url TEXT           -- legacy, unused (Drive sync retired)
 stage_updated / created_at / updated_at TEXT
 ```
 

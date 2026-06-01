@@ -416,7 +416,7 @@ def _execute_regenerate(db: sqlite3.Connection, job: sqlite3.Row, *, source_even
     now = datetime.now(UTC).isoformat()
     db.execute(
         "UPDATE jobs SET stage='prep_in_progress', prep_folder_path=NULL, "
-        "gdrive_folder_url=NULL, apply_flag=1, stage_updated=?, updated_at=? "
+        "apply_flag=1, stage_updated=?, updated_at=? "
         "WHERE id=?",
         (now, now, job["id"]),
     )

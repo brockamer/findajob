@@ -84,16 +84,6 @@ disable_error_code = []
 module = ["docx", "docx.*"]
 ignore_missing_imports = true
 
-# `findajob.notifications.scoreboard` imports the script-side
-# `analyze_feedback` module (which lives in scripts/, off mypy's
-# package path). Issue #558 tracks extracting it into
-# `findajob.analyze_feedback`; until then, scope the missing-import
-# error here rather than introduce a ``# type: ignore`` at the import
-# site.
-[[tool.mypy.overrides]]
-module = "analyze_feedback"
-ignore_missing_imports = true
-
 [tool.ruff]
 target-version = "py312"
 line-length = 120
