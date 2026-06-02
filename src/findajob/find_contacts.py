@@ -18,9 +18,11 @@ import re
 import sqlite3
 import sys
 import time
+from collections.abc import Collection
 from datetime import datetime
 
 from findajob.audit import log_event
+from findajob.config_loader import load_ranking_boost_terms
 from findajob.cost_tracking import log_call, role_model
 from findajob.db import connect
 from findajob.llm.openrouter import OpenRouterError, complete
@@ -89,8 +91,16 @@ def find_contacts(company: str) -> list[dict[str, str]]:
     return contacts
 
 
-def rank_contacts(contacts: list[dict[str, str]]) -> list[dict[str, str]]:
-    """Rank contacts by likely-relevance heuristic (title keywords)."""
+def rank_contacts(contacts: list[dict[str, str]], boost_terms: Collection[str] = ()) -> list[dict[str, str]]:
+    """Rank contacts by a likely-relevance heuristic over their title.
+
+    The executive, seniority, and recruiting tiers are field-neutral and stay
+    hardcoded. The domain-relevance tier is operator-configurable via
+    *boost_terms* (loaded from ``config/ranking_boost_terms.yaml`` by the
+    caller) so the repo carries no field-specific vocabulary (#964). Pass
+    lowercased terms; they are matched case-insensitively as substrings of the
+    title. An empty *boost_terms* means the domain tier contributes nothing.
+    """
 
     def score(c: dict[str, str]) -> int:
         s = 0
@@ -99,7 +109,7 @@ def rank_contacts(contacts: list[dict[str, str]]) -> list[dict[str, str]]:
             s += 3
         if any(k in title_lower for k in ["senior", "lead", "manager"]):
             s += 2
-        if any(k in title_lower for k in ["npi", "data center", "infrastructure", "hardware", "operations", "ops"]):
+        if boost_terms and any(k in title_lower for k in boost_terms):
             s += 2
         if any(k in title_lower for k in ["recruiter", "talent", "recruiting", "hr", "people"]):
             s += 1
@@ -228,7 +238,7 @@ def main() -> None:
     log_event("voice_samples_loaded", caller="find_contacts", chars=len(voice_samples))
 
     contacts: list[dict[str, str]] = find_contacts(company)
-    ranked: list[dict[str, str]] = rank_contacts(contacts)
+    ranked: list[dict[str, str]] = rank_contacts(contacts, load_ranking_boost_terms())
     top: list[dict[str, str]] = ranked[:5]
 
     if not top:

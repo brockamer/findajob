@@ -750,3 +750,49 @@ class TestAppendProfileExcludedCategory:
             config_loader.append_profile_excluded_category("Will not commit.")
         assert "Original content." in f.read_text()
         assert "Will not commit." not in f.read_text()
+
+
+class TestLoadRankingBoostTerms:
+    """#964 — de-field-locked contact-ranking domain-boost terms."""
+
+    def test_returns_empty_when_file_missing_and_no_warning(self, monkeypatch, tmp_path):
+        import warnings
+
+        monkeypatch.setattr(config_loader, "_RANKING_BOOST_TERMS_PATH", tmp_path / "missing.yaml")
+        config_loader._reset_cache()
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            terms = config_loader.load_ranking_boost_terms()
+        assert terms == frozenset()
+        # Missing is the intended field-neutral default, not a degradation — stay silent.
+        assert [w for w in caught if issubclass(w.category, UserWarning)] == []
+
+    def test_terms_lowercased(self, monkeypatch, tmp_path):
+        f = tmp_path / "rbt.yaml"
+        f.write_text('terms:\n  - "Widget"\n  - "GADGET Systems"\n')
+        monkeypatch.setattr(config_loader, "_RANKING_BOOST_TERMS_PATH", f)
+        config_loader._reset_cache()
+        assert config_loader.load_ranking_boost_terms() == frozenset({"widget", "gadget systems"})
+
+    def test_empty_terms_returns_empty(self, monkeypatch, tmp_path):
+        f = tmp_path / "rbt.yaml"
+        f.write_text("terms: []\n")
+        monkeypatch.setattr(config_loader, "_RANKING_BOOST_TERMS_PATH", f)
+        config_loader._reset_cache()
+        assert config_loader.load_ranking_boost_terms() == frozenset()
+
+    def test_terms_not_a_list_raises(self, monkeypatch, tmp_path):
+        bad = tmp_path / "rbt.yaml"
+        bad.write_text("terms:\n  nested: value\n")
+        monkeypatch.setattr(config_loader, "_RANKING_BOOST_TERMS_PATH", bad)
+        config_loader._reset_cache()
+        with pytest.raises(ConfigError, match="'terms' must be a list"):
+            config_loader.load_ranking_boost_terms()
+
+    def test_terms_entry_not_a_string_raises(self, monkeypatch, tmp_path):
+        bad = tmp_path / "rbt.yaml"
+        bad.write_text("terms:\n  - 123\n")
+        monkeypatch.setattr(config_loader, "_RANKING_BOOST_TERMS_PATH", bad)
+        config_loader._reset_cache()
+        with pytest.raises(ConfigError, match="not a string"):
+            config_loader.load_ranking_boost_terms()

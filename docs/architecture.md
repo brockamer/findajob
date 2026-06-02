@@ -258,7 +258,6 @@ status TEXT                      -- coarse legacy status (active | applied | rej
 apply_flag INTEGER               -- 0/1, mirrors Dashboard STATUS
 reject_reason TEXT
 comp_estimate TEXT
-network_depth INTEGER            -- connection proximity from connections.csv
 known_contacts TEXT
 user_notes TEXT                  -- free text from the board Notes column
 fit_score / probability_score REAL  -- 0–100% averages from fit_analyst

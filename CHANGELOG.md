@@ -18,10 +18,19 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 ### Changed
 
 - **`uv sync` now installs findajob itself** (#978): `pyproject.toml` gained a `[build-system]` table (setuptools backend), so `uv sync` installs the findajob package (editable) alongside its dependencies in one step. Fresh git worktrees and clean dev checkouts no longer need a separate `uv pip install -e .` before `import findajob` works. CI's install step collapses to `uv sync --locked --extra dev`, with lint/type/test now run via `uv run`. The Docker build commands are unchanged: `pip install --require-hashes` cannot hash an editable install, so findajob stays excluded from the hashed export (`--no-emit-project`) and is editable-installed separately (now resolving the explicit `setuptools.build_meta` backend rather than pip's legacy PEP 517 fallback — equivalent for this src-layout package). No runtime or operator-facing behavior change.
+- **Outreach contact ranking is no longer hardcoded to one career field** (#964): the contact ranker (`find_contacts.rank_contacts`, which picks which of your LinkedIn connections at a company to draft outreach to) carried a hardcoded domain-vocabulary tier — data-center/infrastructure terms — that only boosted relevance for one field. Those terms now come from an optional gitignored `config/ranking_boost_terms.yaml` (with a field-agnostic `.yaml.example`), loaded via `config_loader.load_ranking_boost_terms()`; the executive, seniority, and recruiting tiers stay built in (they're field-neutral). A missing file means no domain boost, so the repo carries no field-specific vocabulary (per `docs/maintainers/generalization.md`). The file is editable via the `/config/` raw editor and hot-reloads on the next prep run. **To keep a domain boost, seed `config/ranking_boost_terms.yaml` with your field's terms** (see the `.example`). Folds in the dead-`network_depth`-column removal below.
+
+### Removed
+
+- **`jobs.network_depth` column** and its last writer (the `network_depth=?` clause in the triage orchestrator's enrich UPDATE) — see *Migration required* below (#964). The sibling `known_contacts` column is retained.
 
 ### Fixed
 
 - **False "inside contact" signals on the board for short-named companies** (#963): the ingest-time contact matcher used substring containment, so a connection at "GreenApple" would light up the amber contact cell on an "Apple" job, and the two-letter company "AI" matched any connection whose company merely contained "ai" (e.g. "AIRBUS"). Ingest now routes through the same canonical word-boundary `company_match()` the prep path already used (the #497 fix), so both paths match identically and the divergent matcher is gone. A renamed `connections.csv` header now fails the same way at ingest as at prep — logging a `find_contacts_error` event instead of silently yielding zero contacts (no more silent split-brain). No schema change.
+
+### Migration required
+
+- **Schema 0010 — `jobs.network_depth` dropped** (#964): the dead contacts-count column is removed via `migrations/0010_drop_network_depth.sql`. It held `min(len(contacts), 2)` written at ingest but read by nothing (no SELECT, filter, or template — confirmed by a repo-wide sweep); the last writer is removed in the same change. **Auto-applied on next startup — no operator action, no data loss.** Fresh installs never carry the column.
 
 ## [0.32.0] — 2026-06-02
 

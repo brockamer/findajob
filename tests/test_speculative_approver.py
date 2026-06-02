@@ -29,7 +29,6 @@ CREATE TABLE jobs (
     score_status TEXT,
     score_flag_reason TEXT,
     remote_status TEXT DEFAULT 'Unknown',
-    network_depth INTEGER DEFAULT 0,
     known_contacts TEXT DEFAULT '',
     stage TEXT DEFAULT 'discovered',
     stage_updated TEXT,

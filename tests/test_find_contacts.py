@@ -127,3 +127,56 @@ def test_malformed_csv_still_logs_error(fc, monkeypatch):
 
     assert result == []
     assert any(e[0] == "find_contacts_error" for e in events), events
+
+
+# --- rank_contacts (#964) ---------------------------------------------------
+# Synthetic, field-agnostic terms only (widget/gadget) — the whole point of
+# #964 is that no field-specific vocabulary lives in tracked source, tests
+# included. Real domain terms live only in gitignored config.
+
+
+def test_rank_contacts_field_neutral_tiers_order():
+    from findajob.find_contacts import rank_contacts
+
+    contacts = [
+        {"name": "P", "title": "Analyst"},  # 0
+        {"name": "R", "title": "Technical Recruiter"},  # +1 recruiting
+        {"name": "S", "title": "Senior Analyst"},  # +2 seniority
+        {"name": "V", "title": "VP of Sales"},  # +3 executive
+    ]
+    ranked = rank_contacts(contacts, boost_terms=())
+    assert [c["name"] for c in ranked] == ["V", "S", "R", "P"]
+
+
+def test_rank_contacts_domain_boost_from_injected_terms():
+    from findajob.find_contacts import rank_contacts
+
+    contacts = [
+        {"name": "A", "title": "Analyst"},  # 0
+        {"name": "W", "title": "Widget Engineer"},  # +2 (widget in boost_terms)
+    ]
+    ranked = rank_contacts(contacts, boost_terms={"widget"})
+    assert [c["name"] for c in ranked] == ["W", "A"]
+
+
+def test_rank_contacts_empty_terms_gives_no_domain_boost():
+    from findajob.find_contacts import rank_contacts
+
+    contacts = [
+        {"name": "A", "title": "Analyst"},  # 0
+        {"name": "W", "title": "Widget Engineer"},  # 0 — no boost terms configured
+    ]
+    ranked = rank_contacts(contacts, boost_terms=())
+    # Both score 0; stable sort preserves input order.
+    assert [c["name"] for c in ranked] == ["A", "W"]
+
+
+def test_rank_contacts_boost_match_is_case_insensitive():
+    from findajob.find_contacts import rank_contacts
+
+    contacts = [
+        {"name": "A", "title": "Analyst"},
+        {"name": "G", "title": "GADGET ARCHITECT"},  # uppercase title
+    ]
+    ranked = rank_contacts(contacts, boost_terms={"gadget"})  # lowercased term
+    assert ranked[0]["name"] == "G"

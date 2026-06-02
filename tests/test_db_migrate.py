@@ -95,6 +95,10 @@ def test_fresh_db_runs_initial_migration(tmp_path: Path) -> None:
         assert "tester_openrouter_key" not in sess_cols
         assert "tester_rapidapi_key" not in sess_cols
         assert "cumulative_cost_usd" in sess_cols
+        # #964 — network_depth dropped by 0010; sibling known_contacts retained.
+        jobs_cols = {row[1] for row in _table_info(conn, "jobs")}
+        assert "network_depth" not in jobs_cols
+        assert "known_contacts" in jobs_cols
     finally:
         conn.close()
 
@@ -207,6 +211,10 @@ def test_legacy_v0_10_bridges_to_equilibrium(tmp_path: Path) -> None:
         assert "tester_openrouter_key" not in sess_cols
         assert "tester_rapidapi_key" not in sess_cols
         assert "cumulative_cost_usd" in sess_cols
+        # #964 — network_depth dropped by 0010; sibling known_contacts retained.
+        jobs_cols = {row[1] for row in _table_info(conn, "jobs")}
+        assert "network_depth" not in jobs_cols
+        assert "known_contacts" in jobs_cols
         assert "tester_google_key" not in sess_cols
         # Jobs columns added.
         jobs_cols = {row[1] for row in _table_info(conn, "jobs")}

@@ -1,0 +1,15 @@
+-- 0010_drop_network_depth.sql — drop the dead contacts-count column.
+--
+-- ``jobs.network_depth`` held ``min(len(contacts), 2)`` computed at ingest by
+-- the triage orchestrator. Nothing ever read it — no SELECT, filter, template,
+-- or logic referenced it (confirmed by a repo-wide sweep in #963/#964). The
+-- last writer (the ``network_depth=?`` clause in the orchestrator's enrich
+-- UPDATE) is removed in the same change as this migration. ``known_contacts``,
+-- the sibling column written alongside it, is kept — it drives the board's
+-- amber contact cell.
+--
+-- Single statement — atomic on its own (no dependence on the runner wrapping
+-- multiple statements). Fresh installs create the column in 0001 and drop it
+-- here; existing stacks drop it on next startup. No data loss: the column was
+-- write-only dead state.
+ALTER TABLE jobs DROP COLUMN network_depth;

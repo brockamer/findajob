@@ -39,6 +39,10 @@ EDITABLE_CATEGORIES: dict[str, list[str] | str] = {
         # for structured edits, but raw /config/ access allows repair of a
         # malformed file the structured editor can't render.
         "config/excluded_employers.yaml",
+        # #964 — domain-vocabulary boost terms for the outreach contact ranker.
+        # Gitignored, field-specific; raw /config/ access is the only editor
+        # (no dedicated /settings/ page). Hot-reloaded on the next prep run.
+        "config/ranking_boost_terms.yaml",
     ],
     "Role prompts": "config/roles/*.md",
     # #150 — operator-editable prompts powering /tools/ tiles. Same

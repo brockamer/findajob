@@ -27,6 +27,7 @@ _EXCLUDED_EMPLOYERS_PATH = Path(BASE) / "config" / "excluded_employers.yaml"
 _REJECT_REASONS_PATH = Path(BASE) / "config" / "reject_reasons.yaml"
 _SPEND_CEILING_PATH = Path(BASE) / "config" / "spend_ceiling.txt"
 _PROFILE_PATH = Path(BASE) / "candidate_context" / "profile.md"
+_RANKING_BOOST_TERMS_PATH = Path(BASE) / "config" / "ranking_boost_terms.yaml"
 
 # Field-agnostic fallback used when `config/reject_reasons.yaml` is missing or
 # `reasons:` is empty. Operator stacks override via the file (interview-emitted
@@ -44,6 +45,12 @@ _DEFAULT_REJECT_REASONS: tuple[str, ...] = (
     "Other",
 )
 _DEFAULT_TITLE_SIGNAL_REASONS: frozenset[str] = frozenset({"Skills Mismatch", "Low Fit Score"})
+
+# Field-agnostic default for the outreach contact-ranking domain boost: empty.
+# Domain vocabulary is operator/field-specific, so it lives ONLY in gitignored
+# config/ranking_boost_terms.yaml — never in tracked code (#964). An operator
+# who wants a domain boost seeds that file; everyone else gets no domain tier.
+_DEFAULT_RANKING_BOOST_TERMS: frozenset[str] = frozenset()
 
 # Tier 1 parser — moved from findajob.onboarding.injector (#211).
 _TIER1_HEADING_RE = re.compile(r"^##\s+tier\s*1\b[^\n]*", re.IGNORECASE | re.MULTILINE)
@@ -369,6 +376,44 @@ def load_reject_reasons() -> tuple[tuple[str, ...], frozenset[str]]:
             raise ConfigError(f"reject_reasons.yaml: title_signal_reasons entry is not a string: {t!r}")
 
     return (tuple(raw_reasons), frozenset(raw_title))
+
+
+def load_ranking_boost_terms() -> frozenset[str]:
+    """Lowercased domain-vocabulary terms that boost a contact in the outreach
+    ranker (`find_contacts.rank_contacts`), from `config/ranking_boost_terms.yaml`.
+
+    Operator-curated and field-specific by nature, so the terms live in
+    gitignored config rather than tracked code — the repo stays field-agnostic
+    (#964). A missing or empty file returns the empty default
+    (`_DEFAULT_RANKING_BOOST_TERMS`); the domain-boost tier simply contributes
+    nothing. That empty state is the intended field-neutral default, NOT a
+    degradation, so — unlike the prefilter configs — no warning is emitted on a
+    missing file. Malformed content raises `ConfigError`.
+
+    Returns fresh values on every call (no cache) so a `/config/` edit takes
+    effect on the next run without a process restart.
+    """
+    try:
+        text = _RANKING_BOOST_TERMS_PATH.read_text()
+    except FileNotFoundError:
+        return _DEFAULT_RANKING_BOOST_TERMS
+    if not text.strip():
+        return _DEFAULT_RANKING_BOOST_TERMS
+    try:
+        data = yaml.safe_load(text)
+    except yaml.YAMLError as e:
+        raise ConfigError(f"ranking_boost_terms.yaml: YAML parse error: {e}") from e
+    if data is None:
+        return _DEFAULT_RANKING_BOOST_TERMS
+    if not isinstance(data, dict):
+        raise ConfigError(f"ranking_boost_terms.yaml: top level must be a mapping, got {type(data).__name__}")
+    raw = data.get("terms", []) or []
+    if not isinstance(raw, list):
+        raise ConfigError(f"ranking_boost_terms.yaml: 'terms' must be a list, got {type(raw).__name__}")
+    for t in raw:
+        if not isinstance(t, str):
+            raise ConfigError(f"ranking_boost_terms.yaml: terms entry is not a string: {t!r}")
+    return frozenset(t.strip().lower() for t in raw if t.strip())
 
 
 _SPEND_CEILING_DISABLED = frozenset({"disabled", "none", "off", "0"})

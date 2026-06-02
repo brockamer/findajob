@@ -1,0 +1,35 @@
+# config/ranking_boost_terms.yaml — OPTIONAL, gitignored. Copy to
+# config/ranking_boost_terms.yaml and edit.
+#
+# Domain-vocabulary terms that boost a LinkedIn connection in the outreach
+# contact ranker (findajob.find_contacts.rank_contacts). When you flag a job
+# for prep, findajob ranks your connections at the target company and drafts
+# outreach to the top few; a contact whose title contains one of these terms
+# gets a relevance bump so the people closest to your field surface first.
+#
+# Field-agnostic by design — put YOUR field's vocabulary here. Terms are matched
+# case-insensitively as substrings of the contact's title (so "platform" also
+# matches "Platform Engineer"). A missing or empty file means no domain boost:
+# the executive / seniority / recruiting tiers still apply.
+#
+# Pick the handful that fit you. Examples across different fields:
+#
+#   Software / SRE:
+#   terms:
+#     - platform
+#     - reliability
+#     - backend
+#
+#   Healthcare:
+#   terms:
+#     - clinical
+#     - nursing
+#     - patient care
+#
+#   Skilled trades:
+#   terms:
+#     - electrician
+#     - hvac
+#     - journeyman
+
+terms: []

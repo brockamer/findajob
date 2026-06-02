@@ -407,16 +407,15 @@ def main(gmail_since_days: int | None = None):
             continue
 
         contacts = find_contacts(job.get("company", ""))
-        network_depth = min(len(contacts), 2)
         known_contacts = ", ".join(contacts[:3])
 
         conn.execute(
             """
-            UPDATE jobs SET raw_jd_text=?, network_depth=?, known_contacts=?,
+            UPDATE jobs SET raw_jd_text=?, known_contacts=?,
                    stage='enriched', stage_updated=?, updated_at=?
             WHERE id=?
         """,
-            (jd_text, network_depth, known_contacts, now, now, job_id),
+            (jd_text, known_contacts, now, now, job_id),
         )
         conn.commit()
         write_audit(conn, job_id, "stage", "discovered", "enriched")
