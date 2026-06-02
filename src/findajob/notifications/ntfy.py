@@ -8,7 +8,6 @@
 - `_persist_notification()` — DB write that survives ntfy outages
 - `db_connect()` — pipeline DB connection
 - `recent_log_events()` — pipeline.jsonl tail
-- `open_issues()` — `gh issue list` shell-out
 - `_p()` — pluralization helper
 - `NOTIFICATION_KINDS` — closed-set taxonomy
 

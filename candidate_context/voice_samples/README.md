@@ -26,7 +26,7 @@ files is a strong baseline.
 
 ## Loader behavior
 
-`findajob.utils.load_voice_samples()` reads every `.md` and `.txt` file in this
+`findajob.profile.load_voice_samples()` reads every `.md` and `.txt` file in this
 directory (except files starting with `README`), concatenates them with double
 newlines, and caps the result at 32,000 characters (~8,000 tokens). The combined
 text is injected into the cover letter and outreach prompts as a `VOICE SAMPLES:`

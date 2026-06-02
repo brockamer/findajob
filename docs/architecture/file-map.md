@@ -8,8 +8,8 @@ When this map drifts from the actual code (renamed file, new route module, retir
 
 ```
 # ── Package (uv sync for dev; pip install -e . inside Docker image) ────────
-<repo>/src/findajob/paths.py                # central path resolver — from findajob.paths import BASE, PANDOC
-<repo>/src/findajob/utils.py                # shared utilities: log_event(), write_audit(), load_env()
+<repo>/src/findajob/paths.py                # central path resolver — from findajob.paths import BASE, PANDOC; load_env() (.env reader)
+<repo>/src/findajob/audit.py                # log_event() → pipeline.jsonl, write_audit() → audit_log, cron_event_span()
 <repo>/src/findajob/cleaning.py             # normalize, fingerprint, clean_title, clean_company
 <repo>/src/findajob/timeutil.py             # central TZ helper — local_tz/local_zoneinfo + local-calendar bucketing of naïve-UTC DB timestamps (today_local, day_window_start_utc, utc_str_to_local_date); reads deployment TZ, UTC fallback (#967); read_timezone_file/pending_timezone read data/timezone for entrypoint export (#981)
 <repo>/src/findajob/config_seed.py          # seed_runtime_config() — entrypoint-invoked .example→live materialization for configs with hard 500-on-missing paths (#627)
