@@ -1,0 +1,16 @@
+{% if outcome == "success" %}
+  <div class="px-3 py-2 rounded bg-emerald-50 border border-emerald-200 text-emerald-900">
+    {% if pending_tz %}
+    Saved <span class="font-mono font-medium">{{ message }}</span>. Restart your
+    app to apply it to scheduling and displayed times (it also applies
+    automatically on your next update).
+    {% else %}
+    Saved <span class="font-mono font-medium">{{ message }}</span> — that's
+    already your active timezone, so nothing else to do.
+    {% endif %}
+  </div>
+{% else %}
+  <div class="px-3 py-2 rounded bg-rose-50 border border-rose-200 text-rose-900">
+    <strong>Could not save:</strong> {{ message }}
+  </div>
+{% endif %}

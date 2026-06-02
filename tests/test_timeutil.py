@@ -15,11 +15,13 @@ import pytest
 
 from findajob.timeutil import (
     day_window_start_utc,
+    is_valid_timezone,
     local_zoneinfo,
     pending_timezone,
     read_timezone_file,
     today_local,
     utc_str_to_local_date,
+    write_timezone_file,
 )
 
 # A concrete western-US zone is used only as a test vector; the module itself is
@@ -117,6 +119,63 @@ def test_pending_timezone_none_when_pick_matches_active(tmp_path: Path, monkeypa
     monkeypatch.setenv("TZ", "Asia/Tokyo")
     _write_tz(tmp_path, "Asia/Tokyo\n")
     assert pending_timezone(tmp_path) is None
+
+
+def test_is_valid_timezone_accepts_iana_zone() -> None:
+    assert is_valid_timezone("America/Los_Angeles") is True
+    assert is_valid_timezone("Asia/Tokyo") is True
+    assert is_valid_timezone("UTC") is True
+
+
+def test_is_valid_timezone_rejects_garbage() -> None:
+    assert is_valid_timezone("Not/AZone") is False
+    assert is_valid_timezone("Pacific Time") is False
+
+
+def test_is_valid_timezone_rejects_blank_and_whitespace() -> None:
+    assert is_valid_timezone("") is False
+    assert is_valid_timezone("   ") is False
+
+
+def test_write_timezone_file_round_trips(tmp_path: Path) -> None:
+    write_timezone_file(tmp_path, "Europe/Berlin")
+    assert read_timezone_file(tmp_path) == "Europe/Berlin"
+
+
+def test_write_timezone_file_strips_surrounding_whitespace(tmp_path: Path) -> None:
+    write_timezone_file(tmp_path, "  Asia/Tokyo  ")
+    assert read_timezone_file(tmp_path) == "Asia/Tokyo"
+
+
+def test_write_timezone_file_creates_data_dir(tmp_path: Path) -> None:
+    # data/ does not exist yet — the helper must create it.
+    assert not (tmp_path / "data").exists()
+    write_timezone_file(tmp_path, "UTC")
+    assert read_timezone_file(tmp_path) == "UTC"
+
+
+def test_write_timezone_file_overwrites_existing(tmp_path: Path) -> None:
+    write_timezone_file(tmp_path, "Asia/Tokyo")
+    write_timezone_file(tmp_path, "Europe/Berlin")
+    assert read_timezone_file(tmp_path) == "Europe/Berlin"
+
+
+def test_write_timezone_file_rejects_invalid_zone(tmp_path: Path) -> None:
+    with pytest.raises(ValueError):
+        write_timezone_file(tmp_path, "Not/AZone")
+
+
+def test_write_timezone_file_rejects_blank(tmp_path: Path) -> None:
+    with pytest.raises(ValueError):
+        write_timezone_file(tmp_path, "   ")
+
+
+def test_write_timezone_file_no_partial_write_on_invalid(tmp_path: Path) -> None:
+    # A valid zone is already on disk; an invalid write must leave it untouched.
+    write_timezone_file(tmp_path, "Asia/Tokyo")
+    with pytest.raises(ValueError):
+        write_timezone_file(tmp_path, "Not/AZone")
+    assert read_timezone_file(tmp_path) == "Asia/Tokyo"
 
 
 def test_pending_timezone_none_when_no_pick(tmp_path: Path, monkeypatch) -> None:

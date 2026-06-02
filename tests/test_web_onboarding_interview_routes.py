@@ -483,11 +483,12 @@ def test_finalize_calls_inject_and_marks_complete(
 
     resp = client_with_key.post(f"/onboarding/interview/{sid}/finalize")
 
-    # Per #671 finalize now redirects to the spend-ceiling step first. That
-    # step's /finish then makes the feed-config vs gmail-config decision.
-    # The sentinel is still written by the connections gate at the end.
+    # Per #989 finalize now redirects to the timezone-confirmation step, which
+    # leads to spend-ceiling (#671); that step's /finish then makes the
+    # feed-config vs gmail-config decision. The sentinel is still written by
+    # the connections gate at the end.
     assert resp.status_code == 303
-    assert resp.headers["location"] == f"/onboarding/spend-ceiling/{sid}/"
+    assert resp.headers["location"] == f"/onboarding/timezone/{sid}/"
 
     # inject was called with the captured blocks + the user's key (from creds)
     assert len(inject_calls) == 1

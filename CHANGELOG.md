@@ -10,6 +10,11 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Added
+
+- **Change your timezone after onboarding** (#988): a new `/settings/timezone/` page lets you pick a different IANA zone without re-running the onboarding interview. It shows the currently running `TZ` plus any picked-but-pending zone, validates the selection (`ZoneInfo`), and writes `data/timezone` atomically — invalid input is rejected inline with no partial write. The change takes effect on the next app restart (same semantics as the onboarding pick and the dashboard restart-to-apply banner, #981), and that banner now links straight here. A shared sub-nav (`templates/settings/_settings_nav.html`) cross-links every `/settings/` page so each is reachable from the others.
+- **Onboarding suggests your timezone from your browser** (#989): a new timezone-confirmation step after the interview pre-selects your IANA zone from `Intl.DateTimeFormat().resolvedOptions().timeZone` and lets you accept or override it before continuing. The confirmed pick is written to `data/timezone` and supersedes the interviewer's location-to-zone conversion; when the browser value is unavailable (no JS, unresolvable zone), the step falls back to the interviewer-derived value so the LLM-conversion path is preserved. Both surfaces share a single validated, atomic `findajob.timeutil.write_timezone_file` helper. No schema change.
+
 ## [0.32.0] — 2026-06-02
 
 ### Added

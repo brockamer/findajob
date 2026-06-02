@@ -834,9 +834,10 @@ def finalize_interview(
     # and gmail-config GET handlers accept the param and render an amber warning
     # banner; the param is not propagated through /finish hops — one-shot
     # display on the page the user lands on immediately after Finalize.
-    # Redirect to the spend-ceiling step (#671), which then makes the
-    # feed-config vs gmail-config decision and redirects accordingly.
-    # voice_redact_failed is propagated so spend-ceiling's /finish can
-    # pass it to the immediate next page.
+    # Redirect to the timezone-confirmation step (#989), which lets the
+    # operator confirm/override the browser-detected zone before the
+    # spend-ceiling step (#671) and the feed-config vs gmail-config decision.
+    # voice_redact_failed is propagated through both steps so it reaches the
+    # immediate next page after the gate decision.
     redact_param = "?voice_redact_failed=1" if inject_result.voice_samples_redact_failed else ""
-    return RedirectResponse(f"/onboarding/spend-ceiling/{session_id}/{redact_param}", status_code=303)
+    return RedirectResponse(f"/onboarding/timezone/{session_id}/{redact_param}", status_code=303)

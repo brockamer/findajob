@@ -21,6 +21,7 @@ from findajob.web.routes import (
     onboarding_gmail_config,
     onboarding_restore,
     onboarding_spend_ceiling,
+    onboarding_timezone,
     rejections_review,
     settings_active_sources,
     settings_backup,
@@ -29,6 +30,7 @@ from findajob.web.routes import (
     settings_gemini,
     settings_reject_reasons,
     settings_spend_ceiling,
+    settings_timezone,
     speculative,
     stats,
     tools,
@@ -61,6 +63,7 @@ router.include_router(settings_connections.router, dependencies=_guard)
 router.include_router(settings_excluded_employers.router, dependencies=_guard)
 router.include_router(settings_gemini.router, dependencies=_guard)
 router.include_router(settings_spend_ceiling.router, dependencies=_guard)
+router.include_router(settings_timezone.router, dependencies=_guard)
 router.include_router(rejections_review.router, dependencies=_guard)
 router.include_router(speculative.router, dependencies=_guard)
 router.include_router(stats.router, dependencies=_guard)
@@ -76,5 +79,6 @@ router.include_router(onboarding_gmail_config.router)
 router.include_router(onboarding_connections.router)
 router.include_router(onboarding_restore.router)
 router.include_router(onboarding_spend_ceiling.router)
+router.include_router(onboarding_timezone.router)
 router.include_router(docs.router)
 router.include_router(notifications.router, dependencies=_guard)

@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Your timezone — findajob onboarding{% endblock %}
+{% block content %}
+<section class="max-w-2xl mx-auto py-10 px-6 space-y-6">
+
+  {% include 'onboarding/_voice_redact_failed_banner.html' %}
+
+  <div class="space-y-2">
+    <p class="text-xs uppercase tracking-wide text-slate-500">Onboarding</p>
+    <h1 class="text-2xl font-semibold">Confirm your timezone</h1>
+    <p class="text-slate-700">
+      findajob uses your timezone to schedule the daily run and to show times
+      on your board. We've guessed it from your browser — confirm it's right,
+      or pick another. You can change it later at
+      <code>/settings/timezone/</code>.
+    </p>
+  </div>
+
+  <div class="rounded-lg border border-slate-200 bg-white p-5 space-y-4">
+    <form method="post" action="/onboarding/timezone/{{ session_id }}/" class="space-y-4">
+      {% if voice_redact_failed %}
+      <input type="hidden" name="voice_redact_failed" value="1">
+      {% endif %}
+
+      <div class="space-y-1">
+        <label class="block text-sm font-medium text-slate-700" for="timezone">
+          Your timezone
+        </label>
+        <select
+          id="timezone"
+          name="timezone"
+          class="w-full rounded border-slate-300 shadow-sm focus:border-slate-500 focus:ring-slate-500 text-sm font-mono"
+        >
+          {% for zone in zones %}
+          <option value="{{ zone }}"{% if zone == default_tz %} selected{% endif %}>{{ zone }}</option>
+          {% endfor %}
+        </select>
+        <p id="tz-detected-note" class="hidden text-xs text-emerald-700"></p>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <button
+          type="submit"
+          class="bg-slate-800 text-white text-sm font-medium rounded px-4 py-1.5 hover:bg-slate-700"
+        >
+          Confirm and continue
+        </button>
+      </div>
+    </form>
+  </div>
+
+  {# #989: the browser already knows the operator's IANA zone — use it to
+     pre-select the picker. Falls back silently to the server-side default
+     (the LLM-derived value from finalize, or the deploy TZ) when Intl is
+     unavailable or the resolved zone isn't a known option. #}
+  <script>
+    (function () {
+      var sel = document.getElementById('timezone');
+      var note = document.getElementById('tz-detected-note');
+      if (!sel) return;
+      try {
+        var zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        if (!zone) return;
+        for (var i = 0; i < sel.options.length; i++) {
+          if (sel.options[i].value === zone) {
+            sel.value = zone;
+            if (note) {
+              note.textContent = 'Detected ' + zone + ' from your browser. Change it if you travel or use a VPN.';
+              note.classList.remove('hidden');
+            }
+            return;
+          }
+        }
+      } catch (e) {
+        /* Intl unavailable — keep the server-side default. */
+      }
+    })();
+  </script>
+</section>
+{% endblock %}

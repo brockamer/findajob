@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Timezone — Settings{% endblock %}
+{% block content %}
+<div class="max-w-2xl">
+  <h1 class="text-2xl font-semibold mb-1">Timezone</h1>
+  <p class="text-sm text-slate-600 mb-4">
+    findajob uses your timezone to schedule the daily run and to show times
+    on your calendar (today, this week). You set this during onboarding —
+    change it here if you move, travel, or picked the wrong one.
+  </p>
+
+  <div class="rounded border border-slate-200 bg-slate-50 px-4 py-3 mb-4 text-sm text-slate-700">
+    <div>
+      Currently running in
+      <span class="font-mono font-medium">{{ active_tz }}</span>.
+    </div>
+    {% if pending_tz %}
+    <div class="mt-1 text-sky-800">
+      You picked <span class="font-mono font-medium">{{ pending_tz }}</span> —
+      restart your app to apply it.
+    </div>
+    {% endif %}
+  </div>
+
+  <form
+    hx-post="/settings/timezone/"
+    hx-target="#save-result"
+    hx-swap="innerHTML"
+    class="space-y-3"
+  >
+    <label class="block text-sm font-medium text-slate-700" for="timezone">
+      Your timezone
+    </label>
+    <select
+      id="timezone"
+      name="timezone"
+      class="w-full rounded border-slate-300 shadow-sm focus:border-slate-500 focus:ring-slate-500 text-sm font-mono"
+    >
+      {% set selected_tz = picked_tz or active_tz %}
+      {% for zone in zones %}
+      <option value="{{ zone }}"{% if zone == selected_tz %} selected{% endif %}>{{ zone }}</option>
+      {% endfor %}
+    </select>
+
+    <div class="flex items-center gap-3 pt-1">
+      <button
+        type="submit"
+        class="bg-slate-800 text-white text-sm font-medium rounded px-4 py-1.5 hover:bg-slate-700"
+      >
+        Save
+      </button>
+      <span class="text-xs text-slate-500 htmx-indicator">Saving…</span>
+    </div>
+  </form>
+
+  <div id="save-result" class="mt-4"></div>
+</div>
+{% endblock %}

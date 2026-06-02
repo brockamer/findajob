@@ -65,6 +65,46 @@ def utc_str_to_local_date(ts: str, tz: str | None = None) -> date:
     return datetime.strptime(ts, _DB_TS_FMT).replace(tzinfo=UTC).astimezone(zi).date()
 
 
+def is_valid_timezone(zone: str) -> bool:
+    """True iff ``zone`` (after stripping) names a resolvable IANA zone.
+
+    The single validity check shared by the capture surfaces (onboarding
+    timezone step #989, ``/settings/timezone`` #988) and :func:`write_timezone_file`
+    so a value accepted by the UI is exactly a value the boot path can export
+    as ``TZ``.
+    """
+    candidate = zone.strip()
+    if not candidate:
+        return False
+    try:
+        ZoneInfo(candidate)
+    except (ZoneInfoNotFoundError, ValueError):
+        return False
+    return True
+
+
+def write_timezone_file(base: Path | str, zone: str) -> None:
+    """Atomically write a validated IANA ``zone`` to ``<base>/data/timezone``.
+
+    Mirrors the format :func:`read_timezone_file` parses (a single bare line),
+    so the operator's pick round-trips through the same reader the boot path and
+    the restart-to-apply banner use. Raises :class:`ValueError` — writing
+    nothing — when ``zone`` is blank or names an unresolvable zone, so a bad
+    submission can never leave a half-written or invalid ``data/timezone`` on
+    disk (the no-partial-write guarantee both #988 and #989 depend on). The
+    ``data/`` directory is created if absent.
+    """
+    candidate = zone.strip()
+    if not is_valid_timezone(candidate):
+        raise ValueError(f"not a valid IANA timezone: {zone!r}")
+    data_dir = Path(base) / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    target = data_dir / "timezone"
+    tmp = data_dir / ".timezone.tmp"
+    tmp.write_text(candidate + "\n", encoding="utf-8")
+    os.replace(tmp, target)
+
+
 def read_timezone_file(base: Path | str) -> str | None:
     """Return the validated IANA zone written to ``<base>/data/timezone`` by
     onboarding, or ``None`` when the file is missing, blank, comment-only, or
