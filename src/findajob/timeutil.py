@@ -15,9 +15,6 @@ zone (for display or calendar math) should obtain it here rather than re-reading
 ``TZ`` or hardcoding a zone. It reuses the ``astimezone(UTC)`` idiom proven
 DST-correct in ``cost_rollups``; every helper takes ``tz``/``now`` seams so
 callers (and tests) can be deterministic without touching process-global ``TZ``.
-(``cost_rollups`` and ``spend_ceiling`` predate this module and still read ``TZ``
-directly — folding them onto ``local_tz`` is a follow-up refactor, not a behavior
-change.)
 """
 
 from __future__ import annotations

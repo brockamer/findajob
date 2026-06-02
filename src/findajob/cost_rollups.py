@@ -226,9 +226,9 @@ def spend_this_month(
     (the difference can be up to 14h depending on offset). Default ``"UTC"``
     preserves pre-#823 behavior for callers that don't pass a tz.
 
-    Callers read ``os.environ.get("TZ") or "UTC"`` and pass it through,
-    matching :func:`weekly_spend` and the codebase precedent at
-    ``findajob/web/routes/landing.py:42``.
+    Callers pass the stack timezone via :func:`findajob.timeutil.local_tz`,
+    matching :func:`weekly_spend`. This function stays pure (no env read);
+    the ``tz`` arg is the single point where the local zone enters.
 
     Args:
         conn: SQLite connection.

@@ -22,7 +22,6 @@ per calendar month (deduped via in-process set + ``notifications`` table).
 from __future__ import annotations
 
 import logging
-import os
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
@@ -34,13 +33,9 @@ from findajob.cost_rollups import spend_this_month
 from findajob.db import connect
 from findajob.llm.openrouter import LLMSpendCeilingExceeded
 from findajob.paths import BASE
+from findajob.timeutil import local_tz
 
 log = logging.getLogger(__name__)
-
-
-def _stack_tz() -> str:
-    """IANA tz for month-boundary math. Mirrors ``landing.py:42`` convention."""
-    return os.environ.get("TZ") or "UTC"
 
 
 _DB_PATH = Path(BASE) / "data" / "pipeline.db"
@@ -69,7 +64,7 @@ def _already_sent_this_month(kind: str, month: str, conn: sqlite3.Connection) ->
     ``notifications.sent_at`` is UTC (``datetime('now')``). We need the
     TZ-aware month boundaries to match ``spend_this_month()``'s reset.
     """
-    tz = _stack_tz()
+    tz = local_tz()
     zi = ZoneInfo(tz)
     year, mon = int(month[:4]), int(month[5:7])
     start_local = datetime(year, mon, 1, tzinfo=zi)
@@ -93,7 +88,7 @@ def _maybe_fire_threshold_alerts(current: float, ceiling: float, conn: sqlite3.C
     failure never prevents the gate from enforcing.
     """
     try:
-        month = _month_key(_stack_tz())
+        month = _month_key(local_tz())
         thresholds: list[tuple[str, float, str, str, str]] = []
 
         if current >= ceiling:
@@ -157,7 +152,7 @@ def check_call_gate() -> None:
 
     conn = connect(_DB_PATH)
     try:
-        current = spend_this_month(conn, tz=_stack_tz())
+        current = spend_this_month(conn, tz=local_tz())
         _maybe_fire_threshold_alerts(current, ceiling, conn)
     finally:
         conn.close()
@@ -176,7 +171,7 @@ def check_launch_gate(conn: sqlite3.Connection) -> LaunchGateRefusal | None:
     if ceiling is None:
         return None
 
-    current = spend_this_month(conn, tz=_stack_tz())
+    current = spend_this_month(conn, tz=local_tz())
     _maybe_fire_threshold_alerts(current, ceiling, conn)
     if current >= ceiling:
         return LaunchGateRefusal(ceiling_usd=ceiling, current_sum_usd=current)

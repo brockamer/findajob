@@ -67,8 +67,9 @@ def create_app(
         try:
             from findajob.config_loader import load_spend_ceiling
             from findajob.cost_rollups import spend_this_month
+            from findajob.timeutil import local_tz
 
-            spent = spend_this_month(conn, tz=os.environ.get("TZ") or "UTC")
+            spent = spend_this_month(conn, tz=local_tz())
             ceiling = load_spend_ceiling()
         except sqlite3.Error:
             return {"spent": 0.0, "ceiling": None, "ratio": 0.0, "state": "no_ceiling"}
