@@ -16,70 +16,18 @@ import pytest
 
 from findajob import actions, audit
 from findajob.paths import BASE
-
-SCHEMA = """
-CREATE TABLE jobs (
-    id TEXT PRIMARY KEY,
-    fingerprint TEXT UNIQUE NOT NULL,
-    url TEXT NOT NULL,
-    title TEXT NOT NULL,
-    company TEXT NOT NULL,
-    location TEXT DEFAULT '',
-    source TEXT NOT NULL DEFAULT 'test',
-    raw_jd_text TEXT,
-    relevance_score INTEGER CHECK(relevance_score BETWEEN 1 AND 10),
-    score_status TEXT CHECK(score_status IN ('scored', 'manual_review')),
-    score_flag_reason TEXT,
-    stage TEXT DEFAULT 'discovered' CHECK(stage IN (
-        'discovered', 'enriched', 'scored', 'manual_review',
-        'prep_in_progress', 'briefing_ready', 'materials_drafted', 'waitlisted', 'applied',
-        'response_received', 'interview', 'offer', 'rejected', 'not_selected', 'withdrawn',
-        'withdrawn_fallback'
-    )),
-    stage_updated TEXT,
-    apply_flag INTEGER DEFAULT 0,
-    prep_folder_path TEXT,
-    reject_reason TEXT DEFAULT '',
-    fit_score REAL,
-    probability_score REAL,
-    remote_status TEXT DEFAULT 'Unknown',
-    ai_notes TEXT,
-    comp_estimate TEXT DEFAULT '',
-    known_contacts TEXT DEFAULT '',
-    created_at TEXT DEFAULT (datetime('now')),
-    updated_at TEXT DEFAULT (datetime('now')),
-    dupe_of TEXT DEFAULT '',
-    synthetic INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE audit_log (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    job_id TEXT NOT NULL,
-    field_changed TEXT NOT NULL,
-    old_value TEXT,
-    new_value TEXT,
-    changed_at TEXT DEFAULT (datetime('now')),
-    changed_by TEXT DEFAULT 'system'
-);
-
-CREATE TABLE feedback_log (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    job_id TEXT NOT NULL,
-    title TEXT NOT NULL,
-    company TEXT NOT NULL,
-    relevance_score INTEGER,
-    reject_reason TEXT NOT NULL,
-    jd_excerpt TEXT DEFAULT '',
-    created_at TEXT DEFAULT (datetime('now'))
-);
-"""
+from tests.conftest import init_test_db
 
 
 @pytest.fixture()
-def db():
-    conn = sqlite3.connect(":memory:")
+def db(tmp_path):
+    # Apply the production migration chain instead of a hand-rolled schema, so
+    # the fixture inherits every table/column the real DB has and can't drift
+    # (#721, #967). File-based because apply_pending opens its own connection.
+    db_path = tmp_path / "pipeline.db"
+    init_test_db(db_path)
+    conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
-    conn.executescript(SCHEMA)
     yield conn
     conn.close()
 
@@ -110,10 +58,10 @@ def insert_job(
     job_id = str(uuid.uuid4())[:8]
     fp = f"fp_{job_id}"
     conn.execute(
-        """INSERT INTO jobs (id, fingerprint, url, title, company, relevance_score,
+        """INSERT INTO jobs (id, fingerprint, url, title, company, source, relevance_score,
                              stage, prep_folder_path, raw_jd_text, score_status,
                              apply_flag)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           VALUES (?, ?, ?, ?, ?, 'test', ?, ?, ?, ?, ?, ?)""",
         (
             job_id,
             fp,
@@ -977,9 +925,10 @@ def test_handle_rejection_skips_feedback_log_for_synthetic(tmp_path, monkeypatch
     contaminating the scorer's feedback loop with synthetic signal would be a
     permanent data-quality hit. Real-job rejection still writes."""
     monkeypatch.setattr(actions, "BASE", str(tmp_path))
-    conn = sqlite3.connect(":memory:")
+    db_path = tmp_path / "pipeline.db"
+    init_test_db(db_path)
+    conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
-    conn.executescript(SCHEMA)
     syn_id = str(uuid.uuid4())
     real_id = str(uuid.uuid4())
     conn.execute(
