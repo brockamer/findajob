@@ -1,0 +1,22 @@
+{# #981: shown when data/timezone names a zone different from the running TZ —
+   the operator picked a timezone in onboarding that needs a restart to take
+   effect. Self-suppresses once the restart applies it (pending_timezone → None)
+   or when the `timezone_banner_dismissed` cookie is set. #}
+{% if timezone_banner %}
+<div class="bg-sky-50 border border-sky-200 rounded p-3 mb-4 flex items-start gap-3">
+  <div class="flex-1 text-sm text-sky-900">
+    <strong>Restart to apply your timezone</strong>
+    — your timezone is set to <span class="font-mono">{{ timezone_banner }}</span>.
+    Restart your app to apply it to scheduling and displayed times (it also
+    applies automatically on your next update). See
+    <a href="/docs/install-fly" class="underline font-medium hover:text-sky-700">how to restart</a>.
+  </div>
+  <a
+    href="?dismiss_timezone_banner=1"
+    class="text-xs text-sky-700 hover:text-sky-900 whitespace-nowrap"
+    title="Stop showing this banner. Your timezone still applies on the next restart or update."
+  >
+    Don't show again
+  </a>
+</div>
+{% endif %}

@@ -12,6 +12,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from findajob.config_loader import load_spend_ceiling
 from findajob.fetchers.adapters import registry as _adapter_registry
+from findajob.timeutil import pending_timezone
 from findajob.triage.schedule import next_triage_time
 from findajob.web import view_prefs
 from findajob.web.company_history import build_history_by_fp, fetch_company_history
@@ -162,6 +163,7 @@ def dashboard(
     dismiss_active_sources_banner: int = Query(default=0),
     dismiss_spend_ceiling_banner: int = Query(default=0),
     dismiss_first_triage_banner: int = Query(default=0),
+    dismiss_timezone_banner: int = Query(default=0),
     triage_launched: int = Query(default=0),
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
 ) -> HTMLResponse:
@@ -207,6 +209,20 @@ def dashboard(
         )
         return redirect  # type: ignore[return-value]
 
+    # #981: ?dismiss_timezone_banner=1 silences the restart-to-apply banner via
+    # a 1-year cookie. The banner also self-suppresses once the picked zone
+    # matches the active TZ (i.e. after the restart applies it).
+    if dismiss_timezone_banner:
+        redirect = RedirectResponse(url="/board/dashboard", status_code=303)
+        redirect.set_cookie(
+            "timezone_banner_dismissed",
+            "1",
+            max_age=31536000,  # 1 year
+            httponly=False,
+            samesite="lax",
+        )
+        return redirect  # type: ignore[return-value]
+
     specs = filter_registry.DASHBOARD_COLUMNS
     parsed = parse_filter_params(specs, request.query_params)
     view_prefs_redirect = _maybe_redirect_to_persisted(request, "dashboard", parsed, db)
@@ -223,6 +239,7 @@ def dashboard(
     show_banner, default_count = _active_sources_banner_state(request)
     show_ceiling_banner = _spend_ceiling_banner_state(request)
     show_first_triage_banner, next_triage_fire = _first_triage_banner_state(request, db)
+    timezone_banner = _timezone_banner_state(request)
     templates = request.app.state.templates
     return templates.TemplateResponse(
         request=request,
@@ -244,6 +261,7 @@ def dashboard(
             "first_triage_banner": show_first_triage_banner,
             "next_triage_fire": next_triage_fire,
             "triage_launched": bool(triage_launched),
+            "timezone_banner": timezone_banner,
         },
     )
 
@@ -286,6 +304,16 @@ def _spend_ceiling_banner_state(request: Request) -> bool:
     if request.cookies.get("spend_ceiling_banner_dismissed") == "1":
         return False
     return load_spend_ceiling() is None
+
+
+def _timezone_banner_state(request: Request) -> str | None:
+    """Return the onboarding-picked zone when it differs from the active TZ —
+    a restart is needed to apply it (#981) — unless the user dismissed the
+    banner. ``None`` hides the banner.
+    """
+    if request.cookies.get("timezone_banner_dismissed") == "1":
+        return None
+    return pending_timezone(request.app.state.base_root)
 
 
 _FIRST_TRIAGE_WINDOW_HOURS = 48
