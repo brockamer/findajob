@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections import Counter
+from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Request
@@ -25,7 +27,28 @@ from findajob.metrics.stats import (
     min_n_gate,
     wilson_ci_pct,
 )
+from findajob.timeutil import day_window_start_utc, today_local, utc_str_to_local_date
 from findajob.web.routes.materials import get_db
+
+
+def _bucket_by_local_day(rows: list[sqlite3.Row]) -> list[tuple[str, str, int]]:
+    """Aggregate raw ``(timestamp, value)`` rows into sparse ``(day_iso, value, n)``
+    tuples bucketed on the operator's local calendar day.
+
+    Timestamps are naïve-UTC DB strings; bucketing on the local day (not the UTC
+    day) keeps a late-evening PT transition on the right day (#967). The output
+    shape matches what ``_build_daily_matrix`` / ``_build_reason_matrix`` expect
+    from a SQL ``GROUP BY`` (they read columns 0/1/2 positionally).
+    """
+    counts: Counter[tuple[str, str]] = Counter()
+    for row in rows:
+        ts = row[0]
+        value = row[1]
+        if not ts:
+            continue
+        counts[(utc_str_to_local_date(ts).isoformat(), value)] += 1
+    return [(day, value, n) for (day, value), n in counts.items()]
+
 
 router = APIRouter()
 
@@ -103,25 +126,25 @@ def funnel(
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
 ) -> HTMLResponse:
     """Daily stage-transition counts over the last _FUNNEL_WINDOW_DAYS."""
-    today = datetime.now(UTC).date()
+    today = today_local()
     start_day = today - timedelta(days=_FUNNEL_WINDOW_DAYS - 1)
-    # date(changed_at) relies on the canonical naïve-UTC format
-    # "YYYY-MM-DD HH:MM:SS" (see CLAUDE.md §audit_log timestamp format).
+    # Bucket on the operator's PT calendar: fetch raw naïve-UTC timestamps and
+    # group by local day in Python (#967). The >= bound is local-midnight of
+    # start_day expressed in UTC, so the string compare on the canonical
+    # "YYYY-MM-DD HH:MM:SS" format is correct.
     placeholders = ",".join("?" * len(ALL_STAGES))
-    rows = db.execute(
+    raw = db.execute(
         f"""
-        SELECT date(changed_at) AS day, new_value AS stage, COUNT(*) AS n
+        SELECT changed_at, new_value AS stage
         FROM audit_log
         WHERE field_changed = 'stage'
-          AND date(changed_at) >= ?
+          AND changed_at >= ?
           AND new_value IN ({placeholders})
-        GROUP BY day, stage
-        ORDER BY day ASC, stage
         """,
-        (start_day.isoformat(), *ALL_STAGES),
+        (day_window_start_utc(_FUNNEL_WINDOW_DAYS), *ALL_STAGES),
     ).fetchall()
 
-    daily = _build_daily_matrix(rows, start_day, today)
+    daily = _build_daily_matrix(_bucket_by_local_day(raw), start_day, today)
     totals = {stage: sum(daily[d][stage] for d in daily) for stage in ALL_STAGES}
 
     total_scored = totals.get("scored", 0)
@@ -183,7 +206,7 @@ def funnel(
 
 
 def _build_daily_matrix(
-    rows: list[sqlite3.Row],
+    rows: Sequence[sqlite3.Row | tuple[str, str, int]],
     start_day: date,
     end_day: date,
 ) -> dict[date, dict[str, int]]:
@@ -220,25 +243,23 @@ def feedback(
     and a 28-day daily multi-line chart. Source is the feedback_log table; spec
     AC called for a jsonl feedback_stats event that was never implemented.
     """
-    today = datetime.now(UTC).date()
+    today = today_local()
     window_start = today - timedelta(days=_FEEDBACK_WINDOW_DAYS - 1)
     week_start = today - timedelta(days=_FEEDBACK_WEEK_DAYS - 1)
 
-    # date(created_at) relies on feedback_log.created_at defaulting to
-    # datetime('now'), which writes the canonical naïve-UTC
-    # "YYYY-MM-DD HH:MM:SS" format (see init_db.py).
-    daily_rows = db.execute(
+    # Bucket feedback_log.created_at (naïve-UTC, defaults to datetime('now')) on
+    # the operator's PT calendar day (#967). Fetch raw timestamps and group in
+    # Python; the >= bound is local-midnight of window_start expressed in UTC.
+    raw = db.execute(
         """
-        SELECT date(created_at) AS day,
-               COALESCE(NULLIF(reject_reason, ''), '(blank)') AS reason,
-               COUNT(*) AS n
+        SELECT created_at,
+               COALESCE(NULLIF(reject_reason, ''), '(blank)') AS reason
         FROM feedback_log
-        WHERE date(created_at) >= ?
-        GROUP BY day, reason
-        ORDER BY day ASC, reason
+        WHERE created_at >= ?
         """,
-        (window_start.isoformat(),),
+        (day_window_start_utc(_FEEDBACK_WINDOW_DAYS),),
     ).fetchall()
+    daily_rows = _bucket_by_local_day(raw)
 
     # Merge canonical reasons with anything else found in the window; stable order.
     canonical_reasons, _title_signal = load_reject_reasons()
@@ -303,7 +324,7 @@ def feedback(
 
 
 def _build_reason_matrix(
-    rows: list[sqlite3.Row],
+    rows: Sequence[sqlite3.Row | tuple[str, str, int]],
     reasons: tuple[str, ...],
     start_day: date,
     end_day: date,
@@ -339,18 +360,21 @@ def scoring(
     audit_log scored-transition timestamps matches AC #1's "scored jobs"
     intent.
     """
-    today = datetime.now(UTC).date()
+    today = today_local()
     start_day = today - timedelta(days=_SCORING_WINDOW_DAYS - 1)
 
+    # Window bound is local-midnight of start_day expressed in UTC, so a late-PT
+    # scored transition isn't dropped a day early (#967). No day bucketing here —
+    # this query is a DISTINCT membership set, not a daily series.
     scored_id_rows = db.execute(
         """
         SELECT DISTINCT job_id
         FROM audit_log
         WHERE field_changed = 'stage'
           AND new_value = 'scored'
-          AND date(changed_at) >= ?
+          AND changed_at >= ?
         """,
-        (start_day.isoformat(),),
+        (day_window_start_utc(_SCORING_WINDOW_DAYS),),
     ).fetchall()
     scored_ids = [r["job_id"] if isinstance(r, sqlite3.Row) else r[0] for r in scored_id_rows]
     total_scored = len(scored_ids)
