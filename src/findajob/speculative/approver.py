@@ -17,7 +17,7 @@ import uuid
 from datetime import UTC, datetime
 
 from findajob.audit import log_event, write_audit
-from findajob.cleaning import fingerprint
+from findajob.cleaning import fingerprint, loose_fingerprint
 from findajob.speculative.parser import parse_role_cards
 
 
@@ -72,30 +72,47 @@ def approve_request(
         # Speculative rows have no URL — synthesize a sentinel that's distinct.
         url = f"speculative://{company}/{idx}/{request_id}"
         # Using fingerprint() of (title, company, '') — same hashing as real rows.
+        # loose_fingerprint feeds Tier-2 dedup so synthetic rows participate in
+        # cross-source de-duplication like any other job (#967).
         fp = fingerprint(title, company, "")
+        loose_fp = loose_fingerprint(title, company)
         job_id = str(uuid.uuid4())
-        conn.execute(
-            """INSERT INTO jobs (id, fingerprint, url, title, company, location, source,
-                                  raw_jd_text, relevance_score, score_status,
-                                  ai_notes, stage, stage_updated, synthetic,
-                                  speculative_briefing_folder,
-                                  created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, '', 'web_speculative', ?, 7, 'scored',
-                       ?, 'scored', ?, 1, ?, ?, ?)""",
-            (
-                job_id,
-                fp,
-                url,
-                title,
-                company,
-                card.description,
-                ai_notes,
-                now,
-                row["briefing_folder"],
-                now,
-                now,
-            ),
-        )
+        try:
+            conn.execute(
+                """INSERT INTO jobs (id, fingerprint, loose_fingerprint, url, title, company,
+                                      location, source, raw_jd_text, relevance_score, score_status,
+                                      ai_notes, stage, stage_updated, synthetic,
+                                      speculative_briefing_folder,
+                                      created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, '', 'web_speculative', ?, 7, 'scored',
+                           ?, 'scored', ?, 1, ?, ?, ?)""",
+                (
+                    job_id,
+                    fp,
+                    loose_fp,
+                    url,
+                    title,
+                    company,
+                    card.description,
+                    ai_notes,
+                    now,
+                    row["briefing_folder"],
+                    now,
+                    now,
+                ),
+            )
+        except sqlite3.IntegrityError:
+            # A row with this fingerprint already exists (re-approve, or the same
+            # role surfaced by an earlier request). Skip the duplicate rather than
+            # 500 the whole approve — the remaining new cards still get written.
+            log_event(
+                "speculative_duplicate_skipped",
+                request_id=request_id,
+                company=company,
+                fingerprint=fp,
+                title=title,
+            )
+            continue
         write_audit(conn, job_id, "stage", "", "scored")
         fingerprints.append(fp)
 
@@ -103,14 +120,14 @@ def approve_request(
         """UPDATE speculative_requests
            SET status='approved', approved_at=?, approved_role_count=?
            WHERE id=?""",
-        (now, len(kept_indices), request_id),
+        (now, len(fingerprints), request_id),
     )
     conn.commit()
     log_event(
         "speculative_request_approved",
         request_id=request_id,
         company=company,
-        approved_count=len(kept_indices),
+        approved_count=len(fingerprints),
         fingerprints=fingerprints,
     )
     return fingerprints

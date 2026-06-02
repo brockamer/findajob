@@ -13,6 +13,7 @@ JOBS_SCHEMA = """
 CREATE TABLE jobs (
     id TEXT PRIMARY KEY,
     fingerprint TEXT UNIQUE NOT NULL,
+    loose_fingerprint TEXT,
     url TEXT NOT NULL,
     title TEXT NOT NULL,
     company TEXT NOT NULL,
@@ -151,6 +152,46 @@ def test_approve_rejects_non_ready_status():
 
     with pytest.raises(ValueError, match="status"):
         approve_request(conn, request_id=req_id, kept_indices=[0])
+
+
+def test_approve_sets_loose_fingerprint_for_tier2_dedup():
+    """Synthetic rows must carry loose_fingerprint so Tier-2 dedup can catch
+    cross-source syndication, same as real rows (#967 item 3)."""
+    from findajob.cleaning import loose_fingerprint
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript(JOBS_SCHEMA)
+    req_id = _seed_ready(conn, n_cards=1)
+
+    approve_request(conn, request_id=req_id, kept_indices=[0])
+
+    job = conn.execute("SELECT title, company, loose_fingerprint FROM jobs").fetchone()
+    assert job["loose_fingerprint"] == loose_fingerprint(job["title"], job["company"])
+    assert job["loose_fingerprint"], "loose_fingerprint must be populated, not NULL"
+
+
+def test_approve_duplicate_fingerprint_skips_not_raises():
+    """A duplicate [SPEC] fingerprint must not 500 the approve; the colliding
+    card is skipped and the remaining (new) cards are still written (#967 item 3)."""
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript(JOBS_SCHEMA)
+
+    # First request: approve card 0 -> "[SPEC] Role 0" written.
+    req1 = _seed_ready(conn, n_cards=2)
+    approve_request(conn, request_id=req1, kept_indices=[0])
+
+    # Second request, same company + same titles: card 0 collides, card 1 is new.
+    req2 = _seed_ready(conn, n_cards=2)
+    approve_request(conn, request_id=req2, kept_indices=[0, 1])  # must not raise
+
+    titles = sorted(r["title"] for r in conn.execute("SELECT title FROM jobs").fetchall())
+    assert titles == ["[SPEC] Role 0", "[SPEC] Role 1"], "duplicate skipped, new card kept"
+
+    row = conn.execute("SELECT status, approved_role_count FROM speculative_requests WHERE id=?", (req2,)).fetchone()
+    assert row["status"] == "approved"
+    assert row["approved_role_count"] == 1, "count reflects rows actually written, not kept_indices"
 
 
 def test_approve_propagates_briefing_folder_to_jobs():
