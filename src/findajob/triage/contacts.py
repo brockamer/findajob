@@ -15,17 +15,24 @@ matcher in #963.
 
 from __future__ import annotations
 
-from findajob.find_contacts import find_contacts as _canonical_find_contacts
-
 
 def find_contacts(company: str | None) -> list[str]:
     """Return ``"<name> (<title>)"`` for each LinkedIn connection at *company*.
 
     Guards blank/None *before* delegating: the canonical ``company_match`` has
-    no None-guard, so ``_canonical_find_contacts(None)`` would raise inside the
-    reader and log a spurious ``find_contacts_error`` for a perfectly normal
-    empty-company job (#963).
+    no None-guard, so delegating ``None`` would raise inside the reader and log
+    a spurious ``find_contacts_error`` for a perfectly normal empty-company job
+    (#963).
     """
     if not company or not company.strip():
         return []
-    return [f"{c['name']} ({c['title']})" for c in _canonical_find_contacts(company)]
+    # Resolve the canonical matcher at call time, not via a module-level import.
+    # The import-safety tests pop + reimport ``findajob.find_contacts``; a
+    # module-level binding would then point at a stale, orphaned module object
+    # whose ``CONNECTIONS`` a test's monkeypatch can no longer reach (#963).
+    # Call-time resolution always goes through the live ``sys.modules`` entry,
+    # and keeps this triage submodule's import surface minimal — no transitive
+    # LLM/db imports at module load.
+    from findajob.find_contacts import find_contacts as canonical
+
+    return [f"{c['name']} ({c['title']})" for c in canonical(company)]
