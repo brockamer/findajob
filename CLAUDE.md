@@ -242,6 +242,8 @@ Two regression-prone rules every `company_match()` implementation must observe:
 1. **Blank-string guard.** `connections.csv` may have blank-company rows. `'' in 'anything'` is True in Python — without the guard, every blank-company row false-matches. Required: `if not s or not c: return False`.
 2. **Word-boundary matching, not substring containment** (#497). Use `re.search(rf"\b{re.escape(needle)}\b", haystack)` (bidirectional), not `needle in haystack`. Substring `in` matches "Apple" inside "GreenApple" and "AI" inside "AIRBUS"; word boundaries don't.
 
+Ingest (`triage/contacts.py`) and prep (`find_contacts.py`) share the single canonical `company_match()` — ingest delegates to it (#963). Do not reintroduce a separate matcher in the triage path; a divergent copy is what let the substring bug survive there after #497 fixed prep. (The rejection detector's `_company_match()` is intentionally a different, fuzzy algorithm — leave it.)
+
 ### Title/Company Cleaning
 API title and company fields contain appended metadata (location, salary, recency flags).
 `clean_title()` and `clean_company()` must be applied at every ingest path before storing.

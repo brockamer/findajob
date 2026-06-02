@@ -19,6 +19,10 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 - **`uv sync` now installs findajob itself** (#978): `pyproject.toml` gained a `[build-system]` table (setuptools backend), so `uv sync` installs the findajob package (editable) alongside its dependencies in one step. Fresh git worktrees and clean dev checkouts no longer need a separate `uv pip install -e .` before `import findajob` works. CI's install step collapses to `uv sync --locked --extra dev`, with lint/type/test now run via `uv run`. The Docker build commands are unchanged: `pip install --require-hashes` cannot hash an editable install, so findajob stays excluded from the hashed export (`--no-emit-project`) and is editable-installed separately (now resolving the explicit `setuptools.build_meta` backend rather than pip's legacy PEP 517 fallback — equivalent for this src-layout package). No runtime or operator-facing behavior change.
 
+### Fixed
+
+- **False "inside contact" signals on the board for short-named companies** (#963): the ingest-time contact matcher used substring containment, so a connection at "GreenApple" would light up the amber contact cell on an "Apple" job, and the two-letter company "AI" matched any connection whose company merely contained "ai" (e.g. "AIRBUS"). Ingest now routes through the same canonical word-boundary `company_match()` the prep path already used (the #497 fix), so both paths match identically and the divergent matcher is gone. A renamed `connections.csv` header now fails the same way at ingest as at prep — logging a `find_contacts_error` event instead of silently yielding zero contacts (no more silent split-brain). No schema change.
+
 ## [0.32.0] — 2026-06-02
 
 ### Added
