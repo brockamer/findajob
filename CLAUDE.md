@@ -123,6 +123,7 @@ Audit anchor — classifies persisted state by ownership and recoverability. The
 | `config/roles/`, `config/scoring_schema.json`, `config/model_pricing.yaml`, `config/reference.docx`, `config/strip-bookmarks.lua` | Repo-baked (in image, not bind-mount) | No | **Yes** — `docker compose pull` restores |
 | `data/.env` | Operator-curated (API keys, NTFY_TOPIC) | **Yes** | **No** — rotation-grade pain to re-collect |
 | `data/.onboarding-complete` | Pipeline-generated sentinel | No | **Yes** — re-emit on next interview |
+| `data/timezone` | Operator-picked at onboarding; read at container boot to set `TZ` (#981) | No | **Yes** — re-interview re-emits; effective only after restart |
 | `data/connections.csv` | Operator-uploaded (LinkedIn export) | No | **Yes** — re-export from LinkedIn (minutes) |
 | `companies/` (active + `_applied/` + `_waitlisted/` + `_rejected/` + `.stale/`) | Pipeline-generated | Selective (skip `.stale/`) | **Partially** — re-runnable per-job, but stale JD URLs no longer reachable |
 | `logs/pipeline.jsonl` | Pipeline-generated | No (observability, not state) | **No** — historical observability lost if dropped |

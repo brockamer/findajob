@@ -55,6 +55,11 @@ curl -fsSL -o .env https://raw.githubusercontent.com/brockamer/findajob/main/ops
 
 Edit `.env` to taste — at minimum set `FINDAJOB_TZ` and `FINDAJOB_MATERIALS_PORT`. `FINDAJOB_IMAGE_TAG` defaults to `latest`, which is what every stack runs.
 
+The `TZ` in `compose.yaml` is the default until you finish onboarding; the
+timezone you pick there is saved to `state/data/timezone` and applied on the
+next `docker compose restart` (or automatically on your next `docker compose pull
+&& docker compose up -d`).
+
 ## 3. Populate `state/`
 
 There are two `.env` files in a findajob deployment with different roles

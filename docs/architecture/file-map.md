@@ -11,7 +11,7 @@ When this map drifts from the actual code (renamed file, new route module, retir
 <repo>/src/findajob/paths.py                # central path resolver — from findajob.paths import BASE, PANDOC
 <repo>/src/findajob/utils.py                # shared utilities: log_event(), write_audit(), load_env()
 <repo>/src/findajob/cleaning.py             # normalize, fingerprint, clean_title, clean_company
-<repo>/src/findajob/timeutil.py             # central TZ helper — local_tz/local_zoneinfo + local-calendar bucketing of naïve-UTC DB timestamps (today_local, day_window_start_utc, utc_str_to_local_date); reads deployment TZ, UTC fallback (#967)
+<repo>/src/findajob/timeutil.py             # central TZ helper — local_tz/local_zoneinfo + local-calendar bucketing of naïve-UTC DB timestamps (today_local, day_window_start_utc, utc_str_to_local_date); reads deployment TZ, UTC fallback (#967); read_timezone_file/pending_timezone read data/timezone for entrypoint export (#981)
 <repo>/src/findajob/config_seed.py          # seed_runtime_config() — entrypoint-invoked .example→live materialization for configs with hard 500-on-missing paths (#627)
 <repo>/src/findajob/ingest.py               # ingest_manual_job() — shared entry point for the /ingest/ web form
 <repo>/src/findajob/fetchers/                 # Greenhouse, Gmail job fetching; RapidAPI feeds via adapters/
@@ -69,6 +69,7 @@ When this map drifts from the actual code (renamed file, new route module, retir
 <repo>/scripts/discover_companies.py            # weekly company discovery cron entry
 <repo>/scripts/critique_review.py            # entry-point shim → findajob.critique_aggregator.pipeline (#265); manual, writes gitignored report
 <repo>/scripts/seed_runtime_config.py       # entrypoint-invoked at every container start; thin shim over findajob.config_seed.seed_runtime_config (#627)
+<repo>/scripts/resolve_timezone.py        # entrypoint shim: prints data/timezone's IANA zone for `export TZ` at boot (#981)
 
 # ── Candidate content (all gitignored — fill these in after cloning) ────────
 <repo>/candidate_context/profile.md         # candidate profile — injected into scoring, resume, CL, outreach

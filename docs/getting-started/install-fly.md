@@ -132,6 +132,10 @@ See [`gmail.md`](gmail.md) for the 2FA + app-password procedure. Gmail integrati
 
 After onboarding lands you on the dashboard, the feed is empty — no jobs have been triaged yet. By default, triage runs at **midnight America/New_York** (the timezone set by the `fly.toml` `[env].TZ` value).
 
+After you complete onboarding, the timezone you gave drives this instead: it's
+saved and applied on your next app restart (restart from the Fly dashboard to
+apply it immediately). The `[env].TZ` value is just the default until then.
+
 **The dashboard tells you what to do.** A blue banner above the (empty) job table shows when the next scheduled triage will fire and includes a **Trigger triage now** button. Click it to start the pipeline immediately rather than wait for the cron cycle.
 
 **Plan for 5–60 minutes** on the first run — the wide range depends on how many target companies you named in the onboarding interview (more companies → more Greenhouse / Ashby feeds to walk → more jobs to score). Smaller named lists finish in 5–15 minutes. Subsequent daily runs are delta-only and complete in 1–5 minutes.
