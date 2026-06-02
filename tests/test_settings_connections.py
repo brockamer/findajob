@@ -107,9 +107,10 @@ def test_get_empty_state_shows_upload_and_explainer_no_remove(client: TestClient
     assert "Remove file" not in body
 
 
-def test_get_present_state_shows_row_count_and_last_imported(client: TestClient, base_root: Path) -> None:
+def test_get_present_state_shows_row_count_and_last_imported(client: TestClient, base_root: Path, monkeypatch) -> None:
     """With a connections.csv the page renders row count + last-imported
-    (absolute PT timestamp + relative humanized age) + remove zone."""
+    (absolute timestamp in the configured TZ + relative humanized age) + remove zone."""
+    monkeypatch.setenv("TZ", "America/Los_Angeles")
     _seed_connections(base_root, _ROW_A, _ROW_B, _ROW_C, mtime_seconds_ago=3 * 7 * 86400)
     response = client.get("/settings/connections/")
     assert response.status_code == 200
@@ -117,11 +118,10 @@ def test_get_present_state_shows_row_count_and_last_imported(client: TestClient,
     # Row count surfaces (header excluded — 3 data rows).
     assert "Rows:" in body
     assert ">3<" in body
-    # Last-imported has both absolute (PT timezone strftime) and relative parts.
+    # Last-imported has both absolute (configured-TZ strftime) and relative parts.
     assert "Last imported:" in body
-    # PT timestamp format: "YYYY-MM-DD HH:MM PST" or "...PDT" — assert on the
-    # canonical zone-abbrev shape that strftime("%Z") emits.
-    assert "PT" in body or "PST" in body or "PDT" in body
+    # With TZ=America/Los_Angeles, strftime("%Z") emits PST/PDT by season.
+    assert "PST" in body or "PDT" in body
     # Relative form for a 3-week-old file lands in the "X weeks ago" branch.
     assert "weeks ago" in body
     # Remove zone is visible because the file exists.

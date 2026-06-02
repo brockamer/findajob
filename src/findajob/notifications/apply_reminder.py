@@ -1,9 +1,9 @@
 """Daily nudge with quip + checklist — user-facing."""
 
 from datetime import datetime
-from zoneinfo import ZoneInfo
 
 from findajob.notifications.ntfy import _p, db_connect, send
+from findajob.timeutil import local_zoneinfo
 
 QUIPS = (
     "The perfect resume is the enemy of the submitted one. Go click Apply.",
@@ -24,8 +24,9 @@ QUIPS = (
 
 
 def cmd_apply_reminder() -> None:
-    # Rotate by day-of-year in PT so the quip changes at midnight Pacific
-    day_index = datetime.now(ZoneInfo("America/Los_Angeles")).timetuple().tm_yday % len(QUIPS)
+    # Rotate by day-of-year in the deployment's timezone so the quip changes at
+    # the operator's local midnight, not a hardcoded zone.
+    day_index = datetime.now(local_zoneinfo()).timetuple().tm_yday % len(QUIPS)
     quip = QUIPS[day_index]
 
     # Pull real counts for the daily checklist

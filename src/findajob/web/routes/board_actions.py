@@ -17,7 +17,6 @@ import subprocess
 import sys
 from collections.abc import Callable
 from datetime import UTC, datetime
-from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -44,6 +43,7 @@ from findajob.background_tasks import TASK_ID_ENV_VAR, record_failed, record_sta
 from findajob.classification import is_synthetic_job
 from findajob.paths import BASE, IMAGE_ROOT
 from findajob.spend_ceiling import check_launch_gate
+from findajob.timeutil import local_zoneinfo
 from findajob.web.company_history import build_history_by_fp, fetch_company_history
 from findajob.web.cron_dispatch import dispatch_cron
 from findajob.web.filters import registry as filter_registry
@@ -565,9 +565,8 @@ def regenerate_confirm(
 
     context_lines: list[str] = []
     if last_prep_utc:
-        pt = ZoneInfo("America/Los_Angeles")
-        utc = ZoneInfo("UTC")
-        dt = datetime.fromisoformat(last_prep_utc).replace(tzinfo=utc).astimezone(pt)
+        local = local_zoneinfo()
+        dt = datetime.fromisoformat(last_prep_utc).replace(tzinfo=UTC).astimezone(local)
         context_lines.append(f"Last generated: {dt.strftime('%Y-%m-%d %H:%M %Z')}")
 
     templates = request.app.state.templates
@@ -1321,7 +1320,7 @@ def notes_history(
 ) -> HTMLResponse:
     """Render the notes_history disclosure fragment for one job.
 
-    Lazy-loaded on <details> first-open via hx-trigger="toggle once". PT
+    Lazy-loaded on <details> first-open via hx-trigger="toggle once". Local-tz
     rendering happens server-side; the template stays Jinja-pure.
     """
     job = db.execute("SELECT id FROM jobs WHERE fingerprint=?", (fingerprint,)).fetchone()
@@ -1332,16 +1331,15 @@ def notes_history(
         (job["id"],),
     ).fetchall()
 
-    pt = ZoneInfo("America/Los_Angeles")
-    utc = ZoneInfo("UTC")
+    local = local_zoneinfo()
     rows = []
     for r in raw_rows:
         # updated_at is stored as 'YYYY-MM-DD HH:MM:SS' (naive UTC, sqlite datetime())
-        dt = datetime.fromisoformat(r["updated_at"]).replace(tzinfo=utc).astimezone(pt)
+        dt = datetime.fromisoformat(r["updated_at"]).replace(tzinfo=UTC).astimezone(local)
         rows.append(
             {
                 "notes": r["notes"],
-                "updated_at_pt": dt.strftime("%Y-%m-%d %H:%M %Z"),
+                "updated_at_local": dt.strftime("%Y-%m-%d %H:%M %Z"),
             }
         )
 

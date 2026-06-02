@@ -19,11 +19,11 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Request, UploadFile
 from fastapi.responses import HTMLResponse
 
+from findajob.timeutil import local_zoneinfo
 from findajob.web.connections_upload import (
     MAX_BYTES,
     atomic_write_connections,
@@ -33,8 +33,6 @@ from findajob.web.connections_upload import (
 )
 
 router = APIRouter(prefix="/settings/connections", tags=["settings"])
-
-_PT = ZoneInfo("America/Los_Angeles")
 
 
 def _humanize_age(seconds: float) -> str:
@@ -64,7 +62,7 @@ def _build_state(base: Path) -> dict:
     if not path.exists():
         return {
             "file_present": False,
-            "last_imported_pt": None,
+            "last_imported_local": None,
             "last_imported_relative": None,
             "row_count": 0,
         }
@@ -72,7 +70,7 @@ def _build_state(base: Path) -> dict:
     age_seconds = (datetime.now(UTC) - mtime).total_seconds()
     return {
         "file_present": True,
-        "last_imported_pt": mtime.astimezone(_PT).strftime("%Y-%m-%d %H:%M %Z"),
+        "last_imported_local": mtime.astimezone(local_zoneinfo()).strftime("%Y-%m-%d %H:%M %Z"),
         "last_imported_relative": _humanize_age(age_seconds),
         "row_count": count_connections_rows(path),
     }

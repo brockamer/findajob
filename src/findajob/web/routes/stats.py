@@ -36,7 +36,7 @@ def _bucket_by_local_day(rows: list[sqlite3.Row]) -> list[tuple[str, str, int]]:
     tuples bucketed on the operator's local calendar day.
 
     Timestamps are naïve-UTC DB strings; bucketing on the local day (not the UTC
-    day) keeps a late-evening PT transition on the right day (#967). The output
+    day) keeps a late-evening local-time transition on the right day (#967). The output
     shape matches what ``_build_daily_matrix`` / ``_build_reason_matrix`` expect
     from a SQL ``GROUP BY`` (they read columns 0/1/2 positionally).
     """
@@ -128,8 +128,8 @@ def funnel(
     """Daily stage-transition counts over the last _FUNNEL_WINDOW_DAYS."""
     today = today_local()
     start_day = today - timedelta(days=_FUNNEL_WINDOW_DAYS - 1)
-    # Bucket on the operator's PT calendar: fetch raw naïve-UTC timestamps and
-    # group by local day in Python (#967). The >= bound is local-midnight of
+    # Bucket on the operator's configured-TZ calendar: fetch raw naïve-UTC
+    # timestamps and group by local day in Python (#967). The >= bound is local-midnight of
     # start_day expressed in UTC, so the string compare on the canonical
     # "YYYY-MM-DD HH:MM:SS" format is correct.
     placeholders = ",".join("?" * len(ALL_STAGES))
@@ -248,7 +248,7 @@ def feedback(
     week_start = today - timedelta(days=_FEEDBACK_WEEK_DAYS - 1)
 
     # Bucket feedback_log.created_at (naïve-UTC, defaults to datetime('now')) on
-    # the operator's PT calendar day (#967). Fetch raw timestamps and group in
+    # the operator's configured-TZ calendar day (#967). Fetch raw timestamps and group in
     # Python; the >= bound is local-midnight of window_start expressed in UTC.
     raw = db.execute(
         """
@@ -363,8 +363,8 @@ def scoring(
     today = today_local()
     start_day = today - timedelta(days=_SCORING_WINDOW_DAYS - 1)
 
-    # Window bound is local-midnight of start_day expressed in UTC, so a late-PT
-    # scored transition isn't dropped a day early (#967). No day bucketing here —
+    # Window bound is local-midnight of start_day expressed in UTC, so a
+    # late-evening local scored transition isn't dropped a day early (#967). No day bucketing here —
     # this query is a DISTINCT membership set, not a daily series.
     scored_id_rows = db.execute(
         """
