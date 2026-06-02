@@ -1,0 +1,28 @@
+{# Shared settings sub-nav (#988). The /settings/ area has no index page and
+   the top-nav "Settings" link targets only one page, so each settings page
+   was unreachable from the others once configured. This partial lists every
+   /settings/ page and is included at the top of each one; the active page is
+   bolded via a request.url.path prefix match. Add a new settings page by
+   appending one (href, label) pair here and including this partial in its
+   template. #}
+{% set settings_pages = [
+  ("/settings/reject-reasons/", "Reject reasons"),
+  ("/settings/active-sources/", "Sources"),
+  ("/settings/excluded-employers/", "Excluded employers"),
+  ("/settings/connections/", "Connections"),
+  ("/settings/spend-ceiling/", "Spend ceiling"),
+  ("/settings/timezone/", "Timezone"),
+  ("/settings/gemini/", "Gemini key"),
+  ("/settings/backup/", "Backup"),
+] %}
+<nav class="mb-6 flex flex-wrap gap-x-4 gap-y-1 text-sm border-b border-slate-200 pb-3"
+     aria-label="Settings sections">
+  {% for href, label in settings_pages %}
+    {% set active = request.url.path.startswith(href) %}
+    <a href="{{ href }}"
+       {% if active %}aria-current="page"{% endif %}
+       class="{% if active %}font-semibold text-slate-900{% else %}text-slate-500 hover:text-slate-800{% endif %}">
+      {{ label }}
+    </a>
+  {% endfor %}
+</nav>

@@ -115,6 +115,33 @@ def test_post_blank_zone_returns_error(client: TestClient, tmp_path: Path) -> No
     assert read_timezone_file(tmp_path) is None
 
 
+# ── Shared settings sub-nav (#988) ────────────────────────────────────────────
+
+
+def test_settings_subnav_links_all_pages(client: TestClient) -> None:
+    """Every /settings/ page is reachable from the timezone page's sub-nav."""
+    resp = client.get("/settings/timezone/")
+    assert resp.status_code == 200
+    for href in (
+        "/settings/reject-reasons/",
+        "/settings/active-sources/",
+        "/settings/excluded-employers/",
+        "/settings/connections/",
+        "/settings/spend-ceiling/",
+        "/settings/gemini/",
+        "/settings/backup/",
+    ):
+        assert href in resp.text, f"settings sub-nav missing link to {href}"
+
+
+def test_existing_settings_page_links_to_timezone(client: TestClient) -> None:
+    """The shared sub-nav is included on existing settings pages too (not just
+    the new one), so timezone is reachable from anywhere in /settings/."""
+    resp = client.get("/settings/reject-reasons/")
+    assert resp.status_code == 200
+    assert "/settings/timezone/" in resp.text
+
+
 def test_post_uses_atomic_write(client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Write goes through os.replace (atomic), targeting data/timezone."""
     import os

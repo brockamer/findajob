@@ -86,6 +86,21 @@ def test_get_renders_picker_and_browser_detection_js(client: TestClient) -> None
     assert "resolvedOptions" in resp.text
 
 
+def test_get_renders_hidden_voice_redact_field_when_flagged(client: TestClient) -> None:
+    """The GET side of the voice_redact_failed propagation chain: when flagged,
+    the page renders the hidden input the form resubmits on POST."""
+    resp = client.get(f"/onboarding/timezone/{SID}/?voice_redact_failed=1")
+    assert resp.status_code == 200
+    assert '<input type="hidden" name="voice_redact_failed" value="1">' in resp.text
+
+
+def test_get_omits_hidden_voice_redact_field_when_not_flagged(client: TestClient) -> None:
+    """No flag → no hidden input, so the next step isn't spuriously warned."""
+    resp = client.get(f"/onboarding/timezone/{SID}/")
+    assert resp.status_code == 200
+    assert 'name="voice_redact_failed"' not in resp.text
+
+
 def test_get_preselects_existing_llm_value(client: TestClient, base_root: Path) -> None:
     """The LLM-derived pick from finalize is the server-side default selection."""
     _seed_llm_value(base_root, "Asia/Tokyo")
