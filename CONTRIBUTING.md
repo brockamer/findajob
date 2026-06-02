@@ -20,7 +20,7 @@ File an issue on [GitHub Issues](https://github.com/brockamer/findajob/issues). 
 ```bash
 git clone https://github.com/brockamer/findajob.git
 cd findajob
-uv sync                                          # install dev deps
+uv sync                                          # install findajob + dev deps (editable)
 uv run pytest                                    # test suite
 uv run ruff check src/ tests/                    # lint
 uv run ruff format --check src/ tests/           # format check

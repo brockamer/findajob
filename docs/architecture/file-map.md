@@ -7,7 +7,7 @@ When this map drifts from the actual code (renamed file, new route module, retir
 ## Layout
 
 ```
-# ── Package (uv sync for dev; pip install -e . inside Docker image) ────────
+# ── Package (uv sync installs findajob editable + dev deps; pip install -e . inside Docker image) ──
 <repo>/src/findajob/paths.py                # central path resolver — from findajob.paths import BASE, PANDOC; load_env() (.env reader)
 <repo>/src/findajob/audit.py                # log_event() → pipeline.jsonl, write_audit() → audit_log, cron_event_span()
 <repo>/src/findajob/cleaning.py             # normalize, fingerprint, clean_title, clean_company

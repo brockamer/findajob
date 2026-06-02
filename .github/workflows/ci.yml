@@ -18,28 +18,29 @@ jobs:
 
       - name: Install dependencies (from locked uv.lock)
         # Resolve from the committed lockfile, not the >= floors in pyproject.
-        # `uv export --locked` fails loudly if uv.lock has drifted from
-        # pyproject (vs --frozen, which silently uses a stale lock). The export
-        # carries hashes, so pip installs in --require-hashes mode. findajob
-        # itself is installed editable separately (--no-deps) because the
-        # project has no [build-system] and is excluded via --no-emit-project.
+        # `uv sync --locked` fails loudly if uv.lock has drifted from pyproject
+        # (vs --frozen, which silently uses a stale lock) and verifies the
+        # lockfile's hashes natively. Now that pyproject declares a
+        # [build-system], this single step installs both the dependency tree
+        # and findajob (editable) into .venv — so the lint/type/test steps
+        # below run through `uv run`.
         run: |
           pip install uv==0.11.7
-          uv export --locked --extra dev --no-emit-project -o requirements-dev.txt
-          pip install --require-hashes -r requirements-dev.txt
-          pip install -e . --no-deps
+          # Pin the venv to the setup-python interpreter above (3.12), not a
+          # uv-downloaded or higher system Python, so CI stays a 3.12 gate.
+          uv sync --locked --extra dev --python "$(which python)"
 
       - name: Lint
-        run: ruff check src/ scripts/ tests/
+        run: uv run ruff check src/ scripts/ tests/
 
       - name: Format check
-        run: ruff format --check src/ scripts/ tests/
+        run: uv run ruff format --check src/ scripts/ tests/
 
       - name: Type check
-        run: mypy src/findajob/
+        run: uv run mypy src/findajob/
 
       - name: Test
-        run: pytest tests/ -v
+        run: uv run pytest tests/ -v
 
   docker-build-smoke:
     runs-on: ubuntu-latest

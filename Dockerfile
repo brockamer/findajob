@@ -7,8 +7,12 @@
 
 # deps — resolve uv.lock into a pinned, hashed requirements file. `uv export
 # --locked` fails the build loudly if uv.lock has drifted from pyproject.toml
-# (vs --frozen, which would silently use a stale lock). uv is pinned from PyPI
-# so this needs no external image tag.
+# (vs --frozen, which would silently use a stale lock). `--no-emit-project`
+# excludes findajob itself: pyproject now declares a [build-system], so the
+# lock marks findajob `editable`, and an editable entry carries no hash and
+# cannot ride a `pip install --require-hashes` install — it is installed
+# separately in the runtime stage (see below). uv is pinned from PyPI so this
+# needs no external image tag.
 FROM python:3.12-slim-bookworm AS deps
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
@@ -63,9 +67,13 @@ RUN set -eux; \
 
 # Install the locked dependency set (pinned + hashed, from the deps stage)
 # first, then editable-install findajob itself with --no-deps so uv.lock is the
-# single resolution source. src/ must be present before `pip install -e .` can
-# register the findajob package. Copy order keeps source edits (scripts, ops)
-# from invalidating the dependency pip layer.
+# single resolution source. The split is required, not legacy: --require-hashes
+# cannot hash an editable install, so findajob is excluded from the hashed
+# requirements (--no-emit-project, deps stage) and installed here instead —
+# pyproject's [build-system] does NOT let these two steps collapse into one.
+# src/ must be present before `pip install -e .` can register the findajob
+# package. Copy order keeps source edits (scripts, ops) from invalidating the
+# dependency pip layer.
 WORKDIR /app
 COPY --from=deps /app/requirements.txt /app/requirements.txt
 COPY pyproject.toml /app/
