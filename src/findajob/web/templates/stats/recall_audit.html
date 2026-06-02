@@ -9,7 +9,8 @@
   Weekly automated re-scoring of hard-rejected and low-scored jobs. An
   <em>upgrade</em> means the auditor model scored the job higher than the
   original scorer — potential recall loss. Upgrade rates above 10% trigger an
-  ntfy alert. Wilson 95% CIs on all rates; weeks with N &lt; 20 show "—".
+  ntfy alert. Each row is one audit run, dated by when it ran. Wilson 95% CIs
+  on all rates; audits with N &lt; 20 show "—".
 </p>
 
 {% if not has_data %}
@@ -21,7 +22,7 @@
   <section class="mb-6">
     <h2 class="text-lg font-semibold mb-2">Upgrade rate over time</h2>
     <div class="bg-white rounded border border-slate-200 p-3">
-      <canvas id="recall-chart" role="img" aria-label="Weekly recall-audit upgrade rate" height="100"></canvas>
+      <canvas id="recall-chart" role="img" aria-label="Recall-audit upgrade rate by audit date" height="100"></canvas>
       <noscript>
         <p class="text-sm text-slate-600">Chart requires JavaScript.</p>
       </noscript>
@@ -29,12 +30,12 @@
   </section>
 
   <section>
-    <h2 class="text-lg font-semibold mb-2">Weekly results</h2>
+    <h2 class="text-lg font-semibold mb-2">Results by audit date</h2>
     <div class="overflow-x-auto">
       <table class="min-w-full bg-white shadow-sm rounded-sm text-sm">
         <thead class="bg-slate-100 text-left text-xs uppercase tracking-wide text-slate-600">
           <tr>
-            <th class="px-3 py-2">Week</th>
+            <th class="px-3 py-2">Audit date</th>
             <th class="px-3 py-2 text-right">Sampled</th>
             <th class="px-3 py-2 text-right">Upgrades</th>
             <th class="px-3 py-2 text-right">Rate</th>
@@ -44,21 +45,21 @@
           </tr>
         </thead>
         <tbody>
-          {% for w in weeks %}
-            <tr class="{% if loop.index0 % 2 %}bg-slate-50{% endif %} {% if w.alert %}bg-red-50{% endif %}">
-              <td class="px-3 py-1 font-mono">{{ w.date }}</td>
-              <td class="px-3 py-1 text-right">{{ w.total }}</td>
-              <td class="px-3 py-1 text-right">{{ w.upgrades }}</td>
-              {% if w.gated %}
+          {% for a in audits %}
+            <tr class="{% if loop.index0 % 2 %}bg-slate-50{% endif %} {% if a.alert %}bg-red-50{% endif %}">
+              <td class="px-3 py-1 font-mono">{{ a.date }}</td>
+              <td class="px-3 py-1 text-right">{{ a.total }}</td>
+              <td class="px-3 py-1 text-right">{{ a.upgrades }}</td>
+              {% if a.gated %}
                 <td class="px-3 py-1 text-right text-slate-300">—</td>
                 <td class="px-3 py-1 text-right text-xs text-slate-400">N &lt; 20</td>
               {% else %}
-                <td class="px-3 py-1 text-right {% if w.alert %}text-red-700 font-semibold{% endif %}">{{ w.pct }}%</td>
-                <td class="px-3 py-1 text-right text-xs text-slate-500">[{{ w.lo }}%, {{ w.hi }}%]</td>
+                <td class="px-3 py-1 text-right {% if a.alert %}text-red-700 font-semibold{% endif %}">{{ a.pct }}%</td>
+                <td class="px-3 py-1 text-right text-xs text-slate-500">[{{ a.lo }}%, {{ a.hi }}%]</td>
               {% endif %}
-              <td class="px-3 py-1 text-xs text-slate-500">{{ w.model }}</td>
+              <td class="px-3 py-1 text-xs text-slate-500">{{ a.model }}</td>
               <td class="px-3 py-1">
-                {% if w.alert %}
+                {% if a.alert %}
                   <span class="inline-block px-1.5 py-0.5 bg-red-100 text-red-700 text-xs rounded">⚠ &gt;10%</span>
                 {% endif %}
               </td>

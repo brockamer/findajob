@@ -833,7 +833,9 @@ def recall_audit(
         """,
     ).fetchall()
 
-    weeks: list[dict] = []
+    # One row per audit *date* (GROUP BY date(audited_at)), not per ISO week —
+    # the cron runs weekly but the grain is per-run, so label it by date (#967).
+    audits: list[dict] = []
     for row in audit_rows:
         day = row["day"] if isinstance(row, sqlite3.Row) else row[0]
         total = row["total"] if isinstance(row, sqlite3.Row) else row[1]
@@ -845,7 +847,7 @@ def recall_audit(
         else:
             pct, lo, hi = 0.0, 0.0, 0.0
             gated = True
-        weeks.append(
+        audits.append(
             {
                 "date": day,
                 "total": total,
@@ -860,9 +862,9 @@ def recall_audit(
         )
 
     chart_data = {
-        "labels": [w["date"] for w in reversed(weeks)],
+        "labels": [a["date"] for a in reversed(audits)],
         "datasets": [
-            {"label": "upgrade rate %", "data": [w["pct"] for w in reversed(weeks)]},
+            {"label": "upgrade rate %", "data": [a["pct"] for a in reversed(audits)]},
         ],
     }
 
@@ -872,8 +874,8 @@ def recall_audit(
         name="stats/recall_audit.html",
         context={
             "tab": "recall-audit",
-            "weeks": weeks,
-            "has_data": len(weeks) > 0,
+            "audits": audits,
+            "has_data": len(audits) > 0,
             "chart_data_json": json.dumps(chart_data),
         },
     )
