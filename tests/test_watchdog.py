@@ -583,3 +583,37 @@ def test_reap_podcast_skips_already_finished(db, _patch_log):
     count = watchdog.reap_podcast(db)
 
     assert count == 0
+
+
+# ── reap_study_materials (#873) ───────────────────────────────────────────
+
+
+def test_reap_study_materials_marks_both_kinds_failed(db, _patch_log):
+    """Stuck study_guide / flashcards rows are marked failed (no stage reset),
+    unblocking the per-job duplicate guard so the materials-page button stops
+    showing 'Generating…' forever after a worker dies mid-generation."""
+    job_id = _insert_job(db, stage="interview")
+    sg_task = record_start(db, job_id=job_id, kind="study_guide")
+    fc_task = record_start(db, job_id=job_id, kind="flashcards")
+    _backdate_task(db, sg_task, minutes_ago=KIND_TIMEOUT_MINUTES["study_guide"] + 1)
+    _backdate_task(db, fc_task, minutes_ago=KIND_TIMEOUT_MINUTES["flashcards"] + 1)
+
+    count = watchdog.reap_study_materials(db)
+
+    assert count == 2
+    for task_id in (sg_task, fc_task):
+        status = db.execute("SELECT status FROM background_tasks WHERE id=?", (task_id,)).fetchone()["status"]
+        assert status == "failed"
+    job_stage = db.execute("SELECT stage FROM jobs WHERE id=?", (job_id,)).fetchone()["stage"]
+    assert job_stage == "interview"
+
+
+def test_reap_study_materials_leaves_fresh_rows_alone(db, _patch_log):
+    job_id = _insert_job(db, stage="interview")
+    sg_task = record_start(db, job_id=job_id, kind="study_guide")
+
+    count = watchdog.reap_study_materials(db)
+
+    assert count == 0
+    status = db.execute("SELECT status FROM background_tasks WHERE id=?", (sg_task,)).fetchone()["status"]
+    assert status == "running"

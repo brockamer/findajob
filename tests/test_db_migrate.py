@@ -861,6 +861,115 @@ def test_prep_phase_b_helper_is_idempotent(tmp_path: Path) -> None:
         conn.close()
 
 
+# ── #873: background_tasks.kind gains 'study_guide' + 'flashcards' ────────
+#
+# On-demand study-guide / flashcard generation from the materials page needs
+# the same double-submit + concurrency guard the podcast path uses (#879):
+# a background_tasks row keyed by kind. Mirror the prep_phase_b / podcast
+# migration: fresh DB picks the kinds up via 0002; legacy stacks absorb them
+# via the rebuild helper.
+
+
+def test_fresh_db_accepts_study_materials_kinds(tmp_path: Path) -> None:
+    """A fresh DB migrated through ``apply_pending`` accepts both
+    ``study_guide`` and ``flashcards`` as ``background_tasks.kind`` values."""
+    db = tmp_path / "fresh_study_materials.db"
+    conn = sqlite3.connect(str(db))
+    try:
+        apply_pending(conn)
+        assert _kind_check_accepts(conn, "study_guide"), "fresh DB must accept kind='study_guide'"
+        assert _kind_check_accepts(conn, "flashcards"), "fresh DB must accept kind='flashcards'"
+    finally:
+        conn.close()
+
+
+def test_existing_db_gains_study_materials_kinds_via_helper(tmp_path: Path) -> None:
+    """A stack with the pre-#873 ``background_tasks.kind`` CHECK (podcast-era,
+    no study_guide/flashcards) gets the constraint updated when
+    ``apply_pending`` runs again. Existing rows + indexes preserved."""
+    db = tmp_path / "existing_study_materials.db"
+
+    conn = sqlite3.connect(str(db))
+    try:
+        apply_pending(conn)
+    finally:
+        conn.close()
+
+    conn = sqlite3.connect(str(db))
+    try:
+        # Sentinel row to verify preservation across the rebuild.
+        conn.execute("INSERT INTO background_tasks (job_id, kind) VALUES ('preserve-sm', 'podcast')")
+        conn.commit()
+
+        # Simulate the pre-#873 CHECK (podcast-era — no study_guide/flashcards).
+        old_check = """
+        CREATE TABLE background_tasks_old_check (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id TEXT NOT NULL,
+            kind TEXT NOT NULL CHECK(kind IN (
+                'prep', 'prep_phase_b', 'interview_prep', 'speculative_research', 'podcast'
+            )),
+            started_at TEXT NOT NULL DEFAULT (datetime('now')),
+            finished_at TEXT,
+            status TEXT NOT NULL DEFAULT 'running' CHECK(status IN ('running', 'succeeded', 'failed')),
+            error_message TEXT,
+            pid INTEGER
+        )
+        """
+        conn.execute("PRAGMA foreign_keys=OFF")
+        cols = [row[1] for row in conn.execute("PRAGMA table_info(background_tasks)").fetchall()]
+        cols_csv = ",".join(cols)
+        conn.execute("ALTER TABLE background_tasks RENAME TO _bg_pre_sm_oldcheck")
+        conn.executescript(old_check.replace("background_tasks_old_check", "background_tasks"))
+        conn.execute(f"INSERT INTO background_tasks ({cols_csv}) SELECT {cols_csv} FROM _bg_pre_sm_oldcheck")
+        conn.execute("DROP TABLE _bg_pre_sm_oldcheck")
+        conn.commit()
+        conn.execute("PRAGMA foreign_keys=ON")
+
+        assert not _kind_check_accepts(conn, "study_guide"), (
+            "test setup broken: simulated-old-state should reject study_guide"
+        )
+    finally:
+        conn.close()
+
+    conn = sqlite3.connect(str(db))
+    try:
+        apply_pending(conn)
+        assert _kind_check_accepts(conn, "study_guide"), "after apply_pending, kind='study_guide' must be accepted"
+        assert _kind_check_accepts(conn, "flashcards"), "after apply_pending, kind='flashcards' must be accepted"
+        # Sentinel + named indexes preserved.
+        row = conn.execute("SELECT job_id, kind FROM background_tasks WHERE job_id='preserve-sm'").fetchone()
+        assert row == ("preserve-sm", "podcast")
+        assert _named_indexes(conn, "background_tasks") == [
+            "idx_background_tasks_job_id",
+            "idx_background_tasks_status_kind",
+        ], "rebuild must preserve background_tasks named indexes"
+    finally:
+        conn.close()
+
+
+def test_study_materials_kinds_helper_is_idempotent(tmp_path: Path) -> None:
+    """Running ``apply_pending`` twice on a DB that already has the new
+    kinds in the CHECK must not trigger a second rebuild."""
+    db = tmp_path / "idempotent_study_materials.db"
+    conn = sqlite3.connect(str(db))
+    try:
+        apply_pending(conn)
+        conn.execute("INSERT INTO background_tasks (job_id, kind) VALUES ('idem-sm', 'study_guide')")
+        conn.commit()
+        rowid_before = conn.execute("SELECT rowid FROM background_tasks WHERE job_id='idem-sm'").fetchone()[0]
+    finally:
+        conn.close()
+
+    conn = sqlite3.connect(str(db))
+    try:
+        apply_pending(conn)
+        rowid_after = conn.execute("SELECT rowid FROM background_tasks WHERE job_id='idem-sm'").fetchone()[0]
+        assert rowid_after == rowid_before, "rebuild ran on second apply_pending — helper is not idempotent"
+    finally:
+        conn.close()
+
+
 # ── #498: tighten jobs.score_status CHECK — drop dead 'needs_info' value ───
 #
 # Constraint *tightening* (vs the relaxations above). The helper's

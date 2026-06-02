@@ -211,6 +211,32 @@ def reap_podcast(conn: sqlite3.Connection) -> int:
     return count
 
 
+def reap_study_materials(conn: sqlite3.Connection) -> int:
+    """Mark stuck `study_guide` / `flashcards` background_tasks failed (#873).
+
+    Mirrors :func:`reap_podcast`: on-demand study-guide / flashcard generation
+    is synchronous in the request, so the only way a row stays ``running`` is a
+    worker killed mid-generation. With no reap, ``find_active_for_subject``
+    would keep returning that row — the per-job concurrency guard stays armed
+    and the materials-page button shows "Generating…" forever. No stage reset:
+    these kinds don't move ``jobs.stage``; the ``background_tasks`` row is the
+    only surface. Marking it failed unblocks the duplicate guard so the
+    operator can retry.
+    """
+    count = 0
+    for kind in ("study_guide", "flashcards"):
+        timeout = KIND_TIMEOUT_MINUTES[kind]
+        for row in find_stuck(conn, kind=kind, max_age_minutes=timeout):
+            record_failed(
+                conn,
+                row["id"],
+                error_message=f"watchdog: {kind} generation > {timeout}min — likely died",
+            )
+            log_event("study_material_watchdog_failed", task_id=row["id"], job_id=row["job_id"], kind=kind)
+            count += 1
+    return count
+
+
 def sweep_orphan_folders(conn: sqlite3.Connection) -> int:
     """Move orphan top-level folders in companies/ to companies/.stale/.
 
@@ -286,6 +312,7 @@ def main() -> None:
             interview_count = reap_interview_prep(conn)
             spec_count = reap_speculative_research(conn)
             podcast_count = reap_podcast(conn)
+            study_materials_count = reap_study_materials(conn)
             orphans = sweep_orphan_folders(conn)
         finally:
             conn.close()
@@ -297,6 +324,7 @@ def main() -> None:
             interview_failed=interview_count,
             speculative_failed=spec_count,
             podcast_failed=podcast_count,
+            study_materials_failed=study_materials_count,
             orphans_swept=orphans,
         )
 

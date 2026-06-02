@@ -277,10 +277,6 @@ def _generate(
         critique=critique,
         interview_prep=output_md,
         cached_prefix=cached_prefix,
-        file_prefix=file_prefix,
-        co=co,
-        t=t,
-        timestamp_fn=timestamp_fn,
         conn=conn,
     )
 
@@ -321,16 +317,75 @@ def _generate_study_materials(
     critique: str,
     interview_prep: str,
     cached_prefix: str,
-    file_prefix: str,
-    co: str,
-    t: str,
-    timestamp_fn: str,
     conn: sqlite3.Connection | None,
 ) -> None:
     """Generate study guide + flashcard deck after interview prep completes.
 
-    Non-fatal: failures here log + notify but don't fail the overall
-    interview prep run (the primary artifact already shipped).
+    Delegates to the standalone generators (shared with the on-demand
+    materials-page routes, #873). Non-fatal: each generator logs + notifies
+    on its own failure before raising, so the overall interview-prep run
+    survives a study-guide or flashcard failure. The two are independent —
+    a study-guide failure no longer blocks flashcard generation (#873; they
+    were coupled by an early return before the standalone extraction).
+    """
+    try:
+        generate_study_guide_for_job(
+            prep_folder=prep_folder,
+            company=company,
+            title=title,
+            job_id=job_id,
+            jd_text=jd_text,
+            briefing=briefing,
+            resume=resume,
+            cover=cover,
+            critique=critique,
+            interview_prep=interview_prep,
+            cached_prefix=cached_prefix,
+            conn=conn,
+        )
+    except Exception:  # noqa: BLE001 — already logged + notified inside the generator
+        pass
+
+    try:
+        generate_flashcards_for_job(
+            prep_folder=prep_folder,
+            company=company,
+            title=title,
+            job_id=job_id,
+            jd_text=jd_text,
+            briefing=briefing,
+            resume=resume,
+            interview_prep=interview_prep,
+            cached_prefix=cached_prefix,
+            conn=conn,
+        )
+    except Exception:  # noqa: BLE001 — already logged + notified inside the generator
+        pass
+
+
+def generate_study_guide_for_job(
+    *,
+    prep_folder: str,
+    company: str,
+    title: str,
+    job_id: str,
+    jd_text: str,
+    briefing: str,
+    resume: str,
+    cover: str,
+    critique: str,
+    interview_prep: str,
+    cached_prefix: str,
+    conn: sqlite3.Connection | None = None,
+) -> str:
+    """Generate a study guide from existing prep artifacts. Returns the .md path.
+
+    Called by the auto-generate path (after interview prep) and by the
+    on-demand route handler (materials page button, #873). Logs
+    ``study_guide_complete`` on success; on empty/short output logs
+    ``study_guide_error`` + ntfy and raises ``RuntimeError`` so callers
+    decide how to surface the failure (the bundled path swallows; the route
+    redirects with an error flag).
     """
     cover_section = f"\nCOVER LETTER:\n{cover}\n" if cover else ""
     critique_section = f"\nRECRUITER CRITIQUE:\n{critique}\n" if critique else ""
@@ -345,7 +400,6 @@ def _generate_study_materials(
         f"\nINTERVIEW PREP:\n{interview_prep}\n"
     )
 
-    # ── Study Guide ──
     study_guide_md = run_role(
         "study_guide_generator",
         study_prompt,
@@ -355,21 +409,26 @@ def _generate_study_materials(
     )
 
     if not study_guide_md or len(study_guide_md) < 200:
+        chars = len(study_guide_md) if study_guide_md else 0
         log_event(
             "study_guide_error",
             job_id=job_id,
             company=company,
             title=title,
             reason="empty_or_short_output",
-            chars=len(study_guide_md) if study_guide_md else 0,
+            chars=chars,
         )
         ntfy_send(
             f"Study guide failed: {company} — {title}",
             "empty_or_short_output",
             kind="study_guide_failed",
         )
-        return
+        raise RuntimeError(f"Study guide empty or too short ({chars} chars)")
 
+    file_prefix = read_file_prefix()
+    co = safe_filename_part(company, 40)
+    t = safe_filename_part(title, 60)
+    timestamp_fn = datetime.now().strftime("%Y%m%d-%H%M%S")
     sg_base = f"{file_prefix} Study Guide - {co} - {t} - {timestamp_fn}"
     sg_path = os.path.join(prep_folder, f"{sg_base}.md")
     with open(sg_path, "w") as f:
@@ -382,8 +441,30 @@ def _generate_study_materials(
         title=title,
         chars=len(study_guide_md),
     )
+    return sg_path
 
-    # ── Flashcard Deck ──
+
+def generate_flashcards_for_job(
+    *,
+    prep_folder: str,
+    company: str,
+    title: str,
+    job_id: str,
+    jd_text: str,
+    briefing: str,
+    resume: str,
+    interview_prep: str,
+    cached_prefix: str,
+    conn: sqlite3.Connection | None = None,
+) -> dict[str, str]:
+    """Generate a flashcard deck from existing prep artifacts. Returns the
+    ``build_flashcards`` paths dict (``apkg`` / ``csv`` / ``json``).
+
+    Called by the auto-generate path (after interview prep) and by the
+    on-demand route handler (materials page button, #873). Logs
+    ``flashcard_complete`` on success; on empty output or a build failure
+    logs ``flashcard_error`` + ntfy and raises ``RuntimeError``.
+    """
     flashcard_prompt = (
         f"Company: {company}\nTitle: {title}\n\n"
         f"JOB DESCRIPTION:\n{jd_text}\n\n"
@@ -413,8 +494,12 @@ def _generate_study_materials(
             "empty_output",
             kind="flashcard_failed",
         )
-        return
+        raise RuntimeError("Flashcard generation returned empty output")
 
+    file_prefix = read_file_prefix()
+    co = safe_filename_part(company, 40)
+    t = safe_filename_part(title, 60)
+    timestamp_fn = datetime.now().strftime("%Y%m%d-%H%M%S")
     fc_base = f"{file_prefix} Flashcards - {co} - {t} - {timestamp_fn}"
     try:
         paths = build_flashcards(
@@ -423,14 +508,6 @@ def _generate_study_materials(
             title=title,
             output_dir=prep_folder,
             base_name=fc_base,
-        )
-        log_event(
-            "flashcard_complete",
-            job_id=job_id,
-            company=company,
-            title=title,
-            apkg=os.path.basename(paths["apkg"]),
-            cards=len(paths),
         )
     except Exception as exc:
         log_event(
@@ -445,6 +522,17 @@ def _generate_study_materials(
             f"{type(exc).__name__}: {exc}",
             kind="flashcard_failed",
         )
+        raise RuntimeError(f"Flashcard build failed: {type(exc).__name__}: {exc}") from exc
+
+    log_event(
+        "flashcard_complete",
+        job_id=job_id,
+        company=company,
+        title=title,
+        apkg=os.path.basename(paths["apkg"]),
+        cards=len(paths),
+    )
+    return paths
 
 
 # ── Podcast generation ──

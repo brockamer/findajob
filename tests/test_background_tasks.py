@@ -229,7 +229,15 @@ def test_kind_timeout_minutes_covers_all_kinds() -> None:
     must agree. This test fails if a new kind lands without a
     corresponding watchdog timeout — which would cause find_stuck to
     silently never reap that kind."""
-    expected_kinds = {"prep", "prep_phase_b", "interview_prep", "speculative_research", "podcast"}
+    expected_kinds = {
+        "prep",
+        "prep_phase_b",
+        "interview_prep",
+        "speculative_research",
+        "podcast",
+        "study_guide",
+        "flashcards",
+    }
     assert set(KIND_TIMEOUT_MINUTES.keys()) == expected_kinds
 
 

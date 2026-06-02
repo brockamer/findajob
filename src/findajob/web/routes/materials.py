@@ -8,6 +8,8 @@ GET routes:
 POST routes:
   /materials/{fp}/regenerate               — full LLM re-run (delegates to prep subprocess; #616)
   /materials/{fp}/rerun-interview-prep     — re-run interview prep only for interview-stage jobs (#875)
+  /materials/{fp}/study-guide              — on-demand study-guide generation for interview-stage jobs (#873)
+  /materials/{fp}/flashcards               — on-demand flashcard generation for interview-stage jobs (#873)
   /materials/{fp}/files/{filename}         — atomic edit-and-save for .md files; auto-regenerates .docx sibling (#210)
 """
 
@@ -425,6 +427,11 @@ def folder_view(
     job_id = row["id"] if row else None
     podcast_formats = _build_podcast_context(folder, db=db, job_id=job_id) if gemini_configured else []
 
+    # On-demand study-guide / flashcard generation buttons (#873). Only the
+    # interview stage surfaces them — they extend the prep artifacts an
+    # operator studies between rounds.
+    study_materials = _build_study_materials_context(folder, db=db, job_id=job_id) if is_interview_stage else None
+
     templates = request.app.state.templates
     return templates.TemplateResponse(
         request=request,
@@ -450,6 +457,8 @@ def folder_view(
             "gemini_configured": gemini_configured,
             "podcast_formats": podcast_formats,
             "podcast_error": request.query_params.get("podcast_error", ""),
+            "study_materials": study_materials,
+            "study_materials_error": request.query_params.get("study_materials_error", ""),
         },
     )
 
@@ -620,6 +629,192 @@ def generate_podcast_from_materials(
         )
 
     return RedirectResponse(url=f"/materials/{fingerprint}#podcasts", status_code=303)
+
+
+def _build_study_materials_context(
+    folder: Path,
+    db: sqlite3.Connection | None = None,
+    job_id: str | None = None,
+) -> dict:
+    """Build template context for the on-demand study-materials buttons (#873).
+
+    Lean by design (cf. ``_build_podcast_context``'s format enumeration):
+    just whether a study-guide / flashcard artifact already exists (so the
+    button reads Generate vs Regenerate) and whether one is currently
+    generating (to disable the re-click).
+    """
+    sg_exists = False
+    fc_exists = False
+    for p in folder.iterdir():
+        if not p.is_file():
+            continue
+        if p.suffix == ".md" and " Study Guide - " in p.name:
+            sg_exists = True
+        elif " Flashcards - " in p.name:
+            fc_exists = True
+
+    sg_generating = fc_generating = False
+    if db is not None and job_id is not None:
+        from findajob.background_tasks import find_active_for_subject
+
+        sg_generating = find_active_for_subject(db, job_id, "study_guide") is not None
+        fc_generating = find_active_for_subject(db, job_id, "flashcards") is not None
+
+    return {
+        "study_guide": {"exists": sg_exists, "generating": sg_generating},
+        "flashcards": {"exists": fc_exists, "generating": fc_generating},
+    }
+
+
+def _launch_study_artifact(
+    db: sqlite3.Connection,
+    fingerprint: str,
+    *,
+    kind: str,
+) -> RedirectResponse:
+    """Shared launcher for on-demand study-guide / flashcard generation (#873).
+
+    Mirrors ``generate_podcast_from_materials``: interview-stage gate, per-job
+    concurrency guard, spend launch gate, required-artifact check, then a
+    synchronous generator call wrapped in a ``background_tasks`` row
+    (``writeback_sync``). ``kind`` selects the artifact: ``'study_guide'`` or
+    ``'flashcards'``.
+    """
+    from findajob.background_tasks import find_active_for_subject, record_start, writeback_sync
+    from findajob.interview.orchestrator import (
+        generate_flashcards_for_job,
+        generate_study_guide_for_job,
+    )
+    from findajob.spend_ceiling import check_launch_gate
+
+    job = db.execute(
+        "SELECT id, title, company, raw_jd_text, prep_folder_path, stage FROM jobs WHERE fingerprint=?",
+        (fingerprint,),
+    ).fetchone()
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if job["stage"] != "interview":
+        raise HTTPException(
+            status_code=409,
+            detail="Study-material generation is only valid for interview-stage jobs",
+        )
+
+    if find_active_for_subject(db, job["id"], kind):
+        return RedirectResponse(
+            url=f"/materials/{fingerprint}?study_materials_error=already_generating",
+            status_code=303,
+        )
+
+    prep_folder = job["prep_folder_path"]
+    if not prep_folder or not os.path.isdir(prep_folder):
+        raise HTTPException(status_code=404, detail="No prep folder")
+
+    refusal = check_launch_gate(db)
+    if refusal:
+        return RedirectResponse(
+            url=f"/materials/{fingerprint}?study_materials_error=spend_ceiling",
+            status_code=303,
+        )
+
+    def _read_latest(pattern: str) -> str:
+        folder_path = Path(prep_folder)
+        pat = re.compile(pattern)
+        matches = sorted(
+            (p for p in folder_path.iterdir() if p.is_file() and pat.search(p.name)),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        if not matches:
+            return ""
+        try:
+            return matches[0].read_text(encoding="utf-8")
+        except OSError:
+            return ""
+
+    briefing = _read_latest(r"Briefing.*\.md$")
+    resume = _read_latest(r"(?<!Changes )Resume(?! Changes).*\.md$")
+    cover = _read_latest(r"Cover.*\.md$")
+    critique = _read_latest(r"Critique.*\.md$")
+    interview_prep = _read_latest(r"Interview Prep.*\.md$")
+
+    if not briefing or not interview_prep:
+        raise HTTPException(status_code=409, detail="Missing briefing or interview prep artifacts")
+
+    from findajob.paths import BASE
+
+    profile_path = f"{BASE}/candidate_context/profile.md"
+    master_path = f"{BASE}/candidate_context/master_resume.md"
+    profile = Path(profile_path).read_text(encoding="utf-8") if Path(profile_path).is_file() else ""
+    master = Path(master_path).read_text(encoding="utf-8") if Path(master_path).is_file() else ""
+    cached_prefix = f"CANDIDATE PROFILE:\n{profile}\n\nMASTER RESUME:\n{master}"
+
+    task_id = record_start(db, job_id=job["id"], kind=kind)
+    try:
+        with writeback_sync(db, task_id):
+            if kind == "study_guide":
+                generate_study_guide_for_job(
+                    prep_folder=prep_folder,
+                    company=job["company"],
+                    title=job["title"],
+                    job_id=job["id"],
+                    jd_text=job["raw_jd_text"] or "",
+                    briefing=briefing,
+                    resume=resume,
+                    cover=cover,
+                    critique=critique,
+                    interview_prep=interview_prep,
+                    cached_prefix=cached_prefix,
+                    conn=db,
+                )
+            else:
+                generate_flashcards_for_job(
+                    prep_folder=prep_folder,
+                    company=job["company"],
+                    title=job["title"],
+                    job_id=job["id"],
+                    jd_text=job["raw_jd_text"] or "",
+                    briefing=briefing,
+                    resume=resume,
+                    interview_prep=interview_prep,
+                    cached_prefix=cached_prefix,
+                    conn=db,
+                )
+    except Exception as exc:  # noqa: BLE001
+        from findajob.audit import log_event
+
+        log_event(
+            "study_material_on_demand_error",
+            fingerprint=fingerprint,
+            kind=kind,
+            error=f"{type(exc).__name__}: {exc}",
+        )
+        return RedirectResponse(
+            url=f"/materials/{fingerprint}?study_materials_error=generation_failed",
+            status_code=303,
+        )
+
+    return RedirectResponse(url=f"/materials/{fingerprint}#study-materials", status_code=303)
+
+
+@router.post("/materials/{fingerprint}/study-guide", response_class=RedirectResponse)
+def generate_study_guide_from_materials(
+    fingerprint: str,
+    request: Request,  # noqa: ARG001 — kept for handler signature parity
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> RedirectResponse:
+    """On-demand study-guide generation from the materials page (#873)."""
+    return _launch_study_artifact(db, fingerprint, kind="study_guide")
+
+
+@router.post("/materials/{fingerprint}/flashcards", response_class=RedirectResponse)
+def generate_flashcards_from_materials(
+    fingerprint: str,
+    request: Request,  # noqa: ARG001 — kept for handler signature parity
+    db: sqlite3.Connection = Depends(get_db),  # noqa: B008
+) -> RedirectResponse:
+    """On-demand flashcard generation from the materials page (#873)."""
+    return _launch_study_artifact(db, fingerprint, kind="flashcards")
 
 
 @router.post("/materials/{fingerprint}/regenerate", response_class=RedirectResponse)

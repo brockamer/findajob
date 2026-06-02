@@ -291,7 +291,7 @@
       ],
       "foreign_keys": [],
       "name": "background_tasks",
-      "sql": "CREATE TABLE background_tasks(id INTEGER PRIMARY KEY AUTOINCREMENT,job_id TEXT NOT NULL,kind TEXT NOT NULL CHECK(kind IN('prep','prep_phase_b','interview_prep','speculative_research','podcast')),started_at TEXT NOT NULL DEFAULT(datetime('now')),finished_at TEXT,status TEXT NOT NULL DEFAULT 'running' CHECK(status IN('running','succeeded','failed')),error_message TEXT,pid INTEGER)",
+      "sql": "CREATE TABLE background_tasks(id INTEGER PRIMARY KEY AUTOINCREMENT,job_id TEXT NOT NULL,kind TEXT NOT NULL CHECK(kind IN('prep','prep_phase_b','interview_prep','speculative_research','podcast','study_guide','flashcards')),started_at TEXT NOT NULL DEFAULT(datetime('now')),finished_at TEXT,status TEXT NOT NULL DEFAULT 'running' CHECK(status IN('running','succeeded','failed')),error_message TEXT,pid INTEGER)",
       "tbl_name": "background_tasks",
       "type": "table"
     },

@@ -517,6 +517,30 @@ def _add_podcast_kind_if_needed(conn: sqlite3.Connection) -> None:
     )
 
 
+def _add_study_materials_kinds_if_needed(conn: sqlite3.Connection) -> None:
+    """If the live ``background_tasks.kind`` CHECK lacks ``'study_guide'`` or
+    ``'flashcards'``, rebuild from 0002_background_tasks.sql to pick up the new
+    values. Idempotent: a no-op when the constraint already includes both.
+
+    #873: on-demand study-guide / flashcard generation from the materials page
+    records a ``background_tasks`` row per kind for the same double-submit +
+    concurrency guard the podcast path uses (#879). Both kinds were added to
+    0002's CHECK in the same change, so a single presence probe gates both.
+    """
+    schema_row = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='background_tasks'").fetchone()
+    if schema_row is None:
+        return
+    current_sql = schema_row[0] or ""
+    if "'study_guide'" in current_sql and "'flashcards'" in current_sql:
+        return
+    _rebuild_table_with_indexes(
+        conn,
+        table="background_tasks",
+        migration_filename="0002_background_tasks.sql",
+        legacy_alias="_background_tasks_pre_study_materials",
+    )
+
+
 def _add_withdrawn_fallback_stage_if_needed(conn: sqlite3.Connection) -> None:
     """If the live ``jobs.stage`` CHECK lacks ``'withdrawn_fallback'``,
     rebuild the table from 0001_initial.sql to pick up the new value.
@@ -691,6 +715,7 @@ def apply_pending(conn: sqlite3.Connection, *, dry_run: bool = False) -> list[Ap
         _add_briefing_ready_stage_if_needed(conn)
         _add_prep_phase_b_kind_if_needed(conn)
         _add_podcast_kind_if_needed(conn)
+        _add_study_materials_kinds_if_needed(conn)
         _add_withdrawn_fallback_stage_if_needed(conn)
         _add_fallback_tab_to_view_prefs_if_needed(conn)
 

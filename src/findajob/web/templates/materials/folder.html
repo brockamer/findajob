@@ -550,6 +550,67 @@ function flashcardViewer(cards) {
 </script>
 {% endif %}
 
+{# ── Study materials section (#873) — on-demand study guide + flashcard
+   generation for interview-stage jobs. Non-destructive: each click writes a
+   new timestamped artifact, existing files are preserved. Reuses existing
+   prep artifacts (briefing, resume, interview prep) as input. #}
+{% if study_materials %}
+<section class="mt-6 bg-white rounded-md shadow-sm border border-slate-200 overflow-hidden" id="study-materials">
+  <header class="bg-slate-50 px-4 py-3 border-b border-slate-200">
+    <h2 class="text-lg font-semibold text-slate-900">Study Materials</h2>
+    <p class="text-xs text-slate-600 mt-1">Generate a condensed study guide or a flashcard deck from your existing prep — without re-running the full interview prep.</p>
+  </header>
+  {% if study_materials_error %}
+  <div class="px-4 py-2 bg-amber-50 border-b border-amber-200 text-sm text-amber-800">
+    {% if study_materials_error == 'already_generating' %}This artifact is already being generated for this job. Please wait for it to finish.
+    {% elif study_materials_error == 'spend_ceiling' %}Generation blocked — monthly spend ceiling reached.
+    {% elif study_materials_error == 'generation_failed' %}Generation failed. Check logs for details.
+    {% else %}{{ study_materials_error }}{% endif %}
+  </div>
+  {% endif %}
+  <div class="divide-y divide-slate-100">
+    {% for art in [
+        {'key': 'study-guide', 'label': 'Study Guide', 'desc': 'Condensed key themes, STAR stories, technical deep dives, and your elevator pitch.', 'state': study_materials.study_guide},
+        {'key': 'flashcards', 'label': 'Flashcards', 'desc': 'Spaced-repetition deck — study in-browser below, or import into Anki / Quizlet.', 'state': study_materials.flashcards}
+    ] %}
+    <div class="px-4 py-3">
+      <div class="flex items-center justify-between">
+        <div class="min-w-0 flex-1 mr-4">
+          <div class="flex items-center gap-2">
+            <span class="inline-block px-1.5 py-0.5 text-[10px] font-bold rounded bg-emerald-100 text-emerald-800">{{ art.label }}</span>
+            <span class="text-sm text-slate-700">{{ art.desc }}</span>
+          </div>
+        </div>
+        <div class="shrink-0">
+          {% if art.state.generating %}
+          <span class="inline-flex items-center px-3 py-1.5 rounded text-sm font-medium bg-emerald-100 text-emerald-700 opacity-80">
+            <svg class="animate-spin -ml-0.5 mr-1.5 h-3.5 w-3.5 text-emerald-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+            </svg>
+            Generating…
+          </span>
+          {% else %}
+          <form method="POST" action="/materials/{{ fingerprint }}/{{ art.key }}"
+                x-data="{ generating: false }"
+                @submit="generating = true">
+            <button type="submit"
+                    class="inline-flex items-center px-3 py-1.5 rounded text-sm font-medium disabled:opacity-60
+                           {% if art.state.exists %}border border-emerald-400 text-emerald-700 hover:bg-emerald-50{% else %}bg-emerald-600 hover:bg-emerald-700 text-white{% endif %}"
+                    :disabled="generating">
+              <span x-show="!generating">{% if art.state.exists %}⟳ Regenerate {{ art.label }}{% else %}Generate {{ art.label }}{% endif %}</span>
+              <span x-show="generating">Generating…</span>
+            </button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
 {# ── Podcast section (#870) — audio players for generated podcasts + buttons
    to generate additional formats on demand. GEMINI_API_KEY must be configured
    for podcast generation to be available. #}

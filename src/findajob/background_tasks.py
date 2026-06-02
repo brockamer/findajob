@@ -43,6 +43,8 @@ KIND_TIMEOUT_MINUTES: dict[str, int] = {
     "interview_prep": 30,
     "speculative_research": 10,
     "podcast": 30,
+    "study_guide": 10,
+    "flashcards": 10,
 }
 
 # Environment variable through which the launcher passes the task_id
