@@ -760,7 +760,8 @@ def un_apply_job(
 ) -> None:
     """Reverse a recent /apply (#699): move folder back from companies/_applied/
     to companies/, delete the *.applied-YYYY-MM-DD.md snapshot siblings written
-    by snapshot_applied_md_files, flip stage to materials_drafted, clear
+    by snapshot_applied_md_files, restore the prior stage from audit_log (the most
+    recent '… → applied' row's old_value; fallback materials_drafted), clear
     apply_flag, and write an audit_log row tagged 'web_un_apply'.
 
     Caller (the /un-apply route) is responsible for the 30s time-window guard;
@@ -816,15 +817,27 @@ def un_apply_job(
 
         fs_ops.append(_move_and_clean_snapshots)
 
+    # Restore the actual prior stage from audit_log — apply() is reachable from
+    # briefing_ready (Phase B skipped) as well as materials_drafted, so a hardcoded
+    # materials_drafted would land a briefing-only job in a stage it was never in
+    # (#959). Matches the un-interview / un-withdraw / promote-from-fallback pattern.
+    # The '… → applied' row is reliably present because #958 made apply's stage
+    # change + audit row commit atomically; materials_drafted stays the final
+    # belt-and-suspenders fallback. id DESC breaks same-second ties on re-apply.
+    prior = conn.execute(
+        "SELECT old_value FROM audit_log "
+        "WHERE job_id=? AND field_changed='stage' AND new_value='applied' "
+        "ORDER BY changed_at DESC, id DESC LIMIT 1",
+        (job["id"],),
+    ).fetchone()
+    restored_stage = prior[0] if prior and prior[0] else "materials_drafted"
+
     conn.execute(
-        "UPDATE jobs SET stage='materials_drafted', apply_flag=0, prep_folder_path=?, "
-        "stage_updated=?, updated_at=? WHERE id=?",
-        (new_path, now, now, job["id"]),
+        "UPDATE jobs SET stage=?, apply_flag=0, prep_folder_path=?, stage_updated=?, updated_at=? WHERE id=?",
+        (restored_stage, new_path, now, now, job["id"]),
     )
     # Stage UPDATE + audit row commit as one transaction (#958).
-    write_audit(
-        conn, job["id"], "stage", "applied", "materials_drafted", changed_by="web_un_apply", commit=own_transaction
-    )
+    write_audit(conn, job["id"], "stage", "applied", restored_stage, changed_by="web_un_apply", commit=own_transaction)
     log_event(
         "job_un_applied",
         job_id=job["id"],

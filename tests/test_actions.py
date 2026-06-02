@@ -32,7 +32,7 @@ CREATE TABLE jobs (
     score_flag_reason TEXT,
     stage TEXT DEFAULT 'discovered' CHECK(stage IN (
         'discovered', 'enriched', 'scored', 'manual_review',
-        'prep_in_progress', 'materials_drafted', 'waitlisted', 'applied',
+        'prep_in_progress', 'briefing_ready', 'materials_drafted', 'waitlisted', 'applied',
         'response_received', 'interview', 'offer', 'rejected', 'not_selected', 'withdrawn',
         'withdrawn_fallback'
     )),
@@ -630,7 +630,9 @@ class TestUnApplyJob:
         flag = db.execute("SELECT apply_flag FROM jobs WHERE id=?", (job["id"],)).fetchone()[0]
         assert flag == 0
 
-    def test_stage_flips_to_materials_drafted(self, db, tmp_path):
+    def test_falls_back_to_materials_drafted_without_audit(self, db, tmp_path):
+        """No '… → applied' audit row to read (belt-and-suspenders path): un-apply
+        falls back to materials_drafted (#959)."""
         job, _ = self._seed_applied_with_folder(db, tmp_path)
         job = db.execute("SELECT * FROM jobs WHERE id=?", (job["id"],)).fetchone()
 
@@ -638,6 +640,73 @@ class TestUnApplyJob:
 
         stage = db.execute("SELECT stage FROM jobs WHERE id=?", (job["id"],)).fetchone()[0]
         assert stage == "materials_drafted"
+
+    def test_restores_briefing_ready_from_audit(self, db, tmp_path):
+        """Applied directly from briefing_ready (Phase B never run): un-apply must
+        restore briefing_ready, not the hardcoded materials_drafted (#959). Reading
+        the prior stage from audit_log is what #958 made reliable."""
+        job, _ = self._seed_applied_with_folder(db, tmp_path)
+        db.execute(
+            "INSERT INTO audit_log (job_id, field_changed, old_value, new_value, changed_at) "
+            "VALUES (?, 'stage', 'briefing_ready', 'applied', datetime('now'))",
+            (job["id"],),
+        )
+        db.commit()
+        job = db.execute("SELECT * FROM jobs WHERE id=?", (job["id"],)).fetchone()
+
+        actions.un_apply_job(db, job)
+
+        stage = db.execute("SELECT stage FROM jobs WHERE id=?", (job["id"],)).fetchone()[0]
+        assert stage == "briefing_ready"
+        un_apply = db.execute(
+            "SELECT old_value, new_value FROM audit_log WHERE job_id=? AND changed_by='web_un_apply'",
+            (job["id"],),
+        ).fetchone()
+        assert un_apply["old_value"] == "applied"
+        assert un_apply["new_value"] == "briefing_ready"
+
+    def test_restores_materials_drafted_from_audit(self, db, tmp_path):
+        """Applied from materials_drafted (full Phase B path): un-apply restores it
+        via the audit lookup (same result as the fallback, but exercised through the
+        audit path)."""
+        job, _ = self._seed_applied_with_folder(db, tmp_path)
+        db.execute(
+            "INSERT INTO audit_log (job_id, field_changed, old_value, new_value, changed_at) "
+            "VALUES (?, 'stage', 'materials_drafted', 'applied', datetime('now'))",
+            (job["id"],),
+        )
+        db.commit()
+        job = db.execute("SELECT * FROM jobs WHERE id=?", (job["id"],)).fetchone()
+
+        actions.un_apply_job(db, job)
+
+        stage = db.execute("SELECT stage FROM jobs WHERE id=?", (job["id"],)).fetchone()[0]
+        assert stage == "materials_drafted"
+        un_apply = db.execute(
+            "SELECT new_value FROM audit_log WHERE job_id=? AND changed_by='web_un_apply'",
+            (job["id"],),
+        ).fetchone()
+        assert un_apply["new_value"] == "materials_drafted"
+
+    def test_restores_most_recent_applied_on_reapply_cycle(self, db, tmp_path):
+        """Apply→un-apply→apply leaves two '… → applied' rows; restoration must use
+        the most recent (the second apply's old_value), via changed_at DESC, id DESC."""
+        job, _ = self._seed_applied_with_folder(db, tmp_path)
+        # Older apply (from materials_drafted), then a newer apply (from briefing_ready),
+        # same clock-second so the id tiebreaker is what decides.
+        for old in ("materials_drafted", "briefing_ready"):
+            db.execute(
+                "INSERT INTO audit_log (job_id, field_changed, old_value, new_value, changed_at) "
+                "VALUES (?, 'stage', ?, 'applied', '2026-06-01 10:00:00')",
+                (job["id"], old),
+            )
+        db.commit()
+        job = db.execute("SELECT * FROM jobs WHERE id=?", (job["id"],)).fetchone()
+
+        actions.un_apply_job(db, job)
+
+        stage = db.execute("SELECT stage FROM jobs WHERE id=?", (job["id"],)).fetchone()[0]
+        assert stage == "briefing_ready"
 
     def test_writes_audit_with_changed_by_web_un_apply(self, db, tmp_path):
         job, _ = self._seed_applied_with_folder(db, tmp_path)
