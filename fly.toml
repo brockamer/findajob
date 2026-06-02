@@ -1,17 +1,25 @@
-# fly.toml — Fly.io deployment template.
+# fly.toml — Fly.io deployment template for the web "Launch an App from
+# GitHub" flow. Fly reads this file automatically (default config path = ./)
+# when you launch from the repo; the app name in the launch form overrides
+# the placeholder below.
 #
-# The web "Launch an App from GitHub" flow reads this file automatically
-# (default config path = ./). The app name in the form overrides the
-# placeholder below.
+# BUILD vs. PULL — important, and the reason this file differs from ops/fly.toml:
+#   This file BUILDS the image from the Dockerfile. The web/GitHub launch path
+#   runs through Fly's Depot builder, which does not reliably honor a prebuilt
+#   `[build] image` here — the build step gets skipped and the deploy step then
+#   404s on the never-created image ("Could not find image …", see #1002).
+#   Building the Dockerfile is what makes the no-terminal launch actually work;
+#   the cost is a few-minute image build per deploy.
 #
-# CLI users: see ops/fly.toml.example for the full-comment version and
-# the deploy script at ops/fly-deploy.sh.
+#   The CLI path is the opposite: it uses ops/fly.toml, which PULLS the prebuilt
+#   `ghcr.io/brockamer/findajob:latest` image (fast, no build). See
+#   ops/fly.toml.example and the deploy script ops/fly-deploy.sh.
 
 app = "findajob"
 primary_region = "iad"
 
 [build]
-  image = "ghcr.io/brockamer/findajob:latest"
+  dockerfile = "Dockerfile"
 
 [env]
   JSP_BASE = "/app/state"
