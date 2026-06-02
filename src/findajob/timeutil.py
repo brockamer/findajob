@@ -24,7 +24,8 @@ from __future__ import annotations
 
 import os
 from datetime import UTC, date, datetime, timedelta
-from zoneinfo import ZoneInfo
+from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 # Canonical naïve-UTC format used by write_audit() / datetime('now').
 _DB_TS_FMT = "%Y-%m-%d %H:%M:%S"
@@ -65,3 +66,40 @@ def utc_str_to_local_date(ts: str, tz: str | None = None) -> date:
     """Convert a naïve-UTC DB timestamp string to its ``tz`` calendar date."""
     zi = local_zoneinfo(tz)
     return datetime.strptime(ts, _DB_TS_FMT).replace(tzinfo=UTC).astimezone(zi).date()
+
+
+def read_timezone_file(base: Path | str) -> str | None:
+    """Return the validated IANA zone written to ``<base>/data/timezone`` by
+    onboarding, or ``None`` when the file is missing, blank, comment-only, or
+    names an unresolvable zone. The first non-comment, non-blank line wins.
+
+    This is what the container entrypoint exports as ``TZ`` at boot, making the
+    operator's onboarding pick authoritative over the deploy-config default (#981).
+    """
+    path = Path(base) / "data" / "timezone"
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    for line in text.splitlines():
+        candidate = line.strip()
+        if not candidate or candidate.startswith("#"):
+            continue
+        try:
+            ZoneInfo(candidate)
+        except (ZoneInfoNotFoundError, ValueError):
+            return None
+        return candidate
+    return None
+
+
+def pending_timezone(base: Path | str) -> str | None:
+    """The picked zone from ``data/timezone`` only when it differs from the
+    active :func:`local_tz` — i.e. a restart is still needed for it to take
+    effect. ``None`` when there is no pick, the pick is invalid, or it already
+    matches ``TZ``. Drives the dashboard "restart to apply" banner (#981).
+    """
+    picked = read_timezone_file(base)
+    if picked is None or picked == local_tz():
+        return None
+    return picked
