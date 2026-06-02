@@ -62,6 +62,8 @@ In the dialog that opens:
 
    Leave everything else as-is. The `fly.toml` in the repo sets the correct internal port (8090), volume (8 GB), and machine size. These override the form defaults.
 
+   > **If the form shows a "Variables" / "Environment variables" section (Name + Value), leave it blank.** API keys go in **Secrets** after the deploy (next section), not here — anything typed here just becomes an unused environment variable.
+
    ![Bottom of the form — config path defaults to ./, Deploy button](install-fly-web/06-launch-config-bottom.png)
 
 3. **Click Deploy.** Fly creates the app, provisions an 8 GB volume, builds the image, and starts the machine. This takes 2–4 minutes. You'll see a live progress page with build steps.
@@ -204,6 +206,7 @@ See [`cost.md`](cost.md) for the full breakdown with `cost_log`-grounded ranges.
 
 - **Deploy fails with "This functionality is disabled for trial organizations"** — billing isn't enabled on your Fly org. Add a credit card at your Fly dashboard's Billing page and retry.
 - **Browser sees `Connection refused` after deploy** — the machine may still be cold-starting. Wait 60 seconds and retry.
+- **Deploy fails with `Could not find image` (a 404)** — the deploy log shows a green "Build image" step, then "Deploy application" fails with `failed to create release (status 404): … Could not find image …`. Fly built the image but couldn't find it at deploy time — a builder/registry timing issue. First, remove anything you entered in the launch form's Variables/Name-Value field, then re-run the deploy; the transient form of this clears on a retry (try 2–3 times, a minute or two apart). If it persists, use the **CLI deploy** path below — `ops/fly-deploy.sh` deploys findajob's prebuilt public image (`[build] image` in `ops/fly.toml`) and never builds the Dockerfile, so it sidesteps this error class entirely.
 - **OpenRouter calls fail with `402 PaymentRequired`** — your OpenRouter balance is exhausted. Top up at <https://openrouter.ai/credits>. The onboarding interview handles this gracefully; daily triage does not — it logs and continues at the next cycle.
 - **Secrets not taking effect** — after adding secrets on the Secrets page, you must click **Deploy Secrets** to restart the machine. Secrets are staged until deployed.
 
