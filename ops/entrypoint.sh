@@ -132,6 +132,18 @@ python3 /app/scripts/render_crontab.py \
     --output /app/crontab
 chmod 0644 /app/crontab
 
+# --- 7.5. Apply operator-picked timezone (#981) ---------------------------
+# Onboarding writes an IANA zone to $JSP_BASE/data/timezone. If present and
+# valid, it overrides the deploy-config TZ default so the operator's pick
+# drives supercronic cron timing AND all display/bucketing. resolve_timezone.py
+# exits nonzero (and prints nothing) when there is no valid pick, in which case
+# we keep whatever TZ the deploy config set. Runs as the app user (the file is
+# owned by PUID:PGID). Both the backgrounded uvicorn and the exec'd supercronic
+# below inherit this exported TZ.
+if TZ_FROM_FILE="$(gosu "$PUID:$PGID" python3 /app/scripts/resolve_timezone.py 2>/dev/null)"; then
+    export TZ="$TZ_FROM_FILE"
+fi
+
 # --- 8. Launch materials viewer (uvicorn) in background -------------------
 # Supercronic stays PID 1 for compose restart tracking. Uvicorn runs as a
 # child process. If it crashes, supercronic keeps running — /healthz is the
