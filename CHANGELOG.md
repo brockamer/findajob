@@ -10,6 +10,10 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Changed
+
+- **Fly install guides reflect the validated one-click flow** (#1012): `start-here-fly.md` and `install-fly.md` now tell you to accept the launch wizard's defaults (including the **Internal port**) — corrected from the prior claim that the repo `fly.toml` overrides the wizard's port, which it does not. The obsolete "Could not find image" 404 walkthrough (the bug fixed at the source by #1002/#1010) is trimmed to a brief retry safety-net. Docs-only.
+
 ### Fixed
 
 - **No-CLI Fly web install now deploys healthy when you accept all defaults** (#1010): after #1002 made the web "Launch from GitHub" build + run, the deploy still failed its health check unless the user manually changed the launch wizard's Internal port to 8090 — Fly's wizard defaults the port to **8080** and ignores the repo `fly.toml`'s `internal_port` (and the Dockerfile `EXPOSE`, which the pre-build wizard can't read), while uvicorn served 8090. uvicorn's port is now env-driven (`FINDAJOB_INTERNAL_PORT`, default 8090) and the root `fly.toml` (the web-launch config) targets **8080** and sets `FINDAJOB_INTERNAL_PORT=8080` via `[env]` (which the wizard applies to the machine), so the wizard's 8080 default matches the app with no user action. `ops/fly.toml*` and compose are unchanged at 8090 — the CLI deploy path and every existing deploy keep serving 8090. **No `migration-required`** — the default port is unchanged; only the web-launch config differs.

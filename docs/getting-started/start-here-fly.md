@@ -97,7 +97,7 @@ Everything in this section happens in your web browser — no terminal or comman
 
    ![Configuration form — region, port, CPU, memory](install-fly-web/05b-launch-config-middle.png)
 
-   Leave everything else as-is — the `fly.toml` in the repo sets the correct port, volume, and machine size automatically.
+   Leave everything else as-is — including the **Internal port** (the shown default is correct; you don't need to change it). The repo's `fly.toml` sets the volume and machine size automatically.
 
    > **If the form shows a "Variables" or "Environment variables" section (a Name + Value pair), leave it blank.** Your API keys do *not* go here — you'll add them as **Secrets** after the app deploys (Step 6). Anything you type into this field just becomes an unused environment variable; it is not required to deploy.
 
@@ -111,7 +111,7 @@ Everything in this section happens in your web browser — no terminal or comman
 
 - **Deploy fails with "This functionality is disabled for trial organizations"** — billing isn't enabled on your Fly org. Go back to Step 1 and add a credit card.
 - **App-name already taken** — try a different handle (e.g. add the year: `findajob-jamie-2026`). You can delete the failed app from Settings → Delete app and re-launch.
-- **Deploy fails with `Could not find image` (a 404)** — the log shows a green "Build image" step, then "Deploy application" fails with something like `failed to create release (status 404): … Could not find image …`. Fly built the image but couldn't find it when it went to deploy — a timing issue on Fly's side, not anything you did. Work through it in order: **(1)** if you typed anything into the launch form's Variables / Name-Value field, delete it; **(2)** re-run the deploy (click **Deploy** again, or re-trigger the deployment) — the common, transient form of this clears on a retry, so try 2–3 times, a minute or two apart; **(3)** if it still won't go through, the bulletproof fix skips Fly's build step entirely by deploying findajob's ready-made public image from the command line — see the **Alternative: CLI deploy** section near the bottom of [`install-fly.md`](install-fly.md). Prefer not to touch a terminal? [Open an issue](https://github.com/brockamer/findajob/issues) with your deploy log and we'll help you through it.
+- **The deploy fails, or the page shows an error** — first deploys can occasionally hit a transient Fly hiccup. Re-run the deploy (click **Deploy** again, or re-trigger the deployment); it usually clears on a retry. If it keeps failing after a couple of tries, [open an issue](https://github.com/brockamer/findajob/issues) with your deploy log and we'll help you through it.
 
 ### Step 6. Add your API keys and password *(3 min)*
 
