@@ -97,6 +97,13 @@ RUN chmod +x /entrypoint.sh
 # Path resolution — tell src/findajob/paths.py where we live.
 ENV JSP_BASE=/app
 
+# Declare the port uvicorn serves (entrypoint runs it on 8090). This is metadata,
+# not a runtime binding — but Fly's "Launch from GitHub" scanner reads EXPOSE to
+# set internal_port; without it the scanner defaults to 8080 and the deploy's
+# health check targets the wrong port (#1008). Keep this in sync with the
+# uvicorn --port in ops/entrypoint.sh and internal_port in fly.toml / ops/fly.toml.
+EXPOSE 8090
+
 # tini as PID 1 for signal propagation; entrypoint creates the runtime user
 # at PUID:PGID, seeds bundled config, and execs the CMD under gosu.
 ENTRYPOINT ["tini", "--", "/entrypoint.sh"]

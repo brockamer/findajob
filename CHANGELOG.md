@@ -10,6 +10,10 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Web "Launch from GitHub" deploy failed its health check (port 8080 vs 8090)** (#1008): after #1002 made the no-terminal Fly launch build the Dockerfile, deploys got past the `Could not find image` 404 but then failed the post-launch health check — Fly's launch scanner sets `internal_port` from the Dockerfile's `EXPOSE` instruction and, finding none, defaulted to **8080**, while findajob's uvicorn serves **8090**. The proxy couldn't route, the health check timed out, and the deploy was marked Failed. Adding `EXPOSE 8090` to the Dockerfile makes the scanner detect 8090, aligning the service and health check with the app. Metadata-only — no runtime change; the CLI deploy path (`fly deploy --config ops/fly.toml`, explicit `internal_port = 8090`, no scanner) and compose were already correct and are unaffected. **No `migration-required`.**
+
 ## [0.33.0] — 2026-06-03
 
 ### Added
