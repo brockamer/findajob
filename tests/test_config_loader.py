@@ -796,3 +796,49 @@ class TestLoadRankingBoostTerms:
         config_loader._reset_cache()
         with pytest.raises(ConfigError, match="not a string"):
             config_loader.load_ranking_boost_terms()
+
+
+class TestLoadTitleSignalKeywords:
+    """#1004 — de-field-locked analyze_feedback title-keyword signals.
+
+    Mirrors the reject_reasons pattern: a non-empty field-neutral default in
+    code, optionally overridden by gitignored config (so the analysis still
+    works out of the box, unlike the empty-default ranking_boost_terms).
+    """
+
+    def test_returns_field_neutral_default_when_file_missing(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(config_loader, "_TITLE_SIGNAL_KEYWORDS_PATH", tmp_path / "missing.yaml")
+        config_loader._reset_cache()
+        kws = config_loader.load_title_signal_keywords()
+        assert "manager" in kws  # non-empty, useful default
+        assert "data center" not in kws  # no field-specific vocabulary in the default
+
+    def test_config_overrides_default_lowercased(self, monkeypatch, tmp_path):
+        f = tmp_path / "tsk.yaml"
+        f.write_text('keywords:\n  - "Widget"\n  - "GADGET Systems"\n')
+        monkeypatch.setattr(config_loader, "_TITLE_SIGNAL_KEYWORDS_PATH", f)
+        config_loader._reset_cache()
+        assert config_loader.load_title_signal_keywords() == ("widget", "gadget systems")
+
+    def test_empty_keywords_returns_default(self, monkeypatch, tmp_path):
+        f = tmp_path / "tsk.yaml"
+        f.write_text("keywords: []\n")
+        monkeypatch.setattr(config_loader, "_TITLE_SIGNAL_KEYWORDS_PATH", f)
+        config_loader._reset_cache()
+        assert "manager" in config_loader.load_title_signal_keywords()
+
+    def test_keywords_not_a_list_raises(self, monkeypatch, tmp_path):
+        bad = tmp_path / "tsk.yaml"
+        bad.write_text("keywords:\n  nested: value\n")
+        monkeypatch.setattr(config_loader, "_TITLE_SIGNAL_KEYWORDS_PATH", bad)
+        config_loader._reset_cache()
+        with pytest.raises(ConfigError, match="'keywords' must be a list"):
+            config_loader.load_title_signal_keywords()
+
+    def test_keyword_entry_not_a_string_raises(self, monkeypatch, tmp_path):
+        bad = tmp_path / "tsk.yaml"
+        bad.write_text("keywords:\n  - 123\n")
+        monkeypatch.setattr(config_loader, "_TITLE_SIGNAL_KEYWORDS_PATH", bad)
+        config_loader._reset_cache()
+        with pytest.raises(ConfigError, match="not a string"):
+            config_loader.load_title_signal_keywords()

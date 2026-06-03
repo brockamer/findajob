@@ -43,6 +43,10 @@ EDITABLE_CATEGORIES: dict[str, list[str] | str] = {
         # Gitignored, field-specific; raw /config/ access is the only editor
         # (no dedicated /settings/ page). Hot-reloaded on the next prep run.
         "config/ranking_boost_terms.yaml",
+        # #1004 — title keywords the feedback analyzer tracks (applied vs
+        # rejected). Gitignored, field-specific; overrides a field-neutral
+        # default. Raw /config/ access is the only editor.
+        "config/title_signal_keywords.yaml",
     ],
     "Role prompts": "config/roles/*.md",
     # #150 — operator-editable prompts powering /tools/ tiles. Same

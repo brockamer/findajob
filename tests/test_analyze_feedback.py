@@ -191,3 +191,45 @@ def test_main_notify_calls_ntfy_send_with_feedback_review_kind(tmp_path, monkeyp
     assert calls[0]["title"] == "JSP Feedback Analysis"
     assert calls[0]["tags"] == "magnifying_glass"
     assert "rejections" in calls[0]["body"]
+
+
+# --- #1004: de-field-locked title-keyword signals (synthetic terms only) ----
+
+
+def test_section3_keywords_come_from_loader_not_hardcoded(conn, monkeypatch):
+    """Section 3 tracks the configured/default keyword set, not a hardcoded
+    field-specific list."""
+    import findajob.analyze_feedback as af
+
+    monkeypatch.setattr(af, "load_title_signal_keywords", lambda: ("widget", "gadget"))
+    conn.execute(
+        "INSERT INTO feedback_log (job_id, title, company, relevance_score, reject_reason) VALUES "
+        "('r1', 'Sprocket Analyst', 'R', 8, 'Low Fit Score')"
+    )
+    conn.execute(
+        "INSERT INTO jobs (id, title, company, source, url, stage, relevance_score, dupe_of) VALUES "
+        "('a1', 'Widget Manager', 'A', 'jsearch', 'http://a', 'applied', 8, ''),"
+        "('j2', 'Gadget Lead', 'B', 'jsearch', 'http://b', 'rejected', 8, '')"
+    )
+    conn.commit()
+
+    kws = {s["keyword"] for s in analyze(conn)["keyword_signals"]}
+    assert kws <= {"widget", "gadget"}  # only configured keywords are tracked
+    assert "widget" in kws
+    assert "npi" not in kws and "data center" not in kws  # old hardcoded terms gone
+
+
+def test_section6_fp_word_freq_not_field_locked(conn):
+    """False-positive word frequency no longer hardcodes domain words
+    (data/center/operations) in its exclusion list; universal title noise
+    (manager/lead) stays suppressed."""
+    conn.execute(
+        "INSERT INTO feedback_log (job_id, title, company, relevance_score, reject_reason) VALUES "
+        "('f1', 'Data Platform Lead', 'Acme', 9, 'Low Fit Score'),"
+        "('f2', 'Operations Manager', 'Beta', 8, 'Low Fit Score')"
+    )
+    conn.commit()
+
+    freq = dict(analyze(conn)["fp_title_word_freq"])
+    assert "data" in freq and "operations" in freq  # field words no longer excluded
+    assert "manager" not in freq and "lead" not in freq  # universal noise still suppressed

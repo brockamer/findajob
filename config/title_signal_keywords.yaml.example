@@ -1,0 +1,34 @@
+# config/title_signal_keywords.yaml — OPTIONAL, gitignored. Copy to
+# config/title_signal_keywords.yaml and edit.
+#
+# Title keywords the feedback analyzer (findajob.analyze_feedback) tracks when
+# comparing your APPLIED vs REJECTED jobs — the "title keyword signals" section
+# of the weekly feedback report. It surfaces which title words skew toward jobs
+# you pursued vs ones you rejected, so you can spot scorer blind spots.
+#
+# Replaces the built-in field-neutral default (manager, engineer, senior,
+# director, lead, program) with YOUR field's vocabulary. Matched
+# case-insensitively as whole words in the title. A missing or empty file keeps
+# the default, so the section still works out of the box.
+#
+# Field-agnostic by design — pick the handful that fit you. Examples:
+#
+#   Software / SRE:
+#   keywords:
+#     - platform
+#     - reliability
+#     - backend
+#
+#   Healthcare:
+#   keywords:
+#     - clinical
+#     - nursing
+#     - charge nurse
+#
+#   Skilled trades:
+#   keywords:
+#     - electrician
+#     - hvac
+#     - journeyman
+
+keywords: []

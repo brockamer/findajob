@@ -49,6 +49,7 @@ config/companies_of_interest.txt
 config/excluded_employers.yaml
 config/reject_reasons.yaml
 config/ranking_boost_terms.yaml
+config/title_signal_keywords.yaml
 config/company_aliases.yaml
 .worktrees/
 

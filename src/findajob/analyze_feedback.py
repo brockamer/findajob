@@ -31,36 +31,11 @@ from collections import Counter
 from datetime import datetime
 from typing import Any
 
-from findajob.config_loader import load_reject_reasons
+from findajob.config_loader import load_reject_reasons, load_title_signal_keywords
 from findajob.db import connect
 from findajob.paths import BASE
 
 DB_PATH = f"{BASE}/data/pipeline.db"
-
-# Title keyword signals — tokens to track in applied vs rejected jobs
-_TITLE_KEYWORDS: list[str] = [
-    "data center",
-    "datacenter",
-    "operations",
-    "manager",
-    "technician",
-    "engineer",
-    "senior",
-    "director",
-    "lead",
-    "infrastructure",
-    "systems",
-    "hardware",
-    "technical",
-    "program",
-    "manufacturing",
-    "quality",
-    "deployment",
-    "site",
-    "npi",
-    "ai",
-    "forward deployed",
-]
 
 # Short words that dominate low-value n-grams — filter out n-grams that are
 # entirely made of these (e.g., "manager and" is useless).
@@ -82,6 +57,11 @@ _STOPWORDS: frozenset[str] = frozenset(
         "from",
     }
 )
+
+# Field-neutral noise filtered from false-positive title-word frequency (#1004):
+# generic stopwords + universal job-title words. Domain vocabulary must NOT be
+# added here — a field-specific word would silently field-lock this surface.
+_FP_FREQ_NOISE: frozenset[str] = _STOPWORDS | {"senior", "lead", "manager", "director", "engineer"}
 
 
 def _contains(title: str | None, kw: str) -> bool:
@@ -159,7 +139,7 @@ def analyze(conn: sqlite3.Connection) -> dict[str, Any]:
     n_applied = len(applied_rows)
     n_rejected = len(rejected_rows)
     keyword_signals: list[dict[str, Any]] = []
-    for kw in _TITLE_KEYWORDS:
+    for kw in load_title_signal_keywords():
         a_count = sum(1 for r in applied_rows if _contains(r["title"], kw))
         r_count = sum(1 for r in rejected_rows if _contains(r["title"], kw))
         a_pct = round(a_count / n_applied * 100, 1) if n_applied else 0
@@ -212,20 +192,7 @@ def analyze(conn: sqlite3.Connection) -> dict[str, Any]:
     for t in fp_titles:
         words = re.findall(r"\b[a-zA-Z]{3,}\b", t.lower())
         for w in words:
-            if w not in (
-                "and",
-                "the",
-                "for",
-                "with",
-                "data",
-                "center",
-                "senior",
-                "lead",
-                "manager",
-                "director",
-                "engineer",
-                "operations",
-            ):
+            if w not in _FP_FREQ_NOISE:
                 title_word_freq[w] += 1
     out["fp_title_word_freq"] = title_word_freq.most_common(20)
 

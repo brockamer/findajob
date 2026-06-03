@@ -28,6 +28,7 @@ _REJECT_REASONS_PATH = Path(BASE) / "config" / "reject_reasons.yaml"
 _SPEND_CEILING_PATH = Path(BASE) / "config" / "spend_ceiling.txt"
 _PROFILE_PATH = Path(BASE) / "candidate_context" / "profile.md"
 _RANKING_BOOST_TERMS_PATH = Path(BASE) / "config" / "ranking_boost_terms.yaml"
+_TITLE_SIGNAL_KEYWORDS_PATH = Path(BASE) / "config" / "title_signal_keywords.yaml"
 
 # Field-agnostic fallback used when `config/reject_reasons.yaml` is missing or
 # `reasons:` is empty. Operator stacks override via the file (interview-emitted
@@ -51,6 +52,21 @@ _DEFAULT_TITLE_SIGNAL_REASONS: frozenset[str] = frozenset({"Skills Mismatch", "L
 # config/ranking_boost_terms.yaml — never in tracked code (#964). An operator
 # who wants a domain boost seeds that file; everyone else gets no domain tier.
 _DEFAULT_RANKING_BOOST_TERMS: frozenset[str] = frozenset()
+
+# Non-empty field-neutral default for the analyze_feedback title-keyword signal
+# (#1004) — universal job-title words present in every career field. Operators
+# override with their own (typically field-specific) vocabulary via
+# config/title_signal_keywords.yaml; the default keeps that analysis section
+# useful out of the box. Mirrors _DEFAULT_REJECT_REASONS, NOT the empty
+# ranking-boost default. No field-specific terms here.
+_DEFAULT_TITLE_SIGNAL_KEYWORDS: tuple[str, ...] = (
+    "manager",
+    "engineer",
+    "senior",
+    "director",
+    "lead",
+    "program",
+)
 
 # Tier 1 parser — moved from findajob.onboarding.injector (#211).
 _TIER1_HEADING_RE = re.compile(r"^##\s+tier\s*1\b[^\n]*", re.IGNORECASE | re.MULTILINE)
@@ -414,6 +430,45 @@ def load_ranking_boost_terms() -> frozenset[str]:
         if not isinstance(t, str):
             raise ConfigError(f"ranking_boost_terms.yaml: terms entry is not a string: {t!r}")
     return frozenset(t.strip().lower() for t in raw if t.strip())
+
+
+def load_title_signal_keywords() -> tuple[str, ...]:
+    """Lowercased title keywords tracked in the analyze_feedback applied-vs-
+    rejected signal (section 3), from `config/title_signal_keywords.yaml`.
+
+    Mirrors the reject_reasons shape: a missing or empty file returns the
+    non-empty field-neutral default (`_DEFAULT_TITLE_SIGNAL_KEYWORDS`) so the
+    analysis stays useful out of the box; a present `keywords:` list REPLACES
+    the default with the operator's own (typically field-specific) vocabulary.
+    Like the ranking-boost loader, a missing file is the intended default — not
+    a degradation — so no warning is emitted. Malformed content raises
+    `ConfigError`.
+
+    Returns fresh values on every call (no cache) so a `/config/` edit takes
+    effect on the next run without a process restart.
+    """
+    try:
+        text = _TITLE_SIGNAL_KEYWORDS_PATH.read_text()
+    except FileNotFoundError:
+        return _DEFAULT_TITLE_SIGNAL_KEYWORDS
+    if not text.strip():
+        return _DEFAULT_TITLE_SIGNAL_KEYWORDS
+    try:
+        data = yaml.safe_load(text)
+    except yaml.YAMLError as e:
+        raise ConfigError(f"title_signal_keywords.yaml: YAML parse error: {e}") from e
+    if data is None:
+        return _DEFAULT_TITLE_SIGNAL_KEYWORDS
+    if not isinstance(data, dict):
+        raise ConfigError(f"title_signal_keywords.yaml: top level must be a mapping, got {type(data).__name__}")
+    raw = data.get("keywords", []) or []
+    if not isinstance(raw, list):
+        raise ConfigError(f"title_signal_keywords.yaml: 'keywords' must be a list, got {type(raw).__name__}")
+    for k in raw:
+        if not isinstance(k, str):
+            raise ConfigError(f"title_signal_keywords.yaml: keywords entry is not a string: {k!r}")
+    cleaned = tuple(k.strip().lower() for k in raw if k.strip())
+    return cleaned or _DEFAULT_TITLE_SIGNAL_KEYWORDS
 
 
 _SPEND_CEILING_DISABLED = frozenset({"disabled", "none", "off", "0"})
