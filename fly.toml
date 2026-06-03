@@ -14,6 +14,14 @@
 #   The CLI path is the opposite: it uses ops/fly.toml, which PULLS the prebuilt
 #   `ghcr.io/brockamer/findajob:latest` image (fast, no build). See
 #   ops/fly.toml.example and the deploy script ops/fly-deploy.sh.
+#
+# PORT — also why this file differs from ops/fly.toml:
+#   Fly's launch wizard defaults the service port to 8080 and ignores the
+#   fly.toml internal_port (and the Dockerfile EXPOSE, which the pre-build
+#   wizard can't read). So this file targets 8080 AND tells the app to serve
+#   8080 via [env] FINDAJOB_INTERNAL_PORT — making the no-terminal launch work
+#   on all-defaults (#1010). ops/fly.toml keeps 8090 (no override), so the CLI
+#   path and every existing deploy are unchanged.
 
 app = "findajob"
 primary_region = "iad"
@@ -26,9 +34,13 @@ primary_region = "iad"
   PUID = "1000"
   PGID = "1000"
   TZ = "America/New_York"
+  # The app serves this port (read by ops/entrypoint.sh, default 8090). Set to
+  # 8080 here so it matches Fly's launch-wizard internal-port default. Web-only;
+  # ops/fly.toml omits this, so the CLI path keeps the 8090 default.
+  FINDAJOB_INTERNAL_PORT = "8080"
 
 [http_service]
-  internal_port = 8090
+  internal_port = 8080
   force_https = true
   auto_stop_machines = "off"
   auto_start_machines = true

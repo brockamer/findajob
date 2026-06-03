@@ -148,7 +148,13 @@ fi
 # Supercronic stays PID 1 for compose restart tracking. Uvicorn runs as a
 # child process. If it crashes, supercronic keeps running — /healthz is the
 # outside signal. Operator restarts the container if needed.
-gosu "$PUID:$PGID" python3 -m uvicorn findajob.web.app:default_app --factory --host 0.0.0.0 --port 8090 --log-level info --proxy-headers --forwarded-allow-ips='*' &
+#
+# Port: defaults to 8090 (compose, the CLI deploy, and ops/fly.toml all use
+# 8090). FINDAJOB_INTERNAL_PORT overrides it — the Fly web "Launch from GitHub"
+# path sets it to 8080 via the root fly.toml [env] so the launch wizard's 8080
+# port default matches the app with no user action (#1010). Keep the default
+# in sync with internal_port in ops/fly.toml and the compose port mapping.
+gosu "$PUID:$PGID" python3 -m uvicorn findajob.web.app:default_app --factory --host 0.0.0.0 --port "${FINDAJOB_INTERNAL_PORT:-8090}" --log-level info --proxy-headers --forwarded-allow-ips='*' &
 UVICORN_PID=$!
 
 # Forward SIGTERM / SIGINT to uvicorn so docker compose down shuts it down cleanly.
