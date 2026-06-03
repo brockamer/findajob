@@ -76,7 +76,7 @@ Translation from the compose forms used elsewhere in this directory:
 | `docker compose logs -f scheduler`                               | `fly logs --app findajob-<handle>`                                                   |
 | `docker compose exec scheduler bash`                             | `fly ssh console --app findajob-<handle>`                                            |
 | `docker compose exec scheduler python3 scripts/triage.py`        | `fly ssh console --app findajob-<handle> --command "python3 scripts/triage.py"`      |
-| `docker compose exec scheduler sqlite3 data/pipeline.db`         | `fly ssh console --app findajob-<handle> --command "sqlite3 /app/data/pipeline.db"`  |
+| `docker compose exec scheduler sqlite3 data/pipeline.db`         | `fly ssh console --app findajob-<handle> --command "sqlite3 /app/state/data/pipeline.db"`  |
 | `docker compose ps`                                              | `fly status --app findajob-<handle>`                                                 |
 | `docker compose restart scheduler`                               | `fly machines restart <machine-id> --app findajob-<handle>`                          |
 | `docker compose pull && docker compose up -d`                    | edit image tag in `ops/fly.toml`, then `fly deploy --config ops/fly.toml`            |
@@ -131,7 +131,7 @@ Fly's release history keeps the prior image references; the rollback is a re-dep
 
     fly apps destroy findajob-<handle>
 
-This is **irreversible**. It destroys the app, the machine, and all six volumes (and their snapshots). Take a final snapshot first if you want a recovery option. There is no "soft delete."
+This is **irreversible**. It destroys the app, the machine, and the `findajob_state` volume (and its snapshots). Take a final snapshot first if you want a recovery option. There is no "soft delete."
 
 ## Not in scope
 

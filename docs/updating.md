@@ -12,7 +12,9 @@ Watch [CHANGELOG.md](https://github.com/brockamer/findajob/blob/main/CHANGELOG.m
 
 ## Fly.io users
 
-Run this from your local copy of the repo, after any release you want to pick up:
+If you installed via the web "Launch an App" flow (no terminal), update from the Fly dashboard: connect your GitHub repo and enable **Auto-Deploy on push** for automatic updates on each release, or click **Deploy** on the app's overview page to redeploy the latest. See [`getting-started/install-fly.md` → Updating to a new release](getting-started/install-fly.md#updating-to-a-new-release) for the walkthrough.
+
+**Power-user (local repo clone).** If you have `flyctl` and a clone of the repo, run this after any release you want to pick up:
 
     fly deploy --config ops/fly.toml
 
@@ -23,8 +25,6 @@ After deploying, verify the auth gate is still up:
     fly ssh console --app findajob-<handle> --command "python -m findajob.web.verify_auth"
 
 A zero exit means the gate is active. Any non-zero exit means the stack is unverified — check `fly logs` before using the app again.
-
-> **Note:** Automated Fly updates (no manual `fly deploy` required) are planned for a future release. Until then, the one-command deploy above is the update path.
 
 ---
 

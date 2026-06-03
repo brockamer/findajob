@@ -11,7 +11,7 @@ Allow ~2 hours end-to-end: ~20 minutes setup (install + API key signups), a 60�
 Three docs cover the same Fly or Docker install at different paces. Both Fly options reach the same place; pick the runbook style that matches your comfort level.
 
 - **[`start-here-fly.md`](start-here-fly.md)** — **start here if you're not comfortable with the command line.** Step-by-step Fly.io install paced for first-timers, with screenshots at every UI decision point and "what to do if this didn't work" branches inline. Recommended for most non-engineers. ~$3–5/mo Fly hosting + LLM API spend.
-- **[`install-fly.md`](install-fly.md)** — denser runbook covering the same Fly.io install. ~20 minutes from `fly auth login` to the first onboarding screen. Same ~$3–5/mo cost. One Fly app per person; no server to operate.
+- **[`install-fly.md`](install-fly.md)** — denser, reference-style runbook for the same browser-based Fly "Launch an App" install (no terminal). ~20 minutes from Fly sign-in to the first onboarding screen. Same ~$3–5/mo cost. One Fly app per person; no server to operate.
 - **[`install-docker.md`](../operations/install-docker.md)** — have a Linux server? Self-host with docker-compose. Free if you already have the box; more knobs, more responsibility.
 
 Prerequisites for each path are listed at the top of its respective runbook. Both Fly paths need a Fly.io account with billing enabled; Docker needs a Linux host running Docker 24+ with Compose v2. All three need an OpenRouter API key (and optionally a RapidAPI key + ntfy topic) — picked up inside the runbook.
@@ -52,7 +52,7 @@ fly ssh console --app findajob-<your-handle> --command "python3 /app/scripts/not
 docker compose exec scheduler /app/scripts/notify.py health-check
 ```
 
-**Expected:** no output (silent = healthy), or a list of `WARN` / `ERROR` lines pointing at what's not wired yet. Each alert is documented in [`../troubleshooting.md`](../troubleshooting.md). A freshly-started container with no triage run yet will fire `WARN: pipeline_complete not seen in last 25h` — that's normal; it clears after the first scheduled triage at 00:00 in the stack's configured `TZ` (default `America/New_York` on Fly per [`install-fly.md` §7](install-fly.md#7-verify-and-wait-for-first-triage); editable via the `TZ` env var on Docker).
+**Expected:** no output (silent = healthy), or a list of `WARN` / `ERROR` lines pointing at what's not wired yet. Each alert is documented in [`../troubleshooting.md`](../troubleshooting.md). A freshly-started container with no triage run yet will fire `WARN: pipeline_complete not seen in last 25h` — that's normal; it clears after the first scheduled triage at 00:00 in the stack's configured `TZ` (default `America/New_York` on Fly per [`install-fly.md` §6](install-fly.md#6-verify-and-wait-for-first-triage); editable via the `TZ` env var on Docker).
 
 ## 4. Gmail job-alert ingestion (optional) → [`gmail.md`](gmail.md)
 

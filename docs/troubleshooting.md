@@ -59,7 +59,7 @@ jq -c 'select(.event == "pipeline_complete")' state/logs/pipeline.jsonl | tail -
 **Events present but no new jobs?** A source is silent. The health check's "silent feed failure" alert tells you which one. Causes by source:
 
 - **RapidAPI (`jobsapi`)**: key missing, quota exhausted, `config/jsearch_queries.txt` empty/malformed, or the key's account isn't subscribed to the API. A `jobsapi_403` event with `body_excerpt` containing `"not subscribed"` means the RapidAPI account that owns the key has no active subscription on the API listing. Fix: log into <https://rapidapi.com>, open the API listing (e.g. <https://rapidapi.com/Pat92/api/jobs-api14>), click **Subscribe to Test** → **BASIC** (free).
-- **Gmail**: OAuth token expired → re-authenticate inside the container: `docker compose exec scheduler /app/scripts/gmail_auth.py`. OAuth client must be "Desktop app" type, not TV/limited-input.
+- **Gmail**: IMAP login failing → the Google app password was revoked or your 2FA settings changed. Generate a new app password and re-save it at `/config/gmail/` (see [`getting-started/gmail.md`](getting-started/gmail.md)).
 - **Greenhouse**: `config/feed_urls.txt` slug 404s when the company removes a careers page — prune dead slugs.
 
 ### "Jobs are scoring 0 or not scoring at all"
@@ -104,19 +104,13 @@ Look for `manual_job_ingested` (success) or `ingest_skipped` (duplicate fingerpr
 
 ### "Gmail isn't ingesting job alerts"
 
-Gmail uses OAuth2 with a Desktop-app client. Tokens expire silently after long idle periods or if scopes change.
+Gmail uses IMAP with a Google app password (configured at `/config/gmail/`). Ingestion fails if the app password is revoked or your Google 2FA settings change — there is no OAuth token to expire.
 
 ```bash
 jq -c 'select(.event | test("gmail"))' state/logs/pipeline.jsonl | tail -5
 ```
 
-Look for `gmail_fetched` dropping to zero or error events. Re-authenticate with:
-
-```bash
-docker compose exec scheduler /app/scripts/gmail_auth.py
-```
-
-Follow the device-flow prompts. OAuth client type must be **Desktop** — TV / limited-input clients have a different scope set and Google rejects job-alert scopes on those.
+Look for `gmail_fetched` dropping to zero or error events. Fix it by generating a new Google app password and re-saving it at `/config/gmail/` — see [`getting-started/gmail.md`](getting-started/gmail.md) for the 2FA + app-password procedure.
 
 ### "Onboarding finalize fails with 402 PaymentRequired"
 

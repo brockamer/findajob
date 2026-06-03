@@ -367,7 +367,7 @@ Operators on PRO tier can raise per-query page counts via env vars in `data/.env
 - `JOBS_API14_MAX_PAGES=3` (or up to 5) — `JobsApi14Adapter` multi-page LinkedIn fetch (#414 PR2)
 - `JSEARCH_NUM_PAGES=3` — `JSearchAdapter` server-side pagination width (#414 PR3)
 
-Each additional page is one billed RapidAPI request; both default to 1 (pre-#414 behavior). See [`api-keys.md` → Pagination tuning](api-keys.md#pagination-tuning-pro-tier) for the cost math.
+Each additional page is one billed RapidAPI request; both default to 1 (pre-#414 behavior). See [`api-keys.md` → Pagination tuning](../getting-started/api-keys.md) for the cost math.
 
 ## Rolling back locally
 
