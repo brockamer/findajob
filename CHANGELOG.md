@@ -10,6 +10,8 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+## [0.33.0] — 2026-06-03
+
 ### Added
 
 - **Change your timezone after onboarding** (#988): a new `/settings/timezone/` page lets you pick a different IANA zone without re-running the onboarding interview. It shows the currently running `TZ` plus any picked-but-pending zone, validates the selection (`ZoneInfo`), and writes `data/timezone` atomically — invalid input is rejected inline with no partial write. The change takes effect on the next app restart (same semantics as the onboarding pick and the dashboard restart-to-apply banner, #981), and that banner now links straight here. A shared sub-nav (`templates/settings/_settings_nav.html`) cross-links every `/settings/` page so each is reachable from the others.
@@ -1514,7 +1516,8 @@ from GHCR and deployed via Docker Compose on a shared Docker host.
 - Documentation cleanup — removing `sigoden/aichat` references in favor of
   `blob42/aichat-ng` — is tracked in #70
 
-[Unreleased]: https://github.com/brockamer/findajob/compare/v0.32.0...HEAD
+[Unreleased]: https://github.com/brockamer/findajob/compare/v0.33.0...HEAD
+[0.33.0]: https://github.com/brockamer/findajob/releases/tag/v0.33.0
 [0.32.0]: https://github.com/brockamer/findajob/releases/tag/v0.32.0
 [0.31.3]: https://github.com/brockamer/findajob/releases/tag/v0.31.3
 [0.31.2]: https://github.com/brockamer/findajob/releases/tag/v0.31.2
