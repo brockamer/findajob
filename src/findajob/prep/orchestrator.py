@@ -147,10 +147,23 @@ def _handle_prep_runtime_failure(
     fail-closed DB-error path from the ceiling gate (#956) — failure classes
     the original handler (``CalledProcessError`` only) let fall through
     uncaught, stranding the job in ``prep_in_progress`` until the 60-min
-    watchdog with no notification. The reset is best-effort: even if the DB
-    write itself fails (genuinely unavailable DB), the ntfy still fires so the
-    operator isn't left guessing, and the watchdog remains the backstop.
+    watchdog with no notification.
+
+    The reset is guarded on stage='prep_in_progress' (``reset_prep_to_scored``).
+    If it's a no-op because the job already advanced — e.g. an OperationalError
+    surfacing from a write AFTER stage was committed to ``briefing_ready`` —
+    this is a post-success hiccup, not a prep failure: skip the sentinel/event/
+    ntfy so a succeeded prep isn't mislabeled as failed. If the reset call
+    itself errors (genuinely unavailable DB), still alert — the watchdog
+    remains the backstop.
     """
+    try:
+        did_reset = reset_prep_to_scored(conn, job_id, reason=reason)
+    except Exception as e:  # noqa: BLE001 — recovery is best-effort; watchdog backstops
+        log_event("prep_reset_failed", job_id=job_id, reason=reason, error=f"{type(e).__name__}: {e}")
+        did_reset = True  # the reset itself errored mid-failure — alert the operator
+    if not did_reset:
+        return  # stage already advanced — a post-success hiccup, not a prep failure
     sentinel_path = os.path.join(outdir, ".failed_prep")
     try:
         with open(sentinel_path, "w") as f:
@@ -158,10 +171,6 @@ def _handle_prep_runtime_failure(
     except OSError:
         pass  # outdir may not exist yet; sentinel is best-effort
     log_event("prep_runtime_failed", company=company, title=title, job_id=job_id, reason=reason)
-    try:
-        reset_prep_to_scored(conn, job_id, reason=reason)
-    except Exception as e:  # noqa: BLE001 — recovery is best-effort; watchdog backstops
-        log_event("prep_reset_failed", job_id=job_id, reason=reason, error=f"{type(e).__name__}: {e}")
     ntfy_send(
         f"Prep failed: {company} — {title}",
         f"A: {reason}\nStage reset to scored.",
@@ -841,13 +850,26 @@ def _handle_phase_b_failure(
     The ``old_value`` in the audit row is read from the current row
     rather than hard-coded — Phase B can be entered from either
     ``briefing_ready`` (legacy ``--phase=all`` wrapper, Phase A just
-    finished) or ``prep_in_progress`` (the future ``/continue-prep``
-    route, which transitions stage before spawning the subprocess).
+    finished) or ``prep_in_progress`` (the ``/continue-prep`` route,
+    which transitions stage before spawning the subprocess).
+
+    Guards on those two pre-materials stages: if the job already advanced to
+    ``materials_drafted`` — e.g. an OperationalError surfacing from the
+    post-commit ``write_audit`` AFTER the success stage was committed (Phase B
+    commits ``materials_drafted`` before its audit write) — this is a
+    post-success hiccup, not a Phase B failure. Reverting it would clobber a
+    completed application, so skip the reset AND the misleading prep_failure
+    ntfy. (#956)
     """
-    now = datetime.now(UTC).isoformat()
     try:
         existing = conn.execute("SELECT stage FROM jobs WHERE id=?", (job_id,)).fetchone()
         old_stage = existing[0] if existing else "unknown"
+    except Exception:  # noqa: BLE001 — best-effort; can't safely act on an unreadable stage
+        old_stage = "unknown"
+    if old_stage not in ("prep_in_progress", "briefing_ready"):
+        return  # already advanced (or unreadable) — don't revert a completed prep or false-notify
+    now = datetime.now(UTC).isoformat()
+    try:
         conn.execute(
             "UPDATE jobs SET stage='briefing_ready', stage_updated=?, updated_at=? WHERE id=?",
             (now, now, job_id),
@@ -855,7 +877,7 @@ def _handle_phase_b_failure(
         conn.commit()
         write_audit(conn, job_id, "stage", old_stage, "briefing_ready")
     except Exception:
-        pass  # best-effort; the subprocess error is already propagating
+        pass  # best-effort; the original error is already propagating
     log_event("prep_phase_b_failed", company=company, title=title, job_id=job_id, reason=reason)
     ntfy_send(
         f"Prep failed: {company} — {title}",

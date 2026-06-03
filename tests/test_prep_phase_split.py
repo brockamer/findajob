@@ -550,3 +550,88 @@ def test_phase_a_db_error_resets_to_scored_and_notifies(
     row = _read_job(db_path)
     assert row["stage"] == "scored", f"DB error mid-Phase-A must reset to scored, got {row['stage']!r}"
     assert any(kw.get("kind") == "prep_failure" for kw in ntfy_calls)
+
+
+def test_phase_a_post_success_db_error_does_not_revert_or_false_notify(
+    isolated_base, mocked_orchestrator, isolate_event_log, monkeypatch
+) -> None:
+    """#956 regression: the new `except sqlite3.OperationalError` wraps the
+    whole Phase A body, including the post-commit write_audit. If a transient
+    OperationalError fires AFTER stage was committed to briefing_ready, the job
+    must NOT be mislabeled as a failure — stage stays briefing_ready (the reset
+    is guarded on prep_in_progress) and NO prep_failure ntfy fires (prep
+    actually succeeded)."""
+    import sqlite3 as _sqlite3
+
+    import findajob.prep.orchestrator as orch
+    from findajob.prep.orchestrator import _run_prep_phase_a
+
+    db_path = str(isolated_base / "data" / "pipeline.db")
+    _seed_job(db_path)
+
+    ntfy_calls: list[dict] = []
+    monkeypatch.setattr(orch, "ntfy_send", lambda *a, **kw: ntfy_calls.append(kw))
+
+    # Raise OperationalError on the post-commit briefing_ready audit write only.
+    real_write_audit = orch.write_audit
+
+    def _failing_write_audit(conn, job_id, field, old, new, *a, **kw):
+        if new == "briefing_ready":
+            raise _sqlite3.OperationalError("database is locked")
+        return real_write_audit(conn, job_id, field, old, new, *a, **kw)
+
+    monkeypatch.setattr(orch, "write_audit", _failing_write_audit)
+
+    with pytest.raises(SystemExit):
+        _run_prep_phase_a(COMPANY, TITLE, URL, JOB_ID)
+
+    row = _read_job(db_path)
+    assert row["stage"] == "briefing_ready", (
+        f"a post-success OperationalError must not revert the committed stage, got {row['stage']!r}"
+    )
+    assert not any(kw.get("kind") == "prep_failure" for kw in ntfy_calls), (
+        "prep actually succeeded — no prep_failure ntfy should fire on a post-commit hiccup"
+    )
+
+
+def test_phase_b_post_success_db_error_does_not_revert_or_false_notify(
+    isolated_base, mocked_orchestrator, isolate_event_log, monkeypatch
+) -> None:
+    """#956 regression: the strongest case — Phase B commits materials_drafted
+    BEFORE its post-commit write_audit. A transient OperationalError on that
+    audit write must NOT revert the completed application to briefing_ready
+    (the unguarded reset would have) and must NOT fire a misleading
+    prep_failure ntfy."""
+    import sqlite3 as _sqlite3
+
+    import findajob.prep.orchestrator as orch
+    from findajob.prep.orchestrator import _run_prep_phase_a, _run_prep_phase_b
+
+    db_path = str(isolated_base / "data" / "pipeline.db")
+    _seed_job(db_path)
+
+    _run_prep_phase_a(COMPANY, TITLE, URL, JOB_ID)
+    assert _read_job(db_path)["stage"] == "briefing_ready"
+
+    ntfy_calls: list[dict] = []
+    monkeypatch.setattr(orch, "ntfy_send", lambda *a, **kw: ntfy_calls.append(kw))
+
+    real_write_audit = orch.write_audit
+
+    def _failing_write_audit(conn, job_id, field, old, new, *a, **kw):
+        if new == "materials_drafted":
+            raise _sqlite3.OperationalError("database is locked")
+        return real_write_audit(conn, job_id, field, old, new, *a, **kw)
+
+    monkeypatch.setattr(orch, "write_audit", _failing_write_audit)
+
+    with pytest.raises(SystemExit):
+        _run_prep_phase_b(COMPANY, TITLE, URL, JOB_ID)
+
+    row = _read_job(db_path)
+    assert row["stage"] == "materials_drafted", (
+        f"a post-success OperationalError must not revert materials_drafted, got {row['stage']!r}"
+    )
+    assert not any(kw.get("kind") == "prep_failure" for kw in ntfy_calls), (
+        "prep actually succeeded — no prep_failure ntfy should fire on a post-commit hiccup"
+    )

@@ -5,8 +5,12 @@ Two surfaces:
 - :func:`check_call_gate` — called inside ``openrouter.complete()`` before
   every HTTP request. Opens a short-lived DB connection, checks the current
   calendar-month spend, and raises :class:`LLMSpendCeilingExceeded` if the
-  ceiling is met or exceeded. No-op when the ceiling is disabled or the DB
-  is unavailable (so unit tests that don't build a pipeline.db are unaffected).
+  ceiling is met or exceeded. No-op only when the ceiling is disabled
+  (``load_spend_ceiling()`` returns ``None``). DB errors propagate by design —
+  the gate is fail-closed (a safety mechanism, not best-effort), so an
+  unavailable/half-initialized DB raises rather than silently passing. The
+  authoritative contract lives on :func:`check_call_gate` below; callers that
+  need to survive a DB error (e.g. the prep orchestrator) catch and recover.
 
 - :func:`check_launch_gate` — called by the 5 LLM-spawning route handlers
   before they launch a subprocess. Returns a :class:`LaunchGateRefusal`
