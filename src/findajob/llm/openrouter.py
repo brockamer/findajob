@@ -102,6 +102,15 @@ class OpenRouterError(Exception):
     event payload regardless of which branch (partial truncation vs
     null-content + length) fires. ``None`` means usage was unavailable on
     the response (e.g. parse failed before reaching the usage extract). #737.
+
+    ``prompt_tokens`` and ``cost_usd`` are likewise parsed from
+    ``response.usage`` at the null-content raise site so the caller
+    (:func:`findajob.llm.role_runner.run_role`) can write a fully
+    API-authoritative ``cost_log`` row for a billed-but-failed response —
+    OpenRouter charges for consumed tokens even when the content is unusable.
+    ``None`` means no usage was returned (a pre-response failure that never
+    billed — network, auth, malformed shape); the caller writes no cost row
+    in that case so spend totals aren't inflated by free failures. #955.
     """
 
     def __init__(
@@ -112,12 +121,16 @@ class OpenRouterError(Exception):
         status_code: int | None = None,
         finish_reason: str | None = None,
         completion_tokens: int | None = None,
+        prompt_tokens: int | None = None,
+        cost_usd: float | None = None,
     ) -> None:
         super().__init__(message)
         self.kind = kind
         self.status_code = status_code
         self.finish_reason = finish_reason
         self.completion_tokens = completion_tokens
+        self.prompt_tokens = prompt_tokens
+        self.cost_usd = cost_usd
 
 
 class LLMSpendCeilingExceeded(Exception):
@@ -219,8 +232,12 @@ def complete(
             kind="config",
         )
 
-    # Raises LLMSpendCeilingExceeded if monthly ceiling is met. No-op when
-    # ceiling is disabled or pipeline.db is unavailable.
+    # Raises LLMSpendCeilingExceeded if the monthly ceiling is met. No-op when
+    # the ceiling is disabled (load_spend_ceiling() returns None). DB errors
+    # propagate by design — the gate is a fail-closed safety mechanism, not
+    # best-effort; the authoritative contract is spend_ceiling.check_call_gate.
+    # The prep orchestrator catches the propagated error and recovers (resets
+    # stage + notifies) rather than stranding the job. #956.
     _check_call_gate()
 
     base_dir = roles_dir if roles_dir is not None else _DEFAULT_ROLES_DIR
@@ -857,6 +874,11 @@ def _parse_response(raw: str) -> CompletionResult:
             kind="malformed",
             finish_reason=finish_reason_for_err,
             completion_tokens=completion_tokens,
+            # #955: usage was parsed above — carry the billed cost + prompt
+            # tokens so run_role can write an API-authoritative cost_log row
+            # for this billed-but-unusable response.
+            prompt_tokens=int(usage.get("prompt_tokens", 0)),
+            cost_usd=float(usage.get("cost", 0.0)),
         )
     # #632: finish_reason lives at choices[0].finish_reason in the OpenAI/
     # OpenRouter shape. ``"length"`` signals the response was capped by

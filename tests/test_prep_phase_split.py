@@ -425,3 +425,128 @@ def test_phase_b_validation_failure_resets_to_briefing_ready(
     assert row["stage"] == "briefing_ready", f"validation failure must reset to briefing_ready, got {row['stage']!r}"
     assert row["prep_folder_path"], "prep_folder_path must be preserved on validation failure"
     assert Path(row["prep_folder_path"]).exists(), "briefing folder must remain on disk"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# #956 — spend-ceiling / DB-error mid-prep: reset + notify, never strand
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_phase_a_spend_ceiling_resets_to_scored_and_notifies(
+    isolated_base, mocked_orchestrator, isolate_event_log, monkeypatch
+) -> None:
+    """#956: a spend-ceiling breach mid-Phase-A must roll stage back to
+    ``scored`` immediately and fire a prep_failure ntfy — not leave the job
+    stranded in ``prep_in_progress`` for up to 60 minutes until the watchdog.
+
+    The Phase A handler caught only ``CalledProcessError``;
+    ``LLMSpendCeilingExceeded`` (correctly NOT an ``OpenRouterError``, so
+    run_role re-raises it) fell through uncaught."""
+    import findajob.prep.orchestrator as orch
+    from findajob.llm.openrouter import LLMSpendCeilingExceeded
+    from findajob.prep.orchestrator import _run_prep_phase_a
+
+    db_path = str(isolated_base / "data" / "pipeline.db")
+    _seed_job(db_path)  # stage=prep_in_progress
+
+    ntfy_calls: list[dict] = []
+    monkeypatch.setattr(orch, "ntfy_send", lambda *a, **kw: ntfy_calls.append(kw))
+
+    def _ceiling_run_role(role: str, prompt: str, **kwargs) -> str:
+        raise LLMSpendCeilingExceeded(ceiling_usd=50.0, current_sum_usd=55.0)
+
+    monkeypatch.setattr(orch, "run_role", _ceiling_run_role)
+
+    with pytest.raises(SystemExit):
+        _run_prep_phase_a(COMPANY, TITLE, URL, JOB_ID)
+
+    row = _read_job(db_path)
+    assert row["stage"] == "scored", (
+        f"ceiling mid-Phase-A must reset to scored, got {row['stage']!r} "
+        "(stranded in prep_in_progress means the 60-min watchdog is the only recovery)"
+    )
+    assert ntfy_calls, "a prep_failure ntfy must fire on a ceiling breach"
+    assert any(kw.get("kind") == "prep_failure" for kw in ntfy_calls)
+
+
+def test_phase_b_spend_ceiling_resets_to_briefing_ready_and_notifies(
+    isolated_base, mocked_orchestrator, isolate_event_log, monkeypatch
+) -> None:
+    """#956: a spend-ceiling breach mid-Phase-B must roll stage back to
+    ``briefing_ready`` (preserving the briefing folder for retry) and fire a
+    prep_failure ntfy — never strand the job in ``prep_in_progress``.
+
+    Phase B is entered here at ``prep_in_progress`` to mirror the
+    /continue-prep route, which claims the slot before spawning Phase B."""
+    import sqlite3 as _sqlite3
+
+    import findajob.prep.orchestrator as orch
+    from findajob.llm.openrouter import LLMSpendCeilingExceeded
+    from findajob.prep.orchestrator import _run_prep_phase_a, _run_prep_phase_b
+
+    db_path = str(isolated_base / "data" / "pipeline.db")
+    _seed_job(db_path)
+
+    # Phase A produces the briefing folder + DB scores Phase B reads on entry.
+    _run_prep_phase_a(COMPANY, TITLE, URL, JOB_ID)
+    assert _read_job(db_path)["stage"] == "briefing_ready"
+
+    # Simulate /continue-prep claiming the slot before Phase B runs.
+    claim = _sqlite3.connect(db_path)
+    claim.execute("UPDATE jobs SET stage='prep_in_progress' WHERE id=?", (JOB_ID,))
+    claim.commit()
+    claim.close()
+
+    ntfy_calls: list[dict] = []
+    monkeypatch.setattr(orch, "ntfy_send", lambda *a, **kw: ntfy_calls.append(kw))
+
+    def _ceiling_on_resume(role: str, prompt: str, **kwargs) -> str:
+        if role == "resume_tailor":
+            raise LLMSpendCeilingExceeded(ceiling_usd=50.0, current_sum_usd=60.0)
+        return _fake_run_role(role, prompt, **kwargs)
+
+    monkeypatch.setattr(orch, "run_role", _ceiling_on_resume)
+
+    with pytest.raises(SystemExit):
+        _run_prep_phase_b(COMPANY, TITLE, URL, JOB_ID)
+
+    row = _read_job(db_path)
+    assert row["stage"] == "briefing_ready", (
+        f"ceiling mid-Phase-B must reset to briefing_ready, got {row['stage']!r} "
+        "(never stranded in prep_in_progress; briefing preserved for retry without re-paying Phase A)"
+    )
+    assert row["prep_folder_path"], "briefing folder must be preserved on a ceiling breach"
+    assert Path(row["prep_folder_path"]).exists(), "briefing folder must remain on disk"
+    assert any(kw.get("kind") == "prep_failure" for kw in ntfy_calls)
+
+
+def test_phase_a_db_error_resets_to_scored_and_notifies(
+    isolated_base, mocked_orchestrator, isolate_event_log, monkeypatch
+) -> None:
+    """#956 (defensive): a raw ``sqlite3.OperationalError`` surfacing from the
+    spend-ceiling gate (pipeline.db missing/half-initialized) mid-prep must be
+    caught and recovered like a ceiling breach — reset to ``scored`` + notify —
+    not crash uncaught and strand the job. The gate is fail-closed by design
+    (DB errors propagate); the orchestrator is the layer that recovers."""
+    import sqlite3 as _sqlite3
+
+    import findajob.prep.orchestrator as orch
+    from findajob.prep.orchestrator import _run_prep_phase_a
+
+    db_path = str(isolated_base / "data" / "pipeline.db")
+    _seed_job(db_path)
+
+    ntfy_calls: list[dict] = []
+    monkeypatch.setattr(orch, "ntfy_send", lambda *a, **kw: ntfy_calls.append(kw))
+
+    def _db_error_run_role(role: str, prompt: str, **kwargs) -> str:
+        raise _sqlite3.OperationalError("unable to open database file")
+
+    monkeypatch.setattr(orch, "run_role", _db_error_run_role)
+
+    with pytest.raises(SystemExit):
+        _run_prep_phase_a(COMPANY, TITLE, URL, JOB_ID)
+
+    row = _read_job(db_path)
+    assert row["stage"] == "scored", f"DB error mid-Phase-A must reset to scored, got {row['stage']!r}"
+    assert any(kw.get("kind") == "prep_failure" for kw in ntfy_calls)

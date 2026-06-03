@@ -170,6 +170,55 @@ def test_emits_on_null_content_plus_length_failure_path(roles_dir: Path) -> None
     assert payload["content_chars"] == 0  # the discriminator from the partial-truncation branch
 
 
+def test_null_content_error_carries_cost_usd(roles_dir: Path) -> None:
+    """content=null + finish_reason='length' — OpenRouter billed for the
+    consumed tokens (usage.cost), but the response is unusable.
+
+    #955: the raised OpenRouterError must carry ``cost_usd`` so the caller
+    (run_role) can write a cost_log row for the billed-but-failed call.
+    Without it, spend_this_month() under-counts exactly during truncation
+    storms. ``usage`` is parsed before the not-a-string check, so the cost
+    is available at the raise site — mirrors the #737 completion_tokens wiring.
+    """
+    body = _make_response(text=None, finish_reason="length")
+
+    with (
+        patch("findajob.llm.openrouter.urllib.request.urlopen", return_value=_Resp(body)),
+        patch("findajob.llm.openrouter.log_event", side_effect=lambda *a, **k: None),
+        patch("findajob.llm.openrouter._check_call_gate", return_value=None),
+        pytest.raises(OpenRouterError) as excinfo,
+    ):
+        complete(role="test_role", prompt="prompt", api_key="sk-test", roles_dir=roles_dir, job_id="job-cost")
+
+    # usage.cost from _make_response is 0.04
+    assert excinfo.value.cost_usd == 0.04
+
+
+def test_http_error_has_no_cost_usd(roles_dir: Path) -> None:
+    """A pre-response failure (HTTP error) never billed — cost_usd is None.
+
+    Negative assertion guarding the run_role logging guard: only an
+    OpenRouterError that carries usage gets a cost_log row. A 4xx/5xx that
+    fails before any usage envelope must leave cost_usd None so no phantom
+    cost row is written.
+    """
+    import urllib.error
+    from io import BytesIO
+
+    with (
+        patch(
+            "findajob.llm.openrouter.urllib.request.urlopen",
+            side_effect=urllib.error.HTTPError(url="x", code=401, msg="auth", hdrs=None, fp=BytesIO(b"")),
+        ),
+        patch("findajob.llm.openrouter.log_event", side_effect=lambda *a, **k: None),
+        patch("findajob.llm.openrouter._check_call_gate", return_value=None),
+        pytest.raises(OpenRouterError) as excinfo,
+    ):
+        complete(role="test_role", prompt="prompt", api_key="sk-test", roles_dir=roles_dir)
+
+    assert excinfo.value.cost_usd is None
+
+
 def test_does_not_emit_on_stop(roles_dir: Path) -> None:
     """finish_reason='stop' — normal completion. No emission."""
     body = _make_response(text="full output", finish_reason="stop")

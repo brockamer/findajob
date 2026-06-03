@@ -25,6 +25,7 @@ from findajob.audit import log_event, write_audit
 from findajob.background_tasks import writeback_subprocess
 from findajob.classification import JD_MAX_CHARS
 from findajob.db import connect
+from findajob.llm.openrouter import LLMSpendCeilingExceeded
 from findajob.llm.role_runner import run_role
 from findajob.notifications.ntfy import send as ntfy_send
 from findajob.paths import BASE, IMAGE_ROOT, PANDOC, load_env
@@ -128,6 +129,42 @@ def _handle_prep_subprocess_failure(
     ntfy_send(
         f"Prep failed: {company} — {title}",
         f"A: subprocess_error\n{cmd} exit {exc.returncode}",
+        kind="prep_failure",
+    )
+
+
+def _handle_prep_runtime_failure(
+    conn: sqlite3.Connection,
+    job_id: str,
+    company: str,
+    title: str,
+    outdir: str,
+    reason: str,
+) -> None:
+    """Roll Phase A back to ``scored`` after a non-subprocess runtime failure.
+
+    Covers the spend-ceiling breach (``LLMSpendCeilingExceeded``) and the
+    fail-closed DB-error path from the ceiling gate (#956) — failure classes
+    the original handler (``CalledProcessError`` only) let fall through
+    uncaught, stranding the job in ``prep_in_progress`` until the 60-min
+    watchdog with no notification. The reset is best-effort: even if the DB
+    write itself fails (genuinely unavailable DB), the ntfy still fires so the
+    operator isn't left guessing, and the watchdog remains the backstop.
+    """
+    sentinel_path = os.path.join(outdir, ".failed_prep")
+    try:
+        with open(sentinel_path, "w") as f:
+            f.write(f"ts: {datetime.now(UTC).isoformat()}\nreason: {reason}\n")
+    except OSError:
+        pass  # outdir may not exist yet; sentinel is best-effort
+    log_event("prep_runtime_failed", company=company, title=title, job_id=job_id, reason=reason)
+    try:
+        reset_prep_to_scored(conn, job_id, reason=reason)
+    except Exception as e:  # noqa: BLE001 — recovery is best-effort; watchdog backstops
+        log_event("prep_reset_failed", job_id=job_id, reason=reason, error=f"{type(e).__name__}: {e}")
+    ntfy_send(
+        f"Prep failed: {company} — {title}",
+        f"A: {reason}\nStage reset to scored.",
         kind="prep_failure",
     )
 
@@ -489,6 +526,19 @@ def _run_prep_phase_a(company: str, title: str, url: str, job_id: str) -> None:
         conn.close()
         print(f"PREP_PHASE_A_COMPLETE:{outdir}")
 
+    except LLMSpendCeilingExceeded as exc:
+        # #956: a spend-ceiling breach mid-prep is routine (operator-configured
+        # affordability gate), not exotic. run_role re-raises it (it is
+        # deliberately NOT an OpenRouterError). Reset + notify immediately
+        # instead of stranding the job in prep_in_progress for the watchdog.
+        _handle_prep_runtime_failure(conn, job_id, company, title, outdir, reason="spend_ceiling")
+        raise SystemExit(1) from exc
+    except sqlite3.OperationalError as exc:
+        # #956: the ceiling gate is fail-closed — a missing/half-initialized
+        # pipeline.db propagates a raw OperationalError through complete().
+        # Recover the same way rather than crash uncaught.
+        _handle_prep_runtime_failure(conn, job_id, company, title, outdir, reason="db_error")
+        raise SystemExit(1) from exc
     except subprocess.CalledProcessError as exc:
         _handle_prep_subprocess_failure(conn, job_id, company, title, outdir, exc)
         raise SystemExit(1) from exc
@@ -757,6 +807,16 @@ def _run_prep_phase_b(company: str, title: str, url: str, job_id: str) -> None:
         conn.close()
         print(f"PREP_COMPLETE:{outdir}")
 
+    except LLMSpendCeilingExceeded as exc:
+        # #956: ceiling breach mid-Phase-B — reset to briefing_ready (NOT
+        # scored), preserving the briefing folder so the operator can retry
+        # Phase B without re-paying Phase A. Same recovery as a subprocess crash.
+        _handle_phase_b_failure(conn, job_id, company, title, "spend_ceiling")
+        raise SystemExit(1) from exc
+    except sqlite3.OperationalError as exc:
+        # #956: fail-closed ceiling-gate DB error mid-Phase-B — recover, don't crash.
+        _handle_phase_b_failure(conn, job_id, company, title, "db_error")
+        raise SystemExit(1) from exc
     except subprocess.CalledProcessError as exc:
         # Phase B subprocess failure: reset to briefing_ready (NOT scored).
         # Preserves the briefing folder so operator can retry without re-paying Phase A.

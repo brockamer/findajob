@@ -21,6 +21,7 @@ import urllib.error
 from io import BytesIO
 from unittest.mock import patch
 
+from findajob.llm.openrouter import OpenRouterError
 from findajob.llm.role_runner import run_role
 
 # Fake key satisfies the OPENROUTER_API_KEY guard in openrouter.complete() without
@@ -146,6 +147,75 @@ def test_run_role_does_not_write_on_wrapper_error():
     assert out == ""
     rows = conn.execute("SELECT operation FROM cost_log").fetchall()
     assert len(rows) == 0
+
+
+def test_run_role_logs_cost_on_empty_output():
+    """#955: a billed-but-empty response (content="" → text strips to "")
+    still incurred cost. The cost_log row must be written even though the
+    returned text is falsy — the old ``if conn is not None and text:`` guard
+    silently dropped these rows, under-counting spend_this_month()."""
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript(COST_LOG_SCHEMA)
+
+    with (
+        patch.dict(os.environ, _FAKE_API_KEY),
+        patch(
+            "findajob.llm.openrouter.urllib.request.urlopen",
+            return_value=_stub_openrouter_response(content="", cost=0.02),
+        ),
+    ):
+        out = run_role("briefing_writer", "format this", conn=conn, job_id="job-empty")
+
+    assert out == ""
+    rows = conn.execute("SELECT cost_usd, success FROM cost_log").fetchall()
+    assert len(rows) == 1, "billed-but-empty response must still write a cost_log row"
+    assert rows[0]["cost_usd"] == 0.02
+    assert rows[0]["success"] == 1  # the HTTP call succeeded; it just returned empty content
+
+
+def test_run_role_logs_cost_on_null_content_error():
+    """#955: a null-content (finish_reason=length) response raises
+    OpenRouterError, but OpenRouter still billed for the consumed tokens.
+    run_role must record that billed cost (success=0) instead of returning
+    "" silently and dropping the spend."""
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript(COST_LOG_SCHEMA)
+
+    with (
+        patch.dict(os.environ, _FAKE_API_KEY),
+        patch(
+            "findajob.llm.openrouter.urllib.request.urlopen",
+            return_value=_stub_openrouter_response(content=None, cost=0.05),
+        ),
+    ):
+        out = run_role("briefing_writer", "format this", conn=conn, job_id="job-null")
+
+    assert out == ""
+    rows = conn.execute("SELECT cost_usd, success, job_id FROM cost_log").fetchall()
+    assert len(rows) == 1, "billed-but-failed (null content) response must write a cost_log row"
+    assert rows[0]["cost_usd"] == 0.05
+    assert rows[0]["success"] == 0  # the call failed (unusable content) but was billed
+    assert rows[0]["job_id"] == "job-null"
+
+
+def test_run_role_no_cost_row_when_error_has_no_usage():
+    """#955 negative assertion: an OpenRouterError that never billed
+    (cost_usd is None — e.g. a network/auth failure before any usage
+    envelope) must NOT write a cost_log row. Logging a heuristic estimate
+    here would over-count spend for genuinely free failures."""
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript(COST_LOG_SCHEMA)
+
+    ore = OpenRouterError("network down", kind="network")  # cost_usd defaults to None
+    with patch("findajob.llm.role_runner.complete", side_effect=ore):
+        out = run_role("briefing_writer", "format this", conn=conn, job_id="job-net")
+
+    assert out == ""
+    rows = conn.execute("SELECT operation FROM cost_log").fetchall()
+    assert len(rows) == 0, "a no-usage failure must not write a phantom cost row"
 
 
 def test_run_role_passes_cached_prefix_to_wrapper():
