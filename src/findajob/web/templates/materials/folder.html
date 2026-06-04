@@ -565,6 +565,7 @@ function flashcardViewer(cards) {
     {% if study_materials_error == 'already_generating' %}This artifact is already being generated for this job. Please wait for it to finish.
     {% elif study_materials_error == 'spend_ceiling' %}Generation blocked — monthly spend ceiling reached.
     {% elif study_materials_error == 'generation_failed' %}Generation failed. Check logs for details.
+    {% elif study_materials_error == 'missing_artifacts' %}The briefing and interview-prep materials aren't ready yet — if interview prep is still generating, try again in a minute.
     {% else %}{{ study_materials_error }}{% endif %}
   </div>
   {% endif %}
@@ -625,6 +626,7 @@ function flashcardViewer(cards) {
     {% if podcast_error == 'already_generating' %}A podcast is already being generated for this job. Please wait for it to finish.
     {% elif podcast_error == 'spend_ceiling' %}Podcast generation blocked — monthly spend ceiling reached.
     {% elif podcast_error == 'generation_failed' %}Podcast generation failed. Check logs for details.
+    {% elif podcast_error == 'missing_artifacts' %}The briefing and interview-prep materials aren't ready yet — if interview prep is still generating, try again in a minute.
     {% else %}{{ podcast_error }}{% endif %}
   </div>
   {% endif %}

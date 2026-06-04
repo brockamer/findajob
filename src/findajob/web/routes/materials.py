@@ -586,7 +586,14 @@ def generate_podcast_from_materials(
     interview_prep = _read_latest(r"Interview Prep.*\.md$")
 
     if not briefing or not interview_prep:
-        raise HTTPException(status_code=409, detail="Missing briefing or interview prep artifacts")
+        # Artifacts not yet on disk (e.g. interview-prep is still generating
+        # them). Redirect gracefully like the sibling failure modes rather than
+        # raising a raw 409 — under hx-boost a 409 surfaces as a "Request failed"
+        # toast and leaves the Generate button stuck on "Generating…" (#1029).
+        return RedirectResponse(
+            url=f"/materials/{fingerprint}?podcast_error=missing_artifacts",
+            status_code=303,
+        )
 
     from findajob.paths import BASE
 
@@ -739,7 +746,11 @@ def _launch_study_artifact(
     interview_prep = _read_latest(r"Interview Prep.*\.md$")
 
     if not briefing or not interview_prep:
-        raise HTTPException(status_code=409, detail="Missing briefing or interview prep artifacts")
+        # Artifacts not yet on disk — graceful redirect, not a raw 409 (#1029).
+        return RedirectResponse(
+            url=f"/materials/{fingerprint}?study_materials_error=missing_artifacts",
+            status_code=303,
+        )
 
     from findajob.paths import BASE
 

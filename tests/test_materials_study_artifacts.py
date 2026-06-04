@@ -7,7 +7,8 @@ Mirrors ``test_materials_interview_rerun.py``. Coverage:
 3. POST routes reject non-interview stages with 409.
 4. POST routes respect the per-job concurrency guard.
 5. POST routes respect the spend-ceiling gate.
-6. POST routes 409 when required prep artifacts are missing.
+6. POST routes redirect with ?study_materials_error=missing_artifacts when
+   required prep artifacts are missing (#1029).
 
 Per the test-real-codepath discipline (#610/#611): the generator function is
 mocked, but ``record_start`` is NOT — so the ``background_tasks.kind`` CHECK
@@ -34,12 +35,18 @@ from tests.conftest import init_test_db
 def folder_client(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(audit, "LOG_PATH", str(tmp_path / "events.jsonl"))
 
-    def _make(*, stage: str = "interview", with_briefing: bool = True) -> TestClient:
+    def _make(
+        *,
+        stage: str = "interview",
+        with_briefing: bool = True,
+        with_interview_prep: bool = True,
+    ) -> TestClient:
         companies = tmp_path / "companies"
         companies.mkdir(exist_ok=True)
         folder = companies / "Acme_Eng_2026-05-20_120000"
         folder.mkdir(exist_ok=True)
-        (folder / "Tester Interview Prep - Acme - Sr Ops - 20260520-120000.md").write_text("# Notes")
+        if with_interview_prep:
+            (folder / "Tester Interview Prep - Acme - Sr Ops - 20260520-120000.md").write_text("# Notes")
         (folder / "JD - Acme - Sr Ops.txt").write_text("JD body.")
         if with_briefing:
             (folder / "Tester Briefing - Acme - Sr Ops - 20260520-120000.md").write_text("# Briefing")
@@ -184,7 +191,25 @@ def test_post_spend_ceiling_gate(mock_gate, route, folder_client):
 
 
 @pytest.mark.parametrize("route", ["study-guide", "flashcards"])
-def test_post_missing_artifacts_409(route, folder_client):
-    client = folder_client(stage="interview", with_briefing=False)
-    resp = client.post(f"/materials/fp/{route}")
-    assert resp.status_code == 409
+@pytest.mark.parametrize("missing", ["briefing", "interview_prep"])
+def test_post_missing_artifacts_redirects(route, missing, folder_client):
+    """#1029: a missing briefing/interview-prep artifact redirects gracefully
+    with ?study_materials_error=missing_artifacts rather than raising a raw 409
+    (which hx-boost would surface as a "Request failed" toast + stuck button)."""
+    client = folder_client(
+        stage="interview",
+        with_briefing=(missing != "briefing"),
+        with_interview_prep=(missing != "interview_prep"),
+    )
+    resp = client.post(f"/materials/fp/{route}", follow_redirects=False)
+    assert resp.status_code == 303
+    assert "study_materials_error=missing_artifacts" in resp.headers["location"]
+
+
+def test_study_missing_artifacts_banner_renders(folder_client):
+    """The 303 lands here; the folder page must render a readable banner."""
+    client = folder_client(stage="interview")
+    resp = client.get("/materials/fp?study_materials_error=missing_artifacts")
+    assert resp.status_code == 200
+    assert "aren't ready yet" in resp.text
+    assert "Request failed" not in resp.text
