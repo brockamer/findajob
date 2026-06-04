@@ -37,6 +37,7 @@ from findajob.web.routes import (
     tools_actions,
     tools_critique,
     tools_logs,
+    update,
 )
 
 _guard = [Depends(require_onboarding_complete)]
@@ -53,6 +54,7 @@ router.include_router(healthz.router)
 # redirect zero-cost on every request after the first post-onboarding hit.
 router.include_router(landing.router, dependencies=_guard)
 router.include_router(board.router, dependencies=_guard)
+router.include_router(update.router, dependencies=_guard)
 router.include_router(board_actions.router, dependencies=_guard)
 router.include_router(exclusion_rule.router, dependencies=_guard)
 router.include_router(ingest.router)
