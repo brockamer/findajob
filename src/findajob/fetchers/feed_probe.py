@@ -1,178 +1,222 @@
-"""#985: probe configured ATS feeds (Greenhouse/Lever/Ashby) for live/dead.
+"""Shared feed-URL probe helper (#984).
 
-Shared by /settings/feed-urls/ (the Verify button) and #984 (onboarding slug
-validation). Parses feed_urls.txt rows and probes each against its ATS API,
-classifying by HTTP status only — liveness needs the status code, not the
-body, which sidesteps the per-ATS response-shape differences.
+Probes each ATS board URL in ``feed_urls.txt`` against its public API for
+liveness. One source of truth reused by three surfaces:
 
-Coexists deliberately with each adapter's `live_test()`: that method is
-adapter-scoped + query-based and buckets 404 as 'auth' (wrong granularity and
-vocabulary for per-row display, wrong shape for #984's per-slug need). Do NOT
-consolidate the two or refactor live_test to delegate.
+* onboarding-time validation (#984) — prevention, before first triage
+* the "Verify feed URLs" settings button (#985) — self-serve remediation
+* the runtime persistent-404 health-check (#983) — detection over time
+
+Design note — *no drift*: the per-ATS slug regex and endpoint template are
+read directly off the adapter classes (``GreenhouseAdapter._SLUG_RE`` etc.)
+rather than copied here. If an adapter's URL convention changes, the probe
+follows automatically. Reaching for those underscore-prefixed ClassVars is
+deliberate within-package reuse, not a layering violation.
+
+Contract: probing NEVER raises into the caller. A network failure, timeout,
+or malformed response becomes a result with ``status="unreachable"`` — so
+onboarding completion can never be blocked by a slow or offline ATS API.
 """
 
 from __future__ import annotations
 
-import re
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from collections.abc import Iterable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Literal
 
 import requests
 
-from findajob.fetchers.adapters.ashby import AshbyAdapter
-from findajob.fetchers.adapters.greenhouse import GreenhouseAdapter
-from findajob.fetchers.adapters.lever import LeverAdapter
-
-
-@dataclass(frozen=True)
-class _ProbeSpec:
-    ats: str
-    slug_re: re.Pattern
-    endpoint: str
-    comment_is_company: bool
-
-
-# Single source of ATS metadata: read straight from the adapter ClassVars so
-# the regex/endpoint can never drift from what triage actually fetches.
-_REGISTRY: tuple[_ProbeSpec, ...] = (
-    _ProbeSpec(
-        "greenhouse", GreenhouseAdapter._SLUG_RE, GreenhouseAdapter._ENDPOINT_TEMPLATE, comment_is_company=False
-    ),
-    _ProbeSpec("lever", LeverAdapter._SLUG_RE, LeverAdapter._ENDPOINT_TEMPLATE, comment_is_company=True),
-    _ProbeSpec("ashby", AshbyAdapter._SLUG_RE, AshbyAdapter._ENDPOINT_TEMPLATE, comment_is_company=True),
-)
-_BY_ATS: dict[str, _ProbeSpec] = {s.ats: s for s in _REGISTRY}
-
-DEFAULT_TIMEOUT: float = 8.0
-_UA: str = GreenhouseAdapter._UA  # reuse the adapter UA; do not re-declare
+from .adapters.ashby import AshbyAdapter
+from .adapters.greenhouse import GreenhouseAdapter
+from .adapters.lever import LeverAdapter
 
 ProbeStatus = Literal["live", "dead", "unreachable", "unsupported"]
 
-_UNSUPPORTED_HINT = (
-    "Not a Greenhouse, Lever, or Ashby URL — findajob can't fetch this ATS. "
-    "Comment it out with # in /config/ → feed_urls.txt."
+# (kind, slug_regex, endpoint_template) sourced from the adapters themselves
+# so there is exactly one definition of each ATS's URL shape.
+_PROBE_KINDS = (
+    ("greenhouse", GreenhouseAdapter._SLUG_RE, GreenhouseAdapter._ENDPOINT_TEMPLATE),
+    ("ashby", AshbyAdapter._SLUG_RE, AshbyAdapter._ENDPOINT_TEMPLATE),
+    ("lever", LeverAdapter._SLUG_RE, LeverAdapter._ENDPOINT_TEMPLATE),
 )
-_OFFLINE_HINT = (
-    "Couldn't reach this feed (timed out or no network). If every feed is unreachable, this instance is likely offline."
-)
-_DEAD_404_HINT = (
-    "404 — this slug may have changed. Check the company's careers page for the current URL, or comment it out with #."
-)
+
+_DEFAULT_TIMEOUT = 8.0
+_DEFAULT_MAX_WORKERS = 8
+
+# Match the adapters' User-Agent exactly — no-drift extends to headers, not just
+# the URL. An ATS that filters the bare python-requests UA would block the probe
+# (false "unreachable") while the real fetch, which sends this, succeeds.
+_UA = "findajob-pipeline/1.0 (personal job search tool)"
+
+# A clean company display name is short and word-like. Beyond these bounds it
+# reads as provenance/free-text — the #856 failure mode where junk comments
+# pollute jobs.company and diverge the dedup fingerprint.
+_MAX_COMPANY_NAME_LEN = 50
+_MAX_COMPANY_NAME_WORDS = 6
 
 
 @dataclass(frozen=True)
-class FeedRow:
-    """One feed_urls.txt line, parsed but not yet probed."""
+class FeedProbeResult:
+    """Outcome of probing one ``feed_urls.txt`` line."""
 
-    url: str  # the URL part, comment stripped
-    ats: str | None  # None => unsupported ATS
+    line: str
+    kind: str | None
     slug: str | None
-    company: str  # inline comment (Lever/Ashby) | slug.title() | url (unsupported)
-
-
-def parse_feed_rows(text: str) -> list[FeedRow]:
-    """Parse feed_urls.txt content into display/probe rows.
-
-    Skips blank lines and lines starting with '#' (intentional comment-outs).
-    Classifies each remaining line by ATS via the adapter regexes; non-matching
-    lines become `ats=None` (unsupported). Company name comes from the inline
-    '# comment' for Lever/Ashby only, else the titlecased slug. De-dupes by
-    (ats, slug), first occurrence wins.
-    """
-    # NB: parallels adapters/_slugs.py::_parse_feed_slugs (the per-adapter parser).
-    # This is the multi-ATS superset used by the verify page + #984; keep the two
-    # in sync if feed_urls.txt syntax changes.
-    rows: list[FeedRow] = []
-    seen: set[tuple[str, str]] = set()
-    for raw in text.splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#"):
-            continue
-        url_part, _, comment = line.partition("#")
-        url_part = url_part.strip()
-        comment = comment.strip()
-
-        matched: tuple[_ProbeSpec, re.Match] | None = None
-        for spec in _REGISTRY:
-            m = spec.slug_re.search(url_part)
-            if m:
-                matched = (spec, m)
-                break
-
-        if matched is None:
-            rows.append(FeedRow(url=url_part, ats=None, slug=None, company=url_part))
-            continue
-
-        spec, m = matched
-        slug = m.group(1)
-        key = (spec.ats, slug)
-        if key in seen:
-            continue
-        seen.add(key)
-        company = comment if (comment and spec.comment_is_company) else slug.title()
-        rows.append(FeedRow(url=url_part, ats=spec.ats, slug=slug, company=company))
-    return rows
-
-
-@dataclass(frozen=True)
-class ProbeResult:
-    row: FeedRow
     status: ProbeStatus
-    http_code: int | None  # set for live/dead; None for unreachable/unsupported
-    hint: str  # "" for live; plain-language guidance otherwise
+    http_status: int | None
+    reason: str
+    company: str | None
+    company_name_ok: bool
 
 
-def probe_feed_url(row: FeedRow, timeout: float = DEFAULT_TIMEOUT) -> ProbeResult:
-    """Probe one feed for liveness. Classifies by HTTP status only.
+def is_plausible_company_name(name: str | None) -> bool:
+    """True unless ``name`` looks like junk (a URL or sentence-like provenance).
 
-    `stream=True` is load-bearing: Greenhouse's endpoint ends in `?content=true`,
-    so a plain GET would download every job's HTML on a liveness check. With
-    stream=True only the status line + headers are fetched; we read status_code
-    and close without ever pulling the body.
+    Flags the #856 failure mode only — *present-but-polluting* comments. A
+    missing comment (None/empty) is not junk: the Ashby/Lever parser falls
+    back to ``slug.title()``, so there is nothing to object to → True.
     """
-    if row.ats is None or row.slug is None:
-        return ProbeResult(row=row, status="unsupported", http_code=None, hint=_UNSUPPORTED_HINT)
+    if name is None:
+        return True
+    text = name.strip()
+    if not text:
+        return True
+    lowered = text.lower()
+    if "http://" in lowered or "https://" in lowered or "www." in lowered:
+        return False
+    if len(text) > _MAX_COMPANY_NAME_LEN:
+        return False
+    if len(text.split()) > _MAX_COMPANY_NAME_WORDS:
+        return False
+    return True
 
-    spec = _BY_ATS[row.ats]
-    url = spec.endpoint.format(slug=row.slug)
-    try:
-        resp = requests.get(url, headers={"User-Agent": _UA}, timeout=timeout, stream=True)
-    except requests.RequestException:
-        return ProbeResult(row=row, status="unreachable", http_code=None, hint=_OFFLINE_HINT)
-    try:
-        code = resp.status_code
-    finally:
-        resp.close()
 
-    if code == 200:
-        return ProbeResult(row=row, status="live", http_code=200, hint="")
-    if code == 404:
-        return ProbeResult(row=row, status="dead", http_code=404, hint=_DEAD_404_HINT)
-    return ProbeResult(
-        row=row,
-        status="dead",
-        http_code=code,
-        hint=(
-            f"Unexpected response (HTTP {code}) — the feed may be misconfigured "
-            "or the ATS is having trouble; re-verify shortly."
-        ),
+def _classify(slug: str, status_code: int) -> tuple[ProbeStatus, str]:
+    """Map an HTTP status to a probe verdict + plain-language reason.
+
+    A 404 condemns the slug (dead). Any other non-200 — 5xx, 429, redirects —
+    is treated as transient (unreachable), never as a dead slug, so a server
+    blip can't make the UI cry wolf on a healthy feed.
+    """
+    if status_code == 200:
+        return "live", "Live — board responded 200."
+    if status_code == 404:
+        return (
+            "dead",
+            f"404 — slug '{slug}' isn't a valid board; the company may have changed "
+            "or left this ATS. Correct the slug, or comment the line out.",
+        )
+    return (
+        "unreachable",
+        f"HTTP {status_code} — couldn't verify right now (looks transient); try again later.",
     )
 
 
-def probe_all(rows: list[FeedRow], timeout: float = DEFAULT_TIMEOUT, max_workers: int = 8) -> list[ProbeResult]:
-    """Probe every row concurrently, preserving input order. One row raising
-    never breaks the batch — it degrades to a single 'unreachable' result."""
-    if not rows:
+def probe_feed_line(line: str, *, timeout: float = _DEFAULT_TIMEOUT) -> FeedProbeResult | None:
+    """Probe one feed_urls.txt line. Returns None for nothing-to-probe lines.
+
+    Never raises on probe I/O: a network failure, timeout, or HTTP error becomes
+    ``status="unreachable"`` (or ``"dead"`` for a 404). A non-empty URL on no
+    supported ATS is flagged ``status="unsupported"`` — surfaced, never dropped.
+
+    Caller misuse is *not* masked: an invalid ``timeout`` argument surfaces its
+    ValueError rather than being swallowed into a false "unreachable" (which
+    would make every feed look dead and bury the bug). The batch wrapper
+    ``probe_feed_urls`` absorbs even that, so onboarding can never be blocked.
+    """
+    text = line.strip()
+    url_part, _, comment = text.partition("#")
+    url_part = url_part.strip()
+    if not url_part:
+        return None  # blank line or comment-only heading — nothing to probe
+    company = comment.strip() or None
+    company_ok = is_plausible_company_name(company)
+
+    for kind, slug_re, template in _PROBE_KINDS:
+        m = slug_re.search(url_part)
+        if not m:
+            continue
+        slug = m.group(1)
+        api_url = template.format(slug=slug)
+        try:
+            resp = requests.get(api_url, headers={"User-Agent": _UA}, timeout=timeout)
+        except requests.RequestException:
+            return FeedProbeResult(
+                line=text,
+                kind=kind,
+                slug=slug,
+                status="unreachable",
+                http_status=None,
+                reason="Couldn't reach the ATS API (network error or timeout); try again later.",
+                company=company,
+                company_name_ok=company_ok,
+            )
+        status, reason = _classify(slug, resp.status_code)
+        return FeedProbeResult(
+            line=text,
+            kind=kind,
+            slug=slug,
+            status=status,
+            http_status=resp.status_code,
+            reason=reason,
+            company=company,
+            company_name_ok=company_ok,
+        )
+
+    return FeedProbeResult(
+        line=text,
+        kind=None,
+        slug=None,
+        status="unsupported",
+        http_status=None,
+        reason=(
+            "Unsupported ATS — findajob probes Greenhouse, Ashby, and Lever boards. "
+            "Comment this line out, or check whether the company is on a supported ATS."
+        ),
+        company=company,
+        company_name_ok=company_ok,
+    )
+
+
+def _safe_probe(line: str, timeout: float) -> FeedProbeResult | None:
+    """probe_feed_line wrapped so NOTHING escapes — the ultimate fail-safe.
+
+    probe_feed_line already swallows request errors; this guards against any
+    other unexpected exception so a single bad line can never abort the batch
+    (and thus never block onboarding).
+    """
+    try:
+        return probe_feed_line(line, timeout=timeout)
+    except Exception:  # noqa: BLE001 — deliberate fail-safe; see never-block-onboarding contract
+        return FeedProbeResult(
+            line=line.strip(),
+            kind=None,
+            slug=None,
+            status="unreachable",
+            http_status=None,
+            reason="Couldn't verify this line (unexpected error); skipped.",
+            company=None,
+            company_name_ok=True,
+        )
+
+
+def probe_feed_urls(
+    lines: Iterable[str],
+    *,
+    timeout: float = _DEFAULT_TIMEOUT,
+    max_workers: int = _DEFAULT_MAX_WORKERS,
+) -> list[FeedProbeResult]:
+    """Probe every line concurrently (bounded), preserving input order.
+
+    Nothing-to-probe lines (blank / comment-only) are dropped; everything
+    else — including unsupported and unreachable lines — is returned, so the
+    caller can surface a flag rather than silently lose a line. Never raises.
+    """
+    items = list(lines)
+    if not items:
         return []
-    workers = max(1, min(len(rows), max_workers))
-    results: list[ProbeResult | None] = [None] * len(rows)
+    workers = max(1, min(max_workers, len(items)))
     with ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = {executor.submit(probe_feed_url, row, timeout): i for i, row in enumerate(rows)}
-        for fut in as_completed(futures):
-            i = futures[fut]
-            try:
-                results[i] = fut.result()
-            except Exception:
-                results[i] = ProbeResult(row=rows[i], status="unreachable", http_code=None, hint=_OFFLINE_HINT)
+        results = executor.map(lambda ln: _safe_probe(ln, timeout), items)
     return [r for r in results if r is not None]

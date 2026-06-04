@@ -32,9 +32,11 @@ def test_get_lists_configured_feeds(client: TestClient, feed_urls_path: Path) ->
     feed_urls_path.write_text("https://boards.greenhouse.io/anthropic\nhttps://jobs.lever.co/zoox  # Zoox\n")
     resp = client.get("/settings/feed-urls/")
     assert resp.status_code == 200
-    assert "Anthropic" in resp.text  # greenhouse titlecased slug
-    assert "Zoox" in resp.text  # lever inline comment
+    # Pre-Verify listing is display-only: each configured URL is shown, and an
+    # inline comment is surfaced as a label. (Company/ATS/status come on Verify.)
     assert "boards.greenhouse.io/anthropic" in resp.text
+    assert "jobs.lever.co/zoox" in resp.text
+    assert "Zoox" in resp.text  # inline comment shown as label
 
 
 def test_get_absent_file_shows_friendly_notice(client: TestClient, feed_urls_path: Path) -> None:
@@ -63,10 +65,10 @@ def test_verify_renders_per_row_status(client: TestClient, feed_urls_path: Path)
     with patch("findajob.fetchers.feed_probe.requests.get", side_effect=fake_get):
         resp = client.post("/settings/feed-urls/verify")
     assert resp.status_code == 200
+    assert "live" in resp.text
     assert "dead" in resp.text
-    assert "404" in resp.text
-    assert "200" in resp.text  # http_code span rendered (live row's hint is empty)
-    assert "unsupported" in resp.text  # unsupported badge rendered for the Workday URL
+    assert "404" in resp.text  # dead-slug reason / http_status surfaced
+    assert "unsupported" in resp.text  # the Workday URL (probed without a network call)
 
 
 def test_verify_all_unreachable_shows_offline_banner(client: TestClient, feed_urls_path: Path) -> None:

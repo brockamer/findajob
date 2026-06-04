@@ -22,11 +22,16 @@ on:
   pull_request:
     branches: [main]
 
+# Least-privilege default token: this workflow only reads the PR diff to scan
+# for PII. It needs no write scope. #962
+permissions:
+  contents: read
+
 jobs:
   scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
           fetch-depth: 0
 

@@ -16,10 +16,10 @@
     {% else %}
     <span class="text-xs px-2 py-0.5 rounded-full bg-slate-50 text-slate-600 border border-slate-200">⊘ unsupported</span>
     {% endif %}
-    <span class="font-medium text-slate-800">{{ r.row.company }}</span>
-    <code class="text-xs text-slate-500">{{ r.row.url }}</code>
-    {% if r.http_code %}<span class="text-xs text-slate-400">{{ r.http_code }}</span>{% endif %}
-    {% if r.hint %}<span class="text-xs text-slate-500 flex-1">{{ r.hint }}</span>{% endif %}
+    {% if r.company %}<span class="font-medium text-slate-800">{{ r.company }}</span>{% endif %}
+    <code class="text-xs text-slate-500">{{ r.line }}</code>
+    {% if r.http_status %}<span class="text-xs text-slate-400">{{ r.http_status }}</span>{% endif %}
+    <span class="text-xs text-slate-500 flex-1">{{ r.reason }}</span>
   </li>
   {% endfor %}
 </ul>

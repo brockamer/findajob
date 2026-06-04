@@ -16,6 +16,7 @@ When this map drifts from the actual code (renamed file, new route module, retir
 <repo>/src/findajob/ingest.py               # ingest_manual_job() — shared entry point for the /ingest/ web form
 <repo>/src/findajob/fetchers/                 # Greenhouse, Gmail job fetching; RapidAPI feeds via adapters/
 <repo>/src/findajob/fetchers/adapters/      # JobSourceAdapter Protocol + REGISTERED_ADAPTERS + per-source adapter classes (jobs_api14, jobs_api14_indeed, jobs_api14_bing, jsearch, greenhouse, ashby, lever, gmail, workday_cxs, gem); curation.py = per-adapter signup metadata loaded by /onboarding/feed-config/
+<repo>/src/findajob/fetchers/feed_probe.py  # shared ATS feed-URL liveness probe (#984) — probe_feed_line/probe_feed_urls/is_plausible_company_name + FeedProbeResult; reuses each adapter's _SLUG_RE/_ENDPOINT_TEMPLATE/User-Agent (no drift), never raises; reused by onboarding validation (#984), verify-feed-urls button (#985), 404 health-check (#983)
 <repo>/src/findajob/scoring.py              # score_job(), _build_feedback_block() — calls findajob.llm.openrouter (#470)
 <repo>/src/findajob/scorer_prefilter.py     # deterministic pre-filter (Stage 1 + 2)
 <repo>/src/findajob/llm/openrouter.py       # canonical OpenRouter HTTP wrapper (#470) — complete(), CompletionResult, OpenRouterError; cache_control on cached_prefix + cache_system axes
@@ -44,6 +45,7 @@ When this map drifts from the actual code (renamed file, new route module, retir
 <repo>/src/findajob/web/backup.py            # Streaming tarball creation with sqlite3 .backup API — produces state/ contract tarball for /settings/backup/ (#841)
 <repo>/src/findajob/web/restore.py           # Tarball validation + atomic extraction with rollback — consumed by /onboarding/restore/ (#841)
 <repo>/src/findajob/web/routes/settings_backup.py # GET /settings/backup/, POST /settings/backup/download — one-click backup tarball download (#841)
+<repo>/src/findajob/web/routes/settings_feed_urls.py # GET /settings/feed-urls/ (lists configured feeds) + POST /settings/feed-urls/verify — "Verify feed URLs" button; probes via findajob.fetchers.feed_probe (#985)
 <repo>/src/findajob/web/routes/notifications.py # GET /notifications/, POST /notifications/{id}/read, POST /notifications/mark-all-read, GET /notifications/badge — in-app notification dashboard (#440)
 <repo>/src/findajob/onboarding/parser.py    # parse interview emission into files to inject
 <repo>/src/findajob/onboarding/injector.py  # atomic write + backup + Tier-1 derivation + sentinel
