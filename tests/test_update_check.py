@@ -145,6 +145,16 @@ def test_banner_state_resurfaces_after_newer_than_dismissed(monkeypatch):
     assert update_check.update_banner_state(req, _BGNoop()) is not None
 
 
+def test_banner_state_reports_watchtower_enabled(monkeypatch):
+    monkeypatch.setattr(update_check, "findajob_version", lambda: "0.33.0")
+    update_check._cache["latest"] = "0.34.0"
+    _fresh_stamp()
+    monkeypatch.setenv("FINDAJOB_WATCHTOWER_HTTP_URL", "http://watchtower:8080")
+    monkeypatch.setenv("FINDAJOB_WATCHTOWER_HTTP_TOKEN", "tok")
+    banner = update_check.update_banner_state(_Req(), _BGNoop())
+    assert banner is not None and banner.watchtower_enabled is True
+
+
 def test_dashboard_renders_update_banner(tmp_path, monkeypatch):
     """Integration: banner text appears on the dashboard when an update is available."""
 

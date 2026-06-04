@@ -166,6 +166,8 @@ def dashboard(
     dismiss_first_triage_banner: int = Query(default=0),
     dismiss_timezone_banner: int = Query(default=0),
     dismiss_update_banner: str = Query(default=""),
+    update_triggered: int = Query(default=0),
+    update_failed: int = Query(default=0),
     triage_launched: int = Query(default=0),
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
 ) -> HTMLResponse:
@@ -256,6 +258,7 @@ def dashboard(
     show_first_triage_banner, next_triage_fire = _first_triage_banner_state(request, db)
     timezone_banner = _timezone_banner_state(request)
     update_banner = update_check.update_banner_state(request, background_tasks)
+    update_flash = "triggered" if update_triggered else ("failed" if update_failed else None)
     templates = request.app.state.templates
     return templates.TemplateResponse(
         request=request,
@@ -279,6 +282,7 @@ def dashboard(
             "triage_launched": bool(triage_launched),
             "timezone_banner": timezone_banner,
             "update_banner": update_banner,
+            "update_flash": update_flash,
         },
     )
 

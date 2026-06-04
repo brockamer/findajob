@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from findajob.version import findajob_version, is_newer
+from findajob.web.watchtower import watchtower_button_enabled
 
 _RELEASES_URL = "https://api.github.com/repos/brockamer/findajob/releases/latest"
 _CHANGELOG_URL = "https://github.com/brockamer/findajob/blob/main/CHANGELOG.md"
@@ -120,5 +121,5 @@ def update_banner_state(request, background_tasks) -> UpdateBanner | None:
         latest=latest,
         substrate=detect_substrate(),
         changelog_url=_CHANGELOG_URL,
-        watchtower_enabled=False,  # Phase 2 sets this in Task 10
+        watchtower_enabled=watchtower_button_enabled(),
     )
