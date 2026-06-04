@@ -1,0 +1,18 @@
+# Dependabot keeps the SHA-pinned GitHub Actions current (#962). Every action
+# `uses:` is pinned to a full commit SHA so a moved tag can't silently run new
+# code with the job's token. Pinning alone would freeze them; this updater is
+# the controlled channel that bumps each pin to the newest release's SHA (and
+# refreshes the trailing `# vX.Y.Z` comment) as a reviewable PR. Grouped so all
+# action bumps arrive as one weekly PR instead of one per action.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "ci"
