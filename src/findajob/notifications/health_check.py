@@ -76,6 +76,63 @@ def _detect_dead_feeds(window_events: list[dict], baseline_events: list[dict]) -
     )
 
 
+_FETCH_SKIP_SUFFIX = "_fetch_skip"
+
+
+def _detect_dead_slugs(events: list[dict]) -> list[str]:
+    """Return sorted ``ats/slug`` strings for ATS feed-URL slugs that 404'd.
+
+    The direct-fetcher adapters (Greenhouse / Lever / Ashby) emit a
+    ``<ats>_fetch_skip`` event carrying ``slug`` + ``status`` on any non-200,
+    then fail soft and continue. A single stale slug is therefore invisible to
+    the source-level dead-feed check (#637) — that source still returns
+    thousands of jobs from its other slugs. Here we read those breadcrumbs back
+    out and surface the persistent 404s (#983).
+
+    The ATS name is derived from the event-name prefix (strip ``_fetch_skip``),
+    so a future direct fetcher emitting ``<ats>_fetch_skip`` with a slug is
+    auto-covered without a code edit — mirroring the dynamic enumeration in
+    ``_detect_dead_feeds``. API sources (remote_ok / remotive / jobicy /
+    himalayas / algora) emit ``*_fetch_skip`` *without* a ``slug`` and so are
+    excluded by construction — they aren't ATS feed-URL slugs.
+
+    Only a literal HTTP ``404`` counts: 429/5xx are transient and Lever's
+    ``status='unexpected_format'`` is a parse failure, not a dead slug. Deduped
+    by ``(ats, slug)`` so a slug failing across multiple runs in the window
+    counts once.
+    """
+    dead: set[str] = set()
+    for e in events:
+        name = e.get("event")
+        # Type-guard: a corrupt jsonl line with a non-string ``event`` must not
+        # raise — cmd_health_check has no try/except around this, so a crash here
+        # would sink the entire daily health report.
+        if not isinstance(name, str) or not name.endswith(_FETCH_SKIP_SUFFIX):
+            continue
+        if e.get("status") != 404:
+            continue
+        slug = e.get("slug")
+        if not isinstance(slug, str) or not slug:
+            continue
+        ats = name[: -len(_FETCH_SKIP_SUFFIX)]
+        if not ats:
+            continue
+        dead.add(f"{ats}/{slug}")
+    return sorted(dead)
+
+
+def _dead_slug_warning(dead_slugs: list[str]) -> str | None:
+    """Build the operator-facing WARN line, or None when there are no dead slugs.
+
+    Lists the first 5 slugs (mirroring the other checks' truncation) while the
+    count reflects the true total, so >5 dead feeds still disclose how many.
+    """
+    if not dead_slugs:
+        return None
+    listed = ", ".join(dead_slugs[:5])
+    return f"WARN: {len(dead_slugs)} feed URL(s) 404'd last triage: {listed}"
+
+
 def cmd_health_check() -> None:
     events = recent_log_events(hours=25)
 
@@ -145,6 +202,16 @@ def cmd_health_check() -> None:
             )
             for k in dead_feeds:
                 issues.append(f"  • {k}: 0 across all runs today, peak {baseline_max[k]} in last 7d")
+
+    # ── Persistent feed-URL 404s (slug-level) ────────────────────────────
+    # Source-level dead-feed detection (above) can't catch a single stale ATS
+    # slug: Greenhouse-as-a-source keeps producing jobs from its other slugs,
+    # so one dead company silently drops out of the funnel. The adapters fail
+    # soft on a 404 (``<ats>_fetch_skip`` with slug+status, then continue), so
+    # we scan the window's fetch outcomes and flag any slug that 404'd (#983).
+    dead_slug_warn = _dead_slug_warning(_detect_dead_slugs(events))
+    if dead_slug_warn:
+        issues.append(dead_slug_warn)
 
     # ── System resource checks ──────────────────────────────────────────
     try:

@@ -1,11 +1,15 @@
 """Shared feed-URL probe helper (#984).
 
 Probes each ATS board URL in ``feed_urls.txt`` against its public API for
-liveness. One source of truth reused by three surfaces:
+liveness. One source of truth reused by two surfaces:
 
 * onboarding-time validation (#984) — prevention, before first triage
 * the "Verify feed URLs" settings button (#985) — self-serve remediation
-* the runtime persistent-404 health-check (#983) — detection over time
+
+The runtime persistent-404 health-check (#983) is a *separate*, complementary
+path: it reads the ``*_fetch_skip`` outcomes triage already logged to
+``pipeline.jsonl`` rather than re-probing live — detection over time, no extra
+network calls — so it does **not** call this helper.
 
 Design note — *no drift*: the per-ATS slug regex and endpoint template are
 read directly off the adapter classes (``GreenhouseAdapter._SLUG_RE`` etc.)

@@ -60,7 +60,7 @@ jq -c 'select(.event == "pipeline_complete")' state/logs/pipeline.jsonl | tail -
 
 - **RapidAPI (`jobsapi`)**: key missing, quota exhausted, `config/jsearch_queries.txt` empty/malformed, or the key's account isn't subscribed to the API. A `jobsapi_403` event with `body_excerpt` containing `"not subscribed"` means the RapidAPI account that owns the key has no active subscription on the API listing. Fix: log into <https://rapidapi.com>, open the API listing (e.g. <https://rapidapi.com/Pat92/api/jobs-api14>), click **Subscribe to Test** → **BASIC** (free).
 - **Gmail**: IMAP login failing → the Google app password was revoked or your 2FA settings changed. Generate a new app password and re-save it at `/config/gmail/` (see [`getting-started/gmail.md`](getting-started/gmail.md)).
-- **Greenhouse**: `config/feed_urls.txt` slug 404s when the company removes a careers page — prune dead slugs.
+- **Greenhouse / Lever / Ashby**: a `config/feed_urls.txt` slug 404s when a company removes its careers board, silently dropping that one company from the funnel while the rest of the source keeps working. The daily health check's **WARN: N feed URL(s) 404'd last triage** alert (see the alert reference below) names the dead slug(s); fix or remove them in `/config/` → `feed_urls.txt`, then re-confirm at `/settings/feed-urls/` → **Verify feed URLs**.
 
 ### "Jobs are scoring 0 or not scoring at all"
 
@@ -153,6 +153,7 @@ Typical failures on first boot:
 | **ERRORS: N error events in log** | Any event with `error` / `exception` / `failed` fired | Read the alert for the first three; grep `pipeline.jsonl` for more |
 | **INFO: N jobs scored None (likely LLM timeout)** | Scoring LLM errored mid-batch | Usually transient; re-triage if it persists |
 | **WARN: N source(s) returned 0 jobs despite producing jobs in last 7d** | A feed silently broke | Check the named source — API key, quota, config file |
+| **WARN: N feed URL(s) 404'd last triage: `ats/slug`, …** | One or more ATS feed-URL slugs returned 404 — the company took down its careers board or the slug is stale. Unlike the row above, the source keeps producing jobs from its *other* slugs, so only that one company silently drops out of the funnel | Correct or remove the named slug(s) in `config/feed_urls.txt` (edit via `/config/`); re-confirm with **Verify feed URLs** at `/settings/feed-urls/` |
 | **WARN: low memory — N MB available** | Container is memory-starved | Increase host RAM, or reduce parallelism in config |
 | **WARN: high swap usage — N/M MB used** | Swap over 50% utilized | Same — investigate memory pressure |
 | **WARN: N null-score jobs in manual_review (scorer failure — check OpenRouter / pipeline.jsonl)** | Jobs were shunted to review because scoring returned null | Smoke-test the OpenRouter wrapper (above); inspect `pipeline.jsonl` for `score_failed` events |

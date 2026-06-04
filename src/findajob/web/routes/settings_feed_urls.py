@@ -2,7 +2,8 @@
 
 Verify-only view (editing stays in the raw /config/ editor). GET lists the
 operator's configured feeds; POST /verify probes them all via the shared
-`findajob.fetchers.feed_probe` helper (#1023, also used by #983/#984) and
+`findajob.fetchers.feed_probe` helper (#1023, also used by #984; the #983
+404 health-check reads logged ``*_fetch_skip`` outcomes instead) and
 HTMX-swaps in per-row live/dead/unreachable/unsupported badges with reasons.
 
 The shared helper couples parse + probe (every call hits the network), so the
