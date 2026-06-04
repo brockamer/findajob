@@ -18,10 +18,36 @@ from unittest.mock import MagicMock, patch
 import requests
 
 from findajob.fetchers.feed_probe import (
+    FeedProbeResult,
     is_plausible_company_name,
     probe_feed_line,
     probe_feed_urls,
 )
+
+
+def _make_result(*, status: str, company_name_ok: bool) -> FeedProbeResult:
+    return FeedProbeResult(
+        line="https://jobs.lever.co/acme  # comment",
+        kind="lever",
+        slug="acme",
+        status=status,  # type: ignore[arg-type]
+        http_status=200 if status == "live" else None,
+        reason="",
+        company="comment",
+        company_name_ok=company_name_ok,
+    )
+
+
+def test_is_label_warning_true_only_for_live_feed_with_bad_comment():
+    """A live feed (it WILL fetch jobs) whose inline comment is junk is the
+    #856 pollution case worth surfacing. A dead/unreachable feed won't fetch,
+    so its comment is moot — not a label warning.
+    """
+    assert _make_result(status="live", company_name_ok=False).is_label_warning is True
+    assert _make_result(status="live", company_name_ok=True).is_label_warning is False
+    assert _make_result(status="dead", company_name_ok=False).is_label_warning is False
+    assert _make_result(status="unreachable", company_name_ok=False).is_label_warning is False
+    assert _make_result(status="unsupported", company_name_ok=False).is_label_warning is False
 
 
 @patch("findajob.fetchers.feed_probe.requests.get")

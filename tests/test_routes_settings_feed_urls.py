@@ -77,3 +77,28 @@ def test_verify_all_unreachable_shows_offline_banner(client: TestClient, feed_ur
         resp = client.post("/settings/feed-urls/verify")
     assert resp.status_code == 200
     assert "offline" in resp.text.lower()
+
+
+def test_verify_flags_live_feed_with_junk_comment_label(client: TestClient, feed_urls_path: Path) -> None:
+    """A live feed whose inline comment is junk (would pollute jobs.company,
+    #856) gets a distinct label warning on its row — even though it resolves."""
+    feed_urls_path.write_text("https://jobs.lever.co/junkco  # https://junk.com careers\n")
+    with patch(
+        "findajob.fetchers.feed_probe.requests.get",
+        side_effect=lambda url, **k: MagicMock(status_code=200),
+    ):
+        resp = client.post("/settings/feed-urls/verify")
+    assert resp.status_code == 200
+    assert "live" in resp.text  # the URL resolves
+    assert "show as your company name" in resp.text.lower()  # ...but the label is flagged
+
+
+def test_verify_clean_live_feed_has_no_label_warning(client: TestClient, feed_urls_path: Path) -> None:
+    feed_urls_path.write_text("https://jobs.lever.co/zoox  # Zoox\n")
+    with patch(
+        "findajob.fetchers.feed_probe.requests.get",
+        side_effect=lambda url, **k: MagicMock(status_code=200),
+    ):
+        resp = client.post("/settings/feed-urls/verify")
+    assert resp.status_code == 200
+    assert "show as your company name" not in resp.text.lower()

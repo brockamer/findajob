@@ -6,7 +6,7 @@
 {% endif %}
 <ul class="space-y-1">
   {% for r in results %}
-  <li class="flex items-start gap-3 py-1.5 border-b border-slate-100 text-sm">
+  <li class="flex flex-wrap items-start gap-3 py-1.5 border-b border-slate-100 text-sm">
     {% if r.status == "live" %}
     <span class="text-xs px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">✓ live</span>
     {% elif r.status == "dead" %}
@@ -20,6 +20,11 @@
     <code class="text-xs text-slate-500">{{ r.line }}</code>
     {% if r.http_status %}<span class="text-xs text-slate-400">{{ r.http_status }}</span>{% endif %}
     <span class="text-xs text-slate-500 flex-1">{{ r.reason }}</span>
+    {# #856/#984: a live feed whose inline comment isn't a clean company name —
+       the comment becomes jobs.company, so flag it even though the URL resolves. #}
+    {% if r.is_label_warning %}
+    <span class="basis-full text-xs text-amber-700">⚠ this comment will show as your company name on your board — replace it with a clean name in <code>/config/feed_urls.txt</code>.</span>
+    {% endif %}
   </li>
   {% endfor %}
 </ul>

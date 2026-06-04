@@ -69,6 +69,17 @@ class FeedProbeResult:
     company: str | None
     company_name_ok: bool
 
+    @property
+    def is_label_warning(self) -> bool:
+        """A live feed whose inline comment isn't a clean company name.
+
+        Such a feed WILL fetch jobs, and its junk comment becomes ``jobs.company``
+        (the #856 pollution case). A dead/unreachable feed won't fetch, so its
+        comment is moot — only live feeds qualify. The single definition of "this
+        label looks off", reused by every surface that renders results.
+        """
+        return self.status == "live" and not self.company_name_ok
+
 
 def is_plausible_company_name(name: str | None) -> bool:
     """True unless ``name`` looks like junk (a URL or sentence-like provenance).

@@ -34,3 +34,28 @@
     </p>
   </div>
 {% endif %}
+
+{# Label warnings — live feeds whose inline comment isn't a clean company name
+   (#856). Independent of liveness: shown alongside "all live" or "couldn't be
+   verified". The comment becomes jobs.company, so a junk label pollutes the board. #}
+{% if label_warning_count > 0 %}
+  <div class="space-y-3 mt-4 pt-3 border-t border-slate-100">
+    <p class="text-sm font-medium text-amber-700">
+      {{ label_warning_count }} feed label{{ 's' if label_warning_count != 1 else '' }}
+      look{{ 's' if label_warning_count == 1 else '' }} off — the comment after
+      <code>#</code> will show as your company name:
+    </p>
+    <ul class="space-y-2 text-sm">
+      {% for r in label_warnings %}
+      <li class="rounded border border-slate-200 p-2">
+        <span class="font-medium">{{ r.company or r.slug or r.line }}</span>
+        <code class="text-xs text-slate-500 ml-2">{{ r.line }}</code>
+        <p class="text-slate-600 mt-0.5">
+          Replace it with a clean company name in <code>/config/feed_urls.txt</code>.
+          This won't block onboarding.
+        </p>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+{% endif %}

@@ -53,6 +53,10 @@ def get_feed_check_results(session_id: str, request: Request) -> HTMLResponse:
 
     results = probe_feed_urls(lines)
     problems = [r for r in results if r.status != "live"]
+    # Live feeds whose inline comment isn't a clean company name: the URL works,
+    # but the junk label would become jobs.company (#856). Surfaced separately
+    # from "couldn't be verified" — a different problem with a different fix.
+    label_warnings = [r for r in results if r.is_label_warning]
 
     templates = request.app.state.templates
     return templates.TemplateResponse(
@@ -62,6 +66,8 @@ def get_feed_check_results(session_id: str, request: Request) -> HTMLResponse:
             "session_id": session_id,
             "problems": problems,
             "problem_count": len(problems),
+            "label_warnings": label_warnings,
+            "label_warning_count": len(label_warnings),
             "total": len(results),
         },
     )

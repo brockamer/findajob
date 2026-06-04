@@ -240,3 +240,29 @@ def test_results_multiple_problems_all_rendered(base_root: Path, client: TestCli
     assert "DeadCo" in resp.text
     assert "FlakyCo" in resp.text
     assert "2 of your 2" in resp.text
+
+
+def test_results_flag_live_feed_with_junk_comment_as_label_warning(base_root: Path, client: TestClient) -> None:
+    """A live feed whose inline comment is junk (would pollute jobs.company,
+    #856) is surfaced as a distinct 'label looks off' warning — even though
+    its URL resolves. It is NOT in the 'couldn't be verified' list."""
+    fake = [
+        _res("liveco", "live", http=200, company="LiveCo", ok=True),
+        _res("junkco", "live", http=200, company="https://junk.com careers", ok=False),
+    ]
+    with patch(_PROBE, return_value=fake):
+        resp = client.get("/onboarding/feed-check/sess123/results")
+
+    assert resp.status_code == 200
+    assert "show as your company name" in resp.text.lower()
+    assert "junk.com" in resp.text
+    assert "couldn't be verified" not in resp.text.lower()
+
+
+def test_results_clean_live_feeds_have_no_label_warning(base_root: Path, client: TestClient) -> None:
+    fake = [_res("liveco", "live", http=200, company="LiveCo", ok=True)]
+    with patch(_PROBE, return_value=fake):
+        resp = client.get("/onboarding/feed-check/sess123/results")
+
+    assert resp.status_code == 200
+    assert "show as your company name" not in resp.text.lower()
