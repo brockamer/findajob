@@ -234,13 +234,14 @@ def test_full_interview_flow_writes_all_files_and_sentinel(
 
     # ── /finalize ────────────────────────────────────────────────────
     # No form data — /finalize reads keys from the session's credentials,
-    # which we planted before /start.  Per #989, finalize now redirects to the
-    # timezone-confirmation step, which leads to spend-ceiling (#671), whose
+    # which we planted before /start.  Per #984, finalize now redirects to the
+    # feed-check step (validate emitted feed_urls.txt), which leads to the
+    # timezone-confirmation step (#989), then spend-ceiling (#671), whose
     # /finish then makes the feed-config vs gmail-config decision. The sentinel
     # is written by the connections gate.
     resp_fin = client.post(f"/onboarding/interview/{sid}/finalize")
     assert resp_fin.status_code == 303, resp_fin.text
-    assert resp_fin.headers["location"] == f"/onboarding/timezone/{sid}/"
+    assert resp_fin.headers["location"] == f"/onboarding/feed-check/{sid}/"
 
     # ── Filesystem assertions ────────────────────────────────────────
     # Every destination file the inject() path writes must be present.

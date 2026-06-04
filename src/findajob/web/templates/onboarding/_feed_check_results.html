@@ -1,0 +1,36 @@
+{# Feed-check results panel (#984). HTMX-swapped into #feed-check-results.
+   Shared shape reused by the /settings/feed-urls/ verify button (#985). #}
+{% if total == 0 %}
+  <p class="text-sm text-slate-600">
+    No Greenhouse, Ashby, or Lever job-board feeds to verify — you're all set.
+  </p>
+{% elif problem_count == 0 %}
+  <p class="text-sm font-medium text-emerald-700">
+    ✓ All {{ total }} job feed{{ 's' if total != 1 else '' }} {{ 'is' if total == 1 else 'are' }} live.
+  </p>
+{% else %}
+  <div class="space-y-3">
+    <p class="text-sm font-medium text-amber-700">
+      {{ problem_count }} of your {{ total }} job feed{{ 's' if total != 1 else '' }}
+      couldn't be verified:
+    </p>
+    <ul class="space-y-2 text-sm">
+      {% for r in problems %}
+      <li class="rounded border border-slate-200 p-2">
+        <div class="flex items-center gap-2">
+          <span class="font-medium">{{ r.company or r.slug or r.line }}</span>
+          <span class="text-xs uppercase tracking-wide
+            {% if r.status == 'dead' %}text-red-600{% else %}text-amber-600{% endif %}">
+            {{ r.status }}
+          </span>
+        </div>
+        <p class="text-slate-600 mt-0.5">{{ r.reason }}</p>
+      </li>
+      {% endfor %}
+    </ul>
+    <p class="text-xs text-slate-500">
+      You can fix these any time in <code>/config/feed_urls.txt</code> — correct the
+      slug or comment the line out. This won't block onboarding.
+    </p>
+  </div>
+{% endif %}
