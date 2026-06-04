@@ -1,4 +1,3 @@
-# tests/test_update_check.py
 import json
 import urllib.error
 import urllib.request

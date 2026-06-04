@@ -1,4 +1,3 @@
-# src/findajob/web/update_check.py
 """In-app 'update available' check (#1016).
 
 Anonymous GitHub ``releases/latest`` lookup vs the running CHANGELOG version,
@@ -46,6 +45,8 @@ def fetch_latest_release() -> str | None:
         with urllib.request.urlopen(req, timeout=_HTTP_TIMEOUT_S) as resp:  # noqa: S310
             data = json.loads(resp.read().decode("utf-8"))
     except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, OSError, ValueError):
+        return None
+    if not isinstance(data, dict):  # non-dict JSON (proxy/captive portal) → skip
         return None
     tag = data.get("tag_name")
     if not isinstance(tag, str) or not tag:

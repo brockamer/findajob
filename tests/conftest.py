@@ -54,3 +54,22 @@ def _use_fixture_configs(monkeypatch):
     config_loader._reset_cache()
     yield
     config_loader._reset_cache()
+
+
+@pytest.fixture(autouse=True)
+def _no_live_update_check():
+    """Stop the #1016 update-availability check from firing a live GitHub call
+    when tests hit ``/board/dashboard``. That route schedules a ``BackgroundTasks``
+    refresh when the update cache is stale, and Starlette's ``TestClient`` runs
+    background tasks synchronously — so a cold module cache would make ~every
+    dashboard test reach ``api.github.com`` (green only because the check is
+    fail-open) and leak a fetched ``latest`` across tests. Fresh-stamp the cache
+    (not stale) with no known latest, so no refresh is scheduled and no banner
+    shows by default. Tests that exercise the banner set ``update_check._cache``
+    explicitly after this fixture runs.
+    """
+    from findajob.web import update_check
+
+    update_check._cache["checked_at"] = update_check._now()
+    update_check._cache["latest"] = None
+    yield
