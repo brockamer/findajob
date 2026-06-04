@@ -8,6 +8,9 @@
 #
 # Validate each slug works before adding: curl that URL and check for a jobs list.
 #
+# Tip: after editing, open /settings/feed-urls/ and click "Verify feed URLs"
+# to check that each board still resolves (live / dead / unreachable).
+#
 # NOTE: Greenhouse is heavily used by tech companies and some modern nonprofits, but
 # many employers use other ATSes (Workday, Taleo, iCIMS, Lever, Ashby, SmartRecruiters).
 # If your target employers are not on Greenhouse, leave this file empty and rely on
