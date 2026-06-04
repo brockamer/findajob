@@ -158,7 +158,9 @@ This page is the install runbook. Once you're up:
 
 findajob keeps releasing updates. Two ways to pull new versions — pick whichever fits:
 
-**Web (recommended).** In your app's Settings page, connect your GitHub repo and enable **Auto-Deploy on push**. Every time a new release lands on the `main` branch, Fly redeploys your app automatically.
+**Web (recommended).** On your app's overview page in the Fly dashboard, click the **Deploy** button to redeploy the latest release. The in-app "update available" banner tells you when a newer release exists.
+
+Fly's **Auto-Deploy on push** does *not* track findajob releases: it only redeploys when the specific GitHub repo you connected receives a push, and a fork's `main` doesn't move when this project publishes a new release upstream. Dashboard redeploy (above) is the reliable path.
 
 ![Settings page — Connect to GitHub repository for auto-deploy](install-fly-web/09-settings-github-connect.png)
 

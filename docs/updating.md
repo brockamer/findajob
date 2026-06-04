@@ -12,7 +12,7 @@ Watch [CHANGELOG.md](https://github.com/brockamer/findajob/blob/main/CHANGELOG.m
 
 ## Fly.io users
 
-If you installed via the web "Launch an App" flow (no terminal), update from the Fly dashboard: connect your GitHub repo and enable **Auto-Deploy on push** for automatic updates on each release, or click **Deploy** on the app's overview page to redeploy the latest. See [`getting-started/install-fly.md` → Updating to a new release](getting-started/install-fly.md#updating-to-a-new-release) for the walkthrough.
+If you installed via the web "Launch an App" flow (no terminal), update from the Fly dashboard: open your app's overview page and click **Deploy** to redeploy the latest release. (Fly's **Auto-Deploy on push** does *not* track findajob releases — it only fires when the GitHub repo you connected is pushed, and a fork's `main` doesn't move when this project releases upstream.) See [`getting-started/install-fly.md` → Updating to a new release](getting-started/install-fly.md#updating-to-a-new-release) for the walkthrough.
 
 **Power-user (local repo clone).** If you have `flyctl` and a clone of the repo, run this after any release you want to pick up:
 
