@@ -13,6 +13,7 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 ### Added
 
 - **In-app "update available" banner** (#1016): the dashboard now shows a dismissible banner when a newer findajob release exists on GitHub — `vX → vY`, a CHANGELOG "what's new" link, and a per-substrate update hint (Fly → redeploy from the dashboard; Docker → `docker compose pull && up -d`, or Watchtower if you run it). The check compares the running CHANGELOG version against GitHub's `releases/latest` (anonymous, tuple-compared), caches in-memory ~daily, refreshes after the response so it never blocks page render, and fails open (no banner if the check can't resolve). Dismissal is version-keyed, so the next release re-surfaces it. No new env var; no schema change.
+- **Opt-in "Update now" button (Docker + Watchtower HTTP API)** (#1017): when you set `FINDAJOB_WATCHTOWER_HTTP_URL` + `FINDAJOB_WATCHTOWER_HTTP_TOKEN` (and run Watchtower with its HTTP API enabled), the update banner gains an **Update now** button that asks Watchtower — which runs outside the container — to pull and recreate the findajob image on demand. A container can't recreate itself, so this delegates outward; Watchtower's hourly auto-update stays the default. No schema change.
 
 ### Changed
 

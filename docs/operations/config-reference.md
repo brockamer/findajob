@@ -145,6 +145,8 @@ NTFY_TOPIC=your-topic-name
 # GEMINI_API_KEY=...   # Google AI API key for podcast generation (optional; enables interview-prep podcasts #870)
 # OPENROUTER_CREDIT_AMBER_USD=5   # nav credit chip turns amber below this (default $5)  #665
 # OPENROUTER_CREDIT_RED_USD=1     # nav credit chip turns red below this (default $1)    #665
+# FINDAJOB_WATCHTOWER_HTTP_URL=http://watchtower:8080  # Watchtower HTTP API base URL (optional; enables the dashboard "Update now" button #1017)
+# FINDAJOB_WATCHTOWER_HTTP_TOKEN=...                   # Watchtower HTTP API token (optional; required with FINDAJOB_WATCHTOWER_HTTP_URL)
 ```
 
 Protect this file: `chmod 600 data/.env`

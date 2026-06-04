@@ -38,6 +38,22 @@ To confirm Watchtower is watching your service, check that your compose file doe
 
 If that label is absent (or set to `"true"`), Watchtower is active.
 
+### Optional: an "Update now" button in the dashboard
+
+If you'd rather trigger an update on demand (instead of waiting up to an hour
+for Watchtower's poll), enable Watchtower's HTTP API and tell findajob about it:
+
+1. Start Watchtower with `--http-api-update`, a token via
+   `WATCHTOWER_HTTP_API_TOKEN`, and `--http-api-periodic-polls` (so scheduled
+   polling still runs).
+2. Set two env vars on the findajob container:
+   - `FINDAJOB_WATCHTOWER_HTTP_URL` — e.g. `http://watchtower:8080`
+   - `FINDAJOB_WATCHTOWER_HTTP_TOKEN` — the same token
+3. When both are set and an update is available, the dashboard banner shows an
+   **Update now** button. It asks Watchtower (which runs outside the container)
+   to pull and recreate the findajob image only. Watchtower auto-update stays
+   the zero-effort default — the button is just an on-demand shortcut.
+
 ---
 
 ## Docker users — manual update
