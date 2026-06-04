@@ -418,10 +418,11 @@ def test_update_flash_renders_and_preserves_persisted_view(
     monkeypatch: pytest.MonkeyPatch, client_and_db: tuple[TestClient, Path]
 ) -> None:
     """#1017: the POST /update/now result-flash param must survive even when a
-    dashboard view is persisted. The view-prefs cold-load redirect would
-    otherwise strip ?update_triggered (swallowing the flash), and _persist_view
-    would clobber the saved filters with the bare flash-view. The flash render
-    skips both; persisted filters re-apply on the next navigation.
+    dashboard view is persisted. Without the guard, the view-prefs cold-load
+    redirect 303s to the persisted querystring and strips ?update_triggered,
+    swallowing the flash. The flash render skips that redirect so the banner +
+    flash render directly; the persisted view is asserted intact (it re-applies
+    on the next navigation regardless).
     """
     from findajob.web import update_check
 

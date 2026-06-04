@@ -243,11 +243,14 @@ def dashboard(
     specs = filter_registry.DASHBOARD_COLUMNS
     parsed = parse_filter_params(specs, request.query_params)
     # A result-flash param (update_triggered / update_failed, set by the
-    # POST /update/now redirect — #1017) is not filter state. The view-prefs
-    # cold-load redirect would strip it (swallowing the flash for users with a
-    # saved view), and _persist_view would clobber their saved filters with
-    # this bare flash-view. Skip both on a flash render; persisted filters
-    # re-apply on the next navigation.
+    # POST /update/now redirect — #1017) is not filter state, so the view-prefs
+    # cold-load redirect would 303 to the persisted querystring and strip it,
+    # swallowing the flash for users with a saved dashboard view. Skip the
+    # cold-load redirect on a flash render so the banner + flash render
+    # directly; persisted filters re-apply on the next navigation. (_persist_view
+    # stays inside the guard for a single atomic cold-load block, but it's a
+    # no-op here anyway — the bare flash-view has empty filter state and
+    # view_prefs.save() ignores empty querystrings.)
     if not (update_triggered or update_failed):
         view_prefs_redirect = _maybe_redirect_to_persisted(request, "dashboard", parsed, db)
         if view_prefs_redirect is not None:

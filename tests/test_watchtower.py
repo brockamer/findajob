@@ -1,4 +1,3 @@
-# tests/test_watchtower.py
 import urllib.error
 import urllib.request
 
@@ -16,6 +15,20 @@ def test_enabled_with_both_env(monkeypatch):
     monkeypatch.setenv("FINDAJOB_WATCHTOWER_HTTP_URL", "http://watchtower:8080")
     monkeypatch.setenv("FINDAJOB_WATCHTOWER_HTTP_TOKEN", "tok")
     assert watchtower.watchtower_button_enabled() is True
+
+
+def test_disabled_with_only_one_env_var(monkeypatch):
+    """Both vars are required — either one alone keeps the button off and the
+    trigger a no-op."""
+    monkeypatch.setenv("FINDAJOB_WATCHTOWER_HTTP_URL", "http://watchtower:8080")
+    monkeypatch.delenv("FINDAJOB_WATCHTOWER_HTTP_TOKEN", raising=False)
+    assert watchtower.watchtower_button_enabled() is False
+    assert watchtower.trigger_watchtower_update() is False
+
+    monkeypatch.delenv("FINDAJOB_WATCHTOWER_HTTP_URL", raising=False)
+    monkeypatch.setenv("FINDAJOB_WATCHTOWER_HTTP_TOKEN", "tok")
+    assert watchtower.watchtower_button_enabled() is False
+    assert watchtower.trigger_watchtower_update() is False
 
 
 class _FakeResp:
@@ -44,6 +57,8 @@ def test_trigger_posts_scoped_to_image(monkeypatch):
     assert captured["method"] == "POST"
     assert "image=ghcr.io/brockamer/findajob" in captured["url"]
     assert captured["auth"] == "Bearer tok"
+    # The token must never ride in the URL (never-leak-secrets discipline).
+    assert "tok" not in captured["url"]
 
 
 def test_trigger_failopen_on_error(monkeypatch):
