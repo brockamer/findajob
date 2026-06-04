@@ -409,3 +409,33 @@ def test_chip_close_buttons_are_post_forms_not_get_anchors(
     assert "/board/dashboard/reset-filter/company" in r.text
     # And Clear-all is a form POSTing to /reset-view.
     assert "/board/dashboard/reset-view" in r.text
+
+
+# ── Update-flash param survives the cold-load redirect (#1017) ──────────
+
+
+def test_update_flash_renders_and_preserves_persisted_view(
+    monkeypatch: pytest.MonkeyPatch, client_and_db: tuple[TestClient, Path]
+) -> None:
+    """#1017: the POST /update/now result-flash param must survive even when a
+    dashboard view is persisted. The view-prefs cold-load redirect would
+    otherwise strip ?update_triggered (swallowing the flash), and _persist_view
+    would clobber the saved filters with the bare flash-view. The flash render
+    skips both; persisted filters re-apply on the next navigation.
+    """
+    from findajob.web import update_check
+
+    client, db = client_and_db
+    _write_view_prefs(db, "dashboard", "company=meta")
+    # The flash lives inside the banner card, so the banner must be present:
+    # latest must be newer than the running version.
+    monkeypatch.setattr(update_check, "findajob_version", lambda: "0.33.0")
+    update_check._cache["latest"] = "0.34.0"
+    update_check._cache["checked_at"] = update_check._now()
+
+    r = client.get("/board/dashboard?update_triggered=1", follow_redirects=False)
+    # No cold-load redirect — the flash renders directly (not a 303 that drops it).
+    assert r.status_code == 200
+    assert "Update requested" in r.text
+    # Saved filters untouched — not clobbered by the bare flash-view.
+    assert _read_view_prefs(db, "dashboard") == "company=meta"
