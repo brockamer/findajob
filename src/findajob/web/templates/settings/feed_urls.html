@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Feed URLs — Settings{% endblock %}
+{% block content %}
+<div class="max-w-2xl">
+  {% include "settings/_settings_nav.html" %}
+  <h1 class="text-2xl font-semibold mb-1">Feed URLs</h1>
+  <p class="text-sm text-slate-600 mb-2">
+    These are the company job boards (Greenhouse, Lever, Ashby) findajob fetches
+    from. Edit the list in
+    <a class="underline" href="/config/">/config/ &rarr; feed_urls.txt</a>.
+    Click <strong>Verify</strong> to check that each one still resolves.
+  </p>
+  {% if not file_present %}
+  <p class="text-sm text-amber-700 mb-4">
+    No <code>feed_urls.txt</code> configured yet — add company boards in
+    <a class="underline" href="/config/">/config/</a>.
+  </p>
+  {% endif %}
+
+  <ul class="space-y-1 mb-4">
+    {% for row in rows %}
+    <li class="flex items-center gap-3 py-1.5 border-b border-slate-100 text-sm">
+      <span class="font-medium text-slate-800">{{ row.company }}</span>
+      <code class="text-xs text-slate-500 flex-1 truncate">{{ row.url }}</code>
+      {% if row.ats %}
+      <span class="text-xs text-slate-500">{{ row.ats }}</span>
+      {% else %}
+      <span class="text-xs text-slate-400">unsupported</span>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+
+  {% if rows %}
+  <form hx-post="/settings/feed-urls/verify" hx-target="#verify-result" hx-swap="innerHTML">
+    <button
+      type="submit"
+      class="bg-slate-800 text-white text-sm font-medium rounded px-4 py-1.5 hover:bg-slate-700"
+    >
+      Verify feed URLs
+    </button>
+    <span class="text-xs text-slate-500 htmx-indicator ml-2">Checking…</span>
+  </form>
+  {% endif %}
+
+  <div id="verify-result" class="mt-4"></div>
+</div>
+{% endblock %}

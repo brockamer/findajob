@@ -1,0 +1,25 @@
+{% if all_unreachable %}
+<div class="px-3 py-2 mb-3 rounded bg-amber-50 border border-amber-200 text-amber-900">
+  Every feed came back <strong>unreachable</strong> — this instance may be offline.
+  Check its internet connection and verify again.
+</div>
+{% endif %}
+<ul class="space-y-1">
+  {% for r in results %}
+  <li class="flex items-start gap-3 py-1.5 border-b border-slate-100 text-sm">
+    {% if r.status == "live" %}
+    <span class="text-xs px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">✓ live</span>
+    {% elif r.status == "dead" %}
+    <span class="text-xs px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200">✗ dead</span>
+    {% elif r.status == "unreachable" %}
+    <span class="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">⚠ unreachable</span>
+    {% else %}
+    <span class="text-xs px-2 py-0.5 rounded-full bg-slate-50 text-slate-600 border border-slate-200">⊘ unsupported</span>
+    {% endif %}
+    <span class="font-medium text-slate-800">{{ r.row.company }}</span>
+    <code class="text-xs text-slate-500">{{ r.row.url }}</code>
+    {% if r.http_code %}<span class="text-xs text-slate-400">{{ r.http_code }}</span>{% endif %}
+    {% if r.hint %}<span class="text-xs text-slate-500 flex-1">{{ r.hint }}</span>{% endif %}
+  </li>
+  {% endfor %}
+</ul>

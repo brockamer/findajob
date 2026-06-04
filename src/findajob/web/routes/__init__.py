@@ -27,6 +27,7 @@ from findajob.web.routes import (
     settings_backup,
     settings_connections,
     settings_excluded_employers,
+    settings_feed_urls,
     settings_gemini,
     settings_reject_reasons,
     settings_spend_ceiling,
@@ -63,6 +64,7 @@ router.include_router(settings_active_sources.router, dependencies=_guard)
 router.include_router(settings_backup.router, dependencies=_guard)
 router.include_router(settings_connections.router, dependencies=_guard)
 router.include_router(settings_excluded_employers.router, dependencies=_guard)
+router.include_router(settings_feed_urls.router, dependencies=_guard)
 router.include_router(settings_gemini.router, dependencies=_guard)
 router.include_router(settings_spend_ceiling.router, dependencies=_guard)
 router.include_router(settings_timezone.router, dependencies=_guard)
