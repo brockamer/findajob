@@ -42,6 +42,7 @@ from pathlib import Path
 from findajob.db import connect
 from findajob.migrate import manifest as mf
 from findajob.migrate import wal
+from findajob.version import findajob_version
 
 INCLUDED_SUBDIRS = ("data", "companies", "candidate_context")
 EXCLUDED_SUBDIRS = ("aichat_ng", "logs")
@@ -101,7 +102,7 @@ def export(
         schema_version=mf.SCHEMA_VERSION,
         export_time_utc=dt.datetime.now(dt.UTC).isoformat().replace("+00:00", "Z"),
         source_stack_tag=source_stack_tag,
-        findajob_version=_findajob_version(),
+        findajob_version=findajob_version(),
         db_row_counts=counts,
         pipeline_db_sha256=db_sha,
         companies_file_count=companies_count,
@@ -189,27 +190,3 @@ def _exclude_filter(tarinfo: tarfile.TarInfo) -> tarfile.TarInfo | None:
     if tarinfo.name in EXCLUDED_FILES:
         return None
     return tarinfo
-
-
-def _findajob_version() -> str:
-    """Return findajob's current version from CHANGELOG.md as the first
-    SemVer-shaped ``## [N.N.N]`` heading. Skips the ``## [Unreleased]``
-    working-section header so a manifest never claims an unreleased
-    version. Returns ``"unknown"`` if CHANGELOG is missing or
-    unparseable — informational only, never load-bearing for
-    verification, so a malformed CHANGELOG must not break exports."""
-    try:
-        from findajob.paths import BASE
-
-        changelog = Path(BASE) / "CHANGELOG.md"
-        if not changelog.exists():
-            return "unknown"
-        for line in changelog.read_text().splitlines():
-            # Format: `## [0.27.10] - 2026-05-23`. Reject `## [Unreleased]`.
-            if line.startswith("## [") and "]" in line:
-                version = line.split("[", 1)[1].split("]", 1)[0]
-                if version[:1].isdigit():
-                    return version
-    except Exception:
-        return "unknown"
-    return "unknown"
