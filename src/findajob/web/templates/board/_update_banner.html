@@ -1,0 +1,30 @@
+{# #1016: shown when GitHub's latest release is newer than the running
+   CHANGELOG version AND the `update_banner_dismissed` cookie isn't set to
+   that exact version (so a later release re-surfaces). Fail-open: hidden
+   whenever the version check couldn't resolve a newer version. #}
+{% if update_banner %}
+<div class="bg-emerald-50 border border-emerald-200 rounded p-3 mb-4 flex items-start gap-3">
+  <div class="flex-1 text-sm text-emerald-900">
+    <strong>Update available</strong>
+    — v{{ update_banner.current }} &rarr; v{{ update_banner.latest }}.
+    <a href="{{ update_banner.changelog_url }}" target="_blank" rel="noopener"
+       class="underline font-medium hover:text-emerald-700">What's new</a>.
+    {% if update_banner.substrate == "fly" %}
+      To update, open your app in the <strong>Fly dashboard</strong> and click
+      <strong>Deploy</strong> to redeploy the latest.
+    {% else %}
+      To update, run
+      <span class="font-mono">docker compose pull &amp;&amp; docker compose up -d</span>
+      (or let Watchtower update it automatically, if you run it).
+    {% endif %}
+    See <a href="/docs/updating" class="underline font-medium hover:text-emerald-700">how to update</a>.
+  </div>
+  <a
+    href="?dismiss_update_banner={{ update_banner.latest }}"
+    class="text-xs text-emerald-700 hover:text-emerald-900 whitespace-nowrap"
+    title="Stop showing this until the next release."
+  >
+    Don't show again
+  </a>
+</div>
+{% endif %}

@@ -7,14 +7,14 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from findajob.config_loader import load_spend_ceiling
 from findajob.fetchers.adapters import registry as _adapter_registry
 from findajob.timeutil import pending_timezone
 from findajob.triage.schedule import next_triage_time
-from findajob.web import view_prefs
+from findajob.web import update_check, view_prefs
 from findajob.web.company_history import build_history_by_fp, fetch_company_history
 from findajob.web.discoveries import load_discoveries_summary
 from findajob.web.filters import ColumnSpec, ParsedFilters, build_filter_clauses, parse_filter_params
@@ -159,11 +159,13 @@ def _dashboard_query(parsed: ParsedFilters) -> tuple[str, list[object]]:
 @router.get("/board/dashboard", response_class=HTMLResponse)
 def dashboard(
     request: Request,
+    background_tasks: BackgroundTasks,
     density: str = Query(default=_DEFAULT_DENSITY),
     dismiss_active_sources_banner: int = Query(default=0),
     dismiss_spend_ceiling_banner: int = Query(default=0),
     dismiss_first_triage_banner: int = Query(default=0),
     dismiss_timezone_banner: int = Query(default=0),
+    dismiss_update_banner: str = Query(default=""),
     triage_launched: int = Query(default=0),
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
 ) -> HTMLResponse:
@@ -223,6 +225,19 @@ def dashboard(
         )
         return redirect  # type: ignore[return-value]
 
+    # #1016: ?dismiss_update_banner=<version> stores the dismissed version in a
+    # 1-year cookie. Version-keyed so a newer release re-surfaces the banner.
+    if dismiss_update_banner:
+        redirect = RedirectResponse(url="/board/dashboard", status_code=303)
+        redirect.set_cookie(
+            "update_banner_dismissed",
+            dismiss_update_banner,
+            max_age=31536000,  # 1 year
+            httponly=False,
+            samesite="lax",
+        )
+        return redirect  # type: ignore[return-value]
+
     specs = filter_registry.DASHBOARD_COLUMNS
     parsed = parse_filter_params(specs, request.query_params)
     view_prefs_redirect = _maybe_redirect_to_persisted(request, "dashboard", parsed, db)
@@ -240,6 +255,7 @@ def dashboard(
     show_ceiling_banner = _spend_ceiling_banner_state(request)
     show_first_triage_banner, next_triage_fire = _first_triage_banner_state(request, db)
     timezone_banner = _timezone_banner_state(request)
+    update_banner = update_check.update_banner_state(request, background_tasks)
     templates = request.app.state.templates
     return templates.TemplateResponse(
         request=request,
@@ -262,6 +278,7 @@ def dashboard(
             "next_triage_fire": next_triage_fire,
             "triage_launched": bool(triage_launched),
             "timezone_banner": timezone_banner,
+            "update_banner": update_banner,
         },
     )
 

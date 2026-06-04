@@ -2,6 +2,7 @@
 import json
 import urllib.error
 import urllib.request
+from datetime import UTC
 
 import pytest
 
@@ -72,10 +73,9 @@ def test_maybe_schedule_refresh_only_when_stale(monkeypatch):
     assert len(bg.tasks) == 1
 
     # Fresh stamp → not stale → no schedule.
-    update_check.refresh_cache.__wrapped__ if False else None
-    from datetime import datetime, timezone
+    from datetime import datetime
 
-    update_check._cache["checked_at"] = datetime.now(timezone.utc)
+    update_check._cache["checked_at"] = datetime.now(UTC)
     bg2 = _BG()
     update_check.maybe_schedule_refresh(bg2)
     assert len(bg2.tasks) == 0
@@ -99,9 +99,9 @@ class _BGNoop:
 
 
 def _fresh_stamp():
-    from datetime import datetime, timezone
+    from datetime import datetime
 
-    update_check._cache["checked_at"] = datetime.now(timezone.utc)
+    update_check._cache["checked_at"] = datetime.now(UTC)
 
 
 def test_banner_state_shows_when_newer(monkeypatch):
@@ -144,3 +144,33 @@ def test_banner_state_resurfaces_after_newer_than_dismissed(monkeypatch):
     # Dismissed 0.34.0 earlier; 0.35.0 is newer → show again.
     req = _Req(cookies={"update_banner_dismissed": "0.34.0"})
     assert update_check.update_banner_state(req, _BGNoop()) is not None
+
+
+def test_dashboard_renders_update_banner(tmp_path, monkeypatch):
+    """Integration: banner text appears on the dashboard when an update is available."""
+
+    from fastapi.testclient import TestClient
+
+    from findajob.onboarding import mark_complete
+    from findajob.web import update_check as uc
+    from findajob.web.app import create_app
+    from tests.conftest import init_test_db
+
+    db = tmp_path / "pipeline.db"
+    init_test_db(db)
+    companies = tmp_path / "companies"
+    companies.mkdir()
+    mark_complete(tmp_path)
+
+    from datetime import datetime
+
+    uc._cache["latest"] = "0.34.0"
+    uc._cache["checked_at"] = datetime.now(UTC)
+    monkeypatch.setattr(uc, "findajob_version", lambda: "0.33.0")
+    monkeypatch.delenv("FLY_APP_NAME", raising=False)
+
+    client = TestClient(create_app(companies_root=companies, db_path=db, base_root=tmp_path))
+    resp = client.get("/board/dashboard")
+    assert resp.status_code == 200
+    assert "Update available" in resp.text
+    assert "0.34.0" in resp.text
