@@ -14,7 +14,7 @@ Watch [CHANGELOG.md](https://github.com/brockamer/findajob/blob/main/CHANGELOG.m
 
 **The Fly dashboard "Deploy" button alone does *not* pull a new findajob release** — it rebuilds whatever source your app is connected to (a fork's `main` is frozen until you sync it; a "Use a public repo" launch isn't connected to this project at all). How to actually update:
 
-- **Launched from your own fork?** On GitHub, click **Sync fork → Update branch** to pull the new release into your fork, *then* click **Deploy** in the Fly dashboard. Deploy without syncing first just rebuilds your old code.
+- **Launched from your own fork?** On GitHub, click **Sync fork → Update branch** to pull the new release into your fork, *then* click **Deploy** in the Fly dashboard — and check the version advanced in the update banner afterward. Deploy without syncing first just rebuilds your old code.
 - **Launched with "Use a public repo" (no fork)?** Use the CLI path below — Fly can't watch a repo you don't own, so there's no one-click dashboard update. A no-terminal in-app updater is tracked in [#947](https://github.com/brockamer/findajob/issues/947).
 
 **Reliable for any setup (CLI).** With `flyctl` and a clone of the repo:
