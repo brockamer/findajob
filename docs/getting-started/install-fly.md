@@ -156,29 +156,20 @@ This page is the install runbook. Once you're up:
 
 ## Updating to a new release
 
-findajob keeps releasing updates. Two ways to pull new versions — pick whichever fits:
+findajob keeps releasing updates; the in-app "update available" banner tells you when a newer release exists. **How you update depends on how you deployed** — the Fly dashboard **Deploy** button *alone* does **not** pull a new findajob release. It rebuilds whatever source your app is connected to, and on the web-launch paths that source is either stale or not connected to this project:
 
-**Web (recommended).** On your app's overview page in the Fly dashboard, click the **Deploy** button to redeploy the latest release. The in-app "update available" banner tells you when a newer release exists.
+**If you launched from your own fork.** First sync your fork: on your fork's page on GitHub, click **Sync fork → Update branch** to pull the new release into your fork's `main`. *Then* click **Deploy** on your app's overview page in the Fly dashboard. (Clicking Deploy *without* syncing first just rebuilds your fork's old code — that's the trap.)
 
-Fly's **Auto-Deploy on push** does *not* track findajob releases: it only redeploys when the specific GitHub repo you connected receives a push, and a fork's `main` doesn't move when this project publishes a new release upstream. Dashboard redeploy (above) is the reliable path.
+**If you launched with "Use a public repo" (no fork).** Fly can't watch a repo you don't own, so there's no upstream-connected Deploy button — that launch was a one-time build. Update with the CLI path below. (A no-terminal, one-click in-app updater is tracked in [#947](https://github.com/brockamer/findajob/issues/947).)
 
-![Settings page — Connect to GitHub repository for auto-deploy](install-fly-web/09-settings-github-connect.png)
-
-**Manual redeploy from dashboard.** Navigate to your app's overview page and click the deploy button if your repo is connected, or re-run the Launch flow.
-
-<details>
-<summary>Power-user: update via CLI</summary>
-
-If you have `flyctl` installed:
+**Update via CLI — the reliable path for any setup.** With `flyctl` installed and a clone of the repo:
 
 ```
 fly deploy --config ops/fly.toml
 fly ssh console --app findajob-<your-handle> --command "python -m findajob.web.verify_auth"
 ```
 
-If `verify_auth` exits non-zero, the deploy is up but the auth gate is broken — roll back.
-
-</details>
+`ops/fly.toml` pulls findajob's prebuilt image (no rebuild, no fork staleness), so this always lands the latest release. If `verify_auth` exits non-zero, the deploy is up but the auth gate is broken — roll back.
 
 Release notes are at <https://github.com/brockamer/findajob/blob/main/CHANGELOG.md>. Releases with schema or config migrations call them out in a `### Migration required` block — read that section before updating.
 
