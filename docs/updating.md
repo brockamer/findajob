@@ -12,19 +12,19 @@ Watch [CHANGELOG.md](https://github.com/brockamer/findajob/blob/main/CHANGELOG.m
 
 ## Fly.io users
 
-If you installed via the web "Launch an App" flow (no terminal), update from the Fly dashboard: open your app's overview page and click **Deploy** to redeploy the latest release. (Fly's **Auto-Deploy on push** does *not* track findajob releases — it only fires when the GitHub repo you connected is pushed, and a fork's `main` doesn't move when this project releases upstream.) See [`getting-started/install-fly.md` → Updating to a new release](getting-started/install-fly.md#updating-to-a-new-release) for the walkthrough.
+**The Fly dashboard "Deploy" button alone does *not* pull a new findajob release** — it rebuilds whatever source your app is connected to (a fork's `main` is frozen until you sync it; a "Use a public repo" launch isn't connected to this project at all). How to actually update:
 
-**Power-user (local repo clone).** If you have `flyctl` and a clone of the repo, run this after any release you want to pick up:
+- **Launched from your own fork?** On GitHub, click **Sync fork → Update branch** to pull the new release into your fork, *then* click **Deploy** in the Fly dashboard. Deploy without syncing first just rebuilds your old code.
+- **Launched with "Use a public repo" (no fork)?** Use the CLI path below — Fly can't watch a repo you don't own, so there's no one-click dashboard update. A no-terminal in-app updater is tracked in [#947](https://github.com/brockamer/findajob/issues/947).
+
+**Reliable for any setup (CLI).** With `flyctl` and a clone of the repo:
 
     fly deploy --config ops/fly.toml
-
-This pulls the latest image from the container registry, deploys it to your Fly machine, and restarts the container. The update takes 30–60 seconds.
-
-After deploying, verify the auth gate is still up:
-
     fly ssh console --app findajob-<handle> --command "python -m findajob.web.verify_auth"
 
-A zero exit means the gate is active. Any non-zero exit means the stack is unverified — check `fly logs` before using the app again.
+`ops/fly.toml` pulls the prebuilt image (no rebuild, no fork staleness), so this always lands the latest. A zero exit from verify_auth means the gate is active; non-zero means the stack is unverified — check `fly logs`.
+
+See [`getting-started/install-fly.md` → Updating to a new release](getting-started/install-fly.md#updating-to-a-new-release) for the full walkthrough.
 
 ---
 
