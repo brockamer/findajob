@@ -121,7 +121,10 @@ git push origin "v${VERSION}"
 ```
 
 That push triggers both workflows: `build-image.yml` pushes the image tags,
-`create-release.yml` generates the GitHub Release.
+`create-release.yml` generates the GitHub Release. If you've opted into
+[automated Fly deploy](#automated-fly-deploy-opt-in), `build-image.yml`'s
+`deploy-fly` job then rolls your Fly apps to the new tag and verifies the auth
+gate — so the manual `fly deploy` step below is skipped for those apps.
 
 ---
 
@@ -159,6 +162,8 @@ depends on your infrastructure:
 
 - **Fly.io:** `fly deploy` against your `fly.toml`. See
   [`docs/getting-started/install-fly.md`](../getting-started/install-fly.md).
+  This step can be automated on tag push — see
+  [Automated Fly deploy](#automated-fly-deploy-opt-in).
 - **Docker Compose:** `docker compose pull && docker compose up -d`. See
   [`docs/operations/install-docker.md`](../operations/install-docker.md).
 
@@ -169,6 +174,33 @@ python -m findajob.web.verify_auth
 
 If `verify_auth` exits non-zero, the deployment is broken until it passes.
 See CLAUDE.md § "Auth Gate Must Be Verified Post-Deploy" for exit codes.
+
+### Automated Fly deploy (opt-in)
+
+If you maintain your own fork and run your own Fly apps, the `deploy-fly` job in
+`build-image.yml` can do the Fly deploy + verify automatically on every
+`vX.Y.Z` tag push, replacing the manual `fly deploy` per app. It's driven by two
+**repository secrets**:
+
+| Secret | Value |
+|---|---|
+| `FLY_DEPLOY_APPS` | Whitespace/newline-separated Fly app slugs to deploy. |
+| `FLY_API_TOKEN` | A Fly token flyctl authenticates with. Must be **org-scoped** (`fly tokens create org`) — an app-scoped deploy token reaches only one app and cannot run `fly ssh console`, which the post-deploy `verify_auth` requires. |
+
+Behavior:
+
+- Fires only on `v*.*.*` tag pushes, after the image build succeeds. PR and
+  `main` builds never deploy.
+- Deploys the immutable `:vX.Y.Z` tag (not `:latest`) to each app via
+  `fly deploy -a <slug> --image … --yes`, using the app's server-side config (no
+  local `fly.toml` needed — per-app configs are gitignored), then runs
+  `python -m findajob.web.verify_auth` inside each machine over `fly ssh console`.
+- **No fail-fast** — every app is attempted; the run exits non-zero if any
+  app's deploy or verify failed. That red GitHub Actions run is the failure
+  signal (there is no ntfy).
+- **Both secrets unset ⇒ clean no-op**, so forks that don't opt in (and the
+  fork-safe default) deploy nothing. Logic lives in
+  [`ops/ci-fly-deploy.sh`](../../ops/ci-fly-deploy.sh).
 
 ---
 

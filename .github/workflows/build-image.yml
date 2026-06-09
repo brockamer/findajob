@@ -81,3 +81,33 @@ jobs:
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.licenses=MIT
+
+  # Auto-deploy the freshly-published tagged image to the maintainer's own Fly
+  # apps, then run the mandated post-deploy auth-gate verify. `needs: build-push`
+  # guarantees the image exists on GHCR first; the tag gate means PR and main
+  # builds never trigger a deploy. Driven entirely by two repo secrets:
+  # FLY_DEPLOY_APPS (app slugs) + FLY_API_TOKEN — both unset => clean no-op, so
+  # this job is inert on forks and on instances that don't opt in (#914).
+  deploy-fly:
+    needs: build-push
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    # Least-privilege: this job only reads the repo (checkout). Fly auth comes
+    # from FLY_API_TOKEN, not GITHUB_TOKEN — no packages:write needed here.
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+
+      - name: Set up flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # v1.6
+
+      # IMAGE re-derives the immutable version tag from the git ref (e.g.
+      # v0.33.0) — the exact tag build-push just published — rather than :latest,
+      # so a near-simultaneous main push moving :latest can't divert the deploy.
+      - name: Deploy tagged image to maintainer Fly apps + verify auth gate
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_DEPLOY_APPS: ${{ secrets.FLY_DEPLOY_APPS }}
+          IMAGE: ghcr.io/${{ github.repository_owner }}/findajob:${{ github.ref_name }}
+        run: bash ops/ci-fly-deploy.sh
