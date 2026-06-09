@@ -1,5 +1,5 @@
 ---
-model: openrouter:anthropic/claude-sonnet-4-6
+model: openrouter:anthropic/claude-sonnet-4.6
 temperature: 0.1
 max_tokens: 256
 ---

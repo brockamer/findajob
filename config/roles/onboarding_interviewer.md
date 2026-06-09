@@ -1,5 +1,5 @@
 ---
-model: openrouter:anthropic/claude-sonnet-4-6
+model: openrouter:anthropic/claude-sonnet-4.6
 max_tokens: 16384
 ---
 # Onboarding Interviewer v3 — 2026-05-02 (in-app)

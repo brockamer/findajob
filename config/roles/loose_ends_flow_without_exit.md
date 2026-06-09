@@ -1,5 +1,5 @@
 ---
-model: anthropic/claude-haiku-4-5
+model: openrouter:anthropic/claude-haiku-4.5
 temperature: 0
 max_tokens: 400
 ---
