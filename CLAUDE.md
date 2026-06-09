@@ -42,7 +42,7 @@ The pipeline is Docker-only: image `ghcr.io/brockamer/findajob`, supercronic + u
 
 <!-- Absorbed from docs/maintainers/pipeline-context.md, 2026-05-27 -->
 
-Model assignment for every LLM-driven role, plus the canonical paths and conventions the pipeline depends on. Read when working on a specific role, fetcher, or path question.
+Model assignment for the core pipeline and interview-materials roles, plus the canonical paths and conventions the pipeline depends on. Read when working on a specific role, fetcher, or path question.
 
 ### Models per role
 
@@ -55,12 +55,16 @@ Model assignment for every LLM-driven role, plus the canonical paths and convent
 | `outreach_drafter` | `openrouter:anthropic/claude-opus-4.8` | profile + voice samples injected directly |
 | `recruiter_critic` | `openrouter:anthropic/claude-opus-4.8` | `max_tokens: 1024`; sees company, title, JD, tailored resume, cover; NOT profile/briefing/fit |
 | `interview_prep` | `openrouter:anthropic/claude-opus-4.8` | `max_tokens: 4096`; fires on `applied → interview` |
+| `study_guide_generator` / `flashcard_generator` | `openrouter:anthropic/claude-sonnet-4.6` | on-demand interview-study artifacts from `/materials/{fp}/` (#873/#1029) |
+| `podcast_scriptwriter` | `openrouter:anthropic/claude-opus-4.8` | interview-prep podcast script artifact |
 | `company_discoverer` | `openrouter:perplexity/sonar-reasoning-pro` | weekly Sun 02:00; emits `candidate_context/discovered_companies.md` + `.json`; field-agnostic, augments static `## Target Companies` |
 | `company_researcher` | `openrouter:perplexity/sonar-reasoning-pro` | |
 | `fit_analyst` | `openrouter:perplexity/sonar-reasoning-pro` | appended to company briefing |
 | `candidate_led_briefing` | `openrouter:perplexity/sonar-deep-research` | async (1–5 min); drives speculative briefing pass |
 | `speculative_roles_synth` | `openrouter:anthropic/claude-sonnet-4.6` | `max_tokens: 4096`; synthesizes 1–5 candidate-tailored role cards |
 | `resume_change_reviewer` / `network_analyst` | `openrouter:google/gemini-3-flash-preview` | |
+
+> Auxiliary/meta roles (`onboarding_interviewer`, `voice_processor`, `recall_auditor`, `loose_ends_*`) carry their own `model:` frontmatter in `config/roles/` and are intentionally not enumerated here.
 
 ### Pipeline plumbing
 
@@ -445,8 +449,10 @@ After completion: updates DB to `stage=materials_drafted`, sends ntfy notificati
 
 Resets any job stuck in `stage='prep_in_progress'` for more than 60 minutes back to `scored`. Calls `findajob.actions.reset_prep_to_scored()` which writes an `audit_log` row and emits `prep_failed_reset`. Emits a `watchdog_run` summary event at the end of each run.
 
-#### `notify.py`
-**Run by:** scheduler (5 subcommands; see `docs/operations/README.md` → Notifications for the per-subcommand schedule and content).
+#### `notify.py` (entry-point shim)
+*Entry-point shim; implementation in `src/findajob/notifications/`.*
+
+**Run by:** scheduler (4 subcommands; see `docs/operations/README.md` → Notifications for the per-subcommand schedule and content).
 **Manual run:** `docker compose exec scheduler python3 scripts/notify.py <subcommand>`
 
 #### `scripts/find_contacts.py` (entry-point shim)
