@@ -378,7 +378,7 @@ When you want to reach out to a company that isn't currently posting a matching 
    - **Regenerate** — re-runs the synthesizer (briefing is preserved on retries to save the expensive Deep Research call). Status page polls again.
    - **Trash** — drops the whole submission. No rows are written.
 6. Approved rows show on the **Dashboard** with a small purple **SPEC** badge and the `[SPEC]` title prefix. Flag them for prep just like a real row. The cover letter and outreach draft will be written in cold-outreach mode automatically (acknowledges no posting exists, leads with hiring-signal from the briefing, ends with a low-pressure ask).
-7. Send the outreach. Then click **Sent Outreach** on that row (replaces the **Applied** dropdown option for speculative rows). The transition counts toward the apply-gate the same way a normal application does.
+7. Send the outreach. Then click **Sent Outreach** on that row (replaces the **Applied** dropdown option for speculative rows). The transition is recorded the same way a normal application is.
 
 **Costs:** ~$0.25–$0.75 per speculative submission (Perplexity Deep Research is more expensive than the regular search option). The form soft-warns you if you've already submitted today; there's no hard cap.
 
