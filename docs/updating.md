@@ -24,6 +24,8 @@ Watch [CHANGELOG.md](https://github.com/brockamer/findajob/blob/main/CHANGELOG.m
 
 `ops/fly.toml` pulls the prebuilt image (no rebuild, no fork staleness), so this always lands the latest. A zero exit from verify_auth means the gate is active; non-zero means the stack is unverified — check `fly logs`.
 
+> **Maintaining your own fork and cutting release tags?** You can have CI run this deploy + verify for you on every `vX.Y.Z` tag, instead of doing it by hand — see [release-process.md → Automated Fly deploy](https://github.com/brockamer/findajob/blob/main/docs/maintainers/release-process.md#automated-fly-deploy-opt-in). This is a maintainer convenience for fork owners; it doesn't change how a plain deployment updates.
+
 See [`getting-started/install-fly.md` → Updating to a new release](getting-started/install-fly.md#updating-to-a-new-release) for the full walkthrough.
 
 ---
