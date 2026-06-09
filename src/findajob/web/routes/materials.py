@@ -28,6 +28,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse
 
+from findajob.prep.briefing import read_briefing
 from findajob.prep.docx_postprocess import _linkify_contact_info
 from findajob.prep.docx_render import render_md_to_docx
 from findajob.web.folder_resolver import resolve_folder
@@ -579,7 +580,7 @@ def generate_podcast_from_materials(
         except OSError:
             return ""
 
-    briefing = _read_latest(r"Briefing.*\.md$")
+    briefing = read_briefing(prep_folder)
     resume = _read_latest(r"(?<!Changes )Resume(?! Changes).*\.md$")
     cover = _read_latest(r"Cover.*\.md$")
     critique = _read_latest(r"Critique.*\.md$")
@@ -739,7 +740,7 @@ def _launch_study_artifact(
         except OSError:
             return ""
 
-    briefing = _read_latest(r"Briefing.*\.md$")
+    briefing = read_briefing(prep_folder)
     resume = _read_latest(r"(?<!Changes )Resume(?! Changes).*\.md$")
     cover = _read_latest(r"Cover.*\.md$")
     critique = _read_latest(r"Critique.*\.md$")
