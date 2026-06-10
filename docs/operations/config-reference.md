@@ -282,6 +282,13 @@ leaking the PII to public CI logs). Find the line locally, fix, push.
 **Updating patterns:** when you add new PII patterns to the local hook, re-run
 the install command above to push the updated list to the secret.
 
+**Private operator patterns (beyond standard PII).** You may keep additional private
+patterns operator-side — for example, personal workflow-discipline terms you never want
+surfacing in the public tree. Add them to **both** your local `PATTERNS` array and the
+`PII_PATTERNS_REGEX` secret, so they're caught per-clone *and* in CI. By convention the
+specifics of such patterns stay operator-side and are **not** enumerated in this tracked
+doc — the same rule as the `<operator-domain>` / `<deployment-host>` placeholders.
+
 See also `docs/maintainers/generalization.md` for the broader tracking of domain-specific content that
 should not land in tracked files.
 
