@@ -11,12 +11,25 @@ from __future__ import annotations
 
 import math
 
+import pytest
+
+from findajob import config_loader
 from findajob.critique_aggregator.analyze import aggregate, default_theme_floor
 from findajob.critique_aggregator.anchor import SourceLine
 from findajob.critique_aggregator.cluster import FlaggedItem
 
 GLUE = SourceLine("master_resume.md", 360, '"acts as the glue across teams"')
 RACK = SourceLine("master_resume.md", 160, "rack volume grew 2x")
+
+
+@pytest.fixture(autouse=True)
+def _isolate_theme_stopwords(monkeypatch, tmp_path):
+    # aggregate() reads config/critique_theme_stopwords.yaml via
+    # load_critique_theme_stopwords() (#995). Point it at a missing file so every
+    # aggregate() call in this file exercises the deterministic default denylist,
+    # independent of any operator config on disk — these tests predate the
+    # denylist and assume only the in-code _STOPWORDS plus that default.
+    monkeypatch.setattr(config_loader, "_CRITIQUE_THEME_STOPWORDS_PATH", tmp_path / "absent.yaml")
 
 
 def _item(company, anchor=None, quote="q", sentence="s", section="weak"):

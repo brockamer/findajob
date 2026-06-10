@@ -900,3 +900,19 @@ class TestLoadCritiqueThemeStopwords:
         config_loader._reset_cache()
         with pytest.raises(ConfigError, match="not a string"):
             config_loader.load_critique_theme_stopwords()
+
+    def test_malformed_yaml_raises(self, monkeypatch, tmp_path):
+        bad = tmp_path / "cts.yaml"
+        bad.write_text("stopwords: [unbalanced\n")
+        monkeypatch.setattr(config_loader, "_CRITIQUE_THEME_STOPWORDS_PATH", bad)
+        config_loader._reset_cache()
+        with pytest.raises(ConfigError, match="YAML parse error"):
+            config_loader.load_critique_theme_stopwords()
+
+    def test_top_level_not_a_mapping_raises(self, monkeypatch, tmp_path):
+        bad = tmp_path / "cts.yaml"
+        bad.write_text("- just\n- a\n- list\n")
+        monkeypatch.setattr(config_loader, "_CRITIQUE_THEME_STOPWORDS_PATH", bad)
+        config_loader._reset_cache()
+        with pytest.raises(ConfigError, match="top level must be a mapping"):
+            config_loader.load_critique_theme_stopwords()

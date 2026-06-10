@@ -20,8 +20,8 @@
 # the box. Matched case-insensitively against whole lowercased theme tokens.
 #
 # Add words that are NOISE on your corpus but the built-in default leaves in —
-# typically generic role/frame words a different candidate might want to keep as
-# signal. Field-agnostic by design; examples:
+# typically generic role/frame words and filler verbs a different candidate
+# might want to keep as signal. Field-agnostic by design; examples:
 #
 #   stopwords:
 #     - director      # role word, not a substantive flaw, on this corpus
