@@ -345,6 +345,64 @@ def test_custom_timeout_is_passed_through_to_requests(mock_get):
     assert mock_get.call_args.kwargs["timeout"] == 2.5
 
 
+class _BodyForbiddenResponse:
+    """A fake response that fails loudly the moment its body is touched.
+
+    A bare MagicMock can't pin the "never read the body" half of the #1025
+    contract: accessing .content / .text auto-creates child mocks and silently
+    passes even if the probe downloads the body. This fake raises on every body
+    accessor, so the test goes red if the probe reads what it must not. Only
+    status_code (parsed from headers, allowed) is a plain attribute; close() is
+    counted to assert it happens exactly once.
+    """
+
+    def __init__(self, status_code: int) -> None:
+        self.status_code = status_code
+        self.close_calls = 0
+
+    @property
+    def content(self):
+        raise AssertionError("probe must not read resp.content")
+
+    @property
+    def text(self):
+        raise AssertionError("probe must not read resp.text")
+
+    def iter_content(self, *args, **kwargs):
+        raise AssertionError("probe must not stream resp.iter_content")
+
+    def iter_lines(self, *args, **kwargs):
+        raise AssertionError("probe must not stream resp.iter_lines")
+
+    def json(self, *args, **kwargs):
+        raise AssertionError("probe must not parse resp.json")
+
+    def close(self) -> None:
+        self.close_calls += 1
+
+
+@patch("findajob.fetchers.feed_probe.requests.get")
+def test_probe_streams_response_and_closes_without_reading_body(mock_get):
+    """The probe needs only the status code, so it requests the body lazily
+    (stream=True) and closes the response after reading status_code — never
+    downloading the body. For Greenhouse's ?content=true endpoint that body is
+    every open req's full HTML; pulling it just to classify liveness is the
+    #1025 waste. The fake response raises if any body accessor is touched, so
+    this pins BOTH halves of the contract: stream requested, body never read,
+    connection closed exactly once.
+    """
+    resp = _BodyForbiddenResponse(status_code=200)
+    mock_get.return_value = resp
+
+    result = probe_feed_line("https://boards.greenhouse.io/acme")
+
+    assert result is not None
+    assert result.status == "live"  # classification unchanged
+    assert result.http_status == 200
+    assert mock_get.call_args.kwargs.get("stream") is True
+    assert resp.close_calls == 1  # closed exactly once, no connection leak
+
+
 @patch("findajob.fetchers.feed_probe.requests.get")
 def test_greenhouse_eu_and_jobboards_variants_probe_the_unified_api(mock_get):
     """EU and job-boards Greenhouse URLs are valid board URLs. There is no
