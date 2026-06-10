@@ -21,7 +21,7 @@
 # Per app: `fly deploy -a <slug> --image $IMAGE --yes` (deploys the prebuilt
 # image against the app's server-side config — no local fly.toml, since per-app
 # configs are gitignored), then the CLAUDE.md auth gate
-# `fly ssh console -a <slug> --command "python -m findajob.web.verify_auth"`.
+# `fly ssh console -a <slug> --command "/app/.venv/bin/python -m findajob.web.verify_auth"`.
 #
 # NOT fail-fast: every app is attempted even if an earlier one fails. The script
 # exits non-zero if ANY app's deploy or verify failed — the red GitHub Actions
@@ -85,7 +85,7 @@ for app in $APPS_RAW; do
 
     echo "==> Verifying auth gate on ${app} ..."
     sleep "$SETTLE"
-    if ! fly ssh console -a "$app" --command "python -m findajob.web.verify_auth"; then
+    if ! fly ssh console -a "$app" --command "/app/.venv/bin/python -m findajob.web.verify_auth"; then
         echo "ERROR: auth-gate verify failed for ${app} — deploy is up but UNVERIFIED." >&2
         echo "       If this is a permission error, FLY_API_TOKEN must be an org-scoped" >&2
         echo "       token: app-scoped deploy tokens cannot run 'fly ssh console'." >&2

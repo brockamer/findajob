@@ -20,7 +20,7 @@ Watch [CHANGELOG.md](https://github.com/brockamer/findajob/blob/main/CHANGELOG.m
 **Reliable for any setup (CLI).** With `flyctl` and a clone of the repo:
 
     fly deploy --config ops/fly.toml
-    fly ssh console --app findajob-<handle> --command "python -m findajob.web.verify_auth"
+    fly ssh console --app findajob-<handle> --command "/app/.venv/bin/python -m findajob.web.verify_auth"
 
 `ops/fly.toml` pulls the prebuilt image (no rebuild, no fork staleness), so this always lands the latest. A zero exit from verify_auth means the gate is active; non-zero means the stack is unverified — check `fly logs`.
 
