@@ -8,7 +8,6 @@ Tests verify:
 - Happy path returns (assistant_text, usage_dict)
 - Error translation: every OpenRouterError.kind → InterviewRunnerError with
   byte-identical user_message (the route layer renders this verbatim)
-- INTERVIEW_MODEL / INTERVIEW_MAX_TOKENS constants still importable (existing callers)
 """
 
 from __future__ import annotations
@@ -21,8 +20,6 @@ from urllib.error import HTTPError, URLError
 import pytest
 
 from findajob.onboarding.interview_runner import (
-    INTERVIEW_MAX_TOKENS,
-    INTERVIEW_MODEL,
     InterviewRunnerError,
     run_turn,
 )
@@ -130,22 +127,6 @@ def test_empty_history_works_for_first_turn() -> None:
     with patch(_URLOPEN, return_value=_ok_resp(body)):
         text, _ = run_turn("sk-or-v1-operator", [], "begin the interview")
     assert text == "Welcome."
-
-
-# ── Model pin constant ───────────────────────────────────────────────────
-
-
-def test_interview_model_is_sonnet_4_6() -> None:
-    """Model pin: see issue #336 'Decisions adopted'."""
-    assert INTERVIEW_MODEL == "anthropic/claude-sonnet-4-6"
-
-
-def test_interview_max_tokens_supports_voice_samples_emit() -> None:
-    """#632: voice-samples emit truncated at ~17.7K chars under the prior
-    4096-token cap. Bumped to 16384 so a 50K-char voice-samples block
-    (the AC target) fits comfortably — Claude Sonnet 4.6 supports up to
-    64K output tokens, so headroom remains for further bumps if needed."""
-    assert INTERVIEW_MAX_TOKENS >= 16384
 
 
 # ── Error translation — kind + user_message byte-identical to Phase 1 ──
