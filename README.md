@@ -8,7 +8,7 @@ Built and operated daily; pre-1.0 means active development.
 
 ![Dashboard](docs/screenshots/dashboard.png)
 
-*Fictional demo data spanning data-center ops, social services, and K-12 education — the same pipeline works for every field, only your candidate profile changes.*
+*Fictional demo data — a cross-discipline candidate's program, operations, and customer-facing roles. The same pipeline works for every field; only your candidate profile changes.*
 
 [![Deploy to Fly.io](https://img.shields.io/badge/Deploy%20to%20Fly.io-8B5CF6?style=for-the-badge&logo=flydotio&logoColor=white)](docs/getting-started/start-here-fly.md)
 
@@ -19,8 +19,8 @@ Built and operated daily; pre-1.0 means active development.
 ## What it does
 
 - **Cuts the noise so you can focus.** Every morning it pulls hundreds of fresh listings, scores each one against your background, and surfaces only the handful worth your attention. Most job tools track what you applied to; this one finds the few worth applying to.
-- **Writes the application for you to finish.** One click produces a per-job folder: a tailored resume, a cover letter, a researched briefing on the company, and outreach drafts that name real contacts from your network.
-- **Learns from every rejection.** Each job that doesn't pan out gets tagged with a reason — *Skills Mismatch*, *Too Senior*, *Comp Too Low* — and those reasons train the next day's scoring. No other job tool closes that loop.
+- **Writes the application for you to finish.** Flag a job and findajob researches the company and drafts a briefing; approve it and a second pass produces the full package — a tailored resume, a cover letter, and outreach drafts that name real contacts from your network.
+- **Learns from every rejection.** Each job that doesn't pan out gets tagged with a reason — *Skills Mismatch*, *Geography*, *Compensation* — and those reasons train the next day's scoring. No other job tool closes that loop.
 - **Works for any field.** Built by a data-center-ops candidate, but it works just as well for a social worker, teacher, accountant, software engineer, or trades professional. Only your profile changes.
 
 Thirty days on the operator's own instance:

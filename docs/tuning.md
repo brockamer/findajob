@@ -16,6 +16,8 @@ to adjust your pipeline configuration, and verify the adjustment worked.
 
 ## Stats pages at a glance
 
+> **New to the Stats tab?** [Reading the Stats pages](usage/stats.md) is a screenshot tour of what each page shows and how to read it. The notes below are the *tuning* lens — what to change when a number looks off.
+
 ### /stats/funnel
 
 **What it shows:** Daily stage-transition counts over the last 30 days,
