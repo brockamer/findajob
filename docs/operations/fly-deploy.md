@@ -53,7 +53,7 @@ Edit the pinned tag in `ops/fly.toml`:
 then redeploy and re-verify:
 
     fly deploy --config ops/fly.toml
-    fly ssh console --app findajob-<handle> --command "python -m findajob.web.verify_auth"
+    fly ssh console --app findajob-<handle> --command "/app/.venv/bin/python -m findajob.web.verify_auth"
 
 The same hard rule from CLAUDE.md applies: a non-zero `verify_auth` exit means the stack is unverified. Take it down with `fly machines stop` (or `fly apps destroy` if abandoning) until fixed.
 
@@ -63,7 +63,7 @@ Stage a new value, then deploy to apply it:
 
     fly secrets set --stage --app findajob-<handle> FINDAJOB_AUTH_PASS=<new-value>
     fly deploy --config ops/fly.toml
-    fly ssh console --app findajob-<handle> --command "python -m findajob.web.verify_auth"
+    fly ssh console --app findajob-<handle> --command "/app/.venv/bin/python -m findajob.web.verify_auth"
 
 Notify the user out-of-band. Same caveat as compose: anyone holding the credential can edit pipeline config at `/config/`.
 
@@ -75,7 +75,7 @@ Translation from the compose forms used elsewhere in this directory:
 |------------------------------------------------------------------|--------------------------------------------------------------------------------------|
 | `docker compose logs -f scheduler`                               | `fly logs --app findajob-<handle>`                                                   |
 | `docker compose exec scheduler bash`                             | `fly ssh console --app findajob-<handle>`                                            |
-| `docker compose exec scheduler python3 scripts/triage.py`        | `fly ssh console --app findajob-<handle> --command "python3 scripts/triage.py"`      |
+| `docker compose exec scheduler python3 scripts/triage.py`        | `fly ssh console --app findajob-<handle> --command "/app/.venv/bin/python3 scripts/triage.py"`      |
 | `docker compose exec scheduler sqlite3 data/pipeline.db`         | `fly ssh console --app findajob-<handle> --command "sqlite3 /app/state/data/pipeline.db"`  |
 | `docker compose ps`                                              | `fly status --app findajob-<handle>`                                                 |
 | `docker compose restart scheduler`                               | `fly machines restart <machine-id> --app findajob-<handle>`                          |
@@ -123,7 +123,7 @@ If a deploy goes bad:
     fly releases --app findajob-<handle>                # find the prior version
     # Edit ops/fly.toml — set image to the previous good tag
     fly deploy --config ops/fly.toml
-    fly ssh console --app findajob-<handle> --command "python -m findajob.web.verify_auth"
+    fly ssh console --app findajob-<handle> --command "/app/.venv/bin/python -m findajob.web.verify_auth"
 
 Fly's release history keeps the prior image references; the rollback is a re-deploy of the prior tag, not a separate primitive. Schema-breaking releases can't be rolled back this way — check the release's CHANGELOG `### Migration required` block before rolling forward.
 

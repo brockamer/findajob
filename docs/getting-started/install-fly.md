@@ -166,7 +166,7 @@ findajob keeps releasing updates; the in-app "update available" banner tells you
 
 ```
 fly deploy --config ops/fly.toml
-fly ssh console --app findajob-<your-handle> --command "python -m findajob.web.verify_auth"
+fly ssh console --app findajob-<your-handle> --command "/app/.venv/bin/python -m findajob.web.verify_auth"
 ```
 
 `ops/fly.toml` pulls findajob's prebuilt image (no rebuild, no fork staleness), so this always lands the latest release. If `verify_auth` exits non-zero, the deploy is up but the auth gate is broken — roll back.

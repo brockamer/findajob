@@ -203,7 +203,7 @@ Some transitions also spawn detached generator subprocesses:
 The `PANDOC` binary path comes from `findajob.paths` (`src/findajob/paths.py`), which reads `config/paths.env`.
 Never hardcode platform paths in scripts. `BASE` is derived from `__file__` — the repo can live anywhere.
 For subprocess calls to other pipeline scripts, always use `sys.executable`, not a hardcoded Python path.
-Library code lives in `src/findajob/` (installed editable into the project venv via `uv sync` for local dev, `pip install -e .` inside the Docker image — #126). Entry point scripts in `scripts/` import via `from findajob.* import ...`. No `sys.path.insert` hacks.
+Library code lives in `src/findajob/` (installed editable via `uv sync` — into the project venv for local dev, and into `/app/.venv` in the Docker image via a `uv sync --locked` builder stage — #126, #997). Entry point scripts in `scripts/` import via `from findajob.* import ...`. No `sys.path.insert` hacks.
 
 ### Source Adapters are Pluggable
 Every RapidAPI-flavored job source implements `JobSourceAdapter`

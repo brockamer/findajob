@@ -43,7 +43,7 @@ Run the health check against your running stack.
 **If you deployed to Fly.io:**
 
 ```bash
-fly ssh console --app findajob-<your-handle> --command "python3 /app/scripts/notify.py health-check"
+fly ssh console --app findajob-<your-handle> --command "/app/.venv/bin/python3 /app/scripts/notify.py health-check"
 ```
 
 **If you deployed via Docker Compose:**

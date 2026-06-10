@@ -6,7 +6,7 @@ Day-to-day operation of the pipeline. The `ghcr.io/brockamer/findajob` image run
 
 **Command forms:**
 - Docker: `docker compose exec scheduler python3 scripts/<script>.py`
-- Fly: `fly ssh console --app <app> --command "python3 scripts/<script>.py"`
+- Fly: `fly ssh console --app <app> --command "/app/.venv/bin/python3 scripts/<script>.py"`
 
 ---
 
@@ -184,7 +184,7 @@ fly ssh console --app <app>
 # Force a one-shot run of a scheduled job (does not touch supercronic)
 docker compose exec scheduler python3 scripts/triage.py
 # Fly equivalent:
-fly ssh console --app <app> --command "python3 scripts/triage.py"
+fly ssh console --app <app> --command "/app/.venv/bin/python3 scripts/triage.py"
 
 # Recreate after editing data/.env or compose.yaml
 # (config/ files are hot-reloaded — no restart needed)
@@ -198,7 +198,7 @@ fly deploy --config ops/fly.toml
 # Verify auth gate after every deploy (exit non-zero = take the stack down)
 docker compose exec scheduler python -m findajob.web.verify_auth
 # Fly equivalent:
-fly ssh console --app <app> --command "python -m findajob.web.verify_auth"
+fly ssh console --app <app> --command "/app/.venv/bin/python -m findajob.web.verify_auth"
 
 # Stop the stack
 docker compose down

@@ -4,7 +4,7 @@
 # Reads ops/fly.toml for app name + region, creates the app + six volumes
 # if absent, prompts only for missing secrets, runs `fly deploy`, then
 # verifies the basic-auth gate from inside the running machine via
-# `fly ssh console --command "python -m findajob.web.verify_auth"`
+# `fly ssh console --command "/app/.venv/bin/python -m findajob.web.verify_auth"`
 # (CLAUDE.md "Auth Gate Must Be Verified Post-Deploy").
 #
 # Re-runs are safe: existing apps, volumes, and secrets are detected and
@@ -167,7 +167,7 @@ fly deploy --config "$FLY_TOML"
 
 echo "==> Verifying auth gate..."
 sleep 5
-if ! fly ssh console --app "$APP" --command "python -m findajob.web.verify_auth"; then
+if ! fly ssh console --app "$APP" --command "/app/.venv/bin/python -m findajob.web.verify_auth"; then
     echo >&2
     echo "ERROR: auth gate verification failed. The deploy is up but UNVERIFIED." >&2
     echo "Diagnose with:" >&2
@@ -182,7 +182,7 @@ cat <<MSG
 ==> Done.
     Public URL:   https://$APP.fly.dev/
     Auth:         FINDAJOB_AUTH_USER / FINDAJOB_AUTH_PASS as set above
-    Re-verify:    fly ssh console --app $APP --command "python -m findajob.web.verify_auth"
+    Re-verify:    fly ssh console --app $APP --command "/app/.venv/bin/python -m findajob.web.verify_auth"
     Tail logs:    fly logs --app $APP
     Shell in:     fly ssh console --app $APP
 

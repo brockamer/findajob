@@ -1,23 +1,57 @@
 # syntax=docker/dockerfile:1.7
 
 # findajob image
-# Base: Python 3.12 on Debian slim. A throwaway `deps` stage resolves the
-# locked dependency set from uv.lock; the runtime stage installs from it,
-# keeping uv and build tooling out of the final image.
+# Base: Python 3.12 on Debian slim. A throwaway `builder` stage resolves the
+# locked dependency set with `uv sync --locked` into a self-contained virtualenv
+# at /app/.venv; the runtime stage COPYs that venv in and puts its bin dir at the
+# front of PATH, so bare `python3` (from the entrypoint and every cron command)
+# resolves to the venv interpreter with findajob + deps already installed. uv and
+# its build tooling never enter the final image — only the prebuilt /app/.venv
+# crosses the stage boundary.
 
-# deps — resolve uv.lock into a pinned, hashed requirements file. `uv export
-# --locked` fails the build loudly if uv.lock has drifted from pyproject.toml
-# (vs --frozen, which would silently use a stale lock). `--no-emit-project`
-# excludes findajob itself: pyproject now declares a [build-system], so the
-# lock marks findajob `editable`, and an editable entry carries no hash and
-# cannot ride a `pip install --require-hashes` install — it is installed
-# separately in the runtime stage (see below). uv is pinned from PyPI so this
-# needs no external image tag.
-FROM python:3.12-slim-bookworm AS deps
+# builder — produce /app/.venv from uv.lock.
+#
+# `uv sync --locked` installs the project + its locked dependencies into the
+# project virtualenv (UV_PROJECT_ENVIRONMENT=/app/.venv). `--locked` fails the
+# build loudly if uv.lock has drifted from pyproject.toml (vs --frozen, which
+# would silently use a stale lock). uv validates every distribution against the
+# per-package sha256 hashes recorded in uv.lock, so this preserves the
+# supply-chain integrity the old `pip install --require-hashes` step provided —
+# the lockfile is the hash source rather than an exported requirements.txt.
+#
+# findajob is `source = { editable = "." }` in uv.lock, so `uv sync` installs it
+# EDITABLE: the venv carries a .pth/finder pointing at /app/src rather than a
+# built wheel. This is deliberate. findajob ships load-bearing non-Python package
+# data (web templates, CSS/JS, the SVG, SQL migrations, the staging persona
+# fixture) under src/findajob with no package-data/MANIFEST.in config; a
+# `--no-editable` setuptools wheel would silently exclude those files and uvicorn
+# would 500 on every page. The editable install exposes the live source tree
+# instead, so the runtime stage MUST also COPY src/ to the identical /app/src.
+#
+# WORKDIR is /app and UV_PROJECT_ENVIRONMENT is /app/.venv in BOTH stages because
+# pyvenv.cfg and the editable finder bake absolute paths — the build-time paths
+# must equal the runtime paths. UV_PYTHON_DOWNLOADS=0 forces uv to build the venv
+# against this base image's /usr/local Python (3.12) instead of a downloaded
+# managed interpreter; the runtime stage shares the identical base, so the
+# COPYed venv's interpreter home is guaranteed present. uv is pinned from PyPI so
+# this needs no external image tag (do not regress to a mutable uv:latest image).
+#
+# Copy order keeps the deps-only layer (`--no-install-project`) keyed solely on
+# pyproject.toml + uv.lock, so it is reused across src-only edits — important for
+# the QEMU-emulated linux/arm64 build leg.
+FROM python:3.12-slim-bookworm AS builder
+ENV UV_PYTHON_DOWNLOADS=0 \
+    UV_PROJECT_ENVIRONMENT=/app/.venv
 WORKDIR /app
+# --break-system-packages: this base image's pip carries a PEP 668
+# EXTERNALLY-MANAGED marker (the prior deps stage needed the same flag); uv is a
+# throwaway build tool in this discarded stage, so installing it into the
+# builder's system Python is harmless. The flag is a no-op if the marker is absent.
+RUN pip install --no-cache-dir --break-system-packages uv==0.11.7
 COPY pyproject.toml uv.lock ./
-RUN pip install --no-cache-dir --break-system-packages uv==0.11.7 \
-    && uv export --locked --no-dev --no-emit-project -o /app/requirements.txt
+RUN uv sync --locked --no-dev --no-install-project --python /usr/local/bin/python3.12
+COPY src/ /app/src/
+RUN uv sync --locked --no-dev --python /usr/local/bin/python3.12
 
 # runtime image.
 FROM python:3.12-slim-bookworm
@@ -65,28 +99,28 @@ RUN set -eux; \
         /usr/local/bin/supercronic -test /tmp/probe-crontab && \
         rm /tmp/probe-crontab
 
-# Install the locked dependency set (pinned + hashed, from the deps stage)
-# first, then editable-install findajob itself with --no-deps so uv.lock is the
-# single resolution source. The split is required, not legacy: --require-hashes
-# cannot hash an editable install, so findajob is excluded from the hashed
-# requirements (--no-emit-project, deps stage) and installed here instead —
-# pyproject's [build-system] does NOT let these two steps collapse into one.
-# src/ must be present before `pip install -e .` can register the findajob
-# package. Copy order keeps source edits (scripts, ops) from invalidating the
-# dependency pip layer.
 WORKDIR /app
-COPY --from=deps /app/requirements.txt /app/requirements.txt
-COPY pyproject.toml /app/
+
+# Bring in the prebuilt virtualenv (findajob + locked deps, hash-verified) from
+# the builder stage, and put its bin dir at the front of PATH. This is the
+# mechanism that replaces the old --break-system-packages install into the
+# system Python: bare `python3` from ops/entrypoint.sh and every supercronic cron
+# command resolves to /app/.venv/bin/python3, which has findajob and all
+# dependencies. gosu (entrypoint) and supercronic both inherit this PATH, so no
+# per-command interpreter path is needed.
+COPY --from=builder /app/.venv /app/.venv
+ENV PATH="/app/.venv/bin:$PATH"
+
+# src/ must be present at /app/src for the editable install's finder to resolve
+# `import findajob` and to expose the package data (web templates, migrations,
+# static assets) that a built wheel would not carry.
 COPY src/ /app/src/
-RUN pip install --no-cache-dir --break-system-packages --require-hashes -r /app/requirements.txt \
-    && pip install --no-cache-dir --break-system-packages -e . --no-deps
 
 # App code and bundled config.
 # /opt/findajob/bundled-config/ holds tracked config files (roles/,
 # scoring_schema.json, model_pricing.yaml, reference.docx, strip-bookmarks.lua).
-# The entrypoint (created in Task 3) seeds these into /app/config/ on container
-# start, AFTER the bind-mount attaches — preventing the bind-mount from
-# shadowing tracked config.
+# The entrypoint seeds these into /app/config/ on container start, AFTER the
+# bind-mount attaches — preventing the bind-mount from shadowing tracked config.
 COPY scripts/ /app/scripts/
 COPY config/ /opt/findajob/bundled-config/
 COPY docs/ /app/docs/
