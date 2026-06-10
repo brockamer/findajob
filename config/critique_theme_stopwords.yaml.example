@@ -1,0 +1,33 @@
+# config/critique_theme_stopwords.yaml — OPTIONAL, gitignored. Copy to
+# config/critique_theme_stopwords.yaml and edit.
+#
+# Denylist of words dropped from the "recurring themes" surface of the critique
+# aggregator report (scripts/critique_review.py). That surface counts which
+# UNANCHORED critique words recur across the most companies — but the recruiter
+# critic's own *artifact-frame* vocabulary (the words it uses to name the
+# document it's critiquing: "your cover letter", "the resume summary", "the
+# opener quote") recurs across MORE companies than the genuinely useful themes,
+# so the frequency floor alone can't separate signal from noise. This denylist
+# is the vocabulary filter the floor structurally can't provide (#995).
+#
+# UNION semantics (NOT replace): the words below are ADDED ON TOP OF the
+# built-in field-neutral default —
+#
+#   cover  letter  resume  opener  quote  summary  bullet
+#
+# — so you never lose the universal artifact-frame filters by adding your own.
+# A missing or empty file keeps just that default, so the surface works out of
+# the box. Matched case-insensitively against whole lowercased theme tokens.
+#
+# Add words that are NOISE on your corpus but the built-in default leaves in —
+# typically generic role/frame words a different candidate might want to keep as
+# signal. Field-agnostic by design; examples:
+#
+#   stopwords:
+#     - director      # role word, not a substantive flaw, on this corpus
+#     - former
+#     - described
+#     - spent
+#     - needs
+
+stopwords: []

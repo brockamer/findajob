@@ -29,6 +29,7 @@ _SPEND_CEILING_PATH = Path(BASE) / "config" / "spend_ceiling.txt"
 _PROFILE_PATH = Path(BASE) / "candidate_context" / "profile.md"
 _RANKING_BOOST_TERMS_PATH = Path(BASE) / "config" / "ranking_boost_terms.yaml"
 _TITLE_SIGNAL_KEYWORDS_PATH = Path(BASE) / "config" / "title_signal_keywords.yaml"
+_CRITIQUE_THEME_STOPWORDS_PATH = Path(BASE) / "config" / "critique_theme_stopwords.yaml"
 
 # Field-agnostic fallback used when `config/reject_reasons.yaml` is missing or
 # `reasons:` is empty. Operator stacks override via the file (interview-emitted
@@ -66,6 +67,20 @@ _DEFAULT_TITLE_SIGNAL_KEYWORDS: tuple[str, ...] = (
     "director",
     "lead",
     "program",
+)
+
+# Field-neutral default denylist for the critique recurring-themes surface
+# (#995). These are the recruiter-critic's own *artifact-frame* vocabulary —
+# words that name the document being critiqued ("your cover letter", "the
+# resume summary", "the opener quote") rather than a substantive, transferable
+# flaw. They recur across more companies than the genuine signal terms, so the
+# corpus-scaled frequency floor (#932/#951) structurally cannot separate them;
+# only a vocabulary denylist can. Deliberately career-neutral — no domain terms
+# — so the themes that survive stay the candidate's own. Operators extend this
+# (e.g. with role words like "director"/"former" that are noise on THEIR corpus
+# but could be signal on someone else's) via config/critique_theme_stopwords.yaml.
+_DEFAULT_CRITIQUE_THEME_STOPWORDS: frozenset[str] = frozenset(
+    {"cover", "letter", "resume", "opener", "quote", "summary", "bullet"}
 )
 
 # Tier 1 parser — moved from findajob.onboarding.injector (#211).
@@ -469,6 +484,48 @@ def load_title_signal_keywords() -> tuple[str, ...]:
             raise ConfigError(f"title_signal_keywords.yaml: keywords entry is not a string: {k!r}")
     cleaned = tuple(k.strip().lower() for k in raw if k.strip())
     return cleaned or _DEFAULT_TITLE_SIGNAL_KEYWORDS
+
+
+def load_critique_theme_stopwords() -> frozenset[str]:
+    """Lowercased denylist of artifact-frame terms dropped from the critique
+    recurring-themes surface (`critique_aggregator.analyze`), from
+    `config/critique_theme_stopwords.yaml` (#995).
+
+    UNION semantics, unlike `load_title_signal_keywords` (which REPLACES): the
+    operator's `stopwords:` list is added ON TOP OF the non-empty field-neutral
+    default (`_DEFAULT_CRITIQUE_THEME_STOPWORDS`). A denylist must union — a
+    replace would let an operator who adds one word silently drop the universal
+    artifact-frame filters and reintroduce the noise the default removes (#932's
+    floor can't separate that noise from signal; this denylist is what does).
+
+    A missing or empty file returns the bare default — that's the intended
+    field-neutral state, not a degradation, so (like the ranking-boost loader)
+    no warning is emitted. Malformed content raises `ConfigError`.
+
+    Returns fresh values on every call (no cache) so a `/config/` edit takes
+    effect on the next run without a process restart.
+    """
+    try:
+        text = _CRITIQUE_THEME_STOPWORDS_PATH.read_text()
+    except FileNotFoundError:
+        return _DEFAULT_CRITIQUE_THEME_STOPWORDS
+    if not text.strip():
+        return _DEFAULT_CRITIQUE_THEME_STOPWORDS
+    try:
+        data = yaml.safe_load(text)
+    except yaml.YAMLError as e:
+        raise ConfigError(f"critique_theme_stopwords.yaml: YAML parse error: {e}") from e
+    if data is None:
+        return _DEFAULT_CRITIQUE_THEME_STOPWORDS
+    if not isinstance(data, dict):
+        raise ConfigError(f"critique_theme_stopwords.yaml: top level must be a mapping, got {type(data).__name__}")
+    raw = data.get("stopwords", []) or []
+    if not isinstance(raw, list):
+        raise ConfigError(f"critique_theme_stopwords.yaml: 'stopwords' must be a list, got {type(raw).__name__}")
+    for w in raw:
+        if not isinstance(w, str):
+            raise ConfigError(f"critique_theme_stopwords.yaml: stopwords entry is not a string: {w!r}")
+    return _DEFAULT_CRITIQUE_THEME_STOPWORDS | frozenset(w.strip().lower() for w in raw if w.strip())
 
 
 _SPEND_CEILING_DISABLED = frozenset({"disabled", "none", "off", "0"})

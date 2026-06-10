@@ -47,6 +47,10 @@ EDITABLE_CATEGORIES: dict[str, list[str] | str] = {
         # rejected). Gitignored, field-specific; overrides a field-neutral
         # default. Raw /config/ access is the only editor.
         "config/title_signal_keywords.yaml",
+        # #995 — artifact-vocabulary denylist for the critique recurring-themes
+        # surface. Gitignored; UNIONS onto a field-neutral default. Raw /config/
+        # access is the only editor; hot-reloaded on the next critique-review run.
+        "config/critique_theme_stopwords.yaml",
     ],
     "Role prompts": "config/roles/*.md",
     # #150 — operator-editable prompts powering /tools/ tiles. Same

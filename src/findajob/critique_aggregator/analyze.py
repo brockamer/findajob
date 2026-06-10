@@ -14,6 +14,7 @@ import re
 from collections import defaultdict
 from dataclasses import dataclass
 
+from findajob.config_loader import load_critique_theme_stopwords
 from findajob.critique_aggregator.cluster import (
     Cluster,
     FlaggedItem,
@@ -40,7 +41,10 @@ def default_theme_floor(company_count: int) -> int:
 
 
 # Generic English stopwords + critique-frame filler. Deliberately career-neutral
-# — no domain terms — so the themes that survive are the candidate's own.
+# — no domain terms — so the themes that survive are the candidate's own. These
+# are language-level stopwords baked in code; the separate *artifact-vocabulary*
+# denylist (cover/letter/resume/…) that buries real themes is config-driven via
+# load_critique_theme_stopwords() and union'd in at aggregate() time (#995).
 _STOPWORDS = frozenset(
     """
     about above across after again against being below between cannot could
@@ -74,8 +78,8 @@ class AggregateResult:
     total_flags: int
 
 
-def _terms(text: str) -> set[str]:
-    return {tok.lower() for tok in _TOKEN_RE.findall(text) if tok.lower() not in _STOPWORDS}
+def _terms(text: str, stopwords: frozenset[str]) -> set[str]:
+    return {tok.lower() for tok in _TOKEN_RE.findall(text) if tok.lower() not in stopwords}
 
 
 def aggregate(
@@ -106,12 +110,16 @@ def aggregate(
     theme_floor = default_theme_floor(total_companies) if min_theme_companies is None else min_theme_companies
 
     # Recurring themes from UNANCHORED text (quote + recruiter sentence), counted
-    # by distinct company so one verbose critique can't manufacture a theme.
+    # by distinct company so one verbose critique can't manufacture a theme. The
+    # artifact-vocabulary denylist is loaded once here (not per-item) and union'd
+    # with the language-level stopwords so the themes surface stays substantive
+    # rather than the critic's own document-frame vocabulary (#995).
+    stopwords = _STOPWORDS | load_critique_theme_stopwords()
     term_companies: dict[str, set[str]] = defaultdict(set)
     for it in items:
         if it.anchor is not None:
             continue
-        for term in _terms(f"{it.quote} {it.recruiter_sentence}"):
+        for term in _terms(f"{it.quote} {it.recruiter_sentence}", stopwords):
             term_companies[term].add(it.company)
     themes = [
         RecurringTheme(term=term, companies=sorted(cos))
