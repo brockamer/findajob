@@ -28,6 +28,7 @@ from findajob.interview.flashcards import build_all as build_flashcards
 from findajob.llm.role_runner import run_role
 from findajob.notifications.ntfy import send as ntfy_send
 from findajob.paths import BASE, PANDOC, load_env
+from findajob.prep.briefing import read_briefing
 from findajob.prep_naming import safe_filename_part
 from findajob.profile import read_file_prefix
 
@@ -136,12 +137,11 @@ def _generate(
 
     # ── Discover existing artifacts in the prep folder ──
     # `Resume Changes` must NOT match the resume regex — it's a different doc.
-    briefing_path = _latest(prep_folder, re.compile(r"Briefing.*\.md$"))
     resume_path = _latest(prep_folder, re.compile(r"(?<!Changes )Resume(?! Changes).*\.md$"))
     cover_path = _latest(prep_folder, re.compile(r"Cover.*\.md$"))
     critique_path = _latest(prep_folder, re.compile(r"Critique.*\.md$"))
 
-    briefing = _read_or_empty(briefing_path)
+    briefing = read_briefing(prep_folder)
     resume = _read_or_empty(resume_path)
     cover = _read_or_empty(cover_path)
     critique = _read_or_empty(critique_path)

@@ -18,7 +18,6 @@ import sqlite3
 import subprocess
 import sys
 from datetime import UTC, datetime
-from pathlib import Path
 
 from findajob.actions import reset_prep_to_scored
 from findajob.audit import log_event, write_audit
@@ -29,6 +28,7 @@ from findajob.llm.openrouter import LLMSpendCeilingExceeded
 from findajob.llm.role_runner import run_role
 from findajob.notifications.ntfy import send as ntfy_send
 from findajob.paths import BASE, IMAGE_ROOT, PANDOC, load_env
+from findajob.prep.briefing import read_briefing
 from findajob.prep.cost_projection import compute_projection
 from findajob.prep.docx_postprocess import _add_cover_letter_spacing, _linkify_contact_info
 from findajob.prep.docx_render import render_md_to_docx
@@ -627,13 +627,10 @@ def _run_prep_phase_b(company: str, title: str, url: str, job_id: str) -> None:
         shared_with_voice = f"{shared_candidate_jd}{voice_section}---\n\n"
 
         # ── Re-read briefing from disk ──
-        # Handles both {Prefix} Briefing - ... .md (regular) and bare briefing.md (speculative).
-        briefing_files = list(Path(outdir).glob("*Briefing*.md")) + list(Path(outdir).glob("briefing.md"))
-        if briefing_files:
-            with open(briefing_files[0]) as f:
-                full_briefing = f.read()
-        else:
-            full_briefing = ""
+        # find_briefing handles both {Prefix} Briefing - ... .md (regular) and
+        # bare briefing.md (speculative), newest Title-Cased draft first (#1031).
+        full_briefing = read_briefing(outdir)
+        if not full_briefing:
             log_event("prep_phase_b_no_briefing", job_id=job_id, company=company, title=title, outdir=outdir)
 
         briefing_context = full_briefing if full_briefing else ""
