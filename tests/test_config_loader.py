@@ -842,3 +842,77 @@ class TestLoadTitleSignalKeywords:
         config_loader._reset_cache()
         with pytest.raises(ConfigError, match="not a string"):
             config_loader.load_title_signal_keywords()
+
+
+class TestLoadCritiqueThemeStopwords:
+    """#995 — config-driven denylist for the critique recurring-themes surface.
+
+    Unlike title_signal_keywords (which REPLACES its default), this loader
+    UNIONS the operator's words onto a non-empty field-neutral default of
+    artifact-frame vocabulary. A denylist must union: replacing it would let an
+    operator who adds one word silently drop the universal frame filters and
+    reintroduce the noise the default removes.
+    """
+
+    def test_returns_field_neutral_default_when_file_missing_and_no_warning(self, monkeypatch, tmp_path):
+        import warnings
+
+        monkeypatch.setattr(config_loader, "_CRITIQUE_THEME_STOPWORDS_PATH", tmp_path / "missing.yaml")
+        config_loader._reset_cache()
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            words = config_loader.load_critique_theme_stopwords()
+        assert "resume" in words  # non-empty artifact-frame default
+        assert "cover" in words
+        assert "data center" not in words  # no field-specific vocabulary in the default
+        # Missing is the intended field-neutral default, not a degradation — stay silent.
+        assert [w for w in caught if issubclass(w.category, UserWarning)] == []
+
+    def test_config_unions_with_default_lowercased(self, monkeypatch, tmp_path):
+        f = tmp_path / "cts.yaml"
+        f.write_text('stopwords:\n  - "Director"\n  - "FORMER"\n')
+        monkeypatch.setattr(config_loader, "_CRITIQUE_THEME_STOPWORDS_PATH", f)
+        config_loader._reset_cache()
+        words = config_loader.load_critique_theme_stopwords()
+        assert "director" in words  # operator addition, lowercased
+        assert "former" in words
+        assert "resume" in words  # UNION: default frame words survive operator override
+
+    def test_empty_stopwords_returns_default(self, monkeypatch, tmp_path):
+        f = tmp_path / "cts.yaml"
+        f.write_text("stopwords: []\n")
+        monkeypatch.setattr(config_loader, "_CRITIQUE_THEME_STOPWORDS_PATH", f)
+        config_loader._reset_cache()
+        assert "resume" in config_loader.load_critique_theme_stopwords()
+
+    def test_stopwords_not_a_list_raises(self, monkeypatch, tmp_path):
+        bad = tmp_path / "cts.yaml"
+        bad.write_text("stopwords:\n  nested: value\n")
+        monkeypatch.setattr(config_loader, "_CRITIQUE_THEME_STOPWORDS_PATH", bad)
+        config_loader._reset_cache()
+        with pytest.raises(ConfigError, match="'stopwords' must be a list"):
+            config_loader.load_critique_theme_stopwords()
+
+    def test_stopword_entry_not_a_string_raises(self, monkeypatch, tmp_path):
+        bad = tmp_path / "cts.yaml"
+        bad.write_text("stopwords:\n  - 123\n")
+        monkeypatch.setattr(config_loader, "_CRITIQUE_THEME_STOPWORDS_PATH", bad)
+        config_loader._reset_cache()
+        with pytest.raises(ConfigError, match="not a string"):
+            config_loader.load_critique_theme_stopwords()
+
+    def test_malformed_yaml_raises(self, monkeypatch, tmp_path):
+        bad = tmp_path / "cts.yaml"
+        bad.write_text("stopwords: [unbalanced\n")
+        monkeypatch.setattr(config_loader, "_CRITIQUE_THEME_STOPWORDS_PATH", bad)
+        config_loader._reset_cache()
+        with pytest.raises(ConfigError, match="YAML parse error"):
+            config_loader.load_critique_theme_stopwords()
+
+    def test_top_level_not_a_mapping_raises(self, monkeypatch, tmp_path):
+        bad = tmp_path / "cts.yaml"
+        bad.write_text("- just\n- a\n- list\n")
+        monkeypatch.setattr(config_loader, "_CRITIQUE_THEME_STOPWORDS_PATH", bad)
+        config_loader._reset_cache()
+        with pytest.raises(ConfigError, match="top level must be a mapping"):
+            config_loader.load_critique_theme_stopwords()

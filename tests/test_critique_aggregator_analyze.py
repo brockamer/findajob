@@ -11,12 +11,25 @@ from __future__ import annotations
 
 import math
 
+import pytest
+
+from findajob import config_loader
 from findajob.critique_aggregator.analyze import aggregate, default_theme_floor
 from findajob.critique_aggregator.anchor import SourceLine
 from findajob.critique_aggregator.cluster import FlaggedItem
 
 GLUE = SourceLine("master_resume.md", 360, '"acts as the glue across teams"')
 RACK = SourceLine("master_resume.md", 160, "rack volume grew 2x")
+
+
+@pytest.fixture(autouse=True)
+def _isolate_theme_stopwords(monkeypatch, tmp_path):
+    # aggregate() reads config/critique_theme_stopwords.yaml via
+    # load_critique_theme_stopwords() (#995). Point it at a missing file so every
+    # aggregate() call in this file exercises the deterministic default denylist,
+    # independent of any operator config on disk — these tests predate the
+    # denylist and assume only the in-code _STOPWORDS plus that default.
+    monkeypatch.setattr(config_loader, "_CRITIQUE_THEME_STOPWORDS_PATH", tmp_path / "absent.yaml")
 
 
 def _item(company, anchor=None, quote="q", sentence="s", section="weak"):
@@ -158,3 +171,24 @@ def test_theme_floor_reads_corpus_wide_company_count():
     anchored = [_item(f"A{i:03d}", anchor=RACK, quote="zzz") for i in range(60)]
     big = aggregate(_corpus(0, extra=term9 + anchored), total_critiques=69)
     assert "borderline" not in {t.term for t in big.recurring_themes}
+
+
+# --- #995: config-driven artifact-vocabulary denylist -----------------------
+
+
+def test_artifact_vocabulary_stopword_filtered_while_signal_survives():
+    # AC #3 (#995): two terms clear the SAME scaled floor — one is the critic's
+    # own artifact-vocabulary ("resume" — describes the document, not a flaw),
+    # the other a genuine recurring critique ("hearsay"). The frequency floor
+    # can't separate them; only the config-driven denylist can. With no config
+    # file present, the default denylist filters "resume" and keeps "hearsay".
+    # 28 companies → floor max(8, ceil(0.15*28)) = 8, so both 14-company terms
+    # clear it — the denylist, not the floor, is what drops the noise.
+    noise = [_item(f"N{i:03d}", quote="resume") for i in range(14)]
+    signal = [_item(f"S{i:03d}", quote="hearsay") for i in range(14)]
+
+    result = aggregate(noise + signal, total_critiques=28)
+
+    terms = {t.term for t in result.recurring_themes}
+    assert "hearsay" in terms  # substantive recurring critique survives (positive)
+    assert "resume" not in terms  # artifact-vocabulary noise filtered (negative)
