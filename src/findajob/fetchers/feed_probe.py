@@ -155,7 +155,7 @@ def probe_feed_line(line: str, *, timeout: float = _DEFAULT_TIMEOUT) -> FeedProb
         slug = m.group(1)
         api_url = template.format(slug=slug)
         try:
-            resp = requests.get(api_url, headers={"User-Agent": _UA}, timeout=timeout)
+            resp = requests.get(api_url, headers={"User-Agent": _UA}, timeout=timeout, stream=True)
         except requests.RequestException:
             return FeedProbeResult(
                 line=text,
@@ -167,13 +167,21 @@ def probe_feed_line(line: str, *, timeout: float = _DEFAULT_TIMEOUT) -> FeedProb
                 company=company,
                 company_name_ok=company_ok,
             )
-        status, reason = _classify(slug, resp.status_code)
+        # Liveness needs only the status code. stream=True stops requests from
+        # eagerly downloading the body (for Greenhouse's ?content=true endpoint
+        # that's every open req's full HTML); closing the response returns the
+        # connection to the pool without ever reading the body.
+        try:
+            status_code = resp.status_code
+        finally:
+            resp.close()
+        status, reason = _classify(slug, status_code)
         return FeedProbeResult(
             line=text,
             kind=kind,
             slug=slug,
             status=status,
-            http_status=resp.status_code,
+            http_status=status_code,
             reason=reason,
             company=company,
             company_name_ok=company_ok,
