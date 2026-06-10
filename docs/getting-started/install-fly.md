@@ -38,6 +38,8 @@ Have these ready (you'll enter them after the initial deploy):
 
 Go to <https://fly.io/app/sign-in> and sign in with the account you created. You'll land on your Fly dashboard.
 
+![Fly.io sign-in — GitHub, Google, or email](install-fly-web/02-sign-in.png)
+
 ## 2. Launch the app
 
 Click the purple **Launch an App** button at the top of your dashboard.
@@ -100,23 +102,31 @@ The onboarding flow is a structured 60–90 minute LLM conversation that writes 
 
 **Step 0 — Set your password** (if you didn't set `FINDAJOB_AUTH_USER` / `FINDAJOB_AUTH_PASS` as Fly secrets). The form asks for a one-time setup token from your container logs (drive-by squat defense — paste the value of `FINDAJOB_SETUP_TOKEN` from `fly logs --app findajob-<your-handle>`), then a username and password (at least 8 characters). After saving, your browser will prompt you to log in with those credentials. This step is skipped if auth credentials are already in the environment.
 
-**Step 1 — API keys.** The onboarding screen detects the `OPENROUTER_API_KEY` and `RAPIDAPI_KEY` you set as secrets (read from the container's environment). It shows the last 4 characters of each as confirmation and a **Use detected keys** button. Click it to advance to Step 2 without re-typing.
+**Step 1 — API keys.** The onboarding screen detects the API keys already set in the container's environment (your Fly secrets) under a *"We found API keys already set up for your findajob"* heading. It lists the last 4 characters of each as confirmation — `OPENROUTER_API_KEY`, `RAPIDAPI_KEY`, and `GEMINI_API_KEY` (Google AI, optional — used only for interview-prep podcasts; "not set in env" is fine to leave) — with a **Use detected keys** button. Click it to advance to Step 2 without re-typing.
 
-**Step 2 — Run the interview.** Click "Start interview." A chat surface opens. The interviewer asks structured questions about your work history, target companies, skills, and preferences, emitting config blocks as you go. You can close the tab anytime — the session is server-side persistent:
+![Step 1 detects your API keys and shows the last 4 characters of each](install-fly/07-step1-api-keys.png)
 
-![Resume the in-progress interview from where you left off](install-fly/01-interview-resume-prompt.png)
+**Step 2 — Run the interview.** Click "Start interview." A chat surface opens. The interview runs in five phases, asking structured questions about your work history, target companies, skills, and preferences, and capturing your answers into config blocks as you go. You can close the tab anytime — the session is server-side persistent:
 
-As the interview progresses, a progress bar tracks the config blocks emitted so far:
+![The interview saves your answers as you go — reload the page to resume where you left off](install-fly/01-interview-resume-prompt.png)
 
-![Halfway through the interview, 5 of 10 blocks emitted](install-fly/02-interview-progress-half.png)
+A counter chip near the top — *"Captured N of 10 required blocks"* — tracks how many of the required config blocks have been captured. Most are written in a batch when the interview wraps up and emits your config files:
 
-When all blocks are complete, a green "Finalize" button appears:
+![findajob captures your answers into config files as the interview wraps up](install-fly/02-interview-progress-half.png)
 
-![All groups emitted, Finalize button now visible](install-fly/03-interview-ready-to-finalize.png)
+When all required blocks are captured, the chip turns green (*"All blocks captured — ready to finalize"*) and a green **Finalize** button appears:
 
-![Finalize click writes files and triggers initial company discovery](install-fly/04-interview-all-groups-emitted.png)
+![All required blocks captured — the green Finalize button appears](install-fly/03-interview-ready-to-finalize.png)
 
-Clicking Finalize writes your config files to the volume and kicks off initial company discovery (a one-time LLM run that drafts a `discovered_companies.md` list). Then findajob hands off to the Gmail-config gate.
+![The Finalize box — click Finalize to write your config and run first-time company discovery](install-fly/04-interview-all-groups-emitted.png)
+
+Clicking Finalize writes your config files to the volume and kicks off initial company discovery (a one-time LLM run that drafts a `discovered_companies.md` list). findajob then walks you through a few quick setup gates before the dashboard:
+
+**Confirm your timezone.** findajob detects your timezone from your browser and asks you to confirm it (or pick another). This drives when daily triage runs and how times appear on your board. You can change it later at `/settings/timezone/`.
+
+![Confirm your timezone — browser-detected, changeable anytime at /settings/timezone/](install-fly/04b-timezone-confirm.png)
+
+**Set a monthly spend ceiling.** Tell findajob how many applications you plan to submit per week and it recommends a monthly LLM cap — accept it, enter your own, or "Skip for now" to leave spend uncapped. Adjustable later at `/settings/spend-ceiling/` (see [Cost](#cost)). *(If any of your job-feed URLs look broken, a feed-check step appears before this one so you can fix them first.)*
 
 **Gmail-config gate (optional).** Configure IMAP credentials so findajob can ingest LinkedIn / Indeed / etc. job-alert emails directly, and auto-detect ATS rejection emails. Save and "Test connection" to advance, or Skip:
 
@@ -132,13 +142,11 @@ See [`gmail.md`](gmail.md) for the 2FA + app-password procedure. Gmail integrati
 
 ## 6. Verify and wait for first triage
 
-After onboarding lands you on the dashboard, the feed is empty — no jobs have been triaged yet. By default, triage runs at **midnight America/New_York** (the timezone set by the `fly.toml` `[env].TZ` value).
+After onboarding lands you on the dashboard, the feed is empty — no jobs have been triaged yet. Daily triage runs at **midnight in the timezone you confirmed during onboarding**.
 
-After you complete onboarding, the timezone you gave drives this instead: it's
-saved and applied on your next app restart (restart from the Fly dashboard to
-apply it immediately). The `[env].TZ` value is just the default until then.
+Because the container reads its timezone at startup, a **"Restart to apply your timezone"** banner appears on the dashboard until you restart the app (it also applies automatically on your next update). Restart from the Fly dashboard to apply it immediately; until then, scheduling falls back to the `fly.toml` `[env].TZ` default.
 
-**The dashboard tells you what to do.** A blue banner above the (empty) job table shows when the next scheduled triage will fire and includes a **Trigger triage now** button. Click it to start the pipeline immediately rather than wait for the cron cycle.
+**The dashboard tells you what to do.** A banner above the (empty) job table — *"You're set up. Your first triage hasn't run yet."* — includes a **Trigger triage now** button. Click it to start the pipeline immediately rather than wait for the nightly run.
 
 **Plan for 5–60 minutes** on the first run — the wide range depends on how many target companies you named in the onboarding interview (more companies → more Greenhouse / Ashby feeds to walk → more jobs to score). Smaller named lists finish in 5–15 minutes. Subsequent daily runs are delta-only and complete in 1–5 minutes.
 

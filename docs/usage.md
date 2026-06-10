@@ -18,6 +18,8 @@ A normal morning is five steps, usually under 30 minutes:
 
 Rejections come later — from the Applied tab when a company comes back "no", or from the Dashboard when you decide a listing isn't worth prepping. Each rejection has a reason, and reasons feed back into tomorrow's scoring.
 
+Every so often, check the **[Stats pages](usage/stats.md)** to see how the search is actually going — pipeline funnel, rejection trends, and whether your applications are landing responses.
+
 ---
 
 ## Job sources

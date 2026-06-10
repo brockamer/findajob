@@ -167,11 +167,11 @@ After signing in, the dashboard immediately redirects to `/onboarding/` because 
 
 ### Step 9. Confirm your API keys *(1 min)*
 
-The first onboarding screen detects the API keys you set in Step 6 and shows the last 4 characters of each as confirmation.
+The first onboarding screen detects the API keys you set in Step 6 and lists the last 4 characters of each as confirmation.
 
-![Step 1 of onboarding: detected OpenRouter and RapidAPI keys with last-4 confirmation and a Use detected keys button](install-fly/07-step1-api-keys.png)
+![Step 1 of onboarding: detected API keys (OpenRouter, RapidAPI, Gemini) with last-4 confirmation and a Use detected keys button](install-fly/07-step1-api-keys.png)
 
-**What you should see:** "Detected: OpenRouter key ending …xxxx, RapidAPI key ending …xxxx" with a green **Use detected keys** button.
+**What you should see:** a *"We found API keys already set up for your findajob"* heading with a bulleted list — `OpenRouter — ***xxxx`, `RapidAPI — ***xxxx`, and `Gemini — not set in env` (Google AI is optional; it only powers interview-prep podcasts, so leaving it unset is fine) — and a blue **Use detected keys** button.
 
 Click **Use detected keys** to advance.
 
@@ -185,27 +185,37 @@ This is the longest step by far — and the one where findajob learns who you ar
 2. The AI asks structured questions about your work history, target companies, skills, and preferences. **Answer as completely as you reasonably can** — more context here means better job matching later.
 3. When the interviewer asks for your resume, **paste it directly into the chat** (Word/PDF/plain text — copy from the source document, paste in).
 
-**Plan to sit through it in one session.** If you have to step away, you can close the tab and the `Resume your interview` button on the index page brings you back exactly where you left off:
+**Plan to sit through it in one session.** If you have to step away, you can close the tab — your answers are saved as you go, and reloading the interview page brings you back where you left off:
 
-![Resume the in-progress interview from where you left off](install-fly/01-interview-resume-prompt.png)
+![The interview saves your answers as you go — reload the page to resume where you left off](install-fly/01-interview-resume-prompt.png)
 
-As the interview progresses, a progress bar tracks the config blocks emitted so far:
+As the interview progresses, a counter chip near the top — *"Captured N of 10 required blocks"* — tracks how many of the required config blocks have been captured (most are written in a batch when the interview wraps up):
 
-![Halfway through the interview, 5 of 10 blocks emitted](install-fly/02-interview-progress-half.png)
+![findajob captures your answers into config files as the interview wraps up](install-fly/02-interview-progress-half.png)
 
-When all blocks are complete, a green **Finalize** button appears at the bottom of the chat:
+When all required blocks are captured, the chip turns green (*"All blocks captured — ready to finalize"*) and a green **Finalize** button appears at the bottom of the chat:
 
-![All groups emitted, Finalize button now visible](install-fly/03-interview-ready-to-finalize.png)
+![All required blocks captured — the green Finalize button appears](install-fly/03-interview-ready-to-finalize.png)
 
 Click **Finalize**. findajob writes your config files to disk and kicks off a one-time "company discovery" LLM run that drafts your initial target-company list.
 
-![Finalize click writes files and triggers initial company discovery](install-fly/04-interview-all-groups-emitted.png)
+![The Finalize box — click Finalize to write your config and run first-time company discovery](install-fly/04-interview-all-groups-emitted.png)
 
-**What you should see:** the page moves on to the spend-ceiling gate (next step).
+**What you should see:** the page moves on to confirm your timezone (next step), then the spend-ceiling gate. *(If any of your job-feed URLs look broken, a quick feed-check step appears first so you can fix them.)*
 
 **If something went wrong:** if the chat seems stuck (no LLM response for 30+ seconds), check `https://openrouter.ai/credits` — your balance may have run out. Top up and refresh the page; the conversation persists server-side.
 
-### Step 11. Set a monthly spend ceiling *(1 min, recommended)*
+### Step 11. Confirm your timezone *(30 sec)*
+
+findajob detects your timezone from your browser and asks you to confirm it. This drives when your daily triage runs and how times are shown on your board.
+
+![Confirm your timezone — browser-detected, changeable anytime at /settings/timezone/](install-fly/04b-timezone-confirm.png)
+
+**What you should see:** a **Confirm your timezone** screen with your browser's timezone pre-filled (e.g. `America/Los_Angeles`). Pick another from the dropdown if it's wrong, then click **Confirm and continue**. You can change it later at `/settings/timezone/`.
+
+> The timezone takes effect on the next app restart. After onboarding, the dashboard shows a **"Restart to apply your timezone"** banner until you restart (or until your next update applies it).
+
+### Step 12. Set a monthly spend ceiling *(1 min, recommended)*
 
 This is the single biggest cost-anxiety defuse in findajob — a hard cap on your monthly LLM spend.
 
@@ -217,7 +227,7 @@ This is the single biggest cost-anxiety defuse in findajob — a hard cap on you
 
 **If something went wrong:** if you skipped this and want to set one later, visit `/settings/spend-ceiling/` in your web UI any time.
 
-### Step 12. (Optional) Configure Gmail integration *(3 min)*
+### Step 13. (Optional) Configure Gmail integration *(3 min)*
 
 findajob can read your Gmail inbox to ingest LinkedIn / Indeed job-alert emails AND auto-detect ATS rejection emails.
 
@@ -225,11 +235,11 @@ findajob can read your Gmail inbox to ingest LinkedIn / Indeed job-alert emails 
 
 To wire it up: see [`gmail.md`](gmail.md) for the 2FA + Gmail app-password procedure. Paste the credentials into this form, click **Test connection**, and **Save**.
 
-**To skip:** click **Skip Gmail setup**. You can configure it later at `/config/gmail/`.
+**To skip:** click **Skip for now**. You can configure it later at `/config/gmail/`.
 
 **What you should see:** the page advances to the LinkedIn connections step.
 
-### Step 13. (Optional) Upload your LinkedIn Connections.csv *(2 min)*
+### Step 14. (Optional) Upload your LinkedIn Connections.csv *(2 min)*
 
 findajob uses your LinkedIn network to find people at companies that posted jobs you're applying to, and drafts outreach to them.
 
@@ -238,7 +248,7 @@ findajob uses your LinkedIn network to find people at companies that posted jobs
 1. In LinkedIn (on the web): **Settings → Data privacy → Get a copy of your data → Connections**. The CSV downloads after a few minutes.
 2. On this onboarding step, click **Choose file** and select the downloaded `Connections.csv`.
 
-**To skip:** click **Skip**. You can upload it later at `/onboarding/connections/`.
+**To skip:** click **Skip for now**. You can upload it later at `/settings/connections/`.
 
 **What you should see:** the page advances to the dashboard.
 
@@ -248,11 +258,11 @@ findajob uses your LinkedIn network to find people at companies that posted jobs
 
 ## Part D — Your first triage (5–60 minutes)
 
-### Step 14. Trigger your first triage *(5–60 min, mostly waiting)*
+### Step 15. Trigger your first triage *(5–60 min, mostly waiting)*
 
 You're now on the dashboard. The job table is empty — no jobs have been triaged yet.
 
-**What you should see:** a blue banner above the (empty) job table with text like *"Your first triage hasn't run yet — next scheduled run is at 00:00 (your timezone)"* and a prominent **Trigger triage now** button below it.
+**What you should see:** a banner above the (empty) job table — *"You're set up. Your first triage hasn't run yet."* — with a prominent **Trigger triage now** button.
 
 Click **Trigger triage now** to start the pipeline immediately instead of waiting until midnight.
 
@@ -268,7 +278,7 @@ Refresh `/board/` to see progress.
 
 **If something went wrong:** if the dashboard still shows empty after 60+ minutes, check your app's **Logs & Errors** tab in the Fly dashboard to see what the pipeline is doing.
 
-### Step 15. See your first scored jobs
+### Step 16. See your first scored jobs
 
 ![Dashboard after onboarding — daily job feed begins populating overnight](install-fly/06-dashboard-post-onboarding.png)
 
@@ -285,7 +295,7 @@ Each row is a job that scored above your threshold. Click into one to see:
 
 From here, your daily workflow is the **Dashboard tab** in your web UI:
 
-- Every morning at 00:00 (your timezone), findajob runs triage automatically. Your dashboard refreshes overnight with new jobs.
+- Every night around midnight in your timezone, findajob runs triage automatically. Your dashboard refreshes overnight with new jobs.
 - Click **Flag for prep** on the ones worth a deeper look. That triggers materials generation in the background; you'll see them in the **Materials tab** when ready (~5 min, ~$1 per prep).
 - Tag rejections with a reason as you go. Those tags train tomorrow's scorer.
 
