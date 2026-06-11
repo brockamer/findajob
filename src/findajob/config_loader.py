@@ -779,6 +779,90 @@ def add_prefilter_title_pattern(pattern: str, category: str = "operator_added") 
         raise
 
 
+def remove_prefilter_title_pattern(pattern: str, category: str = "operator_added") -> None:
+    """Remove a single title regex from `hard_rejects[category]` in prefilter_rules.yaml.
+
+    Inverse of add_prefilter_title_pattern (#653). Backs the filter-proposal
+    revert path: an auto-applied rule is pulled back out by exact, case-sensitive
+    string match. Raises ConfigError if the file is missing or the pattern is not
+    present. Empties out the category key when it becomes empty so a stale
+    'auto_added: []' block doesn't linger. Preserves other categories and
+    context_suppressors. Atomic write. Like add, does NOT call _reset_cache
+    (the only cache reader is scorer_prefilter in the triage subprocess).
+
+    YAML `#` comments are not preserved across writes (same as add — safe_load
+    + hand-rolled emit).
+    """
+    import os
+    import tempfile
+
+    cleaned = pattern.strip()
+    if not cleaned:
+        raise ConfigError("prefilter_rules: pattern must be non-empty")
+
+    if not _RULES_PATH.exists():
+        raise ConfigError("prefilter_rules.yaml: file does not exist — nothing to remove")
+    try:
+        data = yaml.safe_load(_RULES_PATH.read_text()) or {}
+    except yaml.YAMLError as e:
+        raise ConfigError(f"prefilter_rules.yaml: YAML parse error: {e}") from e
+    if not isinstance(data, dict):
+        raise ConfigError(f"prefilter_rules.yaml: top-level must be a mapping, got {type(data).__name__}")
+
+    hard_rejects = data.get("hard_rejects") or {}
+    if not isinstance(hard_rejects, dict):
+        raise ConfigError(
+            f"prefilter_rules.yaml: 'hard_rejects' must be a mapping, got {type(hard_rejects).__name__}"
+        )
+    cat_list = hard_rejects.get(category) or []
+    if not isinstance(cat_list, list):
+        raise ConfigError(
+            f"prefilter_rules.yaml: hard_rejects['{category}'] must be a list, got {type(cat_list).__name__}"
+        )
+    if cleaned not in cat_list:
+        raise ConfigError(f"prefilter_rules: pattern {cleaned!r} not found in category '{category}'")
+
+    new_cat_list = [p for p in cat_list if p != cleaned]
+    if new_cat_list:
+        new_hard_rejects = {**hard_rejects, category: new_cat_list}
+    else:
+        new_hard_rejects = {k: v for k, v in hard_rejects.items() if k != category}
+
+    context_suppressors = data.get("context_suppressors") or []
+    if not isinstance(context_suppressors, list):
+        raise ConfigError(
+            f"prefilter_rules.yaml: 'context_suppressors' must be a list, got {type(context_suppressors).__name__}"
+        )
+
+    lines: list[str] = []
+    if new_hard_rejects:
+        lines.append("hard_rejects:")
+        for cat_name, patterns in new_hard_rejects.items():
+            lines.append(f"  {cat_name}:")
+            for p in patterns:
+                lines.append(f"    - {_yaml_scalar(p)}")
+    if context_suppressors:
+        lines.append("context_suppressors:")
+        for p in context_suppressors:
+            lines.append(f"  - {_yaml_scalar(p)}")
+    body = "\n".join(lines) + "\n"
+
+    _RULES_PATH.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=_RULES_PATH.name + ".",
+        suffix=".tmp",
+        dir=str(_RULES_PATH.parent),
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
+            fh.write(body)
+        os.replace(tmp_name, _RULES_PATH)
+    except Exception:
+        if os.path.exists(tmp_name):
+            os.unlink(tmp_name)
+        raise
+
+
 def append_profile_excluded_category(entry: str) -> None:
     """Append a prose entry to the ## Excluded Categories section of profile.md (#653).
 
