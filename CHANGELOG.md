@@ -10,6 +10,8 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+## [0.34.0] — 2026-06-11
+
 ### Added
 
 - **Rejection-driven filter proposals** (#1055): a review queue at `/board/filter-proposals` that turns recurring rejection reasons into operator-approved Stage-1 prefilter rules, with provenance, a would-reject preview + danger confirm, one-click apply/revert, and a read-only view of the scorer's existing auto-learning.
@@ -1565,7 +1567,8 @@ from GHCR and deployed via Docker Compose on a shared Docker host.
 - Documentation cleanup — removing `sigoden/aichat` references in favor of
   `blob42/aichat-ng` — is tracked in #70
 
-[Unreleased]: https://github.com/brockamer/findajob/compare/v0.33.0...HEAD
+[Unreleased]: https://github.com/brockamer/findajob/compare/v0.34.0...HEAD
+[0.34.0]: https://github.com/brockamer/findajob/releases/tag/v0.34.0
 [0.33.0]: https://github.com/brockamer/findajob/releases/tag/v0.33.0
 [0.32.0]: https://github.com/brockamer/findajob/releases/tag/v0.32.0
 [0.31.3]: https://github.com/brockamer/findajob/releases/tag/v0.31.3
