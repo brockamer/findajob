@@ -10,6 +10,10 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Changed
+
+- **Fly install walkthrough updated to Fly's current Launch UI** (#916): the `start-here-fly.md` / `install-fly.md` deploy steps were rewritten to match Fly.io's restructured **Launch an App from GitHub** flow, which had drifted from the docs. Repo selection and the full deploy configuration now live in one dialog; the *Use a public repo* path takes a full `https://github.com/brockamer/findajob` URL (not the `owner/repo` shorthand); the **Region** dropdown defaults to Amsterdam (`ams`) rather than the nearest region, so the docs now tell you to change it; the app name is a random suggestion to overwrite; a new **Database → Managed Postgres** checkbox is called out as leave-unchecked; the **Config path (path to `fly.toml`)** field is named; and the Add-Secrets dialog's *staged-secrets* behavior plus its bulk `.env` / JSON / YAML paste option are documented. The `04-launch-repo-selector` screenshot was regenerated against the live UI via the public-repo path. The remaining Fly-dashboard screenshots (sign-up / sign-in, dashboard, config-form, secrets dialog) need an authenticated Fly session this change couldn't drive and stay tracked under #916. Docs-only; no schema change.
+
 ## [0.34.0] — 2026-06-11
 
 ### Added
