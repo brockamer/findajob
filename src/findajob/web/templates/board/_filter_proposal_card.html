@@ -1,0 +1,19 @@
+<div id="proposal-{{ it.id }}" class="rounded border border-slate-200 p-3 mb-3">
+  <form hx-post="/board/filter-proposals/{{ it.id }}/apply" hx-target="#proposal-{{ it.id }}" hx-swap="outerHTML" class="space-y-2">
+    <div class="text-xs text-slate-500">From {{ it.support_count }}× "{{ it.source_reason }}" rejections:
+      {{ it.support_sample | join(", ") }}</div>
+    <label class="block">
+      <span class="text-[11px] text-slate-600">Title regex (word-boundary, case-insensitive):</span>
+      <textarea name="pattern" rows="1" class="block w-full rounded border-slate-300 px-2 py-1 text-xs font-mono">{{ it.pattern }}</textarea>
+    </label>
+    <div class="text-xs {% if it.preview_danger_count > 0 %}text-rose-700{% else %}text-slate-600{% endif %}">
+      Would reject {{ it.preview_count }} active job(s){% if it.preview_danger_count > 0 %} — ⚠ {{ it.preview_danger_count }} of them score 7+ and are unactioned{% endif %}.
+      {% if it.preview_sample %}<span class="text-slate-400">e.g. {{ it.preview_sample[0].title }}</span>{% endif %}
+    </div>
+    <div class="flex gap-2">
+      <button type="submit" class="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs">Apply</button>
+      <button type="button" hx-post="/board/filter-proposals/{{ it.id }}/skip" hx-target="#proposal-{{ it.id }}" hx-swap="outerHTML"
+              class="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-xs">Skip</button>
+    </div>
+  </form>
+</div>

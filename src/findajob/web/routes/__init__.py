@@ -9,6 +9,7 @@ from findajob.web.routes import (
     config,
     docs,
     exclusion_rule,
+    filter_proposals,
     gmail_config,
     healthz,
     ingest,
@@ -70,6 +71,7 @@ router.include_router(settings_gemini.router, dependencies=_guard)
 router.include_router(settings_spend_ceiling.router, dependencies=_guard)
 router.include_router(settings_timezone.router, dependencies=_guard)
 router.include_router(rejections_review.router, dependencies=_guard)
+router.include_router(filter_proposals.router, dependencies=_guard)
 router.include_router(speculative.router, dependencies=_guard)
 router.include_router(stats.router, dependencies=_guard)
 router.include_router(config.router)

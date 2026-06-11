@@ -1,0 +1,13 @@
+{# Filter-proposals widget — #1055.
+   Renders a one-line info bar when filter_proposals has pending rows;
+   nothing when zero (so the dashboard stays uncluttered on quiet days).
+
+   Reads ``filter_proposals_pending`` from the route context. #}
+{% if filter_proposals_pending and filter_proposals_pending > 0 %}
+<div class="mb-3 px-3 py-2 rounded-sm bg-sky-50 border border-sky-200 text-sm text-sky-900 flex flex-wrap items-center gap-x-2">
+  <span aria-hidden="true">&#128736;</span>
+  <span class="font-medium">Filter proposals ready:</span>
+  <span>{{ filter_proposals_pending }} pending review</span>
+  <a href="/board/filter-proposals/" class="ml-auto text-sky-800 hover:underline font-medium">review →</a>
+</div>
+{% endif %}

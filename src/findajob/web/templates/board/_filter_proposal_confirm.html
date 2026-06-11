@@ -1,0 +1,16 @@
+<div id="proposal-{{ proposal_id }}" class="rounded border border-rose-300 bg-rose-50 p-3 mb-3">
+  <p class="text-sm font-medium text-rose-800">&#9888; This rule would hard-reject {{ danger_count }} unactioned job(s) currently scored 7+:</p>
+  <ul class="text-xs text-rose-700 my-1 list-disc pl-5">
+    {% for d in danger_sample %}<li>{{ d.title }} (score {{ d.score }})</li>{% endfor %}
+  </ul>
+  <p class="text-xs text-rose-700 mb-2">They will drop off your board. Apply only if that's what you want.</p>
+  <div class="flex gap-2">
+    <form hx-post="/board/filter-proposals/{{ proposal_id }}/apply" hx-target="#proposal-{{ proposal_id }}" hx-swap="outerHTML">
+      <input type="hidden" name="pattern" value="{{ pattern }}">
+      <input type="hidden" name="confirm" value="1">
+      <button type="submit" class="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-xs">Apply anyway</button>
+    </form>
+    <button type="button" hx-get="/board/filter-proposals/{{ proposal_id }}/card" hx-target="#proposal-{{ proposal_id }}" hx-swap="outerHTML"
+            class="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-xs">Cancel</button>
+  </div>
+</div>
