@@ -11,6 +11,7 @@
 {% include "board/_update_banner.html" %}
 {% include "board/_discoveries_widget.html" %}
 {% include "board/_rejections_widget.html" %}
+{% include "board/_filter_proposals_widget.html" %}
 {% include "_filters.html" %}
 <table class="min-w-full bg-white shadow-sm rounded-sm density-{{ density | default('compact') }}">
   {% set leading_cols = [('Status', ''), ('Reject', ''), ('Rule', '')] %}
