@@ -7,6 +7,7 @@ auto-learning read-only.
 
 from __future__ import annotations
 
+import html
 import json
 import sqlite3
 
@@ -58,11 +59,18 @@ def index(
         "SELECT * FROM filter_proposals WHERE status='pending' ORDER BY created_at DESC, id DESC"
     ).fetchall()
     items = [_item(r) for r in rows]
+    applied_rows = db.execute(
+        "SELECT * FROM filter_proposals WHERE status='applied' ORDER BY decided_at DESC, id DESC LIMIT 20"
+    ).fetchall()
+    applied_items = [
+        {"id": r["id"], "pattern": r["pattern"], "affected": len(json.loads(r["affected_jobs"] or "[]"))}
+        for r in applied_rows
+    ]
     templates = request.app.state.templates
     return templates.TemplateResponse(
         request=request,
         name="filter_proposals.html",
-        context={"items": items, "pending_count": len(items), "path_a": _path_a(db)},
+        context={"items": items, "pending_count": len(items), "path_a": _path_a(db), "applied_items": applied_items},
     )
 
 
@@ -107,7 +115,7 @@ def apply(
     try:
         result = filter_proposals.apply_proposal(db, proposal_id, pattern, force=(confirm == "1"))
     except ConfigError as e:
-        return HTMLResponse(f'<div class="text-rose-700 text-xs p-2">{e}</div>', status_code=200)
+        return HTMLResponse(f'<div class="text-rose-700 text-xs p-2">{html.escape(str(e))}</div>', status_code=200)
     if result.get("result") == "needs_confirm":
         return request.app.state.templates.TemplateResponse(
             request=request,

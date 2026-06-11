@@ -133,3 +133,38 @@ def test_skip(tmp_path, monkeypatch):
         ).fetchone()["status"]
         == "skipped"
     )
+
+
+# ── applied section + revert ──────────────────────────────────────────────────
+
+
+def test_applied_section_and_revert(tmp_path, monkeypatch):
+    conn, client = _make_client(tmp_path, monkeypatch)
+    cur = conn.execute(
+        "INSERT INTO filter_proposals (pattern, pattern_norm, category, status, affected_jobs) "
+        "VALUES (?, ?, 'auto_added', 'applied', '[]')",
+        (r"\bfleet\s+readiness\b", r"\bfleet\s+readiness\b"),
+    )
+    conn.commit()
+    pid = cur.lastrowid
+    # Applied section renders with a Revert button.
+    r = client.get("/board/filter-proposals/")
+    assert r.status_code == 200 and "Applied rules" in r.text and "Revert" in r.text
+    # Revert works via the route.
+    r2 = client.post(f"/board/filter-proposals/{pid}/revert", headers={"HX-Request": "true"})
+    assert r2.status_code == 200
+    assert conn.execute("SELECT status FROM filter_proposals WHERE id=?", (pid,)).fetchone()["status"] == "reverted"
+
+
+def test_apply_error_is_html_escaped(tmp_path, monkeypatch):
+    conn, client = _make_client(tmp_path, monkeypatch)
+    pid = _seed(conn)
+    # An invalid regex containing HTML must come back escaped, not raw.
+    r = client.post(
+        f"/board/filter-proposals/{pid}/apply",
+        data={"pattern": "<img src=x>["},
+        headers={"HX-Request": "true"},
+    )
+    assert r.status_code == 200
+    assert "<img src=x>" not in r.text  # escaped
+    assert "&lt;img" in r.text
