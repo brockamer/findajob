@@ -122,7 +122,7 @@ Audit anchor — classifies persisted state by ownership and recoverability. The
 | `data/pipeline.db` | Pipeline-generated; operator-curated via stage transitions, notes, score corrections | **Yes** | **No** — fetcher results from past dates aren't retrievable; transitions are operator decisions |
 | `candidate_context/profile.md`, `master_resume.md`, `voice_samples/` | Operator-authored | **Yes** | **No** — re-interview loses weeks of hand-tuning |
 | `candidate_context/discovered_companies.{md,json}` | Pipeline-generated (weekly cron) | No | **Yes** — next Sunday discoverer run reproduces |
-| `config/` (operator-curated subset: `target_companies.md`, `prefilter_rules.yaml`, `excluded_employers.yaml`, `ranking_boost_terms.yaml`, `title_signal_keywords.yaml`, `critique_theme_stopwords.yaml`, `feed_urls.txt`, `jsearch_queries.txt`, `target_locations.txt`, `feedback_weights.yaml`, `gmail.json`, `gsheets_creds.json`, etc.) | Operator-curated (interview-emitted seed + accumulated edits) | **Yes** | **No** — re-interview emits ~half; hand-curation gone |
+| `config/` (operator-curated subset: `target_companies.md`, `prefilter_rules.yaml`, `excluded_employers.yaml`, `ranking_boost_terms.yaml`, `title_signal_keywords.yaml`, `critique_theme_stopwords.yaml`, `feed_urls.txt`, `jsearch_queries.txt`, `target_locations.txt`, `gmail.json`, `gsheets_creds.json`, etc.) | Operator-curated (interview-emitted seed + accumulated edits) | **Yes** | **No** — re-interview emits ~half; hand-curation gone |
 | `config/gmail_state.json` | Pipeline-generated (IMAP UID checkpoint) | No | **Yes** — re-syncs on next poll |
 | `config/roles/`, `config/scoring_schema.json`, `config/model_pricing.yaml`, `config/reference.docx`, `config/strip-bookmarks.lua` | Repo-baked (in image, not bind-mount) | No | **Yes** — `docker compose pull` restores |
 | `data/.env` | Operator-curated (API keys, NTFY_TOPIC) | **Yes** | **No** — rotation-grade pain to re-collect |
@@ -225,6 +225,19 @@ Never rely on LLM prompt instructions alone for boolean classification tasks.
 ### Cost Tracking Is Native
 Every LLM call goes through `findajob.llm.openrouter.complete()`, which writes `cost_log.cost_usd` from OpenRouter's `response.usage.cost` (authoritative — no heuristic, no calibration, no multiplier). UI surfaces (nav spend chip, dashboard burn-rate widget, Applied cost cell, Materials breakdown, notify-stats projection) sum directly from `cost_log` via `findajob.cost_rollups` helpers. If a new surface needs cost data, add a helper to `cost_rollups.py` so the math stays in one place.
 
+### Rejection-Driven Filter Proposals Are Human-Gated
+`analyze_feedback._prefilter_candidates` mines rejection reasons into proposed Stage-1
+prefilter regexes; `findajob.filter_proposals` surfaces them in a review queue at
+`/board/filter-proposals` (weekly refresh via the notify-feedback cron). Machine-applied
+rules live in `prefilter_rules.yaml` `hard_rejects.auto_added` (separate from operator
+categories, so revert is surgical). Apply re-scores matching active jobs to 1 (no stage
+change, NEVER writes `feedback_log`) so the change is visible immediately, and records
+provenance in `config_changes` (`changed_by='auto_tuner'`; revert uses `'auto_tuner_revert'`).
+An apply-time danger recompute on the FINAL (possibly operator-edited) pattern forces an
+explicit confirm when the rule would hard-reject unactioned score-7+ jobs. Never auto-apply
+without the operator click — Stage-1 hard rejects skip the LLM, so a bad rule silently kills
+good jobs.
+
 ### Synthetic Jobs Convention (Speculative Cold-Outreach)
 
 Some `jobs` rows are *synthetic* — produced by the speculative ingest path for cold-outreach. **Canonical signal:** `jobs.synthetic=1` + `source='web_speculative'` + `[SPEC] ` title prefix.
@@ -314,6 +327,9 @@ responds in the same request — no poll cycle, no mirror table.
 | Confirm rejection email | `POST /board/rejections-review/{id}/confirm` | Rejections-review queue (#362) |
 | Dismiss rejection email | `POST /board/rejections-review/{id}/dismiss` | Rejections-review queue (#362) |
 | Reattribute rejection email | `POST /board/rejections-review/{id}/reattribute` | Rejections-review queue (#362) |
+| Apply filter proposal | `POST /board/filter-proposals/{id}/apply` | Filter-proposals queue; danger-recompute confirm gate; writes hard_rejects.auto_added + re-scores matches |
+| Skip filter proposal | `POST /board/filter-proposals/{id}/skip` | Filter-proposals queue |
+| Revert filter proposal | `POST /board/filter-proposals/{id}/revert` | Filter-proposals queue "Applied rules" section |
 
 The rejections-review row is keyed by `rejection_suggestions.id` rather than `jobs.fingerprint` — the suggestion is the source row, the job_id is found via `matched_job_id` (or operator-supplied on reattribute). Confirm/reattribute call `handle_not_selected(..., changed_by='gmail_rejection_detector')` so the audit trail tags the transition.
 
