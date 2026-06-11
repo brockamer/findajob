@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-4xl mx-auto p-4">
+  <h1 class="text-lg font-semibold mb-1">Filter proposals</h1>
+  <p class="text-sm text-slate-600 mb-4">Rules the system mined from your rejection reasons. Review, edit the regex if needed, then apply or skip. Applying re-scores matching jobs now and adds the rule to the live filter.</p>
+
+  {% if pending_count == 0 %}
+    <div class="rounded bg-slate-50 border border-slate-200 p-4 text-sm text-slate-600">No pending proposals. New ones appear after the weekly feedback scan.</div>
+  {% else %}
+    {% for it in items %}{% include "board/_filter_proposal_card.html" %}{% endfor %}
+  {% endif %}
+
+  {% if applied_items %}
+  <div class="mt-6">
+    <h2 class="text-sm font-semibold mb-1">Applied rules</h2>
+    {% for a in applied_items %}
+    <div id="applied-{{ a.id }}" class="flex items-center gap-2 text-xs border border-slate-200 rounded px-2 py-1 mb-1">
+      <code class="font-mono text-slate-700">{{ a.pattern }}</code>
+      <span class="text-slate-400">re-scored {{ a.affected }} job(s)</span>
+      <button hx-post="/board/filter-proposals/{{ a.id }}/revert" hx-target="#applied-{{ a.id }}" hx-swap="outerHTML"
+              class="ml-auto px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded">Revert</button>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% include "board/_path_a_panel.html" %}
+</div>
+{% endblock %}

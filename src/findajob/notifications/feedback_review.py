@@ -1,11 +1,26 @@
 """Analysis of jobs the user has passed on — user-facing."""
 
 import json
+import sqlite3
 import subprocess
 import sys
 
-from findajob.notifications.ntfy import _runtime, db_connect, send
+from findajob.audit import log_event
+from findajob.db import connect
+from findajob.notifications.ntfy import DB_PATH, _runtime, db_connect, send
 from findajob.paths import IMAGE_ROOT
+
+
+def refresh_filter_proposals(db_path: str) -> int:
+    """Mine new prefilter proposals into the queue. Returns count inserted."""
+    from findajob import filter_proposals
+
+    conn = connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        return filter_proposals.generate_proposals(conn)
+    finally:
+        conn.close()
 
 
 def cmd_feedback_review() -> None:
@@ -51,5 +66,18 @@ def cmd_feedback_review() -> None:
         )
     else:
         body = f"You've passed on {count} jobs so far.\nSee the trends: {web_base_url}/stats/feedback"
+
+    # Refresh filter proposals and surface pending count in the notification.
+    try:
+        refresh_filter_proposals(DB_PATH)
+        _conn = db_connect()
+        try:
+            pending = _conn.execute("SELECT COUNT(*) FROM filter_proposals WHERE status='pending'").fetchone()[0]
+        finally:
+            _conn.close()
+        if pending > 0:
+            body += f"\n{pending} filter proposal(s) to review → /board/filter-proposals/"
+    except Exception as e:
+        log_event("filter_proposal_refresh_failed", error=str(e))
 
     send("💼 findajob — feedback check", body, priority="default", tags="magnifying", kind="feedback_review")

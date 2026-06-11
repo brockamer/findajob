@@ -263,6 +263,7 @@ def dashboard(
     visible = _resolve_visible(specs, parsed)
     discoveries = load_discoveries_summary(request.app.state.base_root)
     rejections_pending = _rejections_pending_count(db)
+    filter_proposals_pending = _filter_proposals_pending_count(db)
     show_banner, default_count = _active_sources_banner_state(request)
     show_ceiling_banner = _spend_ceiling_banner_state(request)
     show_first_triage_banner, next_triage_fire = _first_triage_banner_state(request, db)
@@ -284,6 +285,7 @@ def dashboard(
             "materials_base_url": materials_base_url,
             "discoveries": discoveries,
             "rejections_pending": rejections_pending,
+            "filter_proposals_pending": filter_proposals_pending,
             "active_sources_banner": show_banner,
             "active_sources_default_count": default_count,
             "spend_ceiling_banner": show_ceiling_banner,
@@ -390,6 +392,15 @@ def _rejections_pending_count(db: sqlite3.Connection) -> int:
     """
     try:
         return int(db.execute("SELECT COUNT(*) FROM rejection_suggestions WHERE user_action = 'pending'").fetchone()[0])
+    except sqlite3.OperationalError:
+        return 0
+
+
+def _filter_proposals_pending_count(db: sqlite3.Connection) -> int:
+    """Pending filter-proposal count for the dashboard banner (#1055). Tolerates
+    pre-migration stacks (table absent) by returning 0."""
+    try:
+        return int(db.execute("SELECT COUNT(*) FROM filter_proposals WHERE status='pending'").fetchone()[0])
     except sqlite3.OperationalError:
         return 0
 

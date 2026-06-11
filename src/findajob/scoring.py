@@ -62,31 +62,43 @@ def _normalize_llm_output(raw: str) -> str:
     return json.dumps(d)
 
 
+def _feedback_clusters(conn: sqlite3.Connection) -> dict[str, list[str]]:
+    """Raw {reject_reason: [titles-with-dupes]} from feedback_log.
+
+    Applies the exact scorer exclusion set: housekeeping reasons + synthetic
+    jobs. NO sort/dedup/sample (callers shape it). Company rejections
+    (not_selected) are excluded at the source — they never reach feedback_log —
+    so there is intentionally no stage filter here. Connection-agnostic: reads
+    columns positionally so it works whether or not row_factory is set.
+    """
+    rows = conn.execute("""
+        SELECT f.reject_reason, f.title
+        FROM feedback_log f
+        LEFT JOIN jobs j ON j.id = f.job_id
+        WHERE f.reject_reason NOT IN ('Stale/Closed', 'Already Applied', 'Other')
+          AND COALESCE(j.synthetic, 0) = 0
+        ORDER BY f.reject_reason, f.title
+    """).fetchall()
+    clusters: dict[str, list[str]] = {}
+    for r in rows:
+        reason, title = r[0], r[1]
+        clusters.setdefault(reason, []).append(title)
+    return clusters
+
+
 def _build_feedback_block() -> str:
     """Query feedback_log and return a compact rejection-history block for the scorer prompt.
     Returns empty string if no feedback exists."""
     try:
         conn = connect(DB_PATH, timeout=30)
         conn.row_factory = sqlite3.Row
-        rows = conn.execute("""
-            SELECT f.reject_reason, f.title, f.relevance_score
-            FROM feedback_log f
-            LEFT JOIN jobs j ON j.id = f.job_id
-            WHERE f.reject_reason NOT IN ('Stale/Closed', 'Already Applied', 'Other')
-              AND COALESCE(j.synthetic, 0) = 0
-            ORDER BY f.reject_reason, f.title
-        """).fetchall()
+        clusters = _feedback_clusters(conn)
         conn.close()
     except Exception:
         return ""
 
-    if not rows:
+    if not clusters:
         return ""
-
-    clusters: dict[str, list[str]] = {}
-    for r in rows:
-        reason = r["reject_reason"]
-        clusters.setdefault(reason, []).append(r["title"])
 
     lines = ["", "---", "", "USER REJECTION HISTORY (from manual feedback — consider when scoring similar jobs):"]
     for reason, titles in sorted(clusters.items(), key=lambda x: -len(x[1])):

@@ -1,0 +1,9 @@
+<div class="mt-6 rounded border border-slate-200 p-3">
+  <h2 class="text-sm font-semibold mb-1">Your scorer is already adapting</h2>
+  <p class="text-xs text-slate-500 mb-2">Every scoring run, these rejection patterns nudge the LLM scorer to down-rank similar jobs — automatically, no approval needed. The proposals above are the same learning, made into permanent filter rules you control.</p>
+  {% if path_a %}
+  <ul class="text-xs text-slate-700 space-y-0.5">
+    {% for c in path_a %}<li><span class="font-medium">{{ c.count }}×</span> "{{ c.reason }}": {{ c.sample | join(", ") }}</li>{% endfor %}
+  </ul>
+  {% else %}<p class="text-xs text-slate-400">No rejection history yet.</p>{% endif %}
+</div>
