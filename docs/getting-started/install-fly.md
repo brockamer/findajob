@@ -46,29 +46,30 @@ Click the purple **Launch an App** button at the top of your dashboard.
 
 ![Dashboard showing the Launch an App button](install-fly-web/03-dashboard-launch-button.png)
 
-In the dialog that opens:
+The **Launch an App from GitHub** dialog opens. Repository selection and the full deploy configuration are on one screen — the repo list on the left, the configuration form on the right once you pick a repo.
 
-1. **Select the findajob repository.** If you have a GitHub account and have forked `brockamer/findajob`, select your fork. If you're using the public repo, select the Organization dropdown and choose **"Use a public repo"**, then paste `brockamer/findajob`.
+1. **Select the findajob repository.** In the **Organization** dropdown choose **"Use a public repo"**, then paste the full GitHub URL — `https://github.com/brockamer/findajob` (the whole URL, not the `owner/repo` shorthand) — into the search box and click the `brockamer/findajob` result that appears. (If you forked findajob to your own GitHub account first, leave the dropdown on your account and pick your fork from the list instead.)
 
-   ![Repository selector — find brockamer/findajob](install-fly-web/04-launch-repo-selector.png)
+   ![Repository selector — "Use a public repo" with the findajob GitHub URL](install-fly-web/04-launch-repo-selector.png)
 
-2. **Configure the deploy** — only three fields need attention:
+2. **Configure the deploy.** The configuration form fills the right side of the dialog. Only three fields need your attention:
 
-   ![Configuration form — app name, region, machine size](install-fly-web/05-launch-config-top.png)
+   ![Configuration form](install-fly-web/05-launch-config-top.png)
 
-   - **App name:** Change to `findajob-<your-handle>` (e.g. `findajob-jane`). Must be globally unique — lowercase letters, digits, hyphens only.
-   - **Region:** Pick the one nearest you. US East → `iad` (Ashburn, VA). US West → `lax` (Los Angeles). Europe → `ams` (Amsterdam).
-   - **Memory:** Change from 256MB to **1GB**.
+   - **App name:** Fly pre-fills a random name like `findajob-p-a8gq`. Change it to `findajob-<your-handle>` (e.g. `findajob-jane`). Must be globally unique — lowercase letters, digits, hyphens only.
+   - **Region:** The dropdown defaults to **`ams` (Amsterdam)** — it is *not* auto-set to the location nearest you, so change it. US East → `iad` (Ashburn, VA). US West → `lax` (Los Angeles). Europe → `ams` (Amsterdam).
+   - **Memory:** Change from the default **256MB** to **1GB**.
 
-   ![Region, port, CPU, and memory settings](install-fly-web/05b-launch-config-middle.png)
+   ![Region, internal port, CPU, and memory settings](install-fly-web/05b-launch-config-middle.png)
 
-   Leave everything else as-is — including the **Internal port** (the shown default is correct; don't change it). The repo's `fly.toml` provides the volume (8 GB) and machine size.
+   Leave everything else as-is: the **Internal port** (`8080`) is correct, the **CPU** (`shared-cpu-1x`) is fine, and the repo's `fly.toml` provides the 8 GB volume. Two sections to leave alone in particular:
 
-   > **If the form shows a "Variables" / "Environment variables" section (Name + Value), leave it blank.** API keys go in **Secrets** after the deploy (next section), not here — anything typed here just becomes an unused environment variable.
+   > - **Environment Variables** — leave blank. API keys go in **Secrets** after the deploy (next section), not here; anything typed here just becomes an unused environment variable.
+   > - **Database → Managed Postgres** — leave the checkbox **unchecked**. findajob keeps its own SQLite database on the volume and does not need a Postgres add-on.
 
-   ![Bottom of the form — config path defaults to ./, Deploy button](install-fly-web/06-launch-config-bottom.png)
+   ![Bottom of the form — Deploy button](install-fly-web/06-launch-config-bottom.png)
 
-3. **Click Deploy.** Fly creates the app, provisions an 8 GB volume, builds the image, and starts the machine. This takes 2–4 minutes. You'll see a live progress page with build steps.
+3. **Click Deploy** at the bottom of the form. Fly creates the app, provisions an 8 GB volume, builds the image, and starts the machine. This takes 2–4 minutes; you'll see a live progress page with build steps.
 
 ## 3. Add your secrets
 
@@ -76,7 +77,7 @@ Once the deploy completes, navigate to your app in the Fly dashboard (click the 
 
 ![Secrets page with Add Secrets and Deploy Secrets buttons](install-fly-web/07-secrets-page.png)
 
-Click **Add Secrets** to add each of the following. Enter the name exactly as shown, paste your value, and click Add:
+Click **Add Secrets**. The dialog gives you two ways to enter them: **Add a single secret** (a Name + Secret field, then **Set secret**), or **Add all the secrets!** (paste them in bulk as `.env`, JSON, or YAML). Add each of the following — enter the name exactly as shown:
 
 | Name | Required? | Value |
 |------|-----------|-------|
@@ -86,9 +87,9 @@ Click **Add Secrets** to add each of the following. Enter the name exactly as sh
 | `RAPIDAPI_KEY` | Optional | Your RapidAPI key |
 | `NTFY_TOPIC` | Optional | Your ntfy topic name |
 
-![Add Secrets dialog — enter Name and Secret value](install-fly-web/08-add-secrets-dialog.png)
+![Add Secrets dialog](install-fly-web/08-add-secrets-dialog.png)
 
-After adding all secrets, click the **Deploy Secrets** button at the top of the Secrets page. This restarts your machine with the secrets active — the auth gate and LLM calls will now work.
+Adding a secret only *stages* it. After you've entered all of them, click the **Deploy Secrets** button at the top of the Secrets page — that's what restarts your machine with the secrets active, so the auth gate and LLM calls will now work.
 
 > **Auth credentials are optional at deploy time.** If you skip `FINDAJOB_AUTH_USER` and `FINDAJOB_AUTH_PASS` here, the onboarding flow will prompt you to set a username and password as its first step. To prevent anyone else who finds your URL from setting your password before you do, the auth-setup form requires a one-time setup token that's printed to your container logs — find it with `fly logs --app findajob-<your-handle> | grep FINDAJOB_SETUP_TOKEN`. Setting auth secrets here avoids that step entirely.
 

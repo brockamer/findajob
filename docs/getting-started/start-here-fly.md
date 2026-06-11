@@ -85,21 +85,22 @@ Everything in this section happens in your web browser — no terminal or comman
 
    ![Dashboard showing the Launch an App button](install-fly-web/03-dashboard-launch-button.png)
 
-3. **Select the findajob repository.** In the dialog that opens, find and click **brockamer/findajob** in the repo list. If you have a GitHub account with a fork, select your fork instead. If you don't have a GitHub account, select **"Use a public repo"** from the Organization dropdown, then enter `brockamer/findajob`.
+3. **Select the findajob repository.** The **Launch an App from GitHub** dialog opens. In the **Organization** dropdown, choose **"Use a public repo"**, then paste the full URL `https://github.com/brockamer/findajob` into the search box and click the **brockamer/findajob** result that appears. (Already forked findajob to your own GitHub account? Leave the dropdown on your account and pick your fork from the list instead.)
 
-   ![Repository selector — find brockamer/findajob](install-fly-web/04-launch-repo-selector.png)
+   ![Repository selector — "Use a public repo" with the findajob GitHub URL](install-fly-web/04-launch-repo-selector.png)
 
 4. **Configure three fields** in the right-hand panel:
 
-   - **App name:** Change to `findajob-<your-handle>` (e.g. `findajob-jamie`). This becomes your URL — `findajob-jamie.fly.dev`. Must be globally unique; lowercase letters, digits, hyphens only.
-   - **Region:** Pick the one nearest you. US East → `iad`. US West → `lax`. Europe → `ams`.
-   - **Memory:** Change from 256MB to **1GB**.
+   - **App name:** Fly fills in a random name like `findajob-p-a8gq`. Change it to `findajob-<your-handle>` (e.g. `findajob-jamie`). This becomes your URL — `findajob-jamie.fly.dev`. Must be globally unique; lowercase letters, digits, hyphens only.
+   - **Region:** The dropdown defaults to **`ams` (Amsterdam)** — not the location nearest you, so change it. US East → `iad`. US West → `lax`. Europe → `ams`.
+   - **Memory:** Change from the default **256MB** to **1GB**.
 
    ![Configuration form — region, port, CPU, memory](install-fly-web/05b-launch-config-middle.png)
 
-   Leave everything else as-is — including the **Internal port** (the shown default is correct; you don't need to change it). The repo's `fly.toml` sets the volume and machine size automatically.
+   Leave everything else as-is — the **Internal port** (`8080`) is correct and the repo's `fly.toml` sets the volume and machine size automatically. Two sections to leave alone:
 
-   > **If the form shows a "Variables" or "Environment variables" section (a Name + Value pair), leave it blank.** Your API keys do *not* go here — you'll add them as **Secrets** after the app deploys (Step 6). Anything you type into this field just becomes an unused environment variable; it is not required to deploy.
+   > - **Environment Variables** (a Name + Value pair) — leave blank. Your API keys do *not* go here; you'll add them as **Secrets** after the app deploys (Step 6). Anything typed here just becomes an unused environment variable.
+   > - **Database → Managed Postgres** — leave the checkbox **unchecked**. findajob brings its own database and doesn't need a Postgres add-on.
 
 5. Click the purple **Deploy** button at the bottom.
 
@@ -121,11 +122,11 @@ After the deploy finishes, navigate to your new app: click the app name in the b
 
    ![Secrets page with Add Secrets and Deploy Secrets buttons](install-fly-web/07-secrets-page.png)
 
-2. Click **Add Secrets**. You'll see a dialog with Name and Secret fields:
+2. Click **Add Secrets**. The dialog lets you add them **one at a time** (a Name + Secret field) or paste them **all at once** as `.env`, JSON, or YAML:
 
-   ![Add Secrets dialog — enter Name and Secret value](install-fly-web/08-add-secrets-dialog.png)
+   ![Add Secrets dialog](install-fly-web/08-add-secrets-dialog.png)
 
-3. Add each of the following secrets **one at a time** (type the Name exactly as shown, paste your value, click Add):
+3. Add each of the following secrets (type the Name exactly as shown, paste your value, click **Set secret**):
 
    | Name | Required? | What to enter |
    |------|-----------|---------------|
@@ -137,7 +138,7 @@ After the deploy finishes, navigate to your new app: click the app name in the b
 
    > **Auth credentials are optional here.** If you skip them, the onboarding flow will prompt you to choose a username and password as its first step. The auth-setup form requires a one-time setup token printed to your container logs (find it with `fly logs --app findajob-<your-handle> | grep FINDAJOB_SETUP_TOKEN`) — this stops anyone else who finds your URL from setting your password before you do.
 
-4. After adding all secrets, click the **Deploy Secrets** button at the top of the Secrets page. This restarts your app with the secrets active.
+4. Adding a secret only *stages* it. Once you've entered them all, click the **Deploy Secrets** button at the top of the Secrets page — that's what restarts your app with the secrets active.
 
 **What you should see:** the app status returns to "Deployed" after a few seconds.
 
