@@ -35,7 +35,6 @@ def test_nav_present_on_landing(client: TestClient) -> None:
     assert 'href="/materials/"' in r.text
     assert 'href="/board/dashboard"' in r.text
     assert 'href="/ingest/"' in r.text
-    assert 'href="/stats/funnel"' in r.text
     assert 'href="/tools/"' in r.text
     assert 'href="/config/"' in r.text
     assert 'href="/docs/"' in r.text
@@ -50,10 +49,10 @@ def test_materials_index_moved(client: TestClient) -> None:
 def test_every_nav_link_resolves(client: TestClient) -> None:
     """Regression: every href in the top nav returns 200, not 404.
 
-    /stats/funnel uses follow_redirects=True to absorb the /stats/ → /stats/funnel
-    redirect (the link points at /stats/funnel directly, so this is just defensive).
+    (Stats was removed from the top nav in the Tier-1 strip #1057; the /stats/*
+    routes still resolve and are covered directly by test_web_stats_*.)
     """
-    for path in ["/", "/materials/", "/board/dashboard", "/ingest/", "/stats/funnel", "/tools/", "/config/", "/docs/"]:
+    for path in ["/", "/materials/", "/board/dashboard", "/ingest/", "/tools/", "/config/", "/docs/"]:
         r = client.get(path, follow_redirects=True)
         assert r.status_code == 200, f"Nav link {path} returned {r.status_code}"
 
