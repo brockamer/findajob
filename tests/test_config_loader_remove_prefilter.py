@@ -1,11 +1,11 @@
-import re
 import pytest
+
 from findajob import config_loader
 from findajob.config_loader import (
     ConfigError,
     add_prefilter_title_pattern,
-    remove_prefilter_title_pattern,
     load_hard_reject_rules,
+    remove_prefilter_title_pattern,
 )
 
 
@@ -34,6 +34,7 @@ def test_remove_drops_empty_category(_tmp_rules):
     add_prefilter_title_pattern(r"\bstaff\s+engineer\b", category="auto_added")
     remove_prefilter_title_pattern(r"\bstaff\s+engineer\b", category="auto_added")
     import yaml
+
     data = yaml.safe_load(_tmp_rules.read_text()) or {}
     assert "auto_added" not in (data.get("hard_rejects") or {})
 

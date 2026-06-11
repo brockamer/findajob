@@ -811,9 +811,7 @@ def remove_prefilter_title_pattern(pattern: str, category: str = "operator_added
 
     hard_rejects = data.get("hard_rejects") or {}
     if not isinstance(hard_rejects, dict):
-        raise ConfigError(
-            f"prefilter_rules.yaml: 'hard_rejects' must be a mapping, got {type(hard_rejects).__name__}"
-        )
+        raise ConfigError(f"prefilter_rules.yaml: 'hard_rejects' must be a mapping, got {type(hard_rejects).__name__}")
     cat_list = hard_rejects.get(category) or []
     if not isinstance(cat_list, list):
         raise ConfigError(

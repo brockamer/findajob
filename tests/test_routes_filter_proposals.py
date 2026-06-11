@@ -69,12 +69,7 @@ def test_apply_writes_rule(tmp_path, monkeypatch):
         headers={"HX-Request": "true"},
     )
     assert r.status_code == 200
-    assert (
-        conn.execute(
-            "SELECT status FROM filter_proposals WHERE id=?", (pid,)
-        ).fetchone()["status"]
-        == "applied"
-    )
+    assert conn.execute("SELECT status FROM filter_proposals WHERE id=?", (pid,)).fetchone()["status"] == "applied"
 
 
 def test_apply_danger_shows_confirm_then_applies(tmp_path, monkeypatch):
@@ -94,12 +89,7 @@ def test_apply_danger_shows_confirm_then_applies(tmp_path, monkeypatch):
     )
     assert r.status_code == 200
     assert "Apply anyway" in r.text
-    assert (
-        conn.execute(
-            "SELECT status FROM filter_proposals WHERE id=?", (pid,)
-        ).fetchone()["status"]
-        == "pending"
-    )
+    assert conn.execute("SELECT status FROM filter_proposals WHERE id=?", (pid,)).fetchone()["status"] == "pending"
 
     # Second apply with confirm=1 → actually applies
     r2 = client.post(
@@ -108,12 +98,7 @@ def test_apply_danger_shows_confirm_then_applies(tmp_path, monkeypatch):
         headers={"HX-Request": "true"},
     )
     assert r2.status_code == 200
-    assert (
-        conn.execute(
-            "SELECT status FROM filter_proposals WHERE id=?", (pid,)
-        ).fetchone()["status"]
-        == "applied"
-    )
+    assert conn.execute("SELECT status FROM filter_proposals WHERE id=?", (pid,)).fetchone()["status"] == "applied"
 
 
 # ── skip ──────────────────────────────────────────────────────────────────────
@@ -127,12 +112,7 @@ def test_skip(tmp_path, monkeypatch):
         headers={"HX-Request": "true"},
     )
     assert r.status_code == 200
-    assert (
-        conn.execute(
-            "SELECT status FROM filter_proposals WHERE id=?", (pid,)
-        ).fetchone()["status"]
-        == "skipped"
-    )
+    assert conn.execute("SELECT status FROM filter_proposals WHERE id=?", (pid,)).fetchone()["status"] == "skipped"
 
 
 # ── applied section + revert ──────────────────────────────────────────────────

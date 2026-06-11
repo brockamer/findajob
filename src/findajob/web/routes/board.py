@@ -400,9 +400,7 @@ def _filter_proposals_pending_count(db: sqlite3.Connection) -> int:
     """Pending filter-proposal count for the dashboard banner (#1055). Tolerates
     pre-migration stacks (table absent) by returning 0."""
     try:
-        return int(db.execute(
-            "SELECT COUNT(*) FROM filter_proposals WHERE status='pending'"
-        ).fetchone()[0])
+        return int(db.execute("SELECT COUNT(*) FROM filter_proposals WHERE status='pending'").fetchone()[0])
     except sqlite3.OperationalError:
         return 0
 

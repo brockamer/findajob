@@ -1,9 +1,10 @@
 import json
 import sqlite3
+
 import pytest
-from findajob import config_loader
+
+from findajob import config_loader, filter_proposals
 from findajob.db.migrate import apply_pending
-from findajob import filter_proposals
 
 
 @pytest.fixture
@@ -21,8 +22,7 @@ def conn(tmp_path, monkeypatch):
 
 def _seed_proposal(c, pattern=r"\bfleet\s+readiness\b"):
     cur = c.execute(
-        "INSERT INTO filter_proposals (pattern, pattern_norm, category, status) "
-        "VALUES (?, ?, 'auto_added', 'pending')",
+        "INSERT INTO filter_proposals (pattern, pattern_norm, category, status) VALUES (?, ?, 'auto_added', 'pending')",
         (pattern, pattern),
     )
     c.commit()
@@ -50,7 +50,9 @@ def test_apply_low_score_match_applies_without_confirm(conn):
     assert job["scored_by"] == "prefilter_stage1"
     assert job["stage"] == "scored"
 
-    prop = conn.execute("SELECT status, affected_jobs, config_change_id FROM filter_proposals WHERE id=?", (pid,)).fetchone()
+    prop = conn.execute(
+        "SELECT status, affected_jobs, config_change_id FROM filter_proposals WHERE id=?", (pid,)
+    ).fetchone()
     assert prop["status"] == "applied"
     affected = json.loads(prop["affected_jobs"])
     assert affected[0]["job_id"] == "j1" and affected[0]["old_score"] == 5
@@ -100,10 +102,26 @@ def test_revert_restores_scores_and_removes_rule(conn):
     assert not reject_re.search("Fleet Readiness Manager")
 
 
+def test_revert_restores_score_status_for_manual_review_job(conn):
+    pid = _seed_proposal(conn)
+    conn.execute(
+        "INSERT INTO jobs "
+        "(id, fingerprint, url, source, title, company, relevance_score, scored_by, score_status, stage) "
+        "VALUES ('jm','fpm','http://x/m','test','Fleet Readiness Manager',"
+        "'Acme',6,'llm','manual_review','manual_review')"
+    )
+    conn.commit()
+    filter_proposals.apply_proposal(conn, pid, r"\bfleet\s+readiness\b", force=True)
+    assert conn.execute("SELECT score_status FROM jobs WHERE id='jm'").fetchone()["score_status"] == "scored"
+    filter_proposals.revert_proposal(conn, pid)
+    row = conn.execute("SELECT relevance_score, scored_by, score_status FROM jobs WHERE id='jm'").fetchone()
+    assert row["relevance_score"] == 6 and row["scored_by"] == "llm" and row["score_status"] == "manual_review"
+
+
 def test_revert_removes_edited_pattern(conn):
     """Operator edits the regex before applying; revert must remove the EDITED rule,
     not the originally-seeded one. Regression for the apply/revert pattern divergence."""
-    pid = _seed_proposal(conn, r"\bfleet\b")          # original mined pattern
+    pid = _seed_proposal(conn, r"\bfleet\b")  # original mined pattern
     _seed_job(conn, "j1", "Fleet Readiness Manager", 5)  # score 5 → no danger, applies directly
     # Operator narrows the regex, then applies the EDITED pattern.
     filter_proposals.apply_proposal(conn, pid, r"\bfleet\s+readiness\b", force=True)

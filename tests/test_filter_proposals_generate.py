@@ -1,8 +1,9 @@
-import json
 import sqlite3
+
 import pytest
-from findajob.db.migrate import apply_pending
+
 from findajob import analyze_feedback, filter_proposals
+from findajob.db.migrate import apply_pending
 
 
 @pytest.fixture
@@ -13,7 +14,8 @@ def conn(tmp_path, monkeypatch):
     c.commit()
     # Title-signal reasons that drive the miner.
     monkeypatch.setattr(
-        analyze_feedback, "load_reject_reasons",
+        analyze_feedback,
+        "load_reject_reasons",
         lambda: (("Skills Mismatch",), frozenset({"Skills Mismatch"})),
     )
     yield c
@@ -22,8 +24,7 @@ def conn(tmp_path, monkeypatch):
 
 def _seed_rejection(c, title, reason="Skills Mismatch", score=9):
     c.execute(
-        "INSERT INTO feedback_log (job_id, title, company, relevance_score, reject_reason) "
-        "VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO feedback_log (job_id, title, company, relevance_score, reject_reason) VALUES (?, ?, ?, ?, ?)",
         (f"id-{title}", title, "Acme", score, reason),
     )
 
@@ -64,8 +65,7 @@ def test_preview_counts_active_matches_and_danger(conn):
     conn.commit()
     filter_proposals.generate_proposals(conn)
     row = conn.execute(
-        "SELECT preview_count, preview_danger_count FROM filter_proposals "
-        "WHERE pattern LIKE '%fleet%readiness%'"
+        "SELECT preview_count, preview_danger_count FROM filter_proposals WHERE pattern LIKE '%fleet%readiness%'"
     ).fetchone()
     assert row["preview_count"] >= 1
     assert row["preview_danger_count"] >= 1

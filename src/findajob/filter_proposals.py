@@ -32,7 +32,7 @@ _AUTO_CATEGORY = "auto_added"
 def _active_jobs(conn: sqlite3.Connection) -> list[sqlite3.Row]:
     return conn.execute(
         """
-        SELECT id, title, company, relevance_score, scored_by, stage
+        SELECT id, title, company, relevance_score, scored_by, score_status, stage
         FROM jobs
         WHERE (dupe_of = '' OR dupe_of IS NULL)
           AND stage IN ({})
@@ -99,14 +99,10 @@ def generate_proposals(conn: sqlite3.Connection) -> int:
 
 
 def _load_pending(conn: sqlite3.Connection, proposal_id: int) -> sqlite3.Row | None:
-    return conn.execute(
-        "SELECT * FROM filter_proposals WHERE id = ?", (proposal_id,)
-    ).fetchone()
+    return conn.execute("SELECT * FROM filter_proposals WHERE id = ?", (proposal_id,)).fetchone()
 
 
-def apply_proposal(
-    conn: sqlite3.Connection, proposal_id: int, final_pattern: str, *, force: bool = False
-) -> dict:
+def apply_proposal(conn: sqlite3.Connection, proposal_id: int, final_pattern: str, *, force: bool = False) -> dict:
     """Apply a proposal's (possibly operator-edited) regex to the live filter and
     re-filter matching active jobs to score 1. Records provenance. NEVER writes
     feedback_log.
@@ -147,7 +143,12 @@ def apply_proposal(
     affected: list[dict] = []
     for j in matches:
         affected.append(
-            {"job_id": j["id"], "old_score": j["relevance_score"], "old_scored_by": j["scored_by"]}
+            {
+                "job_id": j["id"],
+                "old_score": j["relevance_score"],
+                "old_scored_by": j["scored_by"],
+                "old_score_status": j["score_status"],
+            }
         )
         conn.execute(
             "UPDATE jobs SET relevance_score=1, scored_by='prefilter_stage1', "
@@ -155,8 +156,13 @@ def apply_proposal(
             (now, j["id"]),
         )
         write_audit(
-            conn, j["id"], "relevance_score", j["relevance_score"], 1,
-            changed_by=_AUTO_TUNER, commit=False,
+            conn,
+            j["id"],
+            "relevance_score",
+            j["relevance_score"],
+            1,
+            changed_by=_AUTO_TUNER,
+            commit=False,
         )
 
     cur = conn.execute(
@@ -213,13 +219,25 @@ def revert_proposal(conn: sqlite3.Connection, proposal_id: int) -> bool:
     now = datetime.now(UTC).isoformat()
     affected = json.loads(prop["affected_jobs"] or "[]")
     for a in affected:
-        conn.execute(
-            "UPDATE jobs SET relevance_score=?, scored_by=?, updated_at=? WHERE id=?",
-            (a["old_score"], a["old_scored_by"], now, a["job_id"]),
-        )
+        old_status = a.get("old_score_status")
+        if old_status is not None:
+            conn.execute(
+                "UPDATE jobs SET relevance_score=?, scored_by=?, score_status=?, updated_at=? WHERE id=?",
+                (a["old_score"], a["old_scored_by"], old_status, now, a["job_id"]),
+            )
+        else:
+            conn.execute(
+                "UPDATE jobs SET relevance_score=?, scored_by=?, updated_at=? WHERE id=?",
+                (a["old_score"], a["old_scored_by"], now, a["job_id"]),
+            )
         write_audit(
-            conn, a["job_id"], "relevance_score", 1, a["old_score"],
-            changed_by="auto_tuner_revert", commit=False,
+            conn,
+            a["job_id"],
+            "relevance_score",
+            1,
+            a["old_score"],
+            changed_by="auto_tuner_revert",
+            commit=False,
         )
 
     conn.execute(

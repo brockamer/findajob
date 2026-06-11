@@ -11,10 +11,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-import pytest
-
 from findajob.db.migrate import apply_pending
-
 
 # ── unit: helper function ─────────────────────────────────────────────────────
 
@@ -30,9 +27,7 @@ def test_count_returns_pending(tmp_path):
     c = sqlite3.connect(tmp_path / "p.db")
     c.row_factory = sqlite3.Row
     apply_pending(c)
-    c.execute(
-        "INSERT INTO filter_proposals (pattern, pattern_norm, status) VALUES ('x','x','pending')"
-    )
+    c.execute("INSERT INTO filter_proposals (pattern, pattern_norm, status) VALUES ('x','x','pending')")
     c.commit()
 
     from findajob.web.routes.board import _filter_proposals_pending_count
@@ -68,9 +63,7 @@ def _make_client(tmp_path: Path, monkeypatch):
 
 def test_dashboard_surfaces_filter_proposals_banner(tmp_path, monkeypatch):
     conn, client = _make_client(tmp_path, monkeypatch)
-    conn.execute(
-        "INSERT INTO filter_proposals (pattern, pattern_norm, status) VALUES ('x','x','pending')"
-    )
+    conn.execute("INSERT INTO filter_proposals (pattern, pattern_norm, status) VALUES ('x','x','pending')")
     conn.commit()
     r = client.get("/board/dashboard")
     assert r.status_code == 200

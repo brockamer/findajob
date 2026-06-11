@@ -1,5 +1,7 @@
 import sqlite3
+
 import pytest
+
 from findajob.db.migrate import apply_pending
 from findajob.scoring import _feedback_clusters
 
@@ -16,12 +18,11 @@ def conn(tmp_path):
 
 def test_clusters_group_by_reason_and_apply_exclusions(conn):
     conn.executemany(
-        "INSERT INTO feedback_log (job_id, title, company, relevance_score, reject_reason) "
-        "VALUES (?, ?, 'Acme', 8, ?)",
+        "INSERT INTO feedback_log (job_id, title, company, relevance_score, reject_reason) VALUES (?, ?, 'Acme', 8, ?)",
         [
             ("a", "Director Ops", "Too Senior"),
             ("b", "VP Ops", "Too Senior"),
-            ("c", "Closed Role", "Stale/Closed"),   # housekeeping → excluded
+            ("c", "Closed Role", "Stale/Closed"),  # housekeeping → excluded
         ],
     )
     conn.commit()
