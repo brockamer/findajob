@@ -98,3 +98,20 @@ def test_revert_restores_scores_and_removes_rule(conn):
     config_loader._reset_cache()
     reject_re, _ = config_loader.load_hard_reject_rules()
     assert not reject_re.search("Fleet Readiness Manager")
+
+
+def test_revert_removes_edited_pattern(conn):
+    """Operator edits the regex before applying; revert must remove the EDITED rule,
+    not the originally-seeded one. Regression for the apply/revert pattern divergence."""
+    pid = _seed_proposal(conn, r"\bfleet\b")          # original mined pattern
+    _seed_job(conn, "j1", "Fleet Readiness Manager", 5)  # score 5 → no danger, applies directly
+    # Operator narrows the regex, then applies the EDITED pattern.
+    filter_proposals.apply_proposal(conn, pid, r"\bfleet\s+readiness\b", force=True)
+    config_loader._reset_cache()
+    reject_re, _ = config_loader.load_hard_reject_rules()
+    assert reject_re.search("Fleet Readiness Manager"), "edited rule should be live after apply"
+    # Revert must remove the EDITED rule.
+    assert filter_proposals.revert_proposal(conn, pid) is True
+    config_loader._reset_cache()
+    reject_re2, _ = config_loader.load_hard_reject_rules()
+    assert not reject_re2.search("Fleet Readiness Manager"), "revert must remove the live (edited) rule"

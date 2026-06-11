@@ -166,8 +166,8 @@ def apply_proposal(
     config_change_id = cur.lastrowid
     conn.execute(
         "UPDATE filter_proposals SET status='applied', decided_at=?, "
-        "config_change_id=?, affected_jobs=? WHERE id=?",
-        (now, config_change_id, json.dumps(affected), proposal_id),
+        "config_change_id=?, affected_jobs=?, pattern=? WHERE id=?",
+        (now, config_change_id, json.dumps(affected), pattern, proposal_id),
     )
 
     # Write the live rule LAST — if it raises (e.g. duplicate/invalid), roll back so
@@ -205,8 +205,9 @@ def revert_proposal(conn: sqlite3.Connection, proposal_id: int) -> bool:
 
     try:
         remove_prefilter_title_pattern(prop["pattern"], category=_AUTO_CATEGORY)
-    except Exception:
-        # Rule already gone (manual edit) — proceed to restore + mark reverted.
+    except ConfigError:
+        # Rule already removed (e.g. operator hand-edited the file) — still restore
+        # scores + mark reverted. Other exceptions propagate.
         pass
 
     now = datetime.now(UTC).isoformat()
