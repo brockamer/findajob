@@ -143,10 +143,19 @@ def test_effectiveness_tab_active_marker(client: TestClient) -> None:
     assert 'aria-current="page"' in snippet
 
 
-def test_top_nav_stats_link_resolves(client: TestClient) -> None:
+def test_top_nav_omits_stats_link(client: TestClient) -> None:
+    # Tier-1 stats strip: the /stats/* routes still exist (reachable by URL) but the
+    # top-nav "Stats" entry is removed to de-emphasize the stats platform in favour of
+    # the filter-proposals loop. Assert the top nav (the bg-slate-800 block) no longer
+    # surfaces a Stats link. Checked on a non-stats page so the stats sub-tab bar can't
+    # mask the result.
     r = client.get("/stats/funnel")
     assert r.status_code == 200
-    assert 'href="/stats/funnel"' in r.text
-    # Top nav highlights "Stats" as active via aria-current when on any /stats/* page.
-    # Find the Stats link in the top nav and assert aria-current appears nearby.
-    assert 'aria-current="page"' in r.text
+    # The top nav is the bg-slate-800 <nav> block; the stats sub-tab bar is a
+    # separate element rendered after it, so extracting up to the first </nav>
+    # isolates the top nav and the sub-tabs can't mask the assertion.
+    nav_start = r.text.index('class="bg-slate-800')
+    top_nav = r.text[nav_start : r.text.index("</nav>", nav_start)]
+    assert "Board" in top_nav  # nav still renders its other groups
+    assert "/stats/" not in top_nav
+    assert "Stats" not in top_nav

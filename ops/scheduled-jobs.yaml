@@ -95,11 +95,11 @@ jobs:
   recall-audit:
     schedule: "0 4 * * 0"
     command: "timeout 1800 python3 /app/scripts/recall_audit.py"
-    description: "Sunday 04:00 — sample 40 hard-rejected/low-scored jobs, re-score with auditor model, alert if upgrade rate >10% (#230)."
-    enabled: true
+    description: "Sunday 04:00 — sample 40 hard-rejected/low-scored jobs, re-score with auditor model, alert if upgrade rate >10% (#230). DISABLED (Tier-1 stats strip): stats-platform observability de-scoped in favor of the filter-proposals loop. Re-enable via FINDAJOB_RECALL_AUDIT_ENABLED=true."
+    enabled: false
 
   drift-alert:
     schedule: "0 7 * * *"
     command: "timeout 120 python3 /app/scripts/drift_alert.py"
-    description: "Daily 07:00 — check config_changes from 7 days ago, compute before/after metrics, alert on significant shifts (#230)."
-    enabled: true
+    description: "Daily 07:00 — check config_changes from 7 days ago, compute before/after metrics, alert on significant shifts (#230). DISABLED (Tier-1 stats strip): stats-platform observability de-scoped in favor of the filter-proposals loop. Re-enable via FINDAJOB_DRIFT_ALERT_ENABLED=true."
+    enabled: false
