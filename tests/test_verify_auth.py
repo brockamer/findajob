@@ -114,3 +114,34 @@ def test_returns_0_on_healthy_gate(creds_set: None) -> None:
     ]
     with patch.object(verify_auth, "_probe", side_effect=sequence):
         assert verify_auth.main() == 0
+
+
+# --- #1062: probe port follows FINDAJOB_INTERNAL_PORT ----------------------
+# Web-launched Fly apps serve on 8080 via FINDAJOB_INTERNAL_PORT (#1010/#1011).
+# A hardcoded :8090 probe produces exit 5 on a healthy 8080 instance and
+# triggers the "tear down the stack" hard rule. The probe URL must resolve
+# at call time so the verifier hits the port the app actually serves on.
+
+
+def test_probe_url_uses_env_port_when_set(monkeypatch: pytest.MonkeyPatch) -> None:
+    """FINDAJOB_INTERNAL_PORT=8080 must produce a probe URL on port 8080."""
+    monkeypatch.setenv("FINDAJOB_INTERNAL_PORT", "8080")
+    assert verify_auth._probe_url() == "http://127.0.0.1:8080/board/dashboard"
+
+
+def test_probe_url_falls_back_to_8090_when_env_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unset FINDAJOB_INTERNAL_PORT must keep the 8090 default (docker stacks,
+    CLI-deployed Fly via ops/fly.toml — unchanged by #1010/#1011)."""
+    monkeypatch.delenv("FINDAJOB_INTERNAL_PORT", raising=False)
+    assert verify_auth._probe_url() == "http://127.0.0.1:8090/board/dashboard"
+
+
+def test_probe_url_falls_back_to_8090_when_env_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Empty-string env var (compose env_file with FINDAJOB_INTERNAL_PORT=) must
+    not probe :0 — treat as unset, fall back to 8090."""
+    monkeypatch.setenv("FINDAJOB_INTERNAL_PORT", "")
+    assert verify_auth._probe_url() == "http://127.0.0.1:8090/board/dashboard"

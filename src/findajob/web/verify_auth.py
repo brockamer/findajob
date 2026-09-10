@@ -24,12 +24,20 @@ import sys
 import urllib.error
 import urllib.request
 
-_PROBE_URL = "http://127.0.0.1:8090/board/dashboard"
 _TIMEOUT = 10.0
 
 
+def _probe_url() -> str:
+    """Resolve the probe URL at call time so we hit the port the app is
+    actually serving on. Docker stacks and CLI-deployed Fly use the default
+    8090; web-launched Fly apps set FINDAJOB_INTERNAL_PORT=8080 (#1010/#1011).
+    """
+    port = os.environ.get("FINDAJOB_INTERNAL_PORT", "").strip() or "8090"
+    return f"http://127.0.0.1:{port}/board/dashboard"
+
+
 def _probe(headers: dict[str, str]) -> tuple[int, dict[str, str]]:
-    req = urllib.request.Request(_PROBE_URL, headers=headers)
+    req = urllib.request.Request(_probe_url(), headers=headers)
     try:
         r = urllib.request.urlopen(req, timeout=_TIMEOUT)  # noqa: S310
         return r.status, dict(r.headers)
