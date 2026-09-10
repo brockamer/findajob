@@ -24,12 +24,25 @@ import sys
 import urllib.error
 import urllib.request
 
-_PROBE_URL = "http://127.0.0.1:8090/board/dashboard"
+# Probe URL is env-driven so the verifier follows the port uvicorn actually
+# serves on (#1010/#1011 introduced FINDAJOB_INTERNAL_PORT — web-launched Fly
+# apps set it to 8080; compose / CLI-deployed Fly / docker stacks leave it
+# unset and stay on the original 8090, matching ops/entrypoint.sh's uvicorn
+# launch via `${FINDAJOB_INTERNAL_PORT:-8090}`). The 8090 below is the
+# fallback default, not a hardcoded probe target.
+_PROBE_PATH = "/board/dashboard"
+_PROBE_HOST = "127.0.0.1"
+_DEFAULT_PORT = "8090"
 _TIMEOUT = 10.0
 
 
+def _probe_url() -> str:
+    port = os.environ.get("FINDAJOB_INTERNAL_PORT", _DEFAULT_PORT)
+    return f"http://{_PROBE_HOST}:{port}{_PROBE_PATH}"
+
+
 def _probe(headers: dict[str, str]) -> tuple[int, dict[str, str]]:
-    req = urllib.request.Request(_PROBE_URL, headers=headers)
+    req = urllib.request.Request(_probe_url(), headers=headers)
     try:
         r = urllib.request.urlopen(req, timeout=_TIMEOUT)  # noqa: S310
         return r.status, dict(r.headers)

@@ -114,3 +114,67 @@ def test_returns_0_on_healthy_gate(creds_set: None) -> None:
     ]
     with patch.object(verify_auth, "_probe", side_effect=sequence):
         assert verify_auth.main() == 0
+
+
+def test_probe_url_defaults_to_8090_when_port_env_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When FINDAJOB_INTERNAL_PORT is unset, the probe falls back to 8090.
+
+    Matches the compose / docker / CLI-deployed-Fly default; a healthy 8090
+    stack must still be probed on 8090. Without this test, a future
+    refactor that drops the fallback (or moves the default port) silently
+    regresses every docker stack.
+    """
+    monkeypatch.delenv("FINDAJOB_INTERNAL_PORT", raising=False)
+    assert verify_auth._probe_url() == "http://127.0.0.1:8090/board/dashboard"
+
+
+def test_probe_url_uses_findajob_internal_port_when_set(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When FINDAJOB_INTERNAL_PORT is set, the probe uses it verbatim.
+
+    Web-launched Fly apps set FINDAJOB_INTERNAL_PORT=8080 (#1010/#1011) —
+    a hardcoded 8090 probe would hit a closed port and falsely report exit 5
+    on a healthy gate, triggering the documented tear-down contract.
+    """
+    monkeypatch.setenv("FINDAJOB_INTERNAL_PORT", "8080")
+    assert verify_auth._probe_url() == "http://127.0.0.1:8080/board/dashboard"
+
+
+def test_probe_requests_the_env_driven_url(creds_set: None) -> None:
+    """Wiring guard: `_probe` requests the URL `_probe_url()` builds.
+
+    Asserts the probe and the URL builder share the same source of truth —
+    catches a regression where one is updated and the other isn't (e.g. a
+    stale `_PROBE_URL` constant resurfacing). We capture via
+    `urllib.request.urlopen` rather than patching `_probe`, because patching
+    `_probe` with `side_effect` replaces it with a Mock that never invokes
+    `_probe_url()` at all.
+    """
+    captured: list[str] = []
+
+    class _FakeResponse:
+        def __init__(self, status: int, headers: dict[str, str]) -> None:
+            self.status = status
+            self.headers = headers
+
+        def __enter__(self) -> _FakeResponse:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+    responses = iter(
+        [
+            _FakeResponse(401, {"WWW-Authenticate": 'Basic realm="findajob"'}),
+            _FakeResponse(200, {}),
+        ]
+    )
+
+    def fake_urlopen(req: object, timeout: float = 0) -> _FakeResponse:  # noqa: ARG001
+        captured.append(req.full_url)  # type: ignore[attr-defined]
+        return next(responses)
+
+    with patch("urllib.request.urlopen", fake_urlopen):
+        assert verify_auth.main() == 0
+
+    expected = verify_auth._probe_url()
+    assert captured == [expected, expected]  # anon + authed probes both hit it
