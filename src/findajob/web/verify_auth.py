@@ -24,12 +24,23 @@ import sys
 import urllib.error
 import urllib.request
 
-_PROBE_URL = "http://127.0.0.1:8090/board/dashboard"
 _TIMEOUT = 10.0
 
 
+def _probe_url() -> str:
+    """Build the local probe URL, honoring FINDAJOB_INTERNAL_PORT (#1062).
+
+    The app serves on the port uvicorn binds in ops/entrypoint.sh, which reads
+    FINDAJOB_INTERNAL_PORT (default 8090). verify_auth must probe that same port
+    — otherwise web-launched Fly instances serving on 8080 fail the post-deploy
+    gate with a false exit 5 on a healthy app.
+    """
+    port = os.environ.get("FINDAJOB_INTERNAL_PORT", "8090")
+    return f"http://127.0.0.1:{port}/board/dashboard"
+
+
 def _probe(headers: dict[str, str]) -> tuple[int, dict[str, str]]:
-    req = urllib.request.Request(_PROBE_URL, headers=headers)
+    req = urllib.request.Request(_probe_url(), headers=headers)
     try:
         r = urllib.request.urlopen(req, timeout=_TIMEOUT)  # noqa: S310
         return r.status, dict(r.headers)

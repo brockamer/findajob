@@ -114,3 +114,17 @@ def test_returns_0_on_healthy_gate(creds_set: None) -> None:
     ]
     with patch.object(verify_auth, "_probe", side_effect=sequence):
         assert verify_auth.main() == 0
+
+
+def test_probe_url_defaults_to_8090(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When FINDAJOB_INTERNAL_PORT is unset, the probe targets port 8090
+    (the compose / CLI / ops-fly.toml default — #1011)."""
+    monkeypatch.delenv("FINDAJOB_INTERNAL_PORT", raising=False)
+    assert verify_auth._probe_url() == "http://127.0.0.1:8090/board/dashboard"
+
+
+def test_probe_url_reads_env_when_8080(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Web-launched Fly apps serve on 8080 (#1011); the probe must follow
+    FINDAJOB_INTERNAL_PORT so a healthy 8080 app returns exit 0, not 5."""
+    monkeypatch.setenv("FINDAJOB_INTERNAL_PORT", "8080")
+    assert verify_auth._probe_url() == "http://127.0.0.1:8080/board/dashboard"
