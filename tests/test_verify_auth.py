@@ -128,9 +128,7 @@ def test_build_probe_url_defaults_to_8090(monkeypatch: pytest.MonkeyPatch) -> No
     assert verify_auth._build_probe_url() == "http://127.0.0.1:8090/board/dashboard"
 
 
-def test_main_uses_env_port_for_probe(
-    creds_set: None, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_main_uses_env_port_for_probe(creds_set: None, monkeypatch: pytest.MonkeyPatch) -> None:
     """main() must build the probe URL from FINDAJOB_INTERNAL_PORT, not 8090 (#1062).
 
     Captures the URL passed to _probe and asserts both the anonymous and
@@ -152,9 +150,7 @@ def test_main_uses_env_port_for_probe(
     assert all(u == "http://127.0.0.1:8080/board/dashboard" for u in captured)
 
 
-def test_main_defaults_to_8090_when_env_unset(
-    creds_set: None, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_main_defaults_to_8090_when_env_unset(creds_set: None, monkeypatch: pytest.MonkeyPatch) -> None:
     """With FINDAJOB_INTERNAL_PORT unset, probes default to 8090 (#1062)."""
     monkeypatch.delenv("FINDAJOB_INTERNAL_PORT", raising=False)
     captured: list[str] = []
