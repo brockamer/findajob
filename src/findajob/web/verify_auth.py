@@ -24,12 +24,27 @@ import sys
 import urllib.error
 import urllib.request
 
-_PROBE_URL = "http://127.0.0.1:8090/board/dashboard"
+# Default port matches ops/entrypoint.sh's ${FINDAJOB_INTERNAL_PORT:-8090}
+# and the internal_port in ops/fly.toml. Keep the default in sync.
+_DEFAULT_INTERNAL_PORT = "8090"
 _TIMEOUT = 10.0
 
 
-def _probe(headers: dict[str, str]) -> tuple[int, dict[str, str]]:
-    req = urllib.request.Request(_PROBE_URL, headers=headers)
+def _build_probe_url() -> str:
+    """Build the probe URL from FINDAJOB_INTERNAL_PORT (default 8090).
+
+    Read from ``os.environ`` at call time so that values loaded by
+    ``load_env()`` in ``main()`` (from ``data/.env``) are visible alongside
+    container-env values (Fly secrets, compose ``env_file``). Matches
+    ``ops/entrypoint.sh``'s ``--port ${FINDAJOB_INTERNAL_PORT:-8090}`` so
+    the verifier probes the port the app actually serves on (#1062).
+    """
+    port = os.environ.get("FINDAJOB_INTERNAL_PORT", _DEFAULT_INTERNAL_PORT)
+    return f"http://127.0.0.1:{port}/board/dashboard"
+
+
+def _probe(url: str, headers: dict[str, str]) -> tuple[int, dict[str, str]]:
+    req = urllib.request.Request(url, headers=headers)
     try:
         r = urllib.request.urlopen(req, timeout=_TIMEOUT)  # noqa: S310
         return r.status, dict(r.headers)
@@ -60,8 +75,13 @@ def main() -> int:
         )
         return 2
 
+    # Build the probe URL AFTER load_env() so FINDAJOB_INTERNAL_PORT from
+    # data/.env (e.g. operator-set during onboarding) is honored alongside
+    # container-env values. (#1062)
+    probe_url = _build_probe_url()
+
     try:
-        anon_code, anon_headers = _probe({})
+        anon_code, anon_headers = _probe(probe_url, {})
     except Exception as exc:  # noqa: BLE001
         print(f"FAIL: anonymous probe raised {type(exc).__name__}: {exc}", file=sys.stderr)
         return 5
@@ -77,7 +97,7 @@ def main() -> int:
 
     auth_header = "Basic " + base64.b64encode(f"{user}:{password}".encode()).decode("ascii")
     try:
-        authed_code, _ = _probe({"Authorization": auth_header})
+        authed_code, _ = _probe(probe_url, {"Authorization": auth_header})
     except Exception as exc:  # noqa: BLE001
         print(f"FAIL: authenticated probe raised {type(exc).__name__}: {exc}", file=sys.stderr)
         return 5

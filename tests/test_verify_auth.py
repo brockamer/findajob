@@ -98,7 +98,7 @@ def test_returns_5_when_authenticated_probe_raises(creds_set: None) -> None:
         (401, {"WWW-Authenticate": 'Basic realm="findajob"'}),
     ]
 
-    def probe_side_effect(_headers: dict[str, str]) -> tuple[int, dict[str, str]]:
+    def probe_side_effect(_url: str, _headers: dict[str, str]) -> tuple[int, dict[str, str]]:
         if sequence:
             return sequence.pop(0)
         raise TimeoutError("authed probe stalled")
@@ -114,3 +114,60 @@ def test_returns_0_on_healthy_gate(creds_set: None) -> None:
     ]
     with patch.object(verify_auth, "_probe", side_effect=sequence):
         assert verify_auth.main() == 0
+
+
+def test_build_probe_url_uses_env_port(monkeypatch: pytest.MonkeyPatch) -> None:
+    """FINDAJOB_INTERNAL_PORT=8080 must route the probe to 8080, not 8090 (#1062)."""
+    monkeypatch.setenv("FINDAJOB_INTERNAL_PORT", "8080")
+    assert verify_auth._build_probe_url() == "http://127.0.0.1:8080/board/dashboard"
+
+
+def test_build_probe_url_defaults_to_8090(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When FINDAJOB_INTERNAL_PORT is unset, the probe falls back to 8090."""
+    monkeypatch.delenv("FINDAJOB_INTERNAL_PORT", raising=False)
+    assert verify_auth._build_probe_url() == "http://127.0.0.1:8090/board/dashboard"
+
+
+def test_main_uses_env_port_for_probe(
+    creds_set: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """main() must build the probe URL from FINDAJOB_INTERNAL_PORT, not 8090 (#1062).
+
+    Captures the URL passed to _probe and asserts both the anonymous and
+    authenticated probes hit the env-configured port.
+    """
+    monkeypatch.setenv("FINDAJOB_INTERNAL_PORT", "8080")
+    captured: list[str] = []
+
+    def capture_url(url: str, headers: dict[str, str]) -> tuple[int, dict[str, str]]:
+        captured.append(url)
+        if "Authorization" in headers:
+            return (200, {})
+        return (401, {"WWW-Authenticate": 'Basic realm="findajob"'})
+
+    with patch.object(verify_auth, "_probe", side_effect=capture_url):
+        assert verify_auth.main() == 0
+
+    assert len(captured) == 2  # anonymous + authenticated
+    assert all(u == "http://127.0.0.1:8080/board/dashboard" for u in captured)
+
+
+def test_main_defaults_to_8090_when_env_unset(
+    creds_set: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With FINDAJOB_INTERNAL_PORT unset, probes default to 8090 (#1062)."""
+    monkeypatch.delenv("FINDAJOB_INTERNAL_PORT", raising=False)
+    captured: list[str] = []
+    sequence = [
+        (401, {"WWW-Authenticate": 'Basic realm="findajob"'}),
+        (200, {}),
+    ]
+
+    def capture_url(url: str, _headers: dict[str, str]) -> tuple[int, dict[str, str]]:
+        captured.append(url)
+        return sequence.pop(0)
+
+    with patch.object(verify_auth, "_probe", side_effect=capture_url):
+        assert verify_auth.main() == 0
+
+    assert all(u == "http://127.0.0.1:8090/board/dashboard" for u in captured)
