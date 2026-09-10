@@ -8,6 +8,7 @@ useful as the codes are reliable.
 
 from __future__ import annotations
 
+import urllib.request
 from collections.abc import Iterator
 from unittest.mock import patch
 
@@ -114,3 +115,40 @@ def test_returns_0_on_healthy_gate(creds_set: None) -> None:
     ]
     with patch.object(verify_auth, "_probe", side_effect=sequence):
         assert verify_auth.main() == 0
+
+
+def test_probe_url_defaults_to_8090_when_port_env_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Docker stacks and CLI-deployed Fly serve on the default port."""
+    monkeypatch.delenv("FINDAJOB_INTERNAL_PORT", raising=False)
+    assert verify_auth._probe_url() == "http://127.0.0.1:8090/board/dashboard"
+
+
+def test_probe_url_uses_findajob_internal_port_when_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Web-launched Fly apps serve on 8080 (#1010/#1011) — the probe must follow."""
+    monkeypatch.setenv("FINDAJOB_INTERNAL_PORT", "8080")
+    assert verify_auth._probe_url() == "http://127.0.0.1:8080/board/dashboard"
+
+
+def test_probe_requests_the_env_driven_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Wiring guard: _probe must request the URL _probe_url() builds, not a
+    stale module constant."""
+    monkeypatch.setenv("FINDAJOB_INTERNAL_PORT", "8080")
+    captured: dict[str, str] = {}
+
+    class _FakeResponse:
+        status = 401
+        headers = {"WWW-Authenticate": 'Basic realm="findajob"'}
+
+    def fake_urlopen(req: urllib.request.Request, timeout: float | None = None) -> _FakeResponse:
+        captured["url"] = req.full_url
+        return _FakeResponse()
+
+    with patch.object(verify_auth.urllib.request, "urlopen", fake_urlopen):
+        code, _headers = verify_auth._probe({})
+
+    assert code == 401
+    assert captured["url"] == "http://127.0.0.1:8080/board/dashboard"
