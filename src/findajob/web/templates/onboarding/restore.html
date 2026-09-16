@@ -40,6 +40,18 @@
     </p>
     <form method="post" action="/onboarding/restore/upload" enctype="multipart/form-data">
       <input type="hidden" name="confirm_overwrite" value="yes">
+      {% if needs_setup_token %}
+      <label class="block text-sm font-medium text-slate-800 mt-3">
+        Setup token
+        <input type="text" name="setup_token" required autocomplete="off"
+               class="mt-2 block w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm" />
+        <span class="mt-1 block text-xs text-slate-500">
+          This stack has no username and password set yet, so the setup token is
+          required. Find it in your container logs — search for
+          <code>FINDAJOB_SETUP_TOKEN</code>.
+        </span>
+      </label>
+      {% endif %}
       <label class="block text-sm font-medium text-amber-900 mb-2">
         Upload the tarball to confirm overwrite
         <input type="file" name="backup_tarball" accept=".tar.gz,.tgz" required
@@ -70,6 +82,18 @@
                     file:text-sm file:font-medium file:text-white
                     hover:file:bg-slate-700" />
     </label>
+    {% if needs_setup_token %}
+    <label class="block text-sm font-medium text-slate-800 mt-3">
+      Setup token
+      <input type="text" name="setup_token" required autocomplete="off"
+           class="mt-2 block w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm" />
+      <span class="mt-1 block text-xs text-slate-500">
+        This stack has no username and password set yet, so the setup token is
+        required. Find it in your container logs — search for
+        <code>FINDAJOB_SETUP_TOKEN</code>.
+      </span>
+    </label>
+    {% endif %}
     <p class="text-xs text-slate-500">
       Maximum size: {{ max_upload_mb }}&thinsp;MB. Must be a <code>.tar.gz</code>
       with the standard <code>state/</code> layout.

@@ -37,6 +37,11 @@ def _make_valid_tarball() -> bytes:
     return buf.getvalue()
 
 
+def _setup_token(client: TestClient) -> str:
+    """The token POST /onboarding/restore/upload requires while auth is unset."""
+    return client.app.state.setup_token  # type: ignore[attr-defined]
+
+
 @pytest.fixture
 def fresh_base(tmp_path: Path) -> Path:
     """Factory-clean base — no sentinel, no data."""
@@ -90,6 +95,7 @@ class TestPostRestore:
         tarball = _make_valid_tarball()
         r = client.post(
             "/onboarding/restore/upload",
+            data={"setup_token": _setup_token(client)},
             files={"backup_tarball": ("backup.tar.gz", io.BytesIO(tarball), "application/gzip")},
             follow_redirects=False,
         )
@@ -103,6 +109,7 @@ class TestPostRestore:
         tarball = _make_valid_tarball()
         r = client.post(
             "/onboarding/restore/upload",
+            data={"setup_token": _setup_token(client)},
             files={"backup_tarball": ("backup.tar.gz", io.BytesIO(tarball), "application/gzip")},
             follow_redirects=False,
         )
@@ -114,7 +121,7 @@ class TestPostRestore:
         tarball = _make_valid_tarball()
         r = client.post(
             "/onboarding/restore/upload",
-            data={"confirm_overwrite": "yes"},
+            data={"confirm_overwrite": "yes", "setup_token": _setup_token(client)},
             files={"backup_tarball": ("backup.tar.gz", io.BytesIO(tarball), "application/gzip")},
             follow_redirects=False,
         )
@@ -124,6 +131,7 @@ class TestPostRestore:
         client = _client(fresh_base)
         r = client.post(
             "/onboarding/restore/upload",
+            data={"setup_token": _setup_token(client)},
             files={"backup_tarball": ("bad.tar.gz", io.BytesIO(b"not a tarball"), "application/gzip")},
             follow_redirects=False,
         )
@@ -134,3 +142,69 @@ class TestPostRestore:
         client = _client(fresh_base)
         r = client.get("/onboarding/restore/")
         assert "/onboarding/" in r.text
+
+
+class TestSetupTokenGate:
+    """POST /onboarding/restore/upload must carry the same gate as /onboarding/auth.
+
+    Restore replaces data/, config/, candidate_context/, companies/ and logs/
+    wholesale and can plant a data/.env whose credentials go live on the next
+    restart.  While Basic Auth is unset -- the bootstrap window, or a
+    perimeter-only deployment -- an unauthenticated caller previously reached it
+    with nothing but a forged confirm_overwrite field.
+    """
+
+    def test_upload_without_token_is_refused(self, fresh_base: Path) -> None:
+        client = _client(fresh_base)
+        r = client.post(
+            "/onboarding/restore/upload",
+            files={"backup_tarball": ("backup.tar.gz", io.BytesIO(_make_valid_tarball()), "application/gzip")},
+            follow_redirects=False,
+        )
+        assert r.status_code == 401
+        assert "setup token" in r.text.lower()
+        assert not (fresh_base / "data" / ".onboarding-complete").exists()
+
+    def test_upload_with_wrong_token_is_refused(self, fresh_base: Path) -> None:
+        client = _client(fresh_base)
+        r = client.post(
+            "/onboarding/restore/upload",
+            data={"setup_token": "not-the-token"},
+            files={"backup_tarball": ("backup.tar.gz", io.BytesIO(_make_valid_tarball()), "application/gzip")},
+            follow_redirects=False,
+        )
+        assert r.status_code == 401
+        assert not (fresh_base / "data" / ".onboarding-complete").exists()
+
+    def test_confirm_overwrite_alone_cannot_bypass_the_gate(self, onboarded_base: Path) -> None:
+        """The overwrite confirm is a form field, not an authorisation."""
+        client = _client(onboarded_base)
+        r = client.post(
+            "/onboarding/restore/upload",
+            data={"confirm_overwrite": "yes"},
+            files={"backup_tarball": ("backup.tar.gz", io.BytesIO(_make_valid_tarball()), "application/gzip")},
+            follow_redirects=False,
+        )
+        assert r.status_code == 401
+
+    def test_gate_is_skipped_once_basic_auth_is_active(self, fresh_base: Path) -> None:
+        """With auth configured the middleware already gates every request."""
+        client = _client(fresh_base)
+        client.app.state.auth_user = "operator"  # type: ignore[attr-defined]
+        client.app.state.auth_pass = "secret"  # type: ignore[attr-defined]
+        # The middleware now guards every request, so authenticate as the
+        # operator would.  No setup token is supplied: that is the point.
+        r = client.post(
+            "/onboarding/restore/upload",
+            files={"backup_tarball": ("backup.tar.gz", io.BytesIO(_make_valid_tarball()), "application/gzip")},
+            auth=("operator", "secret"),
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+
+    def test_form_shows_the_token_field_only_when_auth_is_unset(self, fresh_base: Path) -> None:
+        client = _client(fresh_base)
+        assert 'name="setup_token"' in client.get("/onboarding/restore/").text
+        client.app.state.auth_user = "operator"  # type: ignore[attr-defined]
+        client.app.state.auth_pass = "secret"  # type: ignore[attr-defined]
+        assert 'name="setup_token"' not in client.get("/onboarding/restore/").text
