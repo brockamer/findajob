@@ -233,3 +233,74 @@ class TestRestoreFromTarball:
 
         remaining = [p.name for p in base.iterdir() if p.name.startswith(".restore-")]
         assert remaining == []
+
+
+class TestMigrationFailureRollsBack:
+    """A returned (not raised) migration error must unwind the swap.
+
+    Before the fix, `restore_from_tarball` returned `RestoreResult(success=False)`
+    straight out of the migration branch, skipping the `except` handler that is
+    the function's only caller of `_attempt_rollback`. The destructive directory
+    swap therefore stood, and the orphaned `.restore-rollback-<ts>/` holding the
+    operator's real pre-restore state was swept up and deleted by the next
+    successful restore.
+    """
+
+    def test_pre_restore_db_is_restored_on_migration_failure(self, monkeypatch) -> None:
+        from findajob.web import restore as restore_mod
+
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            (base / "data").mkdir(parents=True)
+            original = b"ORIGINAL-PRE-RESTORE-DB"
+            (base / "data" / "pipeline.db").write_bytes(original)
+
+            monkeypatch.setattr(restore_mod, "_run_schema_migration", lambda _p: "schema migration failed")
+            result = restore_from_tarball(_make_tarball(), base)
+
+            assert result.success is False
+            assert (base / "data" / "pipeline.db").read_bytes() == original, (
+                "the swap was left standing: the failed backup's DB is live"
+            )
+
+    def test_no_restore_workdir_survives_a_failed_restore(self, monkeypatch) -> None:
+        from findajob.web import restore as restore_mod
+
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            (base / "data").mkdir(parents=True)
+            (base / "data" / "pipeline.db").write_bytes(b"ORIGINAL")
+
+            monkeypatch.setattr(restore_mod, "_run_schema_migration", lambda _p: "boom")
+            restore_from_tarball(_make_tarball(), base)
+
+            leftovers = [
+                p.name
+                for p in (base / "data").iterdir()
+                if p.name.startswith((".restore-staging-", ".restore-rollback-"))
+            ]
+            assert leftovers == [], f"orphaned restore work dirs left behind: {leftovers}"
+
+    def test_a_stray_work_dir_is_never_swept_by_a_later_restore(self) -> None:
+        """Defence in depth: a leftover from any prior attempt must survive.
+
+        `skip_names` previously held only the current attempt's two exact
+        directory names, so a `.restore-rollback-<older-ts>/` was treated as
+        ordinary content -- moved into this attempt's rollback dir and then
+        rmtree'd by `_cleanup(rollback)` on success.
+        """
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            (base / "data").mkdir(parents=True)
+            (base / "data" / "pipeline.db").write_bytes(b"ORIGINAL")
+
+            stray = base / "data" / ".restore-rollback-20260101T000000Z"
+            stray.mkdir()
+            (stray / "pipeline.db").write_bytes(b"THE-ONLY-COPY")
+
+            result = restore_from_tarball(_make_tarball(), base)
+
+            assert result.success is True
+            assert (stray / "pipeline.db").read_bytes() == b"THE-ONLY-COPY", (
+                "a prior attempt's rollback dir was swept up and destroyed"
+            )

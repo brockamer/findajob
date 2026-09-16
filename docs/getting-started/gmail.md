@@ -24,8 +24,10 @@ test mechanic are identical.
 findajob reads job-alert emails from senders you list (LinkedIn by
 default) so it can score them and surface them on your board. It
 **does not** read other mail, send mail, modify labels, or move
-messages. Your app password lives only in your findajob — never on a
-server we control.
+messages. Your app password is stored only on the findajob instance you
+use; the findajob project never receives it. If someone else operates
+that instance for you, the password is stored on their server and they
+are able to read it.
 
 findajob is open source. You can audit the exact code that touches
 your mailbox before granting access:

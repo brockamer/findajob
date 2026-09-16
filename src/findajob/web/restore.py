@@ -34,6 +34,8 @@ _REQUIRED_ENTRIES = frozenset(
 _STATE_DIRS = ("data", "config", "candidate_context", "companies", "logs")
 
 _SECRETS_FILES = ("data/.env", "config/gmail.json")
+_STAGING_PREFIX = ".restore-staging-"
+_ROLLBACK_PREFIX = ".restore-rollback-"
 
 
 @dataclass(frozen=True)
@@ -90,8 +92,8 @@ def restore_from_tarball(raw: bytes, base: Path) -> RestoreResult:
     # (e.g. /app/ in Docker where only bind-mounted subdirs are writable).
     work_root = base / "data"
     work_root.mkdir(parents=True, exist_ok=True)
-    staging = work_root / f".restore-staging-{ts}"
-    rollback = work_root / f".restore-rollback-{ts}"
+    staging = work_root / f"{_STAGING_PREFIX}{ts}"
+    rollback = work_root / f"{_ROLLBACK_PREFIX}{ts}"
 
     try:
         staging.mkdir(parents=True, exist_ok=True)
@@ -161,14 +163,14 @@ def restore_from_tarball(raw: bytes, base: Path) -> RestoreResult:
                 rollback_dest = rollback / dirname
                 rollback_dest.mkdir(parents=True, exist_ok=True)
                 for child in existing.iterdir():
-                    if child.name in skip_names:
+                    if _is_restore_workdir(child.name, skip_names):
                         continue
                     shutil.move(str(child), str(rollback_dest / child.name))
             else:
                 existing.mkdir(parents=True, exist_ok=True)
 
             for child in staged.iterdir():
-                if child.name in skip_names:
+                if _is_restore_workdir(child.name, skip_names):
                     continue
                 shutil.move(str(child), str(existing / child.name))
 
@@ -181,6 +183,13 @@ def restore_from_tarball(raw: bytes, base: Path) -> RestoreResult:
         if db_path.is_file():
             migrate_error = _run_schema_migration(db_path)
             if migrate_error:
+                # A returned (not raised) migration error must unwind the swap
+                # exactly like the `except` branch below.  Without this the
+                # destructive swap stands, `rollback` is orphaned, and a second
+                # restore attempt sweeps it up and rmtree's it on success --
+                # destroying the only copy of the pre-restore state.
+                _attempt_rollback(base, rollback)
+                _cleanup(staging)
                 return RestoreResult(success=False, error=migrate_error)
 
         _cleanup(staging)
@@ -213,8 +222,28 @@ def _run_schema_migration(db_path: Path) -> str | None:
         conn.close()
 
 
+def _is_restore_workdir(name: str, skip_names: set[str]) -> bool:
+    """True for this attempt's work dirs and for any prior attempt's leftovers.
+
+    Matching only ``skip_names`` (this attempt's two exact names) let a
+    ``.restore-rollback-<older-ts>/`` orphaned by a previous failed restore be
+    treated as ordinary content: swept into the current attempt's rollback dir
+    and then ``rmtree``'d on success, destroying the last copy of the operator's
+    pre-restore state.  Match the prefixes instead.
+    """
+    return name in skip_names or name.startswith((_STAGING_PREFIX, _ROLLBACK_PREFIX))
+
+
 def _attempt_rollback(base: Path, rollback: Path) -> None:
-    """Best-effort reversal of a partial swap."""
+    """Best-effort reversal of a partial swap.
+
+    The work dirs live under ``base/data`` (BASE itself may be read-only), so
+    ``rollback`` is a child of one of the very directories this function
+    clears.  Without the ``_is_restore_workdir`` guard below the clearing loop
+    deletes the rollback tree it is about to read from: ``rb.iterdir()`` then
+    raises ``FileNotFoundError`` and ``base/data`` is left empty -- the restored
+    copy removed and the original destroyed.  Skip the work dirs.
+    """
     if not rollback.exists():
         return
     for dirname in _STATE_DIRS:
@@ -224,6 +253,8 @@ def _attempt_rollback(base: Path, rollback: Path) -> None:
         target = base / dirname
         if target.is_dir():
             for child in target.iterdir():
+                if _is_restore_workdir(child.name, set()):
+                    continue
                 try:
                     if child.is_dir():
                         shutil.rmtree(child, ignore_errors=True)
@@ -238,6 +269,12 @@ def _attempt_rollback(base: Path, rollback: Path) -> None:
                 shutil.move(str(child), str(target / child.name))
             except OSError:
                 pass
+
+    # Remove the rollback tree only when every file made it back.  If anything
+    # remains it is the last copy of that file, so leave it on disk for the
+    # operator rather than deleting it.
+    if not any(p.is_file() for p in rollback.rglob("*")):
+        _cleanup(rollback)
 
 
 def _cleanup(path: Path) -> None:

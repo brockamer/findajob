@@ -49,6 +49,27 @@ PATTERNS=(
     # "com\.yourhandle\."
 )
 
+# ── Credential files that must never be staged ────────────────────────────────
+# Unlike PATTERNS above, this list is NOT personal — every findajob clone has
+# the same credential files, and all of them are gitignored. Staging one is
+# always a mistake, so these stay uncommented.
+#
+# This is a PATH check, not a content check, on purpose: a content pattern such
+# as `OPENROUTER_API_KEY=` matches legitimate test fixtures (tests/test_restore.py
+# builds a tarball containing `OPENROUTER_API_KEY=sk-test`). A hook that blocks
+# honest commits gets disabled, and a disabled hook protects nothing.
+SECRET_PATHS=(
+    "config/gmail.json"
+    "config/gmail_state.json"
+    "config/gmail_token.json"
+    "config/gmail_oauth_client.json"
+    "config/gsheets_creds.json"
+    "data/.env"
+    "data/connections.csv"
+    "candidate_context/profile.md"
+    "candidate_context/master_resume.md"
+)
+
 # ── Check staged content ──────────────────────────────────────────────────────
 STAGED=$(git diff --cached --diff-filter=ACMR -U0 | grep '^+' | grep -v '^+++' || true)
 
@@ -60,6 +81,16 @@ ADDED_LINE_COUNT=$(echo -n "$STAGED" | grep -c '^+' || true)
 echo "pre-commit: PII scan: ${#PATTERNS[@]} patterns × ${ADDED_LINE_COUNT:-0} added lines" >&2
 
 FOUND=0
+
+STAGED_PATHS=$(git diff --cached --name-only --diff-filter=ACMR || true)
+for secret_path in "${SECRET_PATHS[@]}"; do
+    if echo "$STAGED_PATHS" | grep -qxF "$secret_path"; then
+        echo "pre-commit: blocked — staged a credential/PII file: $secret_path"
+        echo "pre-commit:   this file is gitignored; unstage it with: git restore --staged $secret_path"
+        FOUND=1
+    fi
+done
+
 for pattern in "${PATTERNS[@]}"; do
     # Skip empty patterns (all commented out is fine)
     [ -z "$pattern" ] && continue
