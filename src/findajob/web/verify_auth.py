@@ -11,6 +11,9 @@ Exit codes:
     4  authenticated probe with configured creds did not return 200
     5  unexpected exception talking to the local app (network, decode, etc.)
 
+The probe targets 127.0.0.1 on ``FINDAJOB_INTERNAL_PORT`` (default 8090),
+matching the port uvicorn is bound to by ``ops/entrypoint.sh``.
+
 Hard-rule contract: any non-zero exit must trigger
 `cd /opt/stacks/<stack> && docker compose down`. See CLAUDE.md
 "Auth Gate Must Be Verified Post-Deploy".
@@ -24,12 +27,28 @@ import sys
 import urllib.error
 import urllib.request
 
-_PROBE_URL = "http://127.0.0.1:8090/board/dashboard"
+_DEFAULT_INTERNAL_PORT = "8090"
 _TIMEOUT = 10.0
 
 
+def _probe_url() -> str:
+    """Build the probe URL against the port the app is actually served on.
+
+    ``ops/entrypoint.sh`` binds uvicorn to ``${FINDAJOB_INTERNAL_PORT:-8090}``
+    (#1011) — web-launched Fly apps set it to 8080 — so a probe pinned to 8090
+    returns a false exit 5 against a perfectly healthy gate (#1062). Shell
+    ``:-`` falls back when the variable is unset *or* empty; the ``or`` below
+    keeps parity so a set-but-empty value can't probe a port nothing bound.
+
+    Resolved at call time rather than import time so that ``main()``'s
+    ``load_env()`` — which reads ``data/.env`` — is honored.
+    """
+    port = os.environ.get("FINDAJOB_INTERNAL_PORT", "").strip() or _DEFAULT_INTERNAL_PORT
+    return f"http://127.0.0.1:{port}/board/dashboard"
+
+
 def _probe(headers: dict[str, str]) -> tuple[int, dict[str, str]]:
-    req = urllib.request.Request(_PROBE_URL, headers=headers)
+    req = urllib.request.Request(_probe_url(), headers=headers)
     try:
         r = urllib.request.urlopen(req, timeout=_TIMEOUT)  # noqa: S310
         return r.status, dict(r.headers)
