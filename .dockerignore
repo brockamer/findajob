@@ -33,23 +33,28 @@ manual_job.txt
 # unless excluded here. Keep PII and secrets out of the build entirely.
 CLAUDE.local.md
 
-# config/ — exclude operator-personal files (gitignored) by exact name so that
-# tracked config (roles/, scoring_schema.json, model_pricing.yaml, reference.docx,
-# strip-bookmarks.lua) stays in the build context and gets bundled into the image.
-# Keep this list in sync with .gitignore's config/ entries.
-config/gmail_oauth_client.json
-config/gmail_token.json
-config/gsheets_creds.json
-config/sheet_id.txt
-config/ntfy_topic.txt
-config/form_responses_sheet_id.txt
-config/feed_urls.txt
-config/jsearch_queries.txt
-config/target_companies.md
-config/companies_of_interest.txt
-config/prefilter_rules.yaml
-config/in_domain_patterns.yaml
-config/paths.env
+# config/ — DENY BY DEFAULT.  Everything under config/ is excluded, then the
+# tracked files the image actually needs are re-included by name.  The previous
+# form listed operator-personal files to exclude by exact name and carried a
+# "keep this in sync with .gitignore" comment; it drifted.  Eleven gitignored
+# paths -- including config/gmail.json, which holds a live IMAP app password --
+# were reaching the build context, and Dockerfile's `COPY config/
+# /opt/findajob/bundled-config/` puts anything in the context into the image.
+# ops/entrypoint.sh then copies bundled-config over $JSP_BASE/config on every
+# start, so a stray file does not just bloat the image, it overwrites the
+# running instance's own config.  A deny-list needs updating whenever a new
+# personal config file appears; this allow-list does not.
+config/*
+!config/roles/
+!config/tool_prompts/
+!config/model_pricing.yaml
+!config/scoring_schema.json
+!config/reference.docx
+!config/strip-bookmarks.lua
+!config/audit_exclusions.yaml
+!config/loose_ends_walkthroughs.yaml
+!config/loose_ends_walkthrough_exclusions.yaml
+!config/*.example
 
 # Editor / OS
 .DS_Store
