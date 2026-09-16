@@ -246,3 +246,10 @@ gh project item-edit \
   --field-id PVTSSF_lAHOAgGulc4BUtxZzhCOoMM \
   --single-select-option-id f94b6c8d
 ```
+
+## Jared config
+
+Project-level knobs that change Jared's behavior on this board. Each bullet is `name: value`. Omit any line to use its default.
+
+- voice: ste
+  Controls how Jared renders slash-command dialogue (`/jared`, `/jared-start`, `/jared-wrap`, etc.). Values: `enabled` (default) — the character voice; `disabled` — plain technical prose with the same structural content; `ste` — ASD-STE100 Simplified Technical English per the plugin's `references/voice-ste.md` (controlled vocabulary, active voice, sentence-length caps, no asides; machine strings, technical names, script output and board-write drafts pass through verbatim). Board writes (issue bodies, Session notes, PR text, commits) stay plain technical prose under every value. Set to `ste` on 2026-09-16 at the operator's request.
