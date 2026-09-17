@@ -10,6 +10,10 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`verify_auth` no longer fails a healthy gate on non-8090 instances** (#1062): the post-deploy auth-gate verifier hardcoded its probe URL to `http://127.0.0.1:8090/board/dashboard`, ignoring `FINDAJOB_INTERNAL_PORT`. On a web-launched Fly app — the recommended no-CLI install path, which serves **8080** (#1010/#1011) — the probe hit a closed port and returned exit 5 on an app whose auth gate was fine. Because the hard-rule contract (CLAUDE.md "Auth Gate Must Be Verified Post-Deploy") says any non-zero exit means tear the stack down, the documented install path could produce a false "tear down a healthy stack" signal; the CI auto-deploy verify (`ops/ci-fly-deploy.sh`, #914) has never exercised this path at all — its `command -v fly` preflight (lines 43-46) exits before the verify call at line 88, which is #1060 — so this fix needs to be on main before #1060 makes that call reachable. The probe URL is now built from `FINDAJOB_INTERNAL_PORT` (default 8090) at call time — after `load_env()`, so a port set in `data/.env` is honored — with the same unset-*or*-empty fallback semantics as `ops/entrypoint.sh`'s `${FINDAJOB_INTERNAL_PORT:-8090}`, so the verifier and uvicorn can't disagree about the port. Exit codes 2/3/4/5 are unchanged and a genuinely broken gate still reports the right one. 8090 instances (docker stacks, CLI-deployed Fly via `ops/fly.toml`) are unaffected. **No `migration-required`** — no new env var (`FINDAJOB_INTERNAL_PORT` already exists from #1011), no schema change, no default-port change.
+
 ## [0.34.1] — 2026-09-16
 
 ### Fixed
