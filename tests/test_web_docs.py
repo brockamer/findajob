@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import sqlite3
 import textwrap
 from pathlib import Path
@@ -10,6 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from findajob.web.app import create_app
+from findajob.web.markdown import render_markdown
 
 USAGE_MD = textwrap.dedent(
     """\
@@ -53,7 +55,20 @@ GETTING_STARTED_README_MD = textwrap.dedent(
 
 GETTING_STARTED_PREREQ_MD = "# Prerequisites\n\nNeeded before install.\n"
 GETTING_STARTED_START_HERE_FLY_MD = "# Start Here (Fly)\n\nThe beginner Fly install.\n"
-GETTING_STARTED_INSTALL_FLY_MD = "# Install on Fly\n\nThe CLI-tier Fly install.\n"
+GETTING_STARTED_INSTALL_FLY_MD = (
+    "# Install on Fly\n\nThe CLI-tier Fly install.\n\n"
+    "![Dashboard](install-fly-web/01-shot.png)\n\n"
+    "![Remote](https://example.com/remote.png)\n"
+)
+
+# getting-started/README.md maps to slug "getting-started" — the img src must
+# resolve against the source FILE's dir, not the slug's.
+GETTING_STARTED_README_IMG = "\n![Readme shot](install-fly-web/01-shot.png)\n"
+
+# Smallest valid PNG (1x1, transparent).
+_PNG_1X1 = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+)
 GETTING_STARTED_API_KEYS_MD = "# API Keys\n\nSign up for OpenRouter.\n"
 GETTING_STARTED_COST_MD = "# Cost\n\nWhat this costs to run.\n"
 GETTING_STARTED_GMAIL_MD = "# Gmail\n\nGmail integration setup.\n"
@@ -83,10 +98,14 @@ def client(tmp_path: Path) -> TestClient:
     (docs / "tuning.md").write_text(TUNING_MD)
     (docs / "updating.md").write_text(UPDATING_MD)
     (docs / "troubleshooting.md").write_text(TROUBLESHOOTING_MD)
-    (docs / "getting-started" / "README.md").write_text(GETTING_STARTED_README_MD)
+    (docs / "getting-started" / "README.md").write_text(GETTING_STARTED_README_MD + GETTING_STARTED_README_IMG)
     (docs / "getting-started" / "prerequisites.md").write_text(GETTING_STARTED_PREREQ_MD)
     (docs / "getting-started" / "start-here-fly.md").write_text(GETTING_STARTED_START_HERE_FLY_MD)
     (docs / "getting-started" / "install-fly.md").write_text(GETTING_STARTED_INSTALL_FLY_MD)
+    (docs / "getting-started" / "install-fly-web").mkdir(parents=True)
+    (docs / "getting-started" / "install-fly-web" / "01-shot.png").write_bytes(_PNG_1X1)
+    # Outside docs_root — the traversal guard must keep this unreachable.
+    (tmp_path / "outside.png").write_bytes(_PNG_1X1)
     (docs / "getting-started" / "api-keys.md").write_text(GETTING_STARTED_API_KEYS_MD)
     (docs / "getting-started" / "cost.md").write_text(GETTING_STARTED_COST_MD)
     (docs / "getting-started" / "gmail.md").write_text(GETTING_STARTED_GMAIL_MD)
@@ -251,3 +270,53 @@ def test_tuning_page_renders(client: TestClient) -> None:
     r = client.get("/docs/tuning")
     assert r.status_code == 200
     assert ">Tuning</h1>" in r.text
+
+
+# --- embedded doc images (#1053) -------------------------------------------
+
+
+def test_doc_image_serves_through_viewer(client: TestClient) -> None:
+    r = client.get("/docs/getting-started/install-fly-web/01-shot.png")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("image/")
+    assert r.content == _PNG_1X1
+
+
+def test_img_src_rewritten_to_docs_url(client: TestClient) -> None:
+    r = client.get("/docs/getting-started/install-fly")
+    assert r.status_code == 200
+    assert 'src="/docs/getting-started/install-fly-web/01-shot.png"' in r.text
+    assert 'src="install-fly-web/01-shot.png"' not in r.text
+
+
+def test_img_src_resolves_against_source_file_dir_not_slug(client: TestClient) -> None:
+    # Slug "getting-started" maps to getting-started/README.md. Resolving
+    # against the slug would yield /docs/install-fly-web/01-shot.png.
+    r = client.get("/docs/getting-started")
+    assert r.status_code == 200
+    assert 'src="/docs/getting-started/install-fly-web/01-shot.png"' in r.text
+
+
+def test_external_img_src_untouched(client: TestClient) -> None:
+    r = client.get("/docs/getting-started/install-fly")
+    assert 'src="https://example.com/remote.png"' in r.text
+
+
+def test_image_traversal_outside_docs_root_is_blocked(client: TestClient) -> None:
+    # Without the relative_to() guard this resolves to tmp_path/outside.png,
+    # which exists — so a 200 here means the guard is gone.
+    r = client.get("/docs/getting-started/%2e%2e/%2e%2e/outside.png")
+    assert r.status_code == 404
+
+
+def test_markdown_source_is_not_served_as_an_asset(client: TestClient) -> None:
+    # The _PAGES allowlist stays the only way to reach a .md file.
+    r = client.get("/docs/getting-started/install-fly.md")
+    assert r.status_code == 404
+
+
+def test_materials_render_leaves_img_src_untouched() -> None:
+    # The materials viewer calls render_markdown with no source.
+    html = render_markdown("![shot](shot.png)\n")
+    assert 'src="shot.png"' in html
+    assert "/docs/" not in html
