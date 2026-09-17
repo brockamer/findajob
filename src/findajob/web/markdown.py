@@ -14,7 +14,10 @@ _LANG_CLASS_RE = re.compile(r'(<code[^>]*?) class="language-[^"]*"')
 _SCRIPT_RE = re.compile(r"<(/?script)", re.IGNORECASE)
 _ANCHOR_OPEN_RE = re.compile(r"<a\s+([^>]*?)>", re.IGNORECASE)
 _HREF_ATTR_RE = re.compile(r'href="([^"]+)"', re.IGNORECASE)
+_IMG_OPEN_RE = re.compile(r"<img\s+([^>]*?)>", re.IGNORECASE)
+_SRC_ATTR_RE = re.compile(r'src="([^"]+)"', re.IGNORECASE)
 _EXTERNAL_SCHEMES = ("http://", "https://", "mailto:")
+_NON_RELATIVE_SRC_PREFIXES = ("http://", "https://", "data:", "//", "/", "#")
 
 
 def render_markdown(text: str, *, source: str = "") -> str:
@@ -28,6 +31,9 @@ def render_markdown(text: str, *, source: str = "") -> str:
     - `.md` links are rewritten to `/docs/<slug>` when `source` is a
       docs-relative path (e.g., "setup/README.md"); when `source` is empty
       (the materials use case), `.md` links are left untouched.
+    - Relative `<img src>` is rewritten to `/docs/<docs-relative-path>` under
+      the same `source` gate, so embedded screenshots resolve through the
+      viewer instead of against the page URL (#1053).
     """
     text = _CENTERED_BLOCK_RE.sub(
         lambda m: f'<div class="text-center" markdown="1">\n{m.group(1)}\n</div>',
@@ -43,6 +49,8 @@ def render_markdown(text: str, *, source: str = "") -> str:
     html = _LANG_CLASS_RE.sub(r"\1", html)
     html = _SCRIPT_RE.sub(r"&lt;\1", html)
     html = _ANCHOR_OPEN_RE.sub(lambda m: _rewrite_anchor(m, source=source), html)
+    if source:
+        html = _IMG_OPEN_RE.sub(lambda m: _rewrite_img(m, source=source), html)
     return html
 
 
@@ -59,14 +67,29 @@ def _rewrite_anchor(match: re.Match[str], *, source: str) -> str:
     return f"<a {new_attrs}>"
 
 
-def _transform_href(href: str, *, source: str) -> tuple[str, bool]:
-    if href.lower().startswith(_EXTERNAL_SCHEMES):
-        return href, True
-    if href.startswith("#") or not source:
-        return href, False
-    path_part, fragment = (href.split("#", 1) + [""])[:2]
-    if not path_part.endswith(".md"):
-        return href, False
+def _rewrite_img(match: re.Match[str], *, source: str) -> str:
+    attrs = match.group(1)
+    src_match = _SRC_ATTR_RE.search(attrs)
+    if not src_match:
+        return match.group(0)
+    src = src_match.group(1)
+    if src.lower().startswith(_NON_RELATIVE_SRC_PREFIXES):
+        return match.group(0)
+    resolved = _resolve_against_source(src, source=source)
+    if not resolved:
+        return match.group(0)
+    new_attrs = attrs[: src_match.start()] + f'src="/docs/{resolved}"' + attrs[src_match.end() :]
+    return f"<img {new_attrs}>"
+
+
+def _resolve_against_source(path_part: str, *, source: str) -> str:
+    """Normalize a doc-relative path against `source`'s directory.
+
+    `source` is the docs-relative path of the *file* being rendered, which is
+    not always the slug's path ("getting-started" renders
+    "getting-started/README.md"), so relative links must resolve against the
+    file's directory.
+    """
     source_dir = "/".join(source.split("/")[:-1])
     combined = f"{source_dir}/{path_part}" if source_dir else path_part
     parts: list[str] = []
@@ -76,7 +99,18 @@ def _transform_href(href: str, *, source: str) -> tuple[str, bool]:
                 parts.pop()
         elif seg and seg != ".":
             parts.append(seg)
-    slug = "/".join(parts)[: -len(".md")]
+    return "/".join(parts)
+
+
+def _transform_href(href: str, *, source: str) -> tuple[str, bool]:
+    if href.lower().startswith(_EXTERNAL_SCHEMES):
+        return href, True
+    if href.startswith("#") or not source:
+        return href, False
+    path_part, fragment = (href.split("#", 1) + [""])[:2]
+    if not path_part.endswith(".md"):
+        return href, False
+    slug = _resolve_against_source(path_part, source=source)[: -len(".md")]
     if slug.endswith("/README"):
         slug = slug[: -len("/README")]
     elif slug == "README":

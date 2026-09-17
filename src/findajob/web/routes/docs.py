@@ -4,12 +4,17 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi.responses import FileResponse, HTMLResponse
 
 from findajob.web.markdown import render_markdown
 
 router = APIRouter()
+
+# Image files embedded in the docs markdown are served from under docs_root by
+# the same route, so the `_PAGES` allowlist stays the only way to reach a
+# `.md` source and there is one traversal guard, not two (#1053).
+_IMAGE_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"})
 
 
 _PAGES: dict[str, str] = {
@@ -115,14 +120,8 @@ def _build_breadcrumbs(slug: str) -> list[dict[str, str]]:
     return crumbs
 
 
-@router.get("/docs/{slug:path}", response_class=HTMLResponse)
-def docs_page(slug: str, request: Request) -> HTMLResponse:
-    slug = slug.rstrip("/")
-    rel = _PAGES.get(slug)
-    if rel is None:
-        raise HTTPException(status_code=404, detail="doc not found")
-    image_root: Path = request.app.state.image_root
-    docs_root = (image_root / "docs").resolve()
+def _resolve_under_docs_root(rel: str, docs_root: Path) -> Path:
+    """Resolve `rel` under `docs_root`, 404ing on traversal or a missing file."""
     path = (docs_root / rel).resolve()
     try:
         path.relative_to(docs_root)
@@ -130,6 +129,20 @@ def docs_page(slug: str, request: Request) -> HTMLResponse:
         raise HTTPException(status_code=404, detail="doc not found") from None
     if not path.is_file():
         raise HTTPException(status_code=404, detail="doc not found")
+    return path
+
+
+@router.get("/docs/{slug:path}", response_class=HTMLResponse)
+def docs_page(slug: str, request: Request) -> Response:
+    slug = slug.rstrip("/")
+    image_root: Path = request.app.state.image_root
+    docs_root = (image_root / "docs").resolve()
+    if Path(slug).suffix.lower() in _IMAGE_SUFFIXES:
+        return FileResponse(_resolve_under_docs_root(slug, docs_root))
+    rel = _PAGES.get(slug)
+    if rel is None:
+        raise HTTPException(status_code=404, detail="doc not found")
+    path = _resolve_under_docs_root(rel, docs_root)
     body = path.read_text(encoding="utf-8", errors="replace")
     templates = request.app.state.templates
     rendered_md = render_markdown(body, source=rel)
