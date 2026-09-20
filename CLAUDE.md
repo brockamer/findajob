@@ -524,5 +524,3 @@ Run manually for debugging. Not part of normal pipeline operation.
 Shows contact matching diagnostics for a batch of jobs. Useful for debugging false positive/negative company-name matches.
 **Manual run:** `docker compose exec scheduler python3 scripts/diag/debug_contacts.py`
 
-@CLAUDE.local.md
-
