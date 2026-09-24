@@ -83,13 +83,10 @@ jobs:
 
           echo "Clean — no PII matches in $(wc -l < /tmp/pr_added_lines.txt) added lines."
 
-      # Replaces the base64-encoded forbidden-identifier list that used to
-      # live in tests/test_persona_fixture_loadable.py (#1096) — an encoding
-      # is not a protection, so a second copy of the pattern list in tracked
-      # source disclosed exactly what it existed to keep out. The diff scan
-      # above only sees lines a PR *adds*, so it can't catch PII already
-      # sitting in the fixture tree; this step re-scans the whole fixture on
-      # every PR regardless of what changed.
+      # Whole-tree scan of the synthetic persona fixture (#1096). It replaces a
+      # check that kept its own copy of the identifier list in test source;
+      # the list now has one home, this secret. The diff scan above only sees
+      # lines a PR *adds*, so this step re-scans the whole fixture on every PR.
       - name: Scan persona fixture (whole tree)
         env:
           PATTERNS: ${{ secrets.PII_PATTERNS_REGEX }}
