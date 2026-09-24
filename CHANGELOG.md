@@ -10,6 +10,10 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Documentation
+
+- **README dashboard screenshot no longer shows a real company or a removed nav tab** (#916): `docs/screenshots/dashboard.png` was captured from a live instance and showed the same real, well-known employer across every row under a caption reading "Fictional demo data," plus a **Stats** nav entry that #1059 had already removed. Regenerated against current `main` from a scratch instance seeded with the synthetic staging persona (`src/findajob/staging/persona_fixture/`) and ten invented job rows across four fictional companies, so the caption is now true. Also removed three screenshots nothing embeds: `docs/screenshots/applied.png`, `feedback.png` and `funnel.png` (the latter is distinct from the in-use `docs/usage/stats/funnel.png`). No `migration-required`: documentation only.
+
 ### Removed
 
 - **The `deploy-fly` CI job is gone** (#1060): `build-image.yml`'s auto-deploy-on-tag job, `ops/ci-fly-deploy.sh`, `tests/test_ci_fly_deploy.py`, and the "Automated Fly deploy" section of `docs/maintainers/release-process.md` are removed. The job never deployed anything — it failed on both production tag pushes (`v0.34.0`, `v0.34.1`) because `flyctl` was never on `PATH` in that step — and it only ever targeted the maintainer's own Fly apps via the `FLY_DEPLOY_APPS` / `FLY_API_TOKEN` repository secrets, which are being removed alongside it. The public Fly **launch** path for other operators' own Fly apps (the README button, `install-fly.md`, `ops/fly-deploy.sh`) is untouched; only the maintainer's auto-redeploy-on-release automation is removed. No `migration-required`: CI-only, no schema/config/crontab/mount change.
