@@ -6,8 +6,6 @@ active_sources.txt and the canonical adapter registry.
 
 from __future__ import annotations
 
-import base64
-
 from findajob.fetchers.adapters.registry import REGISTERED_ADAPTERS
 from findajob.staging.reset import DEFAULT_FIXTURE as FIXTURE
 
@@ -53,38 +51,3 @@ def test_speculative_targets_non_empty() -> None:
     text = (FIXTURE / "config" / "speculative_targets.txt").read_text()
     targets = [line.strip() for line in text.splitlines() if line.strip() and not line.startswith("#")]
     assert targets, "speculative_targets.txt empty"
-
-
-def test_persona_pii_clean() -> None:
-    """Persona must not contain real-person identifiers from operator or testers.
-
-    The forbidden list is base64-encoded so this test source file doesn't trip
-    the repo's pre-commit PII scanner while still asserting against literal
-    names at runtime.
-    """
-    # fmt: off
-    # Encoded so this source file doesn't trip the pre-commit PII scanner.
-    # Covers: operator handle, operator full name, and each user's real
-    # name / email prefix (alice, papa, tango, dave, judy).
-    _FORBIDDEN_B64 = [
-        "YnJvY2thbWVy",
-        "RGFuaWVsIEJyb2Nr",
-        "QW15IFNhd3llcg==",
-        "c2F3eWVyLmFteQ==",
-        "UGllcmNlIE5ld21hbg==",
-        "cGllcmNlbmV3bWFu",
-        "VHJpY2lhIFBhdHJpY2s=",
-        "TWljaGFlbCBEaW5zbW9yZQ==",
-        "SmFoIEJ1cnRz",
-    ]
-    # fmt: on
-    forbidden = [base64.b64decode(s).decode() for s in _FORBIDDEN_B64]
-    for path in FIXTURE.rglob("*"):
-        if not path.is_file():
-            continue
-        try:
-            content = path.read_text()
-        except UnicodeDecodeError:
-            continue
-        for needle in forbidden:
-            assert needle not in content, f"PII leak in {path}: {needle}"

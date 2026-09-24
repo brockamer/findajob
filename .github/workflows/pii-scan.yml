@@ -82,3 +82,47 @@ jobs:
           fi
 
           echo "Clean — no PII matches in $(wc -l < /tmp/pr_added_lines.txt) added lines."
+
+      # Replaces the base64-encoded forbidden-identifier list that used to
+      # live in tests/test_persona_fixture_loadable.py (#1096) — an encoding
+      # is not a protection, so a second copy of the pattern list in tracked
+      # source disclosed exactly what it existed to keep out. The diff scan
+      # above only sees lines a PR *adds*, so it can't catch PII already
+      # sitting in the fixture tree; this step re-scans the whole fixture on
+      # every PR regardless of what changed.
+      - name: Scan persona fixture (whole tree)
+        env:
+          PATTERNS: ${{ secrets.PII_PATTERNS_REGEX }}
+        run: |
+          set -euo pipefail
+          if [ -z "${PATTERNS:-}" ]; then
+            echo "::warning::PII_PATTERNS_REGEX secret not set — skipping scan."
+            echo "::warning::Install per docs/operations/config-reference.md or this guard is inert."
+            exit 0
+          fi
+
+          FIXTURE_DIR="src/findajob/staging/persona_fixture"
+          if [ ! -d "$FIXTURE_DIR" ]; then
+            echo "::error::Persona fixture directory not found at $FIXTURE_DIR — the PII scan can't run. If it moved, update this workflow."
+            exit 1
+          fi
+
+          found=0
+          while IFS= read -r pattern; do
+            [ -z "$pattern" ] && continue
+            case "$pattern" in '#'*) continue ;; esac
+
+            if grep -rqiE "$pattern" "$FIXTURE_DIR"; then
+              echo "::error::Persona fixture matches PII pattern: $pattern"
+              found=1
+            fi
+          done <<< "$PATTERNS"
+
+          if [ "$found" -eq 1 ]; then
+            echo ""
+            echo "::error::One or more PII patterns matched in the persona fixture. Find and remove the matching content."
+            echo "::error::To audit your branch locally: bash .git/hooks/pre-commit (after staging)."
+            exit 1
+          fi
+
+          echo "Clean — no PII matches in $FIXTURE_DIR."
