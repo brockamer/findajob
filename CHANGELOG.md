@@ -10,6 +10,10 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Documentation
+
+- **Audience change recorded as Decision 37** (#1092): findajob is maintained for operators comfortable with Docker, a terminal, git and SQLite, who may run instances for other people — not for a non-technical job seeker installing it alone. `README.md` and `CONTRIBUTING.md` state this. `README.md` drops the false "No terminal needed — about 20 minutes" caption (the linked Fly guide says ~2 hours, and the onboarding auth step issues a `fly logs` command) drops the Deploy-to-Fly badge, and no longer labels Fly.io as the recommended path; Docker is listed first as the path the maintainer runs and verifies. `docs/roadmap.md` carries dated factual amendments to Decisions 35(d), 35(g) and 36(b) and the Documentation v2 / Distribution / Packaging open counts. No `migration-required`: documentation only.
+
 ### Security
 
 - **Persona-fixture PII check moved into `pii-scan.yml`** (#1096): the check that the synthetic persona fixture contains no real identifiers now reads its patterns from the `PII_PATTERNS_REGEX` secret instead of a list kept in test source, so the pattern list has a single home. A new step re-scans the whole `src/findajob/staging/persona_fixture/` tree on every PR (the existing diff scan only sees added lines), following the existing step's conventions: secret passed via `env:` only, warn-and-pass when unset, fail with `::error::` naming the pattern rather than the matched text. No `migration-required`: CI and test-only change.
