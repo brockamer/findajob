@@ -2,6 +2,8 @@
 
 If you're trying to *use* findajob, start with [`docs/getting-started/`](docs/getting-started/), not this file.
 
+**Who the project is maintained for.** findajob is maintained for operators with the maintainer's technical skill — Docker, a terminal, git and SQLite — who may run instances for other people as well as for themselves. It is no longer optimized for a non-technical job seeker installing it alone ([Decision 37](docs/roadmap.md)). Documentation and fixes are judged against that reader: accurate and current beats approachable. Contributions that add hand-holding for a non-technical self-install are out of scope.
+
 **New here?** Read [`docs/architecture.md`](docs/architecture.md) first — it walks the system design, the prep pipeline's stage-by-stage data flow, the data model, and the rationale behind the key design choices. It's the fastest way to understand how the whole thing fits together before you touch code.
 
 Architectural invariants, code-style patterns, and implementation guardrails live in [`CLAUDE.md`](CLAUDE.md).
