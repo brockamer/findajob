@@ -10,6 +10,10 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Removed
+
+- **The `deploy-fly` CI job is gone** (#1060): `build-image.yml`'s auto-deploy-on-tag job, `ops/ci-fly-deploy.sh`, `tests/test_ci_fly_deploy.py`, and the "Automated Fly deploy" section of `docs/maintainers/release-process.md` are removed. The job never deployed anything — it failed on both production tag pushes (`v0.34.0`, `v0.34.1`) because `flyctl` was never on `PATH` in that step — and it only ever targeted the maintainer's own Fly apps via the `FLY_DEPLOY_APPS` / `FLY_API_TOKEN` repository secrets, which are being removed alongside it. The public Fly **launch** path for other operators' own Fly apps (the README button, `install-fly.md`, `ops/fly-deploy.sh`) is untouched; only the maintainer's auto-redeploy-on-release automation is removed. No `migration-required`: CI-only, no schema/config/crontab/mount change.
+
 ### Documentation
 
 - **Audience change recorded as Decision 37** (#1092): findajob is maintained for operators comfortable with Docker, a terminal, git and SQLite, who may run instances for other people — not for a non-technical job seeker installing it alone. `README.md` and `CONTRIBUTING.md` state this. `README.md` drops the false "No terminal needed — about 20 minutes" caption (the linked Fly guide says ~2 hours, and the onboarding auth step issues a `fly logs` command) drops the Deploy-to-Fly badge, and no longer labels Fly.io as the recommended path; Docker is listed first as the path the maintainer runs and verifies. `docs/roadmap.md` carries dated factual amendments to Decisions 35(d), 35(g) and 36(b) and the Documentation v2 / Distribution / Packaging open counts. No `migration-required`: documentation only.

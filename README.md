@@ -62,7 +62,7 @@ Real per-call rates from the operator's instance (last 30 days):
 ## Quick start
 
 - **Self-host with Docker** — the path the maintainer runs and verifies. Runs on a box you operate, with no hosting cost beyond the machine. You handle backups, TLS, and updates. **→ [Docker install guide](docs/operations/install-docker.md)**
-- **Fly.io** — runs under your own Fly account, about $5/month. The maintainer no longer runs or verifies this path, and its documentation is being retired ([#1092](https://github.com/brockamer/findajob/issues/1092)). **→ [Fly guide](docs/getting-started/start-here-fly.md)**
+- **Fly.io** — runs under your own Fly account, about $5/month. The maintainer does not verify this on-ramp, and its documentation is being retired ([#1092](https://github.com/brockamer/findajob/issues/1092)). **→ [Fly guide](docs/getting-started/start-here-fly.md)**
 
 Both paths run the same image and reach the same dashboard. Once it's live, a one-time onboarding interview — a roughly hour-long chat inside the app about your background and target role — teaches findajob who you are. The next morning's triage then delivers your first scored shortlist.
 
