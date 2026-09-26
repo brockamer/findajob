@@ -62,6 +62,7 @@ Five columns, left to right. An issue moves rightward as it progresses.
 
 **Rules:**
 - In Progress should stay small. More than ~4 items means focus is scattered.
+- Work on this codebase that is tracked on another board counts toward the In Progress cap. `sweep.py` counts this board only, so apply the rule by hand.
 - Up Next should be ordered — top item is what gets worked next. Priority field breaks ties within the column.
 - Nothing in In Progress without Priority set.
 - When an issue closes, it moves to Done automatically.
@@ -87,7 +88,7 @@ Three values. This is the canonical priority signal — **not** the legacy `prio
 
 | Value | Meaning |
 |---|---|
-| **High** | Directly advances the current strategic goal (getting a job). Should be addressed before Medium work. Stakes are high, timeline is now. |
+| **High** | Directly advances the project's current goal: a working, maintained tool for operators who run instances for themselves or for other people. Should be addressed before Medium work. Stakes are high, timeline is now. |
 | **Medium** | Quality, efficiency, or reliability improvement. Important but not blocking the strategic goal. |
 | **Low** | Nice-to-have, future-facing, or optional. Safe to defer indefinitely. |
 
@@ -220,7 +221,7 @@ An issue without Priority will sort into the "no-field" bucket at the bottom of 
 2. **Status is In Progress but no Priority** — actively-worked items must be fully triaged.
 3. **Issue on board but closed** — should auto-move to Done; if not, set status manually.
 4. **High-priority backlog items older than two weeks** — either promote to Up Next, downgrade to Medium, or close if no longer relevant.
-5. **More than 4 items in In Progress** — focus is scattered; pause and decide which to finish first.
+5. **More than 4 items in In Progress** (including work on this codebase tracked on another board) — focus is scattered; pause and decide which to finish first.
 
 ## Fields quick reference (for gh project CLI)
 

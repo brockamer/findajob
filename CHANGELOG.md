@@ -12,6 +12,8 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ### Documentation
 
+- **Structural review recorded as Decision 38** (#1114): `docs/roadmap.md` records that Documentation v2 and Distribution / Packaging are closed with no successor milestone, a phase order for the open audit and documentation work, the retirement of `severity:*` and `area:*` labels in favour of the Priority field, and that the decision log moves out of the public repo (#1157). The #1114 fixes land with it: the Decision 3 architecture link, the closed #378 wishlist entry, the retired RAG scope-out line, a Tuning Loop entry under shipped milestones, and dated notes on the Decision 34 board snapshot and the #877 dependency. `docs/project-board.md` states the High priority against the Decision 37 audience, and counts work on this codebase tracked on another board toward the In Progress cap.
+
 - **README dashboard screenshot no longer shows a real company or a removed nav tab** (#916): `docs/screenshots/dashboard.png` was captured from a live instance and showed the same real, well-known employer across every row under a caption reading "Fictional demo data," plus a **Stats** nav entry that #1059 had already removed. Regenerated against current `main` from a scratch instance seeded with the synthetic staging persona (`src/findajob/staging/persona_fixture/`) and ten invented job rows across four fictional companies, so the caption is now true. Also removed three screenshots nothing embeds: `docs/screenshots/applied.png`, `feedback.png` and `funnel.png` (the latter is distinct from the in-use `docs/usage/stats/funnel.png`). No `migration-required`: documentation only.
 
 ### Removed
