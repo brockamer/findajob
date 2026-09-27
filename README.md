@@ -83,7 +83,6 @@ findajob is a real, daily-driven system, and the codebase is a worked example of
 - **[Architecture](docs/architecture.md)** — system design, the prep pipeline's stage-by-stage data flow, and the per-stage model choices
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** — dev setup, commit conventions, and the architectural invariants the code enforces
 - **[Project board](https://github.com/users/brockamer/projects/1)** — the single source of truth for active work
-- New here? Browse [`good first issue`](https://github.com/brockamer/findajob/labels/good%20first%20issue).
 
 ---
 
@@ -91,8 +90,7 @@ findajob is a real, daily-driven system, and the codebase is a worked example of
 
 The repo contains zero personal data. All candidate content — resume, profile, writing samples, API keys — lives in gitignored paths populated from `.example` templates, and a pre-commit hook blocks PII you accidentally try to commit. Your materials stay in your own stack's storage; the only outbound calls are to the AI providers you configure.
 
-- **[Issues](https://github.com/brockamer/findajob/issues)** — file a bug, request a feature
-- **[Discussions](https://github.com/brockamer/findajob/discussions)** — "how do I…" or "have you considered…"
+- **[Issues](https://github.com/brockamer/findajob/issues)** — file a bug, request a feature, or ask a question
 - **Security** — please don't file public issues for security bugs; see [`SECURITY.md`](SECURITY.md)
 
 ---

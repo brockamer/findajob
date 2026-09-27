@@ -7,8 +7,6 @@ body:
       value: |
         Thanks for proposing a feature. Concrete proposals with motivation move faster than open-ended "wouldn't it be nice if…" threads.
 
-        For **open-ended discussion** (still figuring out what the right thing is), prefer [Discussions](../discussions) over an issue.
-
   - type: textarea
     id: summary
     attributes:

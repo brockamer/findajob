@@ -84,7 +84,7 @@ The `## Blocks` body section is retired. Express the inverse direction by adding
 
 ## Priority field
 
-Three values. This is the canonical priority signal — **not** the legacy `priority: high / med / low` labels.
+Three values. This is the canonical priority signal — no label carries priority.
 
 | Value | Meaning |
 |---|---|
@@ -102,29 +102,39 @@ Three values. This is the canonical priority signal — **not** the legacy `prio
 
 Labels describe **what kind of issue it is**, not where it lives on the board. Status and priority come from board fields, not labels.
 
-Active labels:
+**Rules** (roadmap Decision 38(g)):
+1. No label duplicates a board field. The Priority field is the only priority signal; Status is the only position signal.
+2. Every repo label has exactly one row in the table below, and the row's Meaning text equals the label's repo description. `gh label list` and this table list the same set.
+3. A new label is created together with its table row, in the same change.
 
-| Label | Meaning |
-|---|---|
-| `bug` | Something isn't working |
-| `enhancement` | New capability |
-| `refactor` | Restructuring without behavior change |
-| `job-search` | Directly impacts job search results |
-| `pipeline-quality` | Reliability, testing, ops |
-| `data-hygiene` | Cleanup of stale or inconsistent data |
-| `cost` | API / pipeline financial cost — monitoring, tracking, reduction |
-| `open-source` | Generalization and adoption |
-| `documentation` | Docs-only change |
-| `migration-required` | Manual step required (schema/config/crontab/mount/compose-down) before `docker compose pull`. Applied at PR-open time so the release-notes pipeline picks it up. |
-| `tracking` | Long-running tracking ticket; closes when external prerequisites land. |
-| `feedback` | User feedback ticket. |
-| `big-idea` | Speculative far-horizon concept; not on the active roadmap. Always pair with Priority: Low. |
-| `personal` | User-specific content — not generalizable pipeline work (e.g. personal resume edits). Not part of the shared roadmap; tracked here for convenience only. |
+Every issue carries exactly one **Type** label. The other groups are optional.
 
-Legacy labels (being phased out — Priority field is canonical):
-- `priority: high`, `priority: med`, `priority: low`
+| Group | Label | Meaning | Applied by |
+|---|---|---|---|
+| Type | `bug` | Defect against current behavior or docs (not a missing feature) | Hand |
+| Type | `enhancement` | New capability | Hand |
+| Type | `refactor` | Restructuring without behavior change | Hand |
+| Type | `documentation` | Docs-only change | Hand |
+| Kind | `tracking` | Long-running tracking ticket; closes when external prerequisites land | Hand |
+| Kind | `big-idea` | Speculative far-horizon concept; not on the active roadmap. Always Priority: Low | Hand |
+| Scope | `job-search` | Directly impacts job search results | Hand |
+| Scope | `pipeline-quality` | Reliability, testing, ops | Hand |
+| Scope | `data-hygiene` | Cleanup of stale or inconsistent data | Hand |
+| Scope | `cost` | API / pipeline financial cost — monitoring, tracking, reduction | Hand |
+| Scope | `open-source` | Generalization and adoption | Hand |
+| Scope | `personal` | User-specific content — not generalizable pipeline work | Hand |
+| Source | `feedback` | Finding from a live session with the product | Hand |
+| Source | `external-report` | Bug filed by an external (non-operator) user | Hand |
+| Source | `review-2026-09` | Findings from the 2026-09-25 code audit and live-session review | Hand |
+| Queue claim | `session-1` | Queue claim — parallel Claude session 1 | `/jared-stage --sessions` |
+| Queue claim | `session-2` | Queue claim — parallel Claude session 2 | `/jared-stage --sessions` |
+| PR / automation | `migration-required` | Manual step required (schema/config/crontab/mount/compose-down) before docker compose pull | Hand, at PR-open time; `create-release.yml` lists these PRs first in the release notes |
+| PR / automation | `dependencies` | Pull requests that update a dependency file | Dependabot |
+| PR / automation | `github_actions` | Pull requests that update GitHub Actions code | Dependabot (`.github/dependabot.yml`) |
 
-If you see an issue with a `priority:` label but no Priority field value, reconcile by setting the field to match the label and either removing the label or leaving it for later cleanup.
+Retired 2026-09-26 (Decision 38(g)): `severity:major` / `severity:minor` (duplicated the Priority field), the six `area:*` labels (each duplicated a Type label or grouped by theme — a theme belongs in sub-issues, see Epics), `help wanted`, `good first issue`, and a label from an early beta walkthrough. The older `priority: high / med / low` labels were retired earlier and no longer exist.
+
+**Other repo metadata.** The repo has a custom social-preview image (check: `curl -sL https://github.com/brockamer/findajob | grep og:image` returns a `repository-images.githubusercontent.com` URL). GitHub Discussions is disabled; do not link to it.
 
 ## Dependency relationships
 
@@ -217,7 +227,7 @@ An issue without Priority will sort into the "no-field" bucket at the bottom of 
 
 ## Common inconsistencies to watch for
 
-1. **Label says `priority: high` but Priority field is empty** — reconcile by setting the field.
+1. **An issue has no Type label, or a label that is not in the Labels table** — add the Type; take a stray label to the Labels rules before keeping it.
 2. **Status is In Progress but no Priority** — actively-worked items must be fully triaged.
 3. **Issue on board but closed** — should auto-move to Done; if not, set status manually.
 4. **High-priority backlog items older than two weeks** — either promote to Up Next, downgrade to Medium, or close if no longer relevant.
