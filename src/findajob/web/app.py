@@ -24,7 +24,11 @@ from findajob.web.helpers import (
     remote_cell_class,
     stage_row_class,
 )
-from findajob.web.middleware import CrossSiteRequestMiddleware, DisconnectStateMiddleware
+from findajob.web.middleware import (
+    CrossSiteRequestMiddleware,
+    DisconnectStateMiddleware,
+    SecurityHeadersMiddleware,
+)
 from findajob.web.onboarding_guard import onboarding_complete
 from findajob.web.routes import materials as _materials_routes
 from findajob.web.routes import router as _aggregated_router
@@ -177,6 +181,10 @@ def create_app(
     # cross-site post is stopped here. Always on, regardless of auth state.
     app.add_middleware(CrossSiteRequestMiddleware)
     install_basic_auth(app)
+    # Content-Security-Policy on every response, including the auth gate's
+    # 401 challenge: registered after install_basic_auth so it wraps the gate,
+    # and before DisconnectStateMiddleware so #743's outermost position holds.
+    app.add_middleware(SecurityHeadersMiddleware)
     # #743: register AFTER install_basic_auth so it lands outermost in the
     # middleware stack, ensuring every http.disconnect is recorded into
     # scope before any inner consumer (e.g. Starlette's listen_for_disconnect)
