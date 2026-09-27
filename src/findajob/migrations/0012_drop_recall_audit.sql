@@ -1,0 +1,16 @@
+-- 0012_drop_recall_audit.sql — drop the stats-platform recall-audit table (#1058).
+--
+-- ``recall_audit`` was written only by the weekly recall-audit cron
+-- (``scripts/recall_audit.py`` → ``findajob.metrics.recall_audit``) and read
+-- only by the ``/stats/recall-audit`` page. The Tier-2 stats teardown removes
+-- the cron, the module and the page in the same change as this migration.
+-- The cron had been disabled since the Tier-1 strip (#1057), so the table
+-- holds no data any live code path needs.
+--
+-- ``config_changes`` (also created in 0007) is kept — it is the
+-- filter-proposals loop's audit log. ``jobs.scored_by`` and
+-- ``jobs.company_tier`` are kept — the scorer reads them.
+--
+-- Single statement. ``IF EXISTS`` keeps it a no-op on any DB where the table
+-- is already absent. Dropping the table also drops ``idx_recall_audit_time``.
+DROP TABLE IF EXISTS recall_audit;

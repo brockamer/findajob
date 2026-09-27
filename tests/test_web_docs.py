@@ -129,12 +129,18 @@ def test_index_lists_guides(client: TestClient) -> None:
     assert "Daily workflow" in r.text
 
 
-def test_index_surfaces_updating_and_tuning(client: TestClient) -> None:
-    """#938: updating.md and tuning.md are in _PAGES but were undiscoverable from the index."""
+def test_index_surfaces_updating(client: TestClient) -> None:
+    """#938: updating.md is in _PAGES but was undiscoverable from the index."""
     r = client.get("/docs/")
     assert r.status_code == 200
     assert 'href="/docs/updating"' in r.text
-    assert 'href="/docs/tuning"' in r.text
+
+
+def test_index_omits_removed_tuning_guide(client: TestClient) -> None:
+    """#1058: the Tuning guide was removed with the stats pages it described."""
+    r = client.get("/docs/")
+    assert r.status_code == 200
+    assert 'href="/docs/tuning"' not in r.text
 
 
 def test_index_does_not_require_onboarding(tmp_path: Path) -> None:
@@ -266,10 +272,12 @@ def test_no_next_step_on_terminal_page(client: TestClient) -> None:
     assert "Next:" not in r.text
 
 
-def test_tuning_page_renders(client: TestClient) -> None:
-    r = client.get("/docs/tuning")
-    assert r.status_code == 200
-    assert ">Tuning</h1>" in r.text
+@pytest.mark.parametrize("slug", ["tuning", "usage/stats"])
+def test_removed_stats_doc_slugs_404(client: TestClient, slug: str) -> None:
+    """#1058: the stats-platform doc pages are out of the _PAGES allowlist, so
+    they 404 even when a stale file is present on disk (tuning.md is seeded)."""
+    r = client.get(f"/docs/{slug}")
+    assert r.status_code == 404
 
 
 # --- embedded doc images (#1053) -------------------------------------------

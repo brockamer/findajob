@@ -62,10 +62,10 @@ def cmd_feedback_review() -> None:
             f"Most common reason for passing: {top_reason[0]} ({top_reason[1]} times)\n"
             f"Company you keep passing on: {top_company[0]} ({top_company[1]} times)\n"
             + (f"Words that often signal a pass: {', '.join(bad_kws)}\n" if bad_kws else "")
-            + f"See the trends: {web_base_url}/stats/feedback"
+            + f"Review your passes: {web_base_url}/board/rejected"
         )
     else:
-        body = f"You've passed on {count} jobs so far.\nSee the trends: {web_base_url}/stats/feedback"
+        body = f"You've passed on {count} jobs so far.\nReview your passes: {web_base_url}/board/rejected"
 
     # Refresh filter proposals and surface pending count in the notification.
     try:

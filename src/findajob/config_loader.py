@@ -368,8 +368,8 @@ def load_reject_reasons() -> tuple[tuple[str, ...], frozenset[str]]:
     """`(reasons, title_signal_reasons)` from `config/reject_reasons.yaml`.
 
     `reasons` is the ordered tuple of reject-reason labels — powers the
-    dropdown in `_reject_cell.html`, the canonical-order display in
-    `routes/stats.py`, and the filter-chip values in `web/filters/registry.py`.
+    dropdown in `_reject_cell.html` and the filter-chip values in
+    `web/filters/registry.py`.
     Single source of truth: same values everywhere fixes the silent-filtering
     drift bug surfaced by the #301 audit (§2.1).
 

@@ -1,4 +1,4 @@
-"""NUX guard dependency for the board/materials/stats routers (#148).
+"""NUX guard dependency for the board/materials routers (#148).
 
 Redirects 307 → /onboarding/ when the sentinel is missing. Caches the
 first True read on ``app.state.onboarding_complete`` so subsequent
@@ -35,7 +35,7 @@ def require_onboarding_complete(request: Request) -> None:
     """Raise 307 to /onboarding/ if the stack is not yet configured.
 
     Attached via ``dependencies=[Depends(require_onboarding_complete)]`` on
-    the board/materials/stats router includes.
+    the board/materials router includes.
 
     HTMX-aware branch (#619): when the request is HTMX-initiated, respond
     with ``200 + HX-Redirect: /onboarding/`` instead of a 30x. HTMX honors

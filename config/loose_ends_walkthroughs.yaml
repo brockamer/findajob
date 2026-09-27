@@ -40,15 +40,6 @@ walkthroughs:
           category: 3
           rubric: empty_state_no_guidance
 
-  - name: stats_first_load
-    persona: nux_user
-    target_category: 3
-    steps:
-      - goto: /stats/
-      - evaluate_dom:
-          category: 3
-          rubric: empty_state_no_guidance
-
   # ── established_user (populated instance) ──────────────────────────────────
   - name: applied_to_interviewing_undo
     persona: established_user

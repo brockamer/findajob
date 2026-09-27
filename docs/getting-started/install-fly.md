@@ -157,7 +157,7 @@ When it finishes, refresh `/board/` and you should see a scored shortlist (typic
 
 This page is the install runbook. Once you're up:
 
-- **Web UI** — primary surface. `/board/` for jobs, `/config/` to edit profile / roles / queries without shelling in, `/stats/` for cost tracking.
+- **Web UI** — primary surface. `/board/` for jobs, `/config/` to edit profile / roles / queries without shelling in, the nav spend chip and the dashboard burn-rate widget for cost tracking.
 - **Usage walkthrough** — [`../usage.md`](../usage.md) is the tab-by-tab daily workflow.
 - **Notifications** — ntfy push to your phone every morning at 06:00 stack-time with the day's high-scoring shortlist.
 

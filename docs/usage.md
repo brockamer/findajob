@@ -18,8 +18,6 @@ A normal morning is five steps, usually under 30 minutes:
 
 Rejections come later — from the Applied tab when a company comes back "no", or from the Dashboard when you decide a listing isn't worth prepping. Each rejection has a reason, and reasons feed back into tomorrow's scoring.
 
-Every so often, check the **[Stats pages](usage/stats.md)** to see how the search is actually going — pipeline funnel, rejection trends, and whether your applications are landing responses.
-
 ---
 
 ## Job sources
@@ -194,7 +192,7 @@ If the reason you want isn't here, use *Other* and put the detail in the notes c
 
 The list is editable. Open **Settings → Reject reasons** in the top nav (`/settings/reject-reasons/`) to add, remove, or rename entries. Changes apply on the next page load — no container restart needed. Tick **title-signal** for reasons that mean the scorer misread the job title (e.g., "Skills Mismatch", "Wrong Domain") — those reasons feed the prefilter-tuning analysis and tell the scorer's feedback loop that the underlying job title was a false positive.
 
-A reason you remove from the taxonomy doesn't break older rejections that used it — `/board/rejected/` and the stats views render historical entries even if the reason no longer appears in the current dropdown.
+A reason you remove from the taxonomy doesn't break older rejections that used it — `/board/rejected/` renders historical entries even if the reason no longer appears in the current dropdown.
 
 ---
 

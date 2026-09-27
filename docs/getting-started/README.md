@@ -34,7 +34,7 @@ Cost runs ~$3-6 per onboarding even with prompt caching enabled (the system prom
 
 **Manual:** Skip the interview and edit the config files by hand. See [`config-reference.md`](../operations/config-reference.md) for the file-by-file walkthrough — which fields matter most, which have sensible defaults, and which you can safely leave blank.
 
-Once onboarding is done, the web UI unlocks `/board/`, `/materials/`, `/stats/`, and `/config/`. The in-browser editor at `/config/` is how you edit these same files later without shelling in — it's the primary surface for ongoing tweaks.
+Once onboarding is done, the web UI unlocks `/board/`, `/materials/`, and `/config/`. The in-browser editor at `/config/` is how you edit these same files later without shelling in — it's the primary surface for ongoing tweaks.
 
 ## 3. Verify
 
@@ -76,4 +76,4 @@ or the entrypoint.
 
 - [`../usage.md`](../usage.md) — the daily workflow: web UI tab by tab.
 - `/config/` in the web UI — edit `profile.md`, `prefilter_rules.yaml`, `jsearch_queries.txt`, and the role prompts without touching disk.
-- Tuning (writing an effective `profile.md`, prefilter calibration, scoring feedback) — tracked in [issue #219](https://github.com/brockamer/findajob/issues/219); the guide ships after the scorer-prompt and excluded-employers work land.
+- [`../usage.md` → Tuning your config without re-onboarding](../usage.md#tuning-your-config-without-re-onboarding) — adjust `profile.md`, the prefilter and the scorer as the search goes.

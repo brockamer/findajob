@@ -44,7 +44,7 @@ def configured_client(tmp_path: Path) -> TestClient:
 # ---- Gated routes redirect when unconfigured ----
 
 
-@pytest.mark.parametrize("path", ["/", "/board/dashboard", "/materials/", "/stats/funnel"])
+@pytest.mark.parametrize("path", ["/", "/board/dashboard", "/materials/", "/board/rejected"])
 def test_gated_routes_redirect_without_sentinel(unconfigured_client: TestClient, path: str) -> None:
     """`/` joined the gated set in #339 Task 9 — a fresh stack drops the
     visitor straight into onboarding instead of the marketing landing page."""
@@ -56,7 +56,7 @@ def test_gated_routes_redirect_without_sentinel(unconfigured_client: TestClient,
 # ---- Gated routes pass through when configured ----
 
 
-@pytest.mark.parametrize("path", ["/", "/board/dashboard", "/stats/funnel"])
+@pytest.mark.parametrize("path", ["/", "/board/dashboard", "/board/rejected"])
 def test_gated_routes_pass_with_sentinel(configured_client: TestClient, path: str) -> None:
     resp = configured_client.get(path)
     # 200 or a different redirect — anything NOT a 307 to /onboarding/
@@ -112,7 +112,7 @@ def test_guarded_page_still_renders_badge_when_configured(configured_client: Tes
 
 @pytest.mark.parametrize(
     "path",
-    ["/notifications/badge", "/board/dashboard", "/stats/funnel"],
+    ["/notifications/badge", "/board/dashboard", "/materials/"],
 )
 def test_hx_request_to_guarded_endpoint_returns_hx_redirect(unconfigured_client: TestClient, path: str) -> None:
     resp = unconfigured_client.get(path, headers={"HX-Request": "true"})
@@ -122,7 +122,7 @@ def test_hx_request_to_guarded_endpoint_returns_hx_redirect(unconfigured_client:
 
 @pytest.mark.parametrize(
     "path",
-    ["/notifications/badge", "/board/dashboard", "/stats/funnel"],
+    ["/notifications/badge", "/board/dashboard", "/materials/"],
 )
 def test_non_hx_request_to_guarded_endpoint_still_returns_307(unconfigured_client: TestClient, path: str) -> None:
     resp = unconfigured_client.get(path)
