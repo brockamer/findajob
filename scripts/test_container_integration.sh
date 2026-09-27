@@ -12,7 +12,8 @@
 # cutting a release tag. See docs/maintainers/release-process.md.
 #
 # Prereqs:
-# - docker + docker compose v2
+# - docker + docker compose v2 + BuildKit (the Dockerfile reads TARGETARCH, which
+#   the legacy builder leaves unset; on Ubuntu's docker.io install docker-buildx)
 # - findajob image available locally as ${FINDAJOB_TEST_IMAGE:-findajob:local}
 #   (build with `docker build -t findajob:local .` from the repo root first)
 # - A real data/.env with live API keys — either at
@@ -131,21 +132,23 @@ cp "$FIXTURES/smoke_prefilter_rules.yaml"      "$SCRATCH/state/config/prefilter_
 cp "$FIXTURES/smoke_in_domain_patterns.yaml"   "$SCRATCH/state/config/in_domain_patterns.yaml"
 cp "$FIXTURES/smoke_target_companies.md"      "$SCRATCH/state/config/target_companies.md"
 
-# Empty feed_urls.txt — smoke test drives jobs via RapidAPI queries only
+# Empty feed_urls.txt — smoke test drives jobs via RapidAPI queries only.
+# (jsearch_queries.txt is the shared query list every RapidAPI adapter reads;
+# the name predates the JSearch retirement.)
 : > "$SCRATCH/state/config/feed_urls.txt"
 
 # Active-sources allow-list — must be explicit post-#681. With the sentinel
 # pre-marked below, an absent active_sources.txt would resolve to "user picked
 # none in onboarding" ([]), not to the 7-adapter default; the smoke would
-# score zero jobs and fail. Seed the RapidAPI-driven trio that the smoke's
-# .env + jsearch_queries.txt actually exercises (greenhouse/ashby/lever are
+# score zero jobs and fail. Seed the RapidAPI adapters that the smoke's
+# .env + jsearch_queries.txt actually exercise (greenhouse/ashby/lever are
 # orthogonal because feed_urls.txt is empty above; gmail_linkedin needs IMAP
-# config we don't supply).
+# config we don't supply). JSearch is not seeded: its RapidAPI listing no
+# longer accepts subscriptions, so a smoke that depends on it cannot pass.
 cat > "$SCRATCH/state/config/active_sources.txt" <<EOF
 # Seeded by scripts/test_container_integration.sh — fresh-install smoke.
 jobs-api14
 jobs-api14-indeed
-jsearch
 EOF
 
 # Pre-mark onboarding complete (#148) so /board/ and /materials/ don't

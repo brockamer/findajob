@@ -10,6 +10,10 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Documentation
+
+- **The container smoke test no longer depends on JSearch** (#1095). `scripts/test_container_integration.sh` seeded `jsearch` as an active source, but JSearch's RapidAPI listing no longer accepts subscriptions. The smoke now seeds only `jobs-api14` and `jobs-api14-indeed`. `docs/maintainers/release-process.md` and the script header now state that the image build needs BuildKit (`docker-buildx` on Ubuntu's `docker.io`), and that triage needs only `OPENROUTER_API_KEY` and `RAPIDAPI_KEY`, from keys dedicated to testing. No `migration-required`: test tooling and docs only.
+
 ## [0.35.0] — 2026-09-27
 
 ### Migration required

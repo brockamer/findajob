@@ -73,7 +73,11 @@ Before tagging, confirm:
    ```
 
    Takes 2–5 minutes, costs ≤$0.10 in API budget. Requires live API keys in
-   `data/.env` (or `$HOME/.findajob/state/data/.env`). Do not run as root.
+   `data/.env` (or `$HOME/.findajob/state/data/.env`). Triage needs only
+   `OPENROUTER_API_KEY` and `RAPIDAPI_KEY`; use keys dedicated to testing, not a
+   production instance's. Do not run as root. The build needs BuildKit, because
+   the Dockerfile reads `TARGETARCH` and the legacy builder leaves it unset. On
+   Ubuntu's `docker.io` package, install `docker-buildx` as well.
 
 5. **Transparency invariants green** (if the release touches Gmail/IMAP code):
 
