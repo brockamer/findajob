@@ -74,20 +74,11 @@ def test_config_changes_table_exists(fresh_db):
     assert cols >= {"id", "lever", "changed_at", "changed_by", "change_summary", "content_hash", "diff_summary"}
 
 
-def test_recall_audit_table_exists(fresh_db):
-    """Migration 0007: recall_audit table must have all required columns."""
-    cols = _columns(fresh_db, "recall_audit")
-    assert cols >= {
-        "id",
-        "job_id",
-        "audited_at",
-        "original_score",
-        "original_scored_by",
-        "auditor_model",
-        "audited_score",
-        "upgraded",
-        "audit_notes",
-    }
+def test_recall_audit_table_dropped(fresh_db):
+    """Migration 0012 (#1058): the stats-platform recall_audit table that 0007
+    created is dropped; config_changes from the same migration is kept."""
+    assert _columns(fresh_db, "recall_audit") == set()
+    assert _columns(fresh_db, "config_changes")
 
 
 def test_jobs_has_company_tier_column(fresh_db):

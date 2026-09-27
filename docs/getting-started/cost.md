@@ -133,7 +133,7 @@ Three things move LLM spend most:
 Cost-reducing levers:
 
 - **Tune your prefilter.** Jobs that match `prefilter_rules.yaml` deny patterns are rejected before scoring — no LLM call. A well-tuned prefilter can cut triage cost in half. Edit it in the web UI at `/config/files/prefilter_rules.yaml`.
-- **Adjust scoring model.** Default is a small/cheap model. You won't drop below $0.0015/score without losing quality, but you can verify your model choice on the `/stats/` page.
+- **Adjust scoring model.** Default is a small/cheap model. You won't drop below $0.0015/score without losing quality, but you can check what each call costs in the per-job cost breakdown on `/materials/<folder>` and in the dashboard burn-rate widget.
 - **Skip preps you won't apply to.** The flagged-for-prep queue isn't a bookmark list. Each prep is ~$1.
 
 ---
@@ -148,7 +148,7 @@ Every dollar in the ranges above is grounded in `cost_log` — findajob's per-ca
 
 - **n = 1 instance.** All numbers come from one running stack. A user with a different job-search shape — different ingest volume, different role mix, heavy speculative use, different scoring model — will see different totals.
 - **The window was prep-active.** Roughly 4 prep runs/day across the 10-day window puts the data closer to the "sprint mode" row of the TL;DR table than the "active user" row. The per-operation `$/call` rates are properties of the prompt + model combination and travel cleanly to any instance; the monthly scenarios in the table above extrapolate per-pattern, not from the window's full monthly run-rate.
-- **OpenRouter model swaps shift costs.** When a model deprecates or a new one drops in, prompt cache hits and per-token rates can move materially. Re-check the cost chip and `/stats/` after major model migrations.
+- **OpenRouter model swaps shift costs.** When a model deprecates or a new one drops in, prompt cache hits and per-token rates can move materially. Re-check the nav spend chip and the dashboard burn-rate widget after major model migrations.
 - **Prompt caching is on by default.** OpenRouter's prompt cache discounts repeated system-prompt tokens at ~10% of base rate. Without caching, the numbers above would be 2–3× higher. Don't disable caching unless you have a specific reason.
 
 For the operator-tier numbers (per-tenant Fly cost across multiple instances, snapshot pricing, etc.), see [`../operations/fly-deploy.md#cost-guide`](../operations/fly-deploy.md#cost-guide).
@@ -160,4 +160,4 @@ For the operator-tier numbers (per-tenant Fly cost across multiple instances, sn
 - [Capping the spend](#capping-the-spend) — set a monthly limit
 - [`install-fly.md`](install-fly.md) — Fly install runbook (links back to this doc)
 - [`install-docker.md`](../operations/install-docker.md) — self-host install (same LLM cost structure)
-- `/stats/` in your running stack — real-time cost data for your own instance
+- The nav spend chip and the `/board/dashboard` burn-rate widget in your running stack — real-time cost data for your own instance

@@ -35,7 +35,6 @@ from findajob.web.routes import (
     settings_spend_ceiling,
     settings_timezone,
     speculative,
-    stats,
     tools,
     tools_actions,
     tools_critique,
@@ -73,7 +72,6 @@ router.include_router(settings_timezone.router, dependencies=_guard)
 router.include_router(rejections_review.router, dependencies=_guard)
 router.include_router(filter_proposals.router, dependencies=_guard)
 router.include_router(speculative.router, dependencies=_guard)
-router.include_router(stats.router, dependencies=_guard)
 router.include_router(config.router)
 router.include_router(gmail_config.router)
 router.include_router(tools.router)

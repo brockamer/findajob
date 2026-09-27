@@ -29,8 +29,6 @@ _PAGES: dict[str, str] = {
     # Daily use
     "usage": "usage.md",
     "usage/expanding-sources": "usage/expanding-sources.md",
-    "usage/stats": "usage/stats.md",
-    "tuning": "tuning.md",
     "troubleshooting": "troubleshooting.md",
     "updating": "updating.md",
     # Operations
@@ -55,7 +53,6 @@ _BREADCRUMB_LABELS: dict[str, str] = {
     "usage": "Usage",
     "operations": "Operations",
     "troubleshooting": "Troubleshooting",
-    "tuning": "Tuning",
 }
 
 _INDEX_GUIDES = [
@@ -78,11 +75,6 @@ _INDEX_GUIDES = [
         "slug": "updating",
         "title": "Updating",
         "blurb": "Picking up a new release — the steps differ by deploy type (Fly, or Docker with/without Watchtower).",
-    },
-    {
-        "slug": "tuning",
-        "title": "Tuning",
-        "blurb": "Read the stats pages, adjust your config when the numbers call for it, and verify the change worked.",
     },
     {
         "slug": "troubleshooting",

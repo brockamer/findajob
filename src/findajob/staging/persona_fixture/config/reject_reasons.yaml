@@ -12,7 +12,6 @@
 #
 # WHO READS THIS:
 #   - `src/findajob/web/templates/board/_reject_cell.html` — dropdown options
-#   - `src/findajob/web/routes/stats.py` — canonical-order display in the stats page
 #   - `src/findajob/web/filters/registry.py` — dashboard filter chip values
 #   - `scripts/analyze_feedback.py` — subset that signals scorer-miss
 #
@@ -22,7 +21,7 @@
 
 reasons:
   # The labels you want available when rejecting jobs. Keep them short — they
-  # appear in dropdowns, filter chips, and the stats page. Order matters
+  # appear in dropdowns and filter chips. Order matters
   # (this is the dropdown order). The shipped defaults below are field-
   # agnostic; tailor them to how YOU think about why a posting isn't right.
   #

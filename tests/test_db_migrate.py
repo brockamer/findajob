@@ -99,6 +99,64 @@ def test_fresh_db_runs_initial_migration(tmp_path: Path) -> None:
         jobs_cols = {row[1] for row in _table_info(conn, "jobs")}
         assert "network_depth" not in jobs_cols
         assert "known_contacts" in jobs_cols
+        # #1058 — recall_audit dropped by 0012; its 0007 sibling
+        # config_changes and the jobs.scored_by / company_tier columns stay.
+        assert not _has_table(conn, "recall_audit")
+        assert _has_table(conn, "config_changes")
+        assert {"scored_by", "company_tier"} <= jobs_cols
+    finally:
+        conn.close()
+
+
+def test_0012_drops_recall_audit_on_existing_stack(tmp_path: Path) -> None:
+    """#1058 — a stack at schema version 11 that still holds ``recall_audit``
+    (with rows) loses the table on the next boot. ``config_changes`` rows —
+    the filter-proposals audit log — survive untouched."""
+    db = tmp_path / "at_0011.db"
+    conn = sqlite3.connect(str(db))
+    try:
+        apply_pending(conn)
+        # Rebuild the pre-0012 state: the 0007 table + index, one audit row,
+        # one config_changes row, version stamped at 11.
+        conn.executescript(
+            """
+            CREATE TABLE recall_audit (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_id TEXT NOT NULL,
+                audited_at TEXT DEFAULT (datetime('now')),
+                original_score INTEGER,
+                original_scored_by TEXT,
+                auditor_model TEXT NOT NULL,
+                audited_score INTEGER,
+                upgraded INTEGER DEFAULT 0,
+                audit_notes TEXT
+            );
+            CREATE INDEX idx_recall_audit_time ON recall_audit (audited_at);
+            INSERT INTO recall_audit (job_id, auditor_model, audited_score) VALUES ('fp-1', 'm', 7);
+            INSERT INTO config_changes (lever, changed_by) VALUES ('prefilter_rules', 'auto_tuner');
+            UPDATE _meta SET value = '11' WHERE key = 'schema_version';
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    conn = sqlite3.connect(str(db))
+    try:
+        applied = apply_pending(conn)
+    finally:
+        conn.close()
+
+    assert [(m.version, m.name) for m in applied if not m.skipped][0] == (12, "drop_recall_audit")
+
+    conn = sqlite3.connect(str(db))
+    try:
+        assert _read_version(conn) == HEAD_VERSION
+        assert not _has_table(conn, "recall_audit")
+        idx = conn.execute("SELECT name FROM sqlite_master WHERE name = 'idx_recall_audit_time'").fetchone()
+        assert idx is None
+        rows = conn.execute("SELECT lever, changed_by FROM config_changes").fetchall()
+        assert rows == [("prefilter_rules", "auto_tuner")]
     finally:
         conn.close()
 

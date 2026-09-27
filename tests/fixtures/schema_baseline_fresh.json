@@ -115,12 +115,6 @@
       "type": "index"
     },
     {
-      "name": "idx_recall_audit_time",
-      "sql": "CREATE INDEX idx_recall_audit_time ON recall_audit(audited_at)",
-      "tbl_name": "recall_audit",
-      "type": "index"
-    },
-    {
       "name": "idx_speculative_company_submitted",
       "sql": "CREATE INDEX idx_speculative_company_submitted ON speculative_requests(company,submitted_at)",
       "tbl_name": "speculative_requests",
@@ -1245,87 +1239,6 @@
       "name": "onboarding_sessions",
       "sql": "CREATE TABLE onboarding_sessions(id TEXT PRIMARY KEY,history_json TEXT NOT NULL,captured_blocks_json TEXT NOT NULL DEFAULT '{}',started_at TEXT NOT NULL,last_turn_at TEXT NOT NULL,completed_at TEXT,error_state TEXT,user_openrouter_key TEXT DEFAULT NULL,user_rapidapi_key TEXT DEFAULT NULL,cumulative_cost_usd REAL NOT NULL DEFAULT 0,user_gemini_api_key TEXT DEFAULT NULL)",
       "tbl_name": "onboarding_sessions",
-      "type": "table"
-    },
-    {
-      "columns": [
-        {
-          "cid": 0,
-          "dflt_value": null,
-          "name": "id",
-          "notnull": 0,
-          "pk": 1,
-          "type": "INTEGER"
-        },
-        {
-          "cid": 1,
-          "dflt_value": null,
-          "name": "job_id",
-          "notnull": 1,
-          "pk": 0,
-          "type": "TEXT"
-        },
-        {
-          "cid": 2,
-          "dflt_value": "datetime('now')",
-          "name": "audited_at",
-          "notnull": 0,
-          "pk": 0,
-          "type": "TEXT"
-        },
-        {
-          "cid": 3,
-          "dflt_value": null,
-          "name": "original_score",
-          "notnull": 0,
-          "pk": 0,
-          "type": "INTEGER"
-        },
-        {
-          "cid": 4,
-          "dflt_value": null,
-          "name": "original_scored_by",
-          "notnull": 0,
-          "pk": 0,
-          "type": "TEXT"
-        },
-        {
-          "cid": 5,
-          "dflt_value": null,
-          "name": "auditor_model",
-          "notnull": 1,
-          "pk": 0,
-          "type": "TEXT"
-        },
-        {
-          "cid": 6,
-          "dflt_value": null,
-          "name": "audited_score",
-          "notnull": 0,
-          "pk": 0,
-          "type": "INTEGER"
-        },
-        {
-          "cid": 7,
-          "dflt_value": "0",
-          "name": "upgraded",
-          "notnull": 0,
-          "pk": 0,
-          "type": "INTEGER"
-        },
-        {
-          "cid": 8,
-          "dflt_value": null,
-          "name": "audit_notes",
-          "notnull": 0,
-          "pk": 0,
-          "type": "TEXT"
-        }
-      ],
-      "foreign_keys": [],
-      "name": "recall_audit",
-      "sql": "CREATE TABLE recall_audit(id INTEGER PRIMARY KEY AUTOINCREMENT,job_id TEXT NOT NULL,audited_at TEXT DEFAULT(datetime('now')),original_score INTEGER,original_scored_by TEXT,auditor_model TEXT NOT NULL,audited_score INTEGER,upgraded INTEGER DEFAULT 0,audit_notes TEXT)",
-      "tbl_name": "recall_audit",
       "type": "table"
     },
     {

@@ -49,12 +49,22 @@ def test_materials_index_moved(client: TestClient) -> None:
 def test_every_nav_link_resolves(client: TestClient) -> None:
     """Regression: every href in the top nav returns 200, not 404.
 
-    (Stats was removed from the top nav in the Tier-1 strip #1057; the /stats/*
-    routes still resolve and are covered directly by test_web_stats_*.)
+    (Stats was removed from the top nav in the Tier-1 strip #1057 and the
+    /stats/* routes were deleted in the Tier-2 teardown #1058.)
     """
     for path in ["/", "/materials/", "/board/dashboard", "/ingest/", "/tools/", "/config/", "/docs/"]:
         r = client.get(path, follow_redirects=True)
         assert r.status_code == 200, f"Nav link {path} returned {r.status_code}"
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["/stats/", "/stats/funnel", "/stats/feedback", "/stats/scoring", "/stats/recall-audit"],
+)
+def test_stats_routes_removed(client: TestClient, path: str) -> None:
+    """#1058: the Tier-2 teardown deleted the /stats/* router."""
+    r = client.get(path)
+    assert r.status_code == 404, f"{path} returned {r.status_code}"
 
 
 def test_board_link_highlights_on_every_board_page(client: TestClient) -> None:

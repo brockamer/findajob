@@ -158,8 +158,6 @@ def test_taxonomy_constant_includes_known_kinds(notify):
         "interview_prep_failed",
         "study_guide_failed",
         "flashcard_failed",
-        "recall_audit_alert",
-        "drift_alert",
         "podcast_ready",
         "podcast_failed",
         "spend_ceiling_warning",

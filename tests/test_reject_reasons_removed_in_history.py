@@ -1,6 +1,7 @@
 """AC #3 from #490: a reason that exists in `feedback_log` historical
 rows but has been removed from `reject_reasons.yaml` MUST NOT break
-/board/dashboard/, /stats/, or /board/rejected/.
+/board/dashboard/ or /board/rejected/.
+(/stats/ was in this list until the #1058 teardown removed it.)
 """
 
 from __future__ import annotations
@@ -65,7 +66,6 @@ def client_with_orphan_feedback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     "path",
     [
         "/board/dashboard/",
-        "/stats/",
         "/board/rejected/",
     ],
 )

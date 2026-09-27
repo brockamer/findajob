@@ -34,7 +34,7 @@ When this map drifts from the actual code (renamed file, new route module, retir
 <repo>/src/findajob/web/routes/docs.py       # GET /docs/ index + GET /docs/{slug} — user docs viewer
 <repo>/src/findajob/web/markdown.py          # render_markdown() — shared MD→HTML helper for materials + docs viewers
 <repo>/src/findajob/web/config_files.py      # allowlist + resolve_editable() for /config/ editor
-<repo>/src/findajob/web/onboarding_guard.py # NUX guard dependency — 307s /board,/materials,/stats to /onboarding when sentinel missing
+<repo>/src/findajob/web/onboarding_guard.py # NUX guard dependency — 307s /board,/materials to /onboarding when sentinel missing
 <repo>/src/findajob/web/routes/onboarding.py # GET /onboarding/, POST /onboarding/keys (Step 1 keys collection)
 <repo>/src/findajob/web/routes/onboarding_interview.py # In-app interview routes: /onboarding/interview/start | /turn | /{sid} | /{sid}/finalize. _resolved_chat_key reads user's OpenRouter key from session credentials; 503 if no key. Step 1 keys mandatory before /start.
 <repo>/src/findajob/web/routes/onboarding_feed_check.py # GET /onboarding/feed-check/{sid}/{,results} — validate emitted feed_urls.txt ATS slugs (#984); non-blocking, runs between interview finalize and timezone; page renders instantly + async-loads probe_feed_urls() results; propagates voice_redact_failed onward

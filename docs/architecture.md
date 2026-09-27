@@ -320,8 +320,7 @@ created_at TEXT DEFAULT (datetime('now'))
 | `view_prefs` | Per-board-tab persisted filter / column / sort state |
 | `duplicate_groups` | Maps duplicate job ids to their canonical fingerprint |
 | `onboarding_sessions` | First-run chat-interview state, captured profile blocks, per-user API keys, cumulative cost |
-| `config_changes` | Tuning-loop ledger of scorer-config edits |
-| `recall_audit` | Tuning-loop re-scoring audit — original vs. audited score per job |
+| `config_changes` | Ledger of scorer-config edits; the filter-proposals audit log (`changed_by='auto_tuner'`) |
 
 ---
 
