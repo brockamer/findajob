@@ -126,7 +126,7 @@ issue at <https://github.com/brockamer/findajob/issues> or see
 `CLAUDE.md` § "Source Adapters are Pluggable" for the contributor
 walkthrough.
 
-<details>
+<details markdown="1">
 <summary>Advanced</summary>
 
 ### Legacy per-adapter env var fallbacks

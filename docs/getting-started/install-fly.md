@@ -216,7 +216,7 @@ For symptoms not listed here, see [`../troubleshooting.md`](../troubleshooting.m
 
 ---
 
-<details>
+<details markdown="1">
 <summary>Alternative: CLI deploy (power users)</summary>
 
 If you prefer the command line, the full CLI-based deploy path is available. Install `flyctl`, clone the repo, and run the deploy script:
