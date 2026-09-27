@@ -53,7 +53,7 @@ body:
       description: |
         From the host running your stack: `docker compose images scheduler` (last column is the digest; first column is the tag).
         Or: `docker compose ps --format "{{.Image}}"`.
-      placeholder: "ghcr.io/brockamer/findajob:v0.20"
+      placeholder: "ghcr.io/brockamer/findajob:vX.Y.Z"
     validations:
       required: true
 
