@@ -152,7 +152,7 @@ Foundational decisions (design rationale lives in operator-private specs):
 - URL query params for UI state (not cookies/localStorage)
 - Alpine.js added only when ephemeral client state is needed
 
-**Authorization model:** no per-user auth inside findajob — perimeter is the boundary. Default perimeter is VPN-only; internet-exposed instances add HTTP Basic Auth via `FINDAJOB_AUTH_USER` / `FINDAJOB_AUTH_PASS` (see `findajob.web.auth` and [`docs/operations/internet-exposure.md`](docs/operations/internet-exposure.md)).
+**Authorization model:** no per-user auth inside findajob — perimeter is the boundary. Default perimeter is VPN-only; internet-exposed instances add HTTP Basic Auth via `FINDAJOB_AUTH_USER` / `FINDAJOB_AUTH_PASS` (see `findajob.web.auth` and [`docs/operations/internet-exposure.md`](docs/operations/internet-exposure.md)). Independently of auth, every `POST`/`PUT`/`PATCH`/`DELETE` passes `findajob.web.middleware.CrossSiteRequestMiddleware`, which rejects requests a browser marks as cross-site (`Sec-Fetch-Site`, then `Origin` vs `Host`); it is always on and sits inside the auth gate. Keep that order when touching `app.py` — `tests/test_web_cross_site.py` pins it.
 
 **Top-level URL groups:**
 

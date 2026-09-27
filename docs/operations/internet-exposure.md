@@ -9,6 +9,7 @@ This is **shared-secret authentication**, not an identity system. It defends aga
 - Drive-by scanning of the open internet
 - Indexing by search engines and archive crawlers
 - Casual probing by anyone who happens to learn the URL
+- A page on another site driving the UI with the credential your browser replays (see [Cross-site request protection](#cross-site-request-protection))
 
 It does **not** defend against:
 
@@ -30,6 +31,8 @@ https://findajob-{handle}.example.com
    <host>:<port>
         ↓
    FastAPI BasicAuthMiddleware  ← this layer
+        ↓
+   FastAPI CrossSiteRequestMiddleware  ← always on, see below
         ↓
    findajob route handlers
 ```
@@ -89,6 +92,22 @@ To rotate the credential:
 ## Disabling
 
 Remove (or empty) `FINDAJOB_AUTH_USER` / `FINDAJOB_AUTH_PASS` and `docker compose up -d`. The middleware becomes a no-op and all requests pass through.
+
+## Cross-site request protection
+
+Browsers replay HTTP Basic Auth on cross-site form posts and `fetch` calls. Without a request-origin check, a page on any other site could drive every state-changing route in the UI as you — trigger an update, upload a restore tarball, change stages, edit config. `findajob.web.middleware.CrossSiteRequestMiddleware` is that check. It is **always on**, whether or not the auth env vars are set: a LAN-only instance is just as reachable from a hostile page open in your browser.
+
+Every `POST`, `PUT`, `PATCH` and `DELETE` is checked before routing:
+
+1. If the browser sends `Sec-Fetch-Site` (every current browser does), its verdict is final: `cross-site` and `same-site` get `403`; `same-origin` and `none` (a typed URL or bookmark) pass.
+2. Otherwise, if the browser sends `Origin`, its hostname must match the request's `Host` hostname, or the first hostname in `X-Forwarded-Host` when your proxy forwards one. `Origin: null` is rejected.
+3. Requests with neither header pass. Scripts, `curl` and the test client send neither, and they are not a browser replaying a credential.
+
+`GET` is never affected, so links and bookmarks work as before. A rejected request gets a plain-text `403 Cross-site request rejected.` and one `WARNING` line in the container log naming the method, path, `Origin` and `Host`.
+
+**If you see that 403 on your own instance**, your reverse proxy is almost certainly rewriting `Host` to its upstream name and your browser is old enough to omit `Sec-Fetch-Site` (Safari before 16.4). Fix it at the proxy: pass the original host through (`proxy_set_header Host $host;` in nginx) or forward it in `X-Forwarded-Host`. Caddy and Traefik pass `Host` through by default. Current browsers are unaffected either way, because rule 1 never consults `Host`.
+
+There is no switch to disable this check.
 
 ## What this does not change
 
