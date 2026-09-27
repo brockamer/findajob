@@ -162,7 +162,7 @@ Typical failures on first boot:
 
 ---
 
-<details>
+<details markdown="1">
 <summary><strong>For advanced users: audit_log, manual re-triage</strong></summary>
 
 ### Reading `audit_log` in `pipeline.db`

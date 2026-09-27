@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import re
 import sqlite3
 import textwrap
 from pathlib import Path
@@ -328,3 +329,20 @@ def test_materials_render_leaves_img_src_untouched() -> None:
     html = render_markdown("![shot](shot.png)\n")
     assert 'src="shot.png"' in html
     assert "/docs/" not in html
+
+
+def test_served_docs_render_markdown_inside_collapsible_sections() -> None:
+    """A raw `<details>` block without markdown="1" is passed through as HTML:
+    its backticks, lists and links show as literal text, and `<placeholder>`
+    words are parsed as tags and vanish from the page."""
+    from findajob.web.routes.docs import _PAGES
+
+    docs_root = Path(__file__).resolve().parent.parent / "docs"
+    for rel in sorted(set(_PAGES.values())):
+        path = docs_root / rel
+        if not path.is_file():
+            continue
+        rendered = render_markdown(path.read_text(encoding="utf-8"), source=rel)
+        for body in re.findall(r"<details>(.*?)</details>", rendered, re.S):
+            prose = re.sub(r"<(pre|code)>.*?</\1>", "", body, flags=re.S)
+            assert "`" not in prose, f'{rel}: Markdown inside <details> is not rendered; add markdown="1"'

@@ -35,7 +35,7 @@ your mailbox before granting access:
 - [`src/findajob/gmail_imap.py`](https://github.com/brockamer/findajob/blob/main/src/findajob/gmail_imap.py) — IMAP client
 - [`src/findajob/fetchers/adapters/gmail.py:GmailLinkedInAdapter`](https://github.com/brockamer/findajob/blob/main/src/findajob/fetchers/adapters/gmail.py)
 
-<details>
+<details markdown="1">
 <summary>Show full disclosure</summary>
 
 ### 1. Exact scope (what we touch)
