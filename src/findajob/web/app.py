@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import sqlite3
+import sys
 from collections.abc import Generator
 from pathlib import Path
 
@@ -193,6 +195,23 @@ def create_app(
     return app
 
 
+def _log_to_stdout() -> None:
+    """Send ``findajob`` INFO+ log lines to stdout, where ``docker logs`` sees them.
+
+    uvicorn's ``--log-level`` configures only uvicorn's own loggers, so without
+    this the auth status and the one-time ``FINDAJOB_SETUP_TOKEN`` line were
+    dropped (#1049). Does nothing when logging is already configured — by an
+    operator's ``--log-config`` or by an earlier call in this process.
+    """
+    pkg_logger = logging.getLogger("findajob")
+    if pkg_logger.handlers or logging.getLogger().handlers:
+        return
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(logging.Formatter("%(levelname)s:     %(name)s: %(message)s"))
+    pkg_logger.addHandler(handler)
+    pkg_logger.setLevel(logging.INFO)
+
+
 def default_app() -> FastAPI:
     """Factory used by uvicorn at container start.
 
@@ -201,6 +220,7 @@ def default_app() -> FastAPI:
     resolve to /app/state/companies and /app/state/data/pipeline.db
     without needing per-stack env overrides.
     """
+    _log_to_stdout()
     jsp_base = os.environ.get("JSP_BASE", "/app")
     companies_root = Path(os.environ.get("COMPANIES_ROOT", f"{jsp_base}/companies"))
     db_path = Path(os.environ.get("DB_PATH", f"{jsp_base}/data/pipeline.db"))

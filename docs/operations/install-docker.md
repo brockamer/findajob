@@ -106,8 +106,18 @@ FINDAJOB_AUTH_USER=<your username>
 FINDAJOB_AUTH_PASS=<a strong password>
 ```
 
-the perimeter VPN-only / LAN-only instances can skip this — the perimeter is the gate.
+VPN-only / LAN-only instances can skip this — the perimeter is the gate.
 See [`internet-exposure.md`](internet-exposure.md) for the full threat model.
+
+If you leave both unset, the onboarding page asks you to choose a username and
+password, and the form needs a one-time setup token. The container prints the
+token at startup:
+
+```bash
+docker compose logs scheduler | grep FINDAJOB_SETUP_TOKEN
+```
+
+A new token is generated on every restart, so use the most recent line.
 
 ### What the entrypoint does automatically
 

@@ -14,6 +14,10 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 - **The container smoke test no longer depends on JSearch** (#1095). `scripts/test_container_integration.sh` seeded `jsearch` as an active source, but JSearch's RapidAPI listing no longer accepts subscriptions. The smoke now seeds only `jobs-api14` and `jobs-api14-indeed`. `docs/maintainers/release-process.md` and the script header now state that the image build needs BuildKit (`docker-buildx` on Ubuntu's `docker.io`), and that triage needs only `OPENROUTER_API_KEY` and `RAPIDAPI_KEY`, from keys dedicated to testing. No `migration-required`: test tooling and docs only.
 
+### Fixed
+
+- **The one-time `FINDAJOB_SETUP_TOKEN` reaches the container logs again** (#1049). The web app wrote the auth status and the setup token with Python `logging`, but nothing configured a handler for the `findajob` loggers — uvicorn's `--log-level` covers only uvicorn's own — so the lines were dropped and `docker logs … | grep FINDAJOB_SETUP_TOKEN` found nothing. An operator who deployed without `FINDAJOB_AUTH_USER` / `FINDAJOB_AUTH_PASS` could not finish the onboarding password step. The uvicorn factory (`findajob.web.app.default_app`) now sends `findajob` INFO+ lines to stdout, unless logging is already configured in the process. `docs/operations/install-docker.md` now shows where to find the token; `tests/test_web_startup_logging.py` boots the factory in a fresh interpreter and checks stdout. No `migration-required`: no config or schema change.
+
 ## [0.35.0] — 2026-09-27
 
 ### Migration required
