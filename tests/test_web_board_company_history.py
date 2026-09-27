@@ -42,7 +42,9 @@ def _finalize(tmp_path: Path, conn: sqlite3.Connection, db: Path) -> TestClient:
     companies = tmp_path / "companies"
     companies.mkdir()
     mark_complete(tmp_path)
-    return TestClient(create_app(companies_root=companies, db_path=db, base_root=tmp_path))
+    return TestClient(
+        create_app(companies_root=companies, db_path=db, base_root=tmp_path), headers={"HX-Request": "true"}
+    )
 
 
 # ── Helper unit tests ────────────────────────────────────────────────────────

@@ -25,7 +25,7 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import cast
 
-from fastapi import APIRouter, Form, HTTPException, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 
 from findajob.audit import log_event
@@ -55,12 +55,16 @@ from findajob.onboarding.session_store import (
     update_captured_blocks,
 )
 from findajob.spend_ceiling import check_call_gate
+from findajob.web.htmx_guard import require_htmx
 from findajob.web.markdown import render_chat_assistant_html
 from findajob.web.middleware import SCOPE_KEY as _DISCONNECT_SCOPE_KEY
 
 _INTERVIEWER_MODEL = role_model("onboarding_interviewer")
 
 router = APIRouter()
+# HX-Request gate for the HTMX-only POST routes in this module; see
+# findajob.web.htmx_guard and tests/test_web_htmx_guard.py.
+_HTMX = [Depends(require_htmx)]
 
 _KICKOFF_USER_MESSAGE = "Begin the interview."
 
@@ -272,7 +276,7 @@ def start_interview(request: Request) -> RedirectResponse:
     return RedirectResponse(url=f"/onboarding/interview/{session_id}", status_code=303)
 
 
-@router.post("/onboarding/interview/turn", response_class=HTMLResponse)
+@router.post("/onboarding/interview/turn", response_class=HTMLResponse, dependencies=_HTMX)
 def post_turn(
     request: Request,
     session_id: str = Form(...),

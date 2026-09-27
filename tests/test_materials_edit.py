@@ -88,7 +88,7 @@ def client_factory(tmp_path: Path, monkeypatch):
 
         mark_complete(tmp_path)
         app = create_app(companies_root=companies, db_path=db_path, base_root=tmp_path)
-        client = TestClient(app)
+        client = TestClient(app, headers={"HX-Request": "true"})
         client._folder = folder
         client._fingerprint = fingerprint
         return client

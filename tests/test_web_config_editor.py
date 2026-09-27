@@ -64,7 +64,7 @@ def client(base_root: Path, tmp_path: Path) -> TestClient:
         db_path=db_path,
         base_root=base_root,
     )
-    return TestClient(app)
+    return TestClient(app, headers={"HX-Request": "true"})
 
 
 def test_index_lists_files_by_category(client: TestClient) -> None:

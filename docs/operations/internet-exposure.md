@@ -109,6 +109,8 @@ Every `POST`, `PUT`, `PATCH` and `DELETE` is checked before routing:
 
 There is no switch to disable this check.
 
+**Second line: the `HX-Request` header.** Most state-changing routes in the UI are only ever called by HTMX, which sends `HX-Request: true` on every request it makes. Those routes also require that header (`findajob.web.htmx_guard.require_htmx`). A cross-site HTML form cannot set a custom header at all, and cross-site JavaScript can only send one after a CORS preflight the app never approves — so these routes stay closed even to a browser too old to send `Sec-Fetch-Site` or `Origin`. Routes reached by a plain `<form method="post">` or a `fetch` call do not carry the gate; `tests/test_web_htmx_guard.py` holds the inventory and fails when a route is added without being classified. A request to a gated route without the header gets `403` with a short JSON `detail`.
+
 ## What this does not change
 
 - **the perimeter VPN access still works** for deployments that don't set the env vars. The middleware is opt-in.

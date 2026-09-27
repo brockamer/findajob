@@ -33,7 +33,7 @@ def app(tmp_path, monkeypatch):
 
 @pytest.fixture
 def client(app):
-    return TestClient(app)
+    return TestClient(app, headers={"HX-Request": "true"})
 
 
 def _write_config():

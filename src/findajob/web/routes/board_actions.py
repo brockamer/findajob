@@ -47,9 +47,13 @@ from findajob.timeutil import local_zoneinfo
 from findajob.web.company_history import build_history_by_fp, fetch_company_history
 from findajob.web.cron_dispatch import dispatch_cron
 from findajob.web.filters import registry as filter_registry
+from findajob.web.htmx_guard import require_htmx
 from findajob.web.routes.materials import get_db
 
 router = APIRouter()
+# HX-Request gate for the HTMX-only POST routes in this module; see
+# findajob.web.htmx_guard and tests/test_web_htmx_guard.py.
+_HTMX = [Depends(require_htmx)]
 
 MAX_CONCURRENT_PREPS = 3
 """Upper bound on simultaneously-running prep subprocesses.
@@ -373,7 +377,7 @@ def _fetch_job(db: sqlite3.Connection, fingerprint: str) -> sqlite3.Row | None:
     ).fetchone()
 
 
-@router.post("/board/jobs/{fingerprint}/prep", response_class=HTMLResponse)
+@router.post("/board/jobs/{fingerprint}/prep", response_class=HTMLResponse, dependencies=_HTMX)
 def prep(
     fingerprint: str,
     request: Request,
@@ -441,7 +445,7 @@ def prep(
     return _render_dashboard_row(request, updated, db)
 
 
-@router.post("/board/jobs/{fingerprint}/regenerate", response_class=HTMLResponse)
+@router.post("/board/jobs/{fingerprint}/regenerate", response_class=HTMLResponse, dependencies=_HTMX)
 def regenerate(
     fingerprint: str,
     request: Request,
@@ -606,7 +610,7 @@ def regenerate_cell(
     )
 
 
-@router.post("/board/jobs/{fingerprint}/continue-prep", response_class=HTMLResponse)
+@router.post("/board/jobs/{fingerprint}/continue-prep", response_class=HTMLResponse, dependencies=_HTMX)
 def continue_prep(
     fingerprint: str,
     request: Request,
@@ -682,7 +686,7 @@ def continue_prep(
     return _render_dashboard_row(request, updated, db)
 
 
-@router.post("/board/jobs/{fingerprint}/apply", response_class=HTMLResponse)
+@router.post("/board/jobs/{fingerprint}/apply", response_class=HTMLResponse, dependencies=_HTMX)
 def apply(
     fingerprint: str,
     request: Request,
@@ -713,7 +717,7 @@ def apply(
     )
 
 
-@router.post("/board/jobs/{fingerprint}/un-apply", response_class=HTMLResponse)
+@router.post("/board/jobs/{fingerprint}/un-apply", response_class=HTMLResponse, dependencies=_HTMX)
 def un_apply(
     fingerprint: str,
     request: Request,  # noqa: ARG001
@@ -753,7 +757,7 @@ def un_apply(
     return HTMLResponse("")
 
 
-@router.post("/board/jobs/{fingerprint}/interview", response_class=HTMLResponse)
+@router.post("/board/jobs/{fingerprint}/interview", response_class=HTMLResponse, dependencies=_HTMX)
 def interview(
     fingerprint: str,
     request: Request,
@@ -783,7 +787,7 @@ def interview(
     return _applied_row_with_stage_toast(request, updated, "interview")
 
 
-@router.post("/board/jobs/{fingerprint}/offer", response_class=HTMLResponse)
+@router.post("/board/jobs/{fingerprint}/offer", response_class=HTMLResponse, dependencies=_HTMX)
 def offer(
     fingerprint: str,
     request: Request,
@@ -799,7 +803,7 @@ def offer(
     return _applied_row_with_stage_toast(request, updated, "offer")
 
 
-@router.post("/board/jobs/{fingerprint}/un-interview", response_class=HTMLResponse)
+@router.post("/board/jobs/{fingerprint}/un-interview", response_class=HTMLResponse, dependencies=_HTMX)
 def un_interview(
     fingerprint: str,
     request: Request,
@@ -819,7 +823,7 @@ def un_interview(
     return _applied_row_with_stage_toast(request, updated, restored_stage)
 
 
-@router.post("/board/jobs/{fingerprint}/withdraw", response_class=HTMLResponse)
+@router.post("/board/jobs/{fingerprint}/withdraw", response_class=HTMLResponse, dependencies=_HTMX)
 def withdraw(
     fingerprint: str,
     request: Request,
@@ -837,7 +841,7 @@ def withdraw(
     return HTMLResponse(_stage_change_toast_html(request, "withdrawn"))
 
 
-@router.post("/board/jobs/{fingerprint}/waitlist", response_class=HTMLResponse)
+@router.post("/board/jobs/{fingerprint}/waitlist", response_class=HTMLResponse, dependencies=_HTMX)
 def waitlist(
     fingerprint: str,
     request: Request,  # noqa: ARG001
@@ -853,7 +857,7 @@ def waitlist(
     return HTMLResponse("")
 
 
-@router.post("/board/jobs/{fingerprint}/reactivate", response_class=HTMLResponse)
+@router.post("/board/jobs/{fingerprint}/reactivate", response_class=HTMLResponse, dependencies=_HTMX)
 def reactivate(
     fingerprint: str,
     request: Request,  # noqa: ARG001
@@ -869,7 +873,7 @@ def reactivate(
     return HTMLResponse("")
 
 
-@router.post("/board/jobs/{fingerprint}/reactivate-and-prep", response_class=HTMLResponse)
+@router.post("/board/jobs/{fingerprint}/reactivate-and-prep", response_class=HTMLResponse, dependencies=_HTMX)
 def reactivate_and_prep(
     fingerprint: str,
     request: Request,  # noqa: ARG001
@@ -949,7 +953,7 @@ def reactivate_and_prep(
 _PROMOTABLE_STAGES = ("manual_review", "scored")
 
 
-@router.post("/board/jobs/{fingerprint}/promote", response_class=HTMLResponse)
+@router.post("/board/jobs/{fingerprint}/promote", response_class=HTMLResponse, dependencies=_HTMX)
 def promote(
     fingerprint: str,
     request: Request,  # noqa: ARG001
@@ -980,7 +984,7 @@ def _fetch_un_reject_job(db: sqlite3.Connection, fingerprint: str) -> sqlite3.Ro
     ).fetchone()
 
 
-@router.post("/board/jobs/{fingerprint}/un-reject", response_class=HTMLResponse)
+@router.post("/board/jobs/{fingerprint}/un-reject", response_class=HTMLResponse, dependencies=_HTMX)
 def un_reject(
     fingerprint: str,
     request: Request,  # noqa: ARG001
@@ -1084,7 +1088,7 @@ def un_reject_cell(
     )
 
 
-@router.post("/board/jobs/{fingerprint}/change-reject-reason", response_class=HTMLResponse)
+@router.post("/board/jobs/{fingerprint}/change-reject-reason", response_class=HTMLResponse, dependencies=_HTMX)
 def change_reject_reason(
     fingerprint: str,
     request: Request,
@@ -1141,7 +1145,7 @@ def _fetch_rejection_job(db: sqlite3.Connection, fingerprint: str) -> sqlite3.Ro
     ).fetchone()
 
 
-@router.post("/board/jobs/{fingerprint}/reject", response_class=HTMLResponse)
+@router.post("/board/jobs/{fingerprint}/reject", response_class=HTMLResponse, dependencies=_HTMX)
 def reject(
     fingerprint: str,
     request: Request,  # noqa: ARG001
@@ -1160,7 +1164,7 @@ def reject(
     return HTMLResponse("")
 
 
-@router.post("/board/jobs/{fingerprint}/not-selected", response_class=HTMLResponse)
+@router.post("/board/jobs/{fingerprint}/not-selected", response_class=HTMLResponse, dependencies=_HTMX)
 def not_selected(
     fingerprint: str,
     request: Request,
@@ -1201,7 +1205,7 @@ def _fetch_not_selected_row(db: sqlite3.Connection, fingerprint: str) -> sqlite3
     ).fetchone()
 
 
-@router.post("/board/jobs/{fingerprint}/un-not-selected", response_class=HTMLResponse)
+@router.post("/board/jobs/{fingerprint}/un-not-selected", response_class=HTMLResponse, dependencies=_HTMX)
 def un_not_selected(
     fingerprint: str,
     request: Request,
@@ -1221,7 +1225,7 @@ def un_not_selected(
     return HTMLResponse(_stage_change_toast_html(request, restored_stage))
 
 
-@router.post("/board/jobs/{fingerprint}/change-not-selected-reason", response_class=HTMLResponse)
+@router.post("/board/jobs/{fingerprint}/change-not-selected-reason", response_class=HTMLResponse, dependencies=_HTMX)
 def change_not_selected_reason(
     fingerprint: str,
     request: Request,
@@ -1265,7 +1269,7 @@ def change_not_selected_reason(
     )
 
 
-@router.post("/board/jobs/{fingerprint}/notes", response_class=HTMLResponse)
+@router.post("/board/jobs/{fingerprint}/notes", response_class=HTMLResponse, dependencies=_HTMX)
 def notes(
     fingerprint: str,
     request: Request,
@@ -1354,7 +1358,7 @@ def notes_history(
 # ── Archive actions (#701) ─────────────────────────────────────────────────
 
 
-@router.post("/board/jobs/{fingerprint}/un-withdraw", response_class=HTMLResponse)
+@router.post("/board/jobs/{fingerprint}/un-withdraw", response_class=HTMLResponse, dependencies=_HTMX)
 def un_withdraw(
     fingerprint: str,
     request: Request,
@@ -1379,7 +1383,7 @@ def un_withdraw(
 _FALLBACK_ENTRY_STAGES = ("applied", "interview", "offer")
 
 
-@router.post("/board/jobs/{fingerprint}/withdraw-as-fallback", response_class=HTMLResponse)
+@router.post("/board/jobs/{fingerprint}/withdraw-as-fallback", response_class=HTMLResponse, dependencies=_HTMX)
 def withdraw_as_fallback(
     fingerprint: str,
     request: Request,
@@ -1405,7 +1409,7 @@ def withdraw_as_fallback(
     return HTMLResponse(_stage_change_toast_html(request, "withdrawn_fallback"))
 
 
-@router.post("/board/jobs/{fingerprint}/mark-as-fallback", response_class=HTMLResponse)
+@router.post("/board/jobs/{fingerprint}/mark-as-fallback", response_class=HTMLResponse, dependencies=_HTMX)
 def mark_fallback(
     fingerprint: str,
     request: Request,  # noqa: ARG001
@@ -1426,7 +1430,7 @@ def mark_fallback(
     return HTMLResponse("")
 
 
-@router.post("/board/jobs/{fingerprint}/promote-from-fallback", response_class=HTMLResponse)
+@router.post("/board/jobs/{fingerprint}/promote-from-fallback", response_class=HTMLResponse, dependencies=_HTMX)
 def promote_fallback(
     fingerprint: str,
     request: Request,
@@ -1536,7 +1540,7 @@ def jobs_search(
     )
 
 
-@router.post("/board/jobs/{fingerprint}/reattribute-from-archive", response_class=HTMLResponse)
+@router.post("/board/jobs/{fingerprint}/reattribute-from-archive", response_class=HTMLResponse, dependencies=_HTMX)
 def reattribute_from_archive(
     fingerprint: str,
     request: Request,  # noqa: ARG001
