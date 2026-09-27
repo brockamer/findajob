@@ -58,7 +58,9 @@ def client(tmp_path: Path, yaml_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
 
     mark_complete(tmp_path)
 
-    return TestClient(create_app(companies_root=companies, db_path=db, base_root=tmp_path))
+    return TestClient(
+        create_app(companies_root=companies, db_path=db, base_root=tmp_path), headers={"HX-Request": "true"}
+    )
 
 
 def test_get_renders_current_values(client: TestClient) -> None:

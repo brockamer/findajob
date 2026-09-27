@@ -108,7 +108,7 @@ def client(tmp_path: Path, monkeypatch, popen_calls) -> TestClient:
     companies.mkdir()
     mark_complete(tmp_path)
     app = create_app(companies_root=companies, db_path=db_path, base_root=tmp_path)
-    client = TestClient(app)
+    client = TestClient(app, headers={"HX-Request": "true"})
     client._db_path = db_path  # expose for assertions
     client._tmp_path = tmp_path
     return client

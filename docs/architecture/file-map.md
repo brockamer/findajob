@@ -24,6 +24,8 @@ When this map drifts from the actual code (renamed file, new route module, retir
 <repo>/src/findajob/cost_rollups.py         # SQL helpers backing all cost surfaces — per_job_cost, per_job_breakdown, weekly_spend, projected_monthly, spend_this_month
 <repo>/src/findajob/web/app.py               # FastAPI app factory (create_app)
 <repo>/src/findajob/web/middleware/disconnect_state.py # ASGI middleware wrapping receive() to record http.disconnect into scope["findajob.client_disconnected"] (#743) — passive observation, no race with Starlette's listen_for_disconnect; SSE route reads the flag via is_cancelled closure
+<repo>/src/findajob/web/middleware/cross_site.py # ASGI middleware rejecting cross-site POST/PUT/PATCH/DELETE — Sec-Fetch-Site verdict first, then Origin host vs Host / X-Forwarded-Host; always installed inside the auth gate; see docs/operations/internet-exposure.md § Cross-site request protection
+<repo>/src/findajob/web/htmx_guard.py        # require_htmx dependency — 403 on POST/PUT/PATCH/DELETE without HX-Request; applied at include_router time to HTMX-only routers and per route on mixed modules; inventory enforced by tests/test_web_htmx_guard.py
 <repo>/src/findajob/web/routes/ingest.py     # GET /ingest/ form + POST /ingest/manual handler
 <repo>/src/findajob/web/routes/config.py     # GET /config/, GET/POST /config/files/{path} — in-browser config editor
 <repo>/src/findajob/web/routes/settings_excluded_employers.py # GET/POST /settings/excluded-employers/ — structured editor for config/excluded_employers.yaml; per-section exact + regex with validation. /config/ raw editor remains as fallback. (#729)

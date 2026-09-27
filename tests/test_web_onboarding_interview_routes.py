@@ -112,7 +112,7 @@ def client(base_root: Path) -> TestClient:
         db_path=base_root / "data" / "pipeline.db",
         base_root=base_root,
     )
-    return TestClient(app, follow_redirects=False)
+    return TestClient(app, follow_redirects=False, headers={"HX-Request": "true"})
 
 
 # Aliases for tests that historically distinguished env-key states. After

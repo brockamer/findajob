@@ -24,7 +24,7 @@ from findajob.web.helpers import (
     remote_cell_class,
     stage_row_class,
 )
-from findajob.web.middleware import DisconnectStateMiddleware
+from findajob.web.middleware import CrossSiteRequestMiddleware, DisconnectStateMiddleware
 from findajob.web.onboarding_guard import onboarding_complete
 from findajob.web.routes import materials as _materials_routes
 from findajob.web.routes import router as _aggregated_router
@@ -171,6 +171,11 @@ def create_app(
     from findajob.web.routes import onboarding_interview
 
     app.include_router(onboarding_interview.router)
+    # Cross-site request check sits INSIDE the auth gate (registered before
+    # install_basic_auth, so auth wraps it): an anonymous probe still meets
+    # the 401 challenge first, and a browser that replays Basic Auth on a
+    # cross-site post is stopped here. Always on, regardless of auth state.
+    app.add_middleware(CrossSiteRequestMiddleware)
     install_basic_auth(app)
     # #743: register AFTER install_basic_auth so it lands outermost in the
     # middleware stack, ensuring every http.disconnect is recorded into

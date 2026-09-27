@@ -108,7 +108,7 @@ def board_client(tmp_path: Path, monkeypatch, _ceiling_file) -> TestClient:
     companies.mkdir()
     mark_complete(tmp_path)
     app = create_app(companies_root=companies, db_path=db_path, base_root=tmp_path)
-    return TestClient(app)
+    return TestClient(app, headers={"HX-Request": "true"})
 
 
 @pytest.fixture()
@@ -144,7 +144,7 @@ def speculative_client(tmp_path: Path, monkeypatch, _ceiling_file) -> TestClient
     companies.mkdir()
     mark_complete(tmp_path)
     app = create_app(companies_root=companies, db_path=db_path, base_root=tmp_path)
-    return TestClient(app)
+    return TestClient(app, headers={"HX-Request": "true"})
 
 
 # ── route tests ───────────────────────────────────────────────────────────────

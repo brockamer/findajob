@@ -51,7 +51,7 @@ def _make_client(base_root: Path) -> TestClient:
         db_path=base_root / "data" / "pipeline.db",
         base_root=base_root,
     )
-    return TestClient(app, follow_redirects=False)
+    return TestClient(app, follow_redirects=False, headers={"HX-Request": "true"})
 
 
 # After the OPENROUTER_OPERATOR_KEY revert (#401), the env-var distinction is

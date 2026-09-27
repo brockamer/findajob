@@ -32,9 +32,13 @@ from findajob.prep.briefing import read_briefing
 from findajob.prep.docx_postprocess import _linkify_contact_info
 from findajob.prep.docx_render import render_md_to_docx
 from findajob.web.folder_resolver import resolve_folder
+from findajob.web.htmx_guard import require_htmx
 from findajob.web.markdown import render_markdown
 
 router = APIRouter()
+# HX-Request gate for the HTMX-only POST routes in this module; see
+# findajob.web.htmx_guard and tests/test_web_htmx_guard.py.
+_HTMX = [Depends(require_htmx)]
 
 
 # Document-type classification for the materials folder view. Filename
@@ -1091,7 +1095,7 @@ def file_serve(
     )
 
 
-@router.post("/materials/{fingerprint}/files/{filename}", response_class=HTMLResponse)
+@router.post("/materials/{fingerprint}/files/{filename}", response_class=HTMLResponse, dependencies=_HTMX)
 def edit_save(
     fingerprint: str,
     filename: str,

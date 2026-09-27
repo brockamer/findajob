@@ -43,7 +43,9 @@ def client(tmp_path: Path) -> TestClient:
     companies = tmp_path / "companies"
     companies.mkdir()
     mark_complete(tmp_path)
-    return TestClient(create_app(companies_root=companies, db_path=db_path, base_root=tmp_path))
+    return TestClient(
+        create_app(companies_root=companies, db_path=db_path, base_root=tmp_path), headers={"HX-Request": "true"}
+    )
 
 
 def _ceiling_file(tmp_path: Path) -> Path:

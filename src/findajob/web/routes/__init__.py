@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter, Depends
 
+from findajob.web.htmx_guard import require_htmx
 from findajob.web.onboarding_guard import require_onboarding_complete
 from findajob.web.routes import (
     board,
@@ -43,6 +44,10 @@ from findajob.web.routes import (
 )
 
 _guard = [Depends(require_onboarding_complete)]
+# HX-Request gate for routers whose every POST is HTMX-driven (no plain
+# <form> reaches them). Mixed modules apply it per route instead. The
+# inventory in tests/test_web_htmx_guard.py enforces both directions.
+_htmx = [Depends(require_htmx)]
 
 router = APIRouter()
 router.include_router(materials.router, dependencies=_guard)
@@ -58,22 +63,22 @@ router.include_router(landing.router, dependencies=_guard)
 router.include_router(board.router, dependencies=_guard)
 router.include_router(update.router, dependencies=_guard)
 router.include_router(board_actions.router, dependencies=_guard)
-router.include_router(exclusion_rule.router, dependencies=_guard)
-router.include_router(ingest.router)
-router.include_router(settings_reject_reasons.router, dependencies=_guard)
-router.include_router(settings_active_sources.router, dependencies=_guard)
+router.include_router(exclusion_rule.router, dependencies=_guard + _htmx)
+router.include_router(ingest.router, dependencies=_htmx)
+router.include_router(settings_reject_reasons.router, dependencies=_guard + _htmx)
+router.include_router(settings_active_sources.router, dependencies=_guard + _htmx)
 router.include_router(settings_backup.router, dependencies=_guard)
 router.include_router(settings_connections.router, dependencies=_guard)
-router.include_router(settings_excluded_employers.router, dependencies=_guard)
-router.include_router(settings_feed_urls.router, dependencies=_guard)
+router.include_router(settings_excluded_employers.router, dependencies=_guard + _htmx)
+router.include_router(settings_feed_urls.router, dependencies=_guard + _htmx)
 router.include_router(settings_gemini.router, dependencies=_guard)
-router.include_router(settings_spend_ceiling.router, dependencies=_guard)
-router.include_router(settings_timezone.router, dependencies=_guard)
+router.include_router(settings_spend_ceiling.router, dependencies=_guard + _htmx)
+router.include_router(settings_timezone.router, dependencies=_guard + _htmx)
 router.include_router(rejections_review.router, dependencies=_guard)
 router.include_router(filter_proposals.router, dependencies=_guard)
 router.include_router(speculative.router, dependencies=_guard)
-router.include_router(config.router)
-router.include_router(gmail_config.router)
+router.include_router(config.router, dependencies=_htmx)
+router.include_router(gmail_config.router, dependencies=_htmx)
 router.include_router(tools.router)
 router.include_router(tools_actions.router)
 router.include_router(tools_critique.router)

@@ -95,7 +95,7 @@ def client(tmp_path: Path, monkeypatch) -> TestClient:
     companies = tmp_path / "companies"
     companies.mkdir()
     app = create_app(companies_root=companies, db_path=db_path)
-    client = TestClient(app)
+    client = TestClient(app, headers={"HX-Request": "true"})
     client._db_path = db_path  # type: ignore[attr-defined]
     return client
 

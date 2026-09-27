@@ -58,7 +58,9 @@ def client(tmp_path: Path, active_sources_path: Path, monkeypatch: pytest.Monkey
     # _guard dependency lets settings routes through.
     mark_complete(tmp_path)
 
-    return TestClient(create_app(companies_root=companies, db_path=db, base_root=tmp_path))
+    return TestClient(
+        create_app(companies_root=companies, db_path=db, base_root=tmp_path), headers={"HX-Request": "true"}
+    )
 
 
 # ───────────────────── GET /settings/active-sources/ ─────────────────────

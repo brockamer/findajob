@@ -74,7 +74,9 @@ def client(
 
     mark_complete(tmp_path)
 
-    return TestClient(create_app(companies_root=companies, db_path=db, base_root=tmp_path))
+    return TestClient(
+        create_app(companies_root=companies, db_path=db, base_root=tmp_path), headers={"HX-Request": "true"}
+    )
 
 
 def test_get_modal_renders_form_with_locus_radios(client: TestClient) -> None:

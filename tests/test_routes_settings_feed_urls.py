@@ -25,7 +25,9 @@ def client(tmp_path: Path, feed_urls_path: Path) -> TestClient:
     companies = tmp_path / "companies"
     companies.mkdir()
     mark_complete(tmp_path)  # before create_app so the onboarding guard lets us in
-    return TestClient(create_app(companies_root=companies, db_path=db, base_root=tmp_path))
+    return TestClient(
+        create_app(companies_root=companies, db_path=db, base_root=tmp_path), headers={"HX-Request": "true"}
+    )
 
 
 def test_get_lists_configured_feeds(client: TestClient, feed_urls_path: Path) -> None:
