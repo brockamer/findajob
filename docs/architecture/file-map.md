@@ -25,6 +25,7 @@ When this map drifts from the actual code (renamed file, new route module, retir
 <repo>/src/findajob/web/app.py               # FastAPI app factory (create_app)
 <repo>/src/findajob/web/middleware/disconnect_state.py # ASGI middleware wrapping receive() to record http.disconnect into scope["findajob.client_disconnected"] (#743) — passive observation, no race with Starlette's listen_for_disconnect; SSE route reads the flag via is_cancelled closure
 <repo>/src/findajob/web/middleware/cross_site.py # ASGI middleware rejecting cross-site POST/PUT/PATCH/DELETE — Sec-Fetch-Site verdict first, then Origin host vs Host / X-Forwarded-Host; always installed inside the auth gate; see docs/operations/internet-exposure.md § Cross-site request protection
+<repo>/src/findajob/web/middleware/security_headers.py # ASGI middleware adding Content-Security-Policy to every response that lacks one (401 included); send-wrapper only, streaming untouched; see docs/operations/internet-exposure.md § Rendered content and the Content-Security-Policy
 <repo>/src/findajob/web/htmx_guard.py        # require_htmx dependency — 403 on POST/PUT/PATCH/DELETE without HX-Request; applied at include_router time to HTMX-only routers and per route on mixed modules; inventory enforced by tests/test_web_htmx_guard.py
 <repo>/src/findajob/web/routes/ingest.py     # GET /ingest/ form + POST /ingest/manual handler
 <repo>/src/findajob/web/routes/config.py     # GET /config/, GET/POST /config/files/{path} — in-browser config editor
@@ -34,7 +35,7 @@ When this map drifts from the actual code (renamed file, new route module, retir
 <repo>/src/findajob/web/tools_registry.py   # tile data, prompt loader, claude.ai/new?q= URL builder (#150)
 <repo>/config/tool_prompts/*.md             # prompt source files loaded by the tools registry (#150)
 <repo>/src/findajob/web/routes/docs.py       # GET /docs/ index + GET /docs/{slug} — user docs viewer
-<repo>/src/findajob/web/markdown.py          # render_markdown() — shared MD→HTML helper for materials + docs viewers
+<repo>/src/findajob/web/markdown.py          # render_markdown() / render_chat_assistant_html() — shared MD→HTML helpers for materials, docs, briefings and the interview; output passes an nh3 allowlist sanitizer last
 <repo>/src/findajob/web/config_files.py      # allowlist + resolve_editable() for /config/ editor
 <repo>/src/findajob/web/onboarding_guard.py # NUX guard dependency — 307s /board,/materials to /onboarding when sentinel missing
 <repo>/src/findajob/web/routes/onboarding.py # GET /onboarding/, POST /onboarding/keys (Step 1 keys collection)

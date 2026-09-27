@@ -22,6 +22,7 @@ dependencies = [
     "rapidfuzz>=3.0",
     "python-docx>=1.1.0",
     "genanki>=0.13.0",
+    "nh3>=0.3",
 ]
 
 [project.optional-dependencies]

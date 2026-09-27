@@ -111,6 +111,22 @@ There is no switch to disable this check.
 
 **Second line: the `HX-Request` header.** Most state-changing routes in the UI are only ever called by HTMX, which sends `HX-Request: true` on every request it makes. Those routes also require that header (`findajob.web.htmx_guard.require_htmx`). A cross-site HTML form cannot set a custom header at all, and cross-site JavaScript can only send one after a CORS preflight the app never approves — so these routes stay closed even to a browser too old to send `Sec-Fetch-Site` or `Origin`. Routes reached by a plain `<form method="post">` or a `fetch` call do not carry the gate; `tests/test_web_htmx_guard.py` holds the inventory and fails when a route is added without being classified. A request to a gated route without the header gets `403` with a short JSON `detail`.
 
+## Rendered content and the Content-Security-Policy
+
+Job descriptions, emails, generated materials, research briefings and interview replies are rendered from Markdown into the page. None of that text is trusted: a job posting or an email is written by whoever sent it. `findajob.web.markdown` therefore passes every rendered page through an allowlist sanitizer (`nh3`) as its last step. Script elements and their contents, event-handler attributes (`onerror`, `onload`, …), `iframe` / `svg` / `object` / `form` / `style` elements, and any link or image whose URL is not `http`, `https`, `mailto` or relative are removed. Formatting survives: headings, lists, tables with column alignment, code blocks, quotes, `<details>`, images and links. Links open external sites in a new tab with `rel="noopener noreferrer"`.
+
+Every response also carries a `Content-Security-Policy` header (`findajob.web.middleware.SecurityHeadersMiddleware`), including the auth gate's `401`:
+
+```
+default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://unpkg.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' https: http:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+```
+
+It stops the UI from being framed by another site, stops forms and `fetch` calls from sending data to another origin, and allows scripts only from this instance and the three CDN hosts the templates load. It is a second line, not the main one: the templates still use inline scripts and handlers, so `script-src` keeps `'unsafe-inline'` and `'unsafe-eval'` for now. Images may load from any `http` or `https` origin, because job descriptions and these docs carry remote images.
+
+**The UI cannot be embedded in an iframe** on another site, such as a homelab dashboard tile (`frame-ancestors 'none'`). Open it in its own tab instead.
+
+**If you put a reverse proxy in front** that sets its own `Content-Security-Policy`, the browser enforces both policies, and a request must pass each of them. A proxy policy stricter than the one above will break the UI. There is no switch to disable the header.
+
 ## What this does not change
 
 - **the perimeter VPN access still works** for deployments that don't set the env vars. The middleware is opt-in.

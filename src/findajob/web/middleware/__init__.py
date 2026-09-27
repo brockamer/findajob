@@ -5,5 +5,15 @@ from findajob.web.middleware.disconnect_state import (
     SCOPE_KEY,
     DisconnectStateMiddleware,
 )
+from findajob.web.middleware.security_headers import (
+    CONTENT_SECURITY_POLICY,
+    SecurityHeadersMiddleware,
+)
 
-__all__ = ["SCOPE_KEY", "CrossSiteRequestMiddleware", "DisconnectStateMiddleware"]
+__all__ = [
+    "CONTENT_SECURITY_POLICY",
+    "SCOPE_KEY",
+    "CrossSiteRequestMiddleware",
+    "DisconnectStateMiddleware",
+    "SecurityHeadersMiddleware",
+]

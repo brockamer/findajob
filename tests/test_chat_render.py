@@ -106,10 +106,12 @@ def test_multiline_file_block_body_handled() -> None:
 def test_script_tag_neutralized() -> None:
     text = "Some text <script>alert('xss')</script> more."
     result = render_chat_assistant_html(text)
-    # Raw <script> must not survive
-    assert "<script>" not in result
-    # Should be escaped
-    assert "&lt;script" in result or "script" in result
+    # The sanitizer removes the script element and its body; the
+    # surrounding text survives.
+    assert "<script" not in result.lower()
+    assert "alert(" not in result
+    assert "Some text" in result
+    assert "more." in result
 
 
 def test_closing_script_tag_neutralized() -> None:
