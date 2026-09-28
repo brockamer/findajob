@@ -212,9 +212,7 @@ def test_interview_page_includes_streaming_form_pointing_at_turn_stream(
     )
 
 
-def test_interview_page_streaming_form_contains_submit_button(
-    client_with_key: TestClient, base_root: Path
-) -> None:
+def test_interview_page_streaming_form_contains_submit_button(client_with_key: TestClient, base_root: Path) -> None:
     """Pin the *button-inside-form* relationship for the streaming chat form:
     `form[data-stream-endpoint="/onboarding/interview/turn-stream"] button[type="submit"]`.
 
