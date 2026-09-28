@@ -122,7 +122,6 @@ Every issue carries exactly one **Type** label. The other groups are optional.
 | Scope | `data-hygiene` | Cleanup of stale or inconsistent data | Hand |
 | Scope | `cost` | API / pipeline financial cost — monitoring, tracking, reduction | Hand |
 | Scope | `open-source` | Generalization and adoption | Hand |
-| Scope | `personal` | User-specific content — not generalizable pipeline work | Hand |
 | Source | `feedback` | Finding from a live session with the product | Hand |
 | Source | `external-report` | Bug filed by an external (non-operator) user | Hand |
 | Source | `review-2026-09` | Findings from the 2026-09-25 code audit and live-session review | Hand |

@@ -12,6 +12,8 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ### Documentation
 
+- **Instance-specific work is tracked privately, and the CI privacy-scan recipe is fixed** (#1191). `AGENTS.md` (§ Project Board, Plans, Releases) and `CONTRIBUTING.md` now state the rule that #430's scrub only implied: work about running specific instances, and other maintainer-operational work, is tracked in the maintainer's private tracker; public issues stay generic, and links run private → public only. The deleted `personal` label's row is gone from `docs/project-board.md`. The `PII_PATTERNS_REGEX` install recipe in `docs/operations/config-reference.md` § CI-side defense had two defects: it also extracted the hook's `SECRET_PATHS` array, so any PR that mentioned `data/.env` or another credential path failed the scan, and it kept the hook's bash-escaped `\\.`, which never matches under `grep -E`. The recipe now reads only the `PATTERNS` block and unescapes `\\` to `\`. An operator who installed the secret with the old recipe should re-run the new one. No `migration-required`: documentation only.
+
 - **The container smoke test no longer depends on JSearch** (#1095). `scripts/test_container_integration.sh` seeded `jsearch` as an active source, but JSearch's RapidAPI listing no longer accepts subscriptions. The smoke now seeds only `jobs-api14` and `jobs-api14-indeed`. `docs/maintainers/release-process.md` and the script header now state that the image build needs BuildKit (`docker-buildx` on Ubuntu's `docker.io`), and that triage needs only `OPENROUTER_API_KEY` and `RAPIDAPI_KEY`, from keys dedicated to testing. No `migration-required`: test tooling and docs only.
 
 ### Fixed
