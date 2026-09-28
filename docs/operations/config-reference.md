@@ -266,11 +266,26 @@ the repo unprotected.
 `PII_PATTERNS_REGEX`. One regex per line, no quotes, no shell escaping:
 
 ```bash
-# Extract just the pattern strings from your local hook (skip blank/comment lines):
-grep -E '^\s*"' .git/hooks/pre-commit | sed -E 's/^\s*"//;s/"\s*$//' > /tmp/pii-patterns.txt
+# Extract the pattern strings from the PATTERNS array only (comment and blank lines skip):
+sed -n '/^PATTERNS=(/,/^)/p' .git/hooks/pre-commit \
+  | grep -E '^\s*"' \
+  | sed -E 's/^\s*"//;s/"\s*$//;s/\\\\/\\/g' > /tmp/pii-patterns.txt
+wc -l < /tmp/pii-patterns.txt   # must equal the number of active entries in PATTERNS
 gh secret set PII_PATTERNS_REGEX < /tmp/pii-patterns.txt
 rm /tmp/pii-patterns.txt
 ```
+
+Two details in that recipe matter:
+
+- **Only the PATTERNS block.** The hook's `SECRET_PATHS` array uses the same quoted-line
+  format. A plain `grep` over the whole hook also captures those file paths
+  (`data/.env`, `config/gmail.json`, …), turns them into patterns, and fails every PR
+  that merely mentions one of them.
+- **Backslashes are unescaped.** The hook stores each pattern inside bash double quotes,
+  where `"docker\\.lan"` means the regex `docker\.lan`. The workflow reads the secret line
+  by line and hands each line to `grep -E` unchanged, so a `\\.` left in the secret never
+  matches. The last `sed` expression turns `\\` into `\`; a pattern written `\.` in the
+  hook passes through unchanged.
 
 **When unset:** the workflow logs a warning and passes (so external/fork PRs that
 can't access secrets aren't blocked — they shouldn't have operator PII anyway).

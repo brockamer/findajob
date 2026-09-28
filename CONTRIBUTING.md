@@ -15,6 +15,8 @@ Board conventions and project roadmap live at [`docs/project-board.md`](docs/pro
 
 File an issue on [GitHub Issues](https://github.com/brockamer/findajob/issues). Include what you tried, what you expected, what happened (paste relevant `pipeline.jsonl` lines for runtime errors), and your image tag. Don't paste API keys, real names, or anything from `data/.env` or `candidate_context/` — the repo and issues are public.
 
+Issues here are about the product, not about any one running instance. Keep them generic: no host names, instance names, people or business detail. The maintainer tracks instance-specific and maintainer-operational work in a private tracker; when that work needs a product change, it arrives here as a generic issue, and links run private → public only.
+
 ---
 
 ## Dev setup

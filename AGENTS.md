@@ -376,6 +376,7 @@ The one rule worth restating here because it bites often: **Same-PR docs rule.**
 ## Project Board, Plans, Releases
 
 - **Project board** — GitHub Projects v2 at https://github.com/users/brockamer/projects/1 is the single source of truth. Not on the board = not on the roadmap. Conventions in [`docs/project-board.md`](docs/project-board.md) (also jared's config file — the machine-readable header block is parsed on every board operation). Use the `/jared file` skill instead of manual `gh` calls — issue creation requires both `gh issue create` AND `gh project item-add` (new issues do not auto-add).
+- **Instance-specific work is tracked privately** — Work about running specific instances of findajob (the maintainer's own, or instances run for other people) and other maintainer-operational work is tracked in the maintainer's private tracker, not on this board. Public issues stay generic: no host names, instance names, people or business detail. When private work needs a product change, file a generic issue here; the link runs private → public only.
 - **Plans, specs, experiments** — gitignored under `docs/superpowers/`. Content conventions in [`## Plan Structure`](#plan-structure) below. A plan without a **Documentation Impact** section is incomplete — push back rather than execute it.
 - **Releases** — Docker image tagged from main; CHANGELOG.md is the release-notes source. PRs with schema / config / crontab / mount / compose changes get `migration-required` at PR-open time.
 
