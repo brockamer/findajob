@@ -4,7 +4,7 @@ Layer 1: known ATS sender + rejection body marker + no ack marker → high.
 Layer 2: unknown sender + rejection body marker + no ack marker → medium.
 Layer 3: LLM tiebreak — deferred until L1+L2 precision data justifies it.
 
-Spec: docs/superpowers/specs/2026-05-01-362-rejection-detection-design.md §4.2 classifier.py + §5
+Spec: the #362 design notes (maintainer-private) §4.2 classifier.py + §5
 """
 
 from __future__ import annotations

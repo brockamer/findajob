@@ -18,8 +18,7 @@ Flow:
     6. Advance ``state.rejection_last_uid`` on every successful run so
        steady-state cycles are incremental.
 
-Spec: ``docs/superpowers/specs/2026-05-01-362-rejection-detection-design.md``
-§4.1, §4.6, §4.7, §4.8.
+Spec: the #362 design notes (maintainer-private) §4.1, §4.6, §4.7, §4.8.
 """
 
 from __future__ import annotations

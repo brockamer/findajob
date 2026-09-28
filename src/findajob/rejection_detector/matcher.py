@@ -7,7 +7,7 @@ Multi-step:
   4. If multiple match: narrow by role title (token-set >= 0.6)
   5. Apply seniority-token gate when narrowing — §4.2.2
 
-Spec: docs/superpowers/specs/2026-05-01-362-rejection-detection-design.md §4.2 matcher.py + §4.2.{1,2}
+Spec: the #362 design notes (maintainer-private) §4.2 matcher.py + §4.2.{1,2}
 """
 
 from __future__ import annotations

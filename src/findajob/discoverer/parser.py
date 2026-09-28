@@ -1,7 +1,7 @@
 """Markdown -> structured parser for the company_discoverer output.
 
-Validates the LLM's emitted markdown against the schema in
-`docs/superpowers/specs/2026-04-26-company-discoverer-design.md` §5.1
+Validates the LLM's emitted markdown against the schema in the
+company-discoverer design notes (maintainer-private) §5.1
 and produces a list of :class:`CompanyEntry` records suitable for the
 JSON sidecar (§5.2).
 

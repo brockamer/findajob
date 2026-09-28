@@ -7,7 +7,7 @@
 -- matching jobs are re-scored to 1. affected_jobs captures prior scores so a
 -- revert can restore them.
 --
--- Spec: docs/superpowers/specs/2026-06-10-rejection-driven-filter-proposals-design.md
+-- Spec: the #1055 design notes (maintainer-private)
 -- Issue: #1055
 
 CREATE TABLE IF NOT EXISTS filter_proposals (

@@ -7,7 +7,7 @@ Body extraction handles both text/plain and text/html parts. HTML-only
 emails (Microsoft Careers, Oracle, Smartrecruiters in the corpus) get
 bs4-stripped to plaintext before pattern matching.
 
-Spec: docs/superpowers/specs/2026-05-01-362-rejection-detection-design.md §4.2 parser.py
+Spec: the #362 design notes (maintainer-private) §4.2 parser.py
 """
 
 from __future__ import annotations

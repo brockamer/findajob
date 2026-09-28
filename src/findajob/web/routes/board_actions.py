@@ -437,7 +437,7 @@ def prep(
 
     # Phase A only — operator continues from the briefing-first gate at
     # /materials/{fp}/ by POSTing to /continue-prep (or rejects with a
-    # substantive reason). Spec: docs/superpowers/specs/2026-05-16-622-prep-cost-gate-design.md.
+    # substantive reason). Spec: the #622 design notes (maintainer-private).
     _launch_prep_subprocess(db, job, extra_args=("--phase=a",))
 
     updated = _fetch_dashboard_row(db, fingerprint)

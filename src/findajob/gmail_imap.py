@@ -3,8 +3,8 @@
 Read-only, app-password authenticated. The only IMAP verbs called are
 LOGIN, LIST, SELECT, SEARCH, FETCH (BODY.PEEK[] — does NOT mark messages
 read), and LOGOUT. No STORE, COPY, EXPUNGE, APPEND, MOVE, CREATE, DELETE,
-or SUBSCRIBE. See docs/superpowers/specs/2026-04-30-330-design.md §4 for
-the full transparency contract.
+or SUBSCRIBE. The transparency contract (#330) is pinned as executable
+assertions in tests/test_transparency_invariants.py.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ GMAIL_STATE_PATH = f"{BASE}/config/gmail_state.json"
 _SCHEMA_VERSION = 1
 
 # Default ATS sender allowlist for rejection-detection scanning (#362).
-# Spec: docs/superpowers/specs/2026-05-01-362-rejection-detection-design.md §3.1.
+# Spec: the #362 design notes (maintainer-private) §3.1.
 #
 # Entries are bare domains; IMAP SEARCH FROM uses RFC 3501 substring match,
 # so "myworkday.com" matches "cyrusone@myworkday.com" without enumerating

@@ -19,7 +19,6 @@ candidate_context/voice_samples/*
 !candidate_context/voice_samples/README.md
 candidate_context/critique_aggregate/
 CLAUDE.local.md
-docs/personal/
 data/pipeline.db
 data/pipeline.db-journal
 data/pipeline.db-wal
@@ -61,11 +60,6 @@ config/gmail_state.json
 # Per-stack pipeline config — gitignored, .example tracked
 config/rapidapi_feeds.yaml
 config/active_sources.txt
-
-# Real Fly.io deploy config — gitignored, .example tracked; carries operator topology (chosen Fly app name).
-# Both the canonical operator file and any per-stack variants (fly-pivot.toml, fly-staging.toml, etc).
-ops/fly.toml
-ops/fly-*.toml
 
 # ── Leak prevention (#430) — categorical safety nets ───────────────────────
 # Specific named files appear above; these patterns catch broader categories
@@ -131,14 +125,6 @@ pii-findings*
 *-findings.md
 *-findings.txt
 *-leak-scan.*
-
-# Implementation plans, specs, and experiments (#430) — operator-private.
-# These are session-execution diaries written for ralph-loop / Claude Code,
-# not pedagogical artifacts. Keeping them out of public commits eliminates
-# the largest topology-leak surface in the repo. Files stay on disk for
-# local session use; just no longer tracked. See CLAUDE.md "Plans and specs"
-# rule for placement guidance.
-docs/superpowers/
 
 # Editor / IDE state (may contain absolute paths or partial edits)
 .idea/
