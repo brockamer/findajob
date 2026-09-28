@@ -64,7 +64,7 @@ Model assignment for the core pipeline and interview-materials roles, plus the c
 | `speculative_roles_synth` | `openrouter:anthropic/claude-sonnet-4.6` | `max_tokens: 4096`; synthesizes 1–5 candidate-tailored role cards |
 | `resume_change_reviewer` / `network_analyst` | `openrouter:google/gemini-3-flash-preview` | |
 
-> Auxiliary/meta roles (`onboarding_interviewer`, `voice_processor`, `loose_ends_*`) carry their own `model:` frontmatter in `config/roles/` and are intentionally not enumerated here.
+> Auxiliary/meta roles (`onboarding_interviewer`, `voice_processor`) carry their own `model:` frontmatter in `config/roles/` and are intentionally not enumerated here.
 
 ### Pipeline plumbing
 

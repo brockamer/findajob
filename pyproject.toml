@@ -31,7 +31,6 @@ dev = [
     "ruff>=0.11.0",
     "mypy>=1.20.0",
     "httpx>=0.27.0",
-    "playwright>=1.40",
     # Type stubs for the runtime deps that mypy needs to type-check
     # against. Added in M7 when the strict gate landed for
     # findajob.* — without these, the strict gate flags every
@@ -48,9 +47,6 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-markers = [
-    "integration: marks tests as integration tests (requires playwright/fastapi/uvicorn)",
-]
 
 [tool.mypy]
 # Default config — applies to scripts/ and any module not covered by
