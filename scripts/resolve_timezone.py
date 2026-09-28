@@ -3,7 +3,7 @@
 ``export TZ``. Reads ``<BASE>/data/timezone`` (written by onboarding) via
 ``findajob.timeutil.read_timezone_file``. Exit 0 + zone on stdout when valid;
 exit 1 (silent) when there is no valid pick, so the entrypoint keeps the
-deploy-config default. See docs/superpowers/specs/2026-06-02-981-*.md (#981)."""
+deploy-config default (#981)."""
 
 import sys
 

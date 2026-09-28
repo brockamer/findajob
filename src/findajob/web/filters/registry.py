@@ -1,8 +1,8 @@
 """Per-tab ColumnSpec lists for the 7 board tabs.
 
 Visibility defaults are tuned to what the operator needs to *decide* on each
-tab — see docs/superpowers/specs/2026-04-25-board-filter-framework-design.md
-"Per-tab visibility defaults". Hidden columns remain in the spec so the
+tab — see "Per-tab visibility defaults" in the board-filter-framework design
+notes (maintainer-private). Hidden columns remain in the spec so the
 ?cols= URL override (and the future #277 Columns dropdown) can surface them.
 """
 

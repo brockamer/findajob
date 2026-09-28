@@ -1,9 +1,9 @@
 """Routes for /config/gmail/{,save,test,disconnect}.
 
 The disclosure banner rendered on this page is the single source of truth
-for findajob's user-facing Gmail-access claims. See
-docs/superpowers/specs/2026-04-30-330-design.md §4 for the full transparency
-contract.
+for findajob's user-facing Gmail-access claims. The transparency contract
+(#330) is pinned as executable assertions in
+tests/test_transparency_invariants.py.
 """
 
 from __future__ import annotations

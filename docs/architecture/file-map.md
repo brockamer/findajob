@@ -108,6 +108,9 @@ When this map drifts from the actual code (renamed file, new route module, retir
 # ── Operations ──────────────────────────────────────────────────────────────
 <repo>/docs/operations/install-docker.md               # external-user Docker install + operations guide
 
+# ── Plans and specs ─────────────────────────────────────────────────────────
+<repo>/docs/superpowers/README.md          # layout + naming for committed plans/, specs/, experiments/ (public; #1188)
+
 # ── Quality ─────────────────────────────────────────────────────────────────
 <repo>/pyproject.toml                       # deps, pytest, ruff, mypy config
 <repo>/tests/                               # ~900 unit tests (pytest)

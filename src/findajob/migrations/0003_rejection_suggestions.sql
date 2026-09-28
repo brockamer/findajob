@@ -4,7 +4,7 @@
 -- applications. Operator confirms one-click → handle_not_selected fires.
 -- Never auto-flips; always operator-in-loop.
 --
--- Spec: docs/superpowers/specs/2026-05-01-362-rejection-detection-design.md §4.3
+-- Spec: the #362 design notes (maintainer-private) §4.3
 -- Issue: #362
 
 CREATE TABLE IF NOT EXISTS rejection_suggestions (

@@ -1,4 +1,4 @@
-"""Speculative ingest pipeline — see docs/superpowers/specs/2026-04-28-speculative-ingest-131-design.md.
+"""Speculative ingest pipeline (#131; design notes are maintainer-private).
 
 Modules:
 - runner.py    : orchestrates the briefing + role-synth call sequence

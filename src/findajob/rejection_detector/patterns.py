@@ -4,7 +4,7 @@ Single source of truth — never inline these strings in detector logic.
 Adding a new ATS sender or marker phrase: edit this file, add a fixture
 under tests/fixtures/rejection_emails/, ship one PR.
 
-Spec: docs/superpowers/specs/2026-05-01-362-rejection-detection-design.md §3
+Spec: the #362 design notes (maintainer-private) §3
 """
 
 from __future__ import annotations
