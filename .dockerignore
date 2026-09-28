@@ -51,9 +51,6 @@ config/*
 !config/scoring_schema.json
 !config/reference.docx
 !config/strip-bookmarks.lua
-!config/audit_exclusions.yaml
-!config/loose_ends_walkthroughs.yaml
-!config/loose_ends_walkthrough_exclusions.yaml
 !config/*.example
 
 # Editor / OS

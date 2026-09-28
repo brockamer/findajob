@@ -212,19 +212,18 @@ def test_interview_page_includes_streaming_form_pointing_at_turn_stream(
     )
 
 
-def test_interview_page_streaming_form_contains_submit_button_for_harness(
-    client_with_key: TestClient, base_root: Path
-) -> None:
-    """Pin the exact selector path scripts/walkthrough_harness.py clicks to
-    submit a user turn:
+def test_interview_page_streaming_form_contains_submit_button(client_with_key: TestClient, base_root: Path) -> None:
+    """Pin the *button-inside-form* relationship for the streaming chat form:
     `form[data-stream-endpoint="/onboarding/interview/turn-stream"] button[type="submit"]`.
 
     The companion test above pins the form-level attributes (data-stream-endpoint,
-    hx-boost='false', module load). This one pins the *button-inside-form*
-    relationship — a refactor that, for example, removes the <form> wrapper
-    and drives submission from an Alpine `@click` on a bare <button> would
-    silently break the harness's selector and only fail during an audit run.
-    Caught here at unit-test time per #750.
+    hx-boost='false', module load). This one pins that the submit button lives
+    inside that same `<form>` — onboarding-stream.js attaches its handler via
+    `form.addEventListener('submit', ...)` (see `attachHandler` in
+    `onboarding-stream.js`), so a refactor that, for example, removes the
+    `<form>` wrapper and drives submission from an Alpine `@click` on a bare
+    `<button>` would silently stop the chat turn from streaming. Caught here
+    at unit-test time per #750.
     """
     sid = _create_session_with_history(base_root, [])
     resp = client_with_key.get(f"/onboarding/interview/{sid}")
@@ -240,11 +239,12 @@ def test_interview_page_streaming_form_contains_submit_button_for_harness(
     assert form_open != -1 and form_close != -1, "could not bracket streaming form HTML"
     streaming_form_html = body[form_open : form_close + len("</form>")]
 
-    # Positive: the harness's click target must live inside the streaming form.
+    # Positive: the submit button that fires the JS handler's `submit` event
+    # must live inside the streaming form.
     assert 'type="submit"' in streaming_form_html, (
-        'Streaming form must contain a `<button type="submit">` so '
-        "`scripts/walkthrough_harness.py` can click it to drive a chat turn. "
-        f"Form HTML was: {streaming_form_html!r}"
+        'Streaming form must contain a `<button type="submit">` so the '
+        "form's `submit` event fires and onboarding-stream.js's handler "
+        f"drives the chat turn. Form HTML was: {streaming_form_html!r}"
     )
     # Negative pair: a future refactor that re-introduces hx-post on the
     # streaming form would race with the JS submit handler (same shape as
