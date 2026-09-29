@@ -129,7 +129,7 @@ Clicking Finalize writes your config files to the volume and kicks off initial c
 
 **Set a monthly spend ceiling.** Tell findajob how many applications you plan to submit per week and it recommends a monthly LLM cap — accept it, enter your own, or "Skip for now" to leave spend uncapped. Adjustable later at `/settings/spend-ceiling/` (see [Cost](#cost)). *(If any of your job-feed URLs look broken, a feed-check step appears before this one so you can fix them first.)*
 
-**Gmail-config gate (optional).** Configure IMAP credentials so findajob can ingest LinkedIn / Indeed / etc. job-alert emails directly, and auto-detect ATS rejection emails. Save and "Test connection" to advance, or Skip:
+**Gmail-config gate (optional).** Configure IMAP credentials so findajob can ingest LinkedIn / Indeed / etc. job-alert emails directly, and auto-detect ATS rejection emails. Save to advance (Save runs the connection test), or Skip:
 
 ![Gmail IMAP configuration page with field-by-field walkthrough](install-fly/05-gmail-config.png)
 

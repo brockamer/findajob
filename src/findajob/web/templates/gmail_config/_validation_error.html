@@ -1,0 +1,8 @@
+{# Body of #gmail-config-error. Rendered inside _card.html, and alone when a
+   save/test error is swapped into that slot (HX-Retarget) so the form keeps
+   what the user typed. #}
+{% if validation_error %}
+  <p class="mb-3 rounded bg-rose-50 p-2 text-sm text-rose-800">
+    {{ validation_error }}
+  </p>
+{% endif %}

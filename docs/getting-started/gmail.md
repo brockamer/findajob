@@ -91,8 +91,13 @@ once you close the dialog.
 
 (After your stack is deployed:) open `/config/gmail/` on your findajob
 stack. Paste your Gmail address and the 16-character app password.
-Click **Save**, then **Test connection**. Within ~3 seconds the status
-pill should change to **● Authorized**.
+Click **Save**. Save runs the connection test, and within ~3 seconds
+the status pill should change to **● Authorized**. **Test connection**
+checks the saved credentials again later.
+
+Once saved, the app password is not shown on the page again, and the
+field stays blank. Leave it blank when you change other settings to
+keep the saved password; paste a new one to replace it.
 
 ### 4. (Optional) Add other senders
 

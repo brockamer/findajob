@@ -1,4 +1,6 @@
-{# HTMX target for save/test/disconnect responses. Inputs preserve current state. #}
+{# HTMX target for save/test/disconnect responses. A validation error replaces
+   only #gmail-config-error, so the inputs keep what the user typed. The saved
+   app password is never rendered into the page; a blank field on Save keeps it. #}
 <div id="gmail-config-card">
   <div class="flex items-center justify-between">
     <h2 class="text-2xl font-bold">Gmail Job Alert Ingestion</h2>
@@ -7,11 +9,9 @@
 
   {% include '_gmail_disclosure.html' %}
 
-  {% if validation_error %}
-    <p class="mb-3 rounded bg-rose-50 p-2 text-sm text-rose-800">
-      {{ validation_error }}
-    </p>
-  {% endif %}
+  <div id="gmail-config-error">
+    {% include 'gmail_config/_validation_error.html' %}
+  </div>
 
   {% if status == 'login_failed' %}
     <p class="mb-3 rounded bg-rose-50 p-2 text-sm text-rose-800">
@@ -35,13 +35,15 @@
 
     <label class="mb-3 block" x-data="{show: false}">
       <span class="text-sm font-medium">App password</span>
-      <input :type="show ? 'text' : 'password'" name="app_password" required
-             class="mt-1 block w-full rounded border-slate-300"
-             value="{{ config.app_password if config else '' }}">
+      <input type="password" :type="show ? 'text' : 'password'" name="app_password"
+             autocomplete="new-password"
+             {% if config %}placeholder="Saved — leave blank to keep it"{% else %}required{% endif %}
+             class="mt-1 block w-full rounded border-slate-300">
       <button type="button" @click="show = !show" class="mt-1 text-xs text-blue-700 underline">
         <span x-text="show ? 'hide' : 'show'"></span>
       </button>
       <p class="mt-1 text-xs text-slate-600">
+        {% if config %}An app password is saved. Leave this blank to keep it, or type a new one to replace it.{% endif %}
         16 characters; spaces optional. Generate at
         <a class="text-blue-700 underline" target="_blank" rel="noopener"
            href="https://myaccount.google.com/apppasswords">myaccount.google.com/apppasswords</a>
@@ -69,10 +71,15 @@
               hx-post="/config/gmail/test"
               hx-target="#gmail-config-card"
               hx-swap="outerHTML"
-              class="rounded bg-slate-200 px-4 py-2 hover:bg-slate-300">
+              {% if not config %}disabled{% endif %}
+              class="rounded bg-slate-200 px-4 py-2 hover:bg-slate-300 disabled:cursor-not-allowed disabled:opacity-50">
         Test connection
       </button>
     </div>
+    <p class="mt-2 text-xs text-slate-600">
+      Save runs the connection test when the address or app password changes.
+      {% if config %}Test connection checks the saved credentials again.{% else %}Test connection is available after you save.{% endif %}
+    </p>
   </form>
 
   {% if config %}
