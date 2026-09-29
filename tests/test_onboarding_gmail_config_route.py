@@ -96,6 +96,22 @@ def test_get_renders_onboarding_wrapper_around_existing_card(client: TestClient)
     assert f"/onboarding/gmail-config/{SID}/finish" in body
 
 
+def test_get_does_not_render_saved_app_password(client: TestClient) -> None:
+    """The gate includes the same card as /config/gmail/, so the saved app
+    password must stay out of this page too."""
+    cfg = gmail_imap.GmailConfig(
+        address="someone@example.com",
+        app_password="abcdefghijklmnop",
+        sender_allowlist=["jobalerts-noreply@linkedin.com"],
+        configured_at="2026-05-04T00:00:00Z",
+    )
+    gmail_imap.save_config(cfg)
+    response = client.get(f"/onboarding/gmail-config/{SID}/")
+    assert response.status_code == 200
+    assert "someone@example.com" in response.text
+    assert "abcdefghijklmnop" not in response.text
+
+
 def test_post_skip_redirects_to_connections_gate_without_writing_sentinel(client: TestClient, base_root: Path) -> None:
     """Skip is always allowed — it hands off to the connections gate, which
     is responsible for writing the sentinel. Skipping here must not write the

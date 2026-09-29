@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from unittest.mock import patch
 
@@ -228,6 +229,153 @@ def test_post_save_imap_connection_error_renders_inline_recovery_hint(client):
     assert r.status_code == 200
     assert "Connection error" in r.text
     assert "Couldn't reach Gmail" in r.text
+
+
+_SAVED_PW = "abcdefghijklmnop"  # the value _write_config() stores
+
+
+def test_get_config_gmail_does_not_render_saved_app_password(client):
+    _write_config()
+    _write_state()
+    r = client.get("/config/gmail/")
+    assert r.status_code == 200
+    assert _SAVED_PW not in r.text
+
+
+def test_post_test_response_does_not_render_saved_app_password(client):
+    _write_config()
+    with patch(
+        "findajob.gmail_imap.test_login",
+        return_value=gmail_imap.TestResult.SUCCESS,
+    ):
+        r = client.post("/config/gmail/test")
+    assert r.status_code == 200
+    assert _SAVED_PW not in r.text
+
+
+def test_post_save_response_does_not_render_new_app_password(client):
+    with patch(
+        "findajob.gmail_imap.test_login",
+        return_value=gmail_imap.TestResult.SUCCESS,
+    ):
+        r = client.post(
+            "/config/gmail/save",
+            data={
+                "address": "user@gmail.com",
+                _PW: "ponm lkji hgfe dcba",
+                "sender_allowlist": "jobalerts-noreply@linkedin.com",
+            },
+        )
+    assert r.status_code == 200
+    assert gmail_imap.load_config().app_password == "ponmlkjihgfedcba"
+    assert "ponmlkjihgfedcba" not in r.text
+    assert "ponm lkji hgfe dcba" not in r.text
+
+
+def test_post_save_blank_password_keeps_saved_password(client):
+    _write_config()
+    _write_state()
+    with patch("findajob.gmail_imap.test_login") as m:
+        r = client.post(
+            "/config/gmail/save",
+            data={
+                "address": "user@gmail.com",
+                _PW: "",
+                "sender_allowlist": "jobalerts-noreply@linkedin.com\nrecruiter@example.com",
+            },
+        )
+    assert r.status_code == 200
+    cfg = gmail_imap.load_config()
+    assert cfg.app_password == _SAVED_PW
+    assert cfg.sender_allowlist == ["jobalerts-noreply@linkedin.com", "recruiter@example.com"]
+    m.assert_not_called()
+
+
+def test_post_save_blank_password_with_new_address_tests_saved_password(client):
+    _write_config()
+    _write_state()
+    with patch(
+        "findajob.gmail_imap.test_login",
+        return_value=gmail_imap.TestResult.SUCCESS,
+    ) as m:
+        r = client.post(
+            "/config/gmail/save",
+            data={
+                "address": "other@gmail.com",
+                _PW: "",
+                "sender_allowlist": "jobalerts-noreply@linkedin.com",
+            },
+        )
+    assert r.status_code == 200
+    tested = m.call_args.args[0]
+    assert tested.address == "other@gmail.com"
+    assert tested.app_password == _SAVED_PW
+
+
+def test_post_save_blank_password_without_saved_config_is_rejected(client):
+    r = client.post(
+        "/config/gmail/save",
+        data={
+            "address": "user@gmail.com",
+            _PW: "",
+            "sender_allowlist": "jobalerts-noreply@linkedin.com",
+        },
+    )
+    assert r.status_code == 200
+    assert "App password must be 16 characters" in r.text
+    assert gmail_imap.load_config() is None
+
+
+def test_post_save_validation_error_replaces_only_the_error_slot(client):
+    """A validation error must not re-render the form: that would drop what the
+    user typed, and echoing the typed password back would put it in the page."""
+    r = client.post(
+        "/config/gmail/save",
+        data={
+            "address": "user@gmail.com",
+            _PW: "abcd efgh ijkl mnop",
+            "sender_allowlist": "not-an-email",
+        },
+    )
+    assert r.status_code == 200
+    assert r.headers["HX-Retarget"] == "#gmail-config-error"
+    assert r.headers["HX-Reswap"] == "innerHTML"
+    assert "Each sender must be a valid email address" in r.text
+    assert "<form" not in r.text
+    assert "abcd efgh ijkl mnop" not in r.text
+    assert gmail_imap.load_config() is None
+
+
+def test_post_test_without_saved_config_replaces_only_the_error_slot(client):
+    """A page loaded before the Test button was disabled can still post here;
+    the guard must not wipe what the user typed into the form."""
+    r = client.post("/config/gmail/test")
+    assert r.status_code == 200
+    assert r.headers["HX-Retarget"] == "#gmail-config-error"
+    assert "Save credentials before testing" in r.text
+    assert "<form" not in r.text
+
+
+def test_card_has_the_error_slot_the_retarget_header_names(client):
+    r = client.get("/config/gmail/")
+    assert 'id="gmail-config-error"' in r.text
+
+
+def _test_button_tag(html: str) -> str:
+    m = re.search(r'<button[^>]*hx-post="/config/gmail/test"[^>]*>', html)
+    assert m, "Test connection button not found"
+    return m.group(0)
+
+
+def test_test_button_disabled_until_config_saved(client):
+    r = client.get("/config/gmail/")
+    assert re.search(r"\sdisabled[\s>]", _test_button_tag(r.text))
+
+
+def test_test_button_enabled_once_config_saved(client):
+    _write_config()
+    r = client.get("/config/gmail/")
+    assert not re.search(r"\sdisabled[\s>]", _test_button_tag(r.text))
 
 
 def test_post_disconnect_wipes_both_files(client):

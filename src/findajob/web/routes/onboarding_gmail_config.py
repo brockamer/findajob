@@ -2,9 +2,10 @@
 
 After the chat interview emits its config blocks (and the optional feed-config
 gate runs), every flow passes through here. The user either saves an IMAP
-credential pair and verifies it via the existing ``/config/gmail/test`` route,
-or skips. Either way the flow then continues to the connections gate (#571),
-which is the terminal step that writes the sentinel.
+credential pair (``/config/gmail/save`` runs the IMAP test when the credentials
+change; ``/config/gmail/test`` re-runs it), or skips. Either way the flow then
+continues to the connections gate (#571), which is the terminal step that
+writes the sentinel.
 
 The IMAP-test-before-sentinel guarantee from #407 still holds — /finish here
 rejects with a 400 until a successful test has run, and the connections gate
@@ -106,9 +107,9 @@ def post_finish(session_id: str, request: Request) -> HTMLResponse | Response:
                 session_id=session_id,
                 status="off",
                 validation_error=(
-                    "Save your Gmail credentials and run Test connection "
-                    "before continuing. If you don't want Gmail ingestion, "
-                    "use Skip for now."
+                    "Save your Gmail credentials before continuing — Save "
+                    "runs the connection test. If you don't want Gmail "
+                    "ingestion, use Skip for now."
                 ),
             ),
             status_code=400,

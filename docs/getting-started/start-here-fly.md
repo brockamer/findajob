@@ -234,7 +234,7 @@ findajob can read your Gmail inbox to ingest LinkedIn / Indeed job-alert emails 
 
 ![Gmail IMAP configuration page with field-by-field walkthrough](install-fly/05-gmail-config.png)
 
-To wire it up: see [`gmail.md`](gmail.md) for the 2FA + Gmail app-password procedure. Paste the credentials into this form, click **Test connection**, and **Save**.
+To wire it up: see [`gmail.md`](gmail.md) for the 2FA + Gmail app-password procedure. Paste the credentials into this form and click **Save**. Save runs the connection test.
 
 **To skip:** click **Skip for now**. You can configure it later at `/config/gmail/`.
 

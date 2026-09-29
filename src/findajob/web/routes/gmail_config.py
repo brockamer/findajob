@@ -21,14 +21,27 @@ from findajob.web import constants
 router = APIRouter()
 
 
-def _ctx(request: Request, *, status: str, validation_error: str | None = None) -> dict:
+def _ctx(request: Request, *, status: str) -> dict:
     return {
         "config": gmail_imap.load_config(),
         "state": gmail_imap.load_state(),
         "status": status,
-        "validation_error": validation_error,
         "github_blob_url": constants.github_blob_url,
     }
+
+
+def _error_response(request: Request, message: str) -> HTMLResponse:
+    """Swap only the card's error slot, so the form keeps what the user typed.
+
+    Re-rendering the whole card would clear the typed app password, and putting
+    it back would send it to the browser in the response HTML.
+    """
+    return request.app.state.templates.TemplateResponse(
+        request=request,
+        name="gmail_config/_validation_error.html",
+        context={"validation_error": message},
+        headers={"HX-Retarget": "#gmail-config-error", "HX-Reswap": "innerHTML"},
+    )
 
 
 def _derive_status() -> str:
@@ -97,17 +110,17 @@ def _creds_changed(old: gmail_imap.GmailConfig | None, new: gmail_imap.GmailConf
 def save_gmail_config(
     request: Request,
     address: str = Form(...),
-    app_password: str = Form(...),
+    app_password: str = Form(""),
     sender_allowlist: str = Form(...),
 ) -> HTMLResponse:
     templates = request.app.state.templates
+    old = gmail_imap.load_config()
+    # The card never renders the saved password, so a blank field means "keep it".
+    if not app_password.strip() and old is not None:
+        app_password = old.app_password
     err = _validate(address, app_password, sender_allowlist)
     if err:
-        return templates.TemplateResponse(
-            request=request,
-            name="gmail_config/_card.html",
-            context=_ctx(request, status=_derive_status(), validation_error=err),
-        )
+        return _error_response(request, err)
     senders = [line.strip() for line in sender_allowlist.splitlines() if line.strip()]
     cfg = gmail_imap.GmailConfig(
         address=address,
@@ -115,7 +128,6 @@ def save_gmail_config(
         sender_allowlist=senders,
         configured_at=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     )
-    old = gmail_imap.load_config()
     gmail_imap.save_config(cfg)
     status = _run_imap_test(cfg) if _creds_changed(old, cfg) else "saved_untested"
     return templates.TemplateResponse(
@@ -130,15 +142,7 @@ def test_gmail_config(request: Request) -> HTMLResponse:
     templates = request.app.state.templates
     cfg = gmail_imap.load_config()
     if cfg is None:
-        return templates.TemplateResponse(
-            request=request,
-            name="gmail_config/_card.html",
-            context=_ctx(
-                request,
-                status="off",
-                validation_error="Save credentials before testing.",
-            ),
-        )
+        return _error_response(request, "Save credentials before testing.")
     status = _run_imap_test(cfg)
     return templates.TemplateResponse(
         request=request,
