@@ -85,7 +85,7 @@ Click **Add Secrets**. The dialog gives you two ways to enter them: **Add a sing
 | `FINDAJOB_AUTH_USER` | Optional | Your chosen username (e.g. `jane`) — can also be set during onboarding |
 | `FINDAJOB_AUTH_PASS` | Optional | Your chosen password (24+ characters) — can also be set during onboarding |
 | `RAPIDAPI_KEY` | Optional | Your RapidAPI key |
-| `NTFY_TOPIC` | Optional | Your ntfy topic name |
+| `NTFY_TOPIC` | Optional | Your ntfy topic name. Without it, notifications appear only on the in-app Notifications page and no phone push is sent |
 
 ![Add Secrets dialog](install-fly-web/08-add-secrets-dialog.png)
 

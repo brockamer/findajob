@@ -43,7 +43,12 @@ def notify(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     db = tmp_path / "pipeline.db"
     _build_notifications_db(db)
     monkeypatch.setattr(ntfy, "DB_PATH", str(db))
-    return ntfy
+    # send() skips delivery without a topic; these tests exercise the POST path.
+    monkeypatch.setenv("NTFY_TOPIC", "test-topic")
+    monkeypatch.setattr(ntfy, "load_env", lambda: {})
+    ntfy._runtime.cache_clear()
+    yield ntfy
+    ntfy._runtime.cache_clear()
 
 
 def _read_rows(db_path) -> list[sqlite3.Row]:

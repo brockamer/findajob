@@ -24,11 +24,16 @@ import sqlite3
 import subprocess
 from datetime import UTC, datetime, timedelta
 
+from findajob.audit import log_event
 from findajob.db import connect
 from findajob.paths import BASE, load_env
 
 DB_PATH = f"{BASE}/data/pipeline.db"
 LOG_PATH = f"{BASE}/logs/pipeline.jsonl"
+
+# Set once `send()` has logged `ntfy_unconfigured`, so a run with no topic
+# logs the event a single time rather than once per notification.
+_unconfigured_logged = False
 
 
 @functools.cache
@@ -37,7 +42,9 @@ def _runtime() -> dict[str, str]:
 
     `data/.env` may not exist on a brand-new stack; `load_env()` is a
     graceful no-op there. The defaults match the pre-extraction module
-    globals literally.
+    globals literally, except the topic: there is no default. An unset
+    topic is ``""`` and `send()` skips delivery, because any fixed topic
+    name is one anyone on the public ntfy service can subscribe to.
     """
     env = load_env()
     web_url = env.get("FINDAJOB_WEB_URL") or os.environ.get("FINDAJOB_WEB_URL")
@@ -45,7 +52,7 @@ def _runtime() -> dict[str, str]:
         fly_app = os.environ.get("FLY_APP_NAME")
         web_url = f"https://{fly_app}.fly.dev" if fly_app else "http://localhost:8090"
     return {
-        "ntfy_topic": env.get("NTFY_TOPIC") or os.environ.get("NTFY_TOPIC", "jobsearch-pipeline"),
+        "ntfy_topic": (env.get("NTFY_TOPIC") or os.environ.get("NTFY_TOPIC") or "").strip(),
         "web_base_url": web_url.rstrip("/"),
     }
 
@@ -125,9 +132,28 @@ def send(title, body, priority="default", tags=None, kind="send_raw", cta_url=No
     deleted. Returns the row id (or None if persistence itself failed).
 
     `kind` must be one of NOTIFICATION_KINDS; ValueError on unknown kind.
+
+    With no ntfy topic configured nothing is sent: the row is stored with
+    `delivery_status='in_app_only'` and `ntfy_unconfigured` is logged once
+    per process.
     """
     if kind not in NOTIFICATION_KINDS:
         raise ValueError(f"Unknown notification kind {kind!r}; expected one of {NOTIFICATION_KINDS}")
+    if not _runtime()["ntfy_topic"]:
+        global _unconfigured_logged
+        if not _unconfigured_logged:
+            _unconfigured_logged = True
+            log_event("ntfy_unconfigured")
+        return _persist_notification(
+            kind=kind,
+            title=title,
+            body=body,
+            priority=priority,
+            tags=tags,
+            delivery_status="in_app_only",
+            delivery_error=None,
+            cta_url=cta_url,
+        )
     headers = [
         "-H",
         f"Title: {title}",
