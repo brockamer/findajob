@@ -3,12 +3,14 @@
 import subprocess
 import sys
 import time
+from urllib.parse import urljoin
 
 from findajob.audit import log_event
 from findajob.classification import JD_MAX_CHARS, strip_jd_boilerplate
 from findajob.cleaning import clean_company, clean_title, extract_linkedin_job_id
 from findajob.fetchers.adapters._keys import resolve_rapidapi_key
 from findajob.paths import IMAGE_ROOT, PANDOC
+from findajob.urlcheck import is_fetchable_url, resolves_to_public, url_matches
 
 # Per-call throttle to keep morning triage from bursting past the RapidAPI
 # per-minute cap on /v2/linkedin/get. 214-job triage × ~30% LinkedIn ≈ 13s added.
@@ -29,14 +31,51 @@ def get_linkedin_rate_limit_stats() -> dict[str, int]:
 
 
 # ── JD Fetching ──
-def fetch_jd_curl(url):
-    """Fetch JD by curling a public URL (Greenhouse/RSS/Lever sources)."""
+_JD_FETCH_TIMEOUT_SEC = 10
+_JD_FETCH_MAX_REDIRECTS = 5
+_JD_FETCH_MAX_BYTES = 2_000_000
+
+
+def fetch_jd_http(url):
+    """Fetch a JD page over https (Greenhouse/RSS/Lever and other public sources).
+
+    Only https URLs on public hosts are fetched. Redirects are followed by hand
+    so every hop passes the same check; a redirect to a non-https scheme or an
+    internal host ends the fetch.
+    """
+    import requests
+
     try:
-        raw = subprocess.run(["curl", "-sL", "--max-time", "10", url], capture_output=True, text=True).stdout
-        text = subprocess.run([PANDOC, "-f", "html", "-t", "plain"], input=raw, capture_output=True, text=True).stdout
-        return strip_jd_boilerplate(text)[:JD_MAX_CHARS]
+        current = url
+        for _ in range(_JD_FETCH_MAX_REDIRECTS + 1):
+            if not (is_fetchable_url(current) and resolves_to_public(current)):
+                return "[ERROR fetching JD: URL not allowed]"
+            resp = requests.get(current, timeout=_JD_FETCH_TIMEOUT_SEC, allow_redirects=False, stream=True)
+            try:
+                location = resp.headers.get("Location")
+                if resp.is_redirect and location:
+                    current = urljoin(current, location)
+                    continue
+                body = b"".join(_capped_chunks(resp))
+            finally:
+                resp.close()
+            raw = body.decode(resp.encoding or "utf-8", errors="replace")
+            text = subprocess.run(
+                [PANDOC, "-f", "html", "-t", "plain"], input=raw, capture_output=True, text=True
+            ).stdout
+            return strip_jd_boilerplate(text)[:JD_MAX_CHARS]
+        return "[ERROR fetching JD: too many redirects]"
     except Exception as e:
         return f"[ERROR fetching JD: {e}]"
+
+
+def _capped_chunks(resp):
+    seen = 0
+    for chunk in resp.iter_content(chunk_size=65536):
+        seen += len(chunk)
+        yield chunk
+        if seen >= _JD_FETCH_MAX_BYTES:
+            break
 
 
 def fetch_linkedin_job_data(job_id):
@@ -99,7 +138,7 @@ def fetch_jd(job):
       - jobsapi_linkedin: call /v2/linkedin/get using stored api_id
       - gmail_linkedin:   call /v2/linkedin/get using api_id extracted from URL
                           (company enrichment handled separately in main)
-      - everything else:  curl the URL (Greenhouse, Lever, other Gmail sources)
+      - everything else:  fetch the https URL (other Gmail sources)
     """
     source = job.get("source", "")
 
@@ -157,7 +196,7 @@ def fetch_jd(job):
 
     url = job.get("url", "")
     if url:
-        return fetch_jd_curl(url)
+        return fetch_jd_http(url)
 
     return "[No URL available]"
 
@@ -252,18 +291,20 @@ def _extract_jobs_from_html(html_content: str) -> list[dict]:
         "all jobs",
     }
 
+    # (host, path prefix, source). The anchor's parsed host must be the host or
+    # a subdomain of it; a substring match let a crafted href name any host.
     JOB_URL_PATTERNS = [
-        ("linkedin.com/jobs", "gmail_linkedin"),
-        ("linkedin.com/comm/jobs", "gmail_linkedin"),
-        ("lnkd.in/", "gmail_linkedin"),
-        ("indeed.com/viewjob", "gmail_indeed"),
-        ("indeed.com/rc/clk", "gmail_indeed"),
-        ("indeed.com/pagead", "gmail_indeed"),
-        ("r.indeed.com", "gmail_indeed"),
-        ("ziprecruiter.com/jobs", "gmail_ziprecruiter"),
-        ("ziprecruiter.com/c/", "gmail_ziprecruiter"),
-        ("careers.google.com", "gmail_google"),
-        ("google.com/about/careers", "gmail_google"),
+        ("linkedin.com", "/jobs", "gmail_linkedin"),
+        ("linkedin.com", "/comm/jobs", "gmail_linkedin"),
+        ("lnkd.in", "/", "gmail_linkedin"),
+        ("indeed.com", "/viewjob", "gmail_indeed"),
+        ("indeed.com", "/rc/clk", "gmail_indeed"),
+        ("indeed.com", "/pagead", "gmail_indeed"),
+        ("r.indeed.com", "/", "gmail_indeed"),
+        ("ziprecruiter.com", "/jobs", "gmail_ziprecruiter"),
+        ("ziprecruiter.com", "/c/", "gmail_ziprecruiter"),
+        ("careers.google.com", "/", "gmail_google"),
+        ("google.com", "/about/careers", "gmail_google"),
     ]
 
     for a in soup.find_all("a", href=True):
@@ -291,8 +332,8 @@ def _extract_jobs_from_html(html_content: str) -> list[dict]:
             continue
 
         source = None
-        for pattern, src in JOB_URL_PATTERNS:
-            if pattern in href:
+        for host, path_prefix, src in JOB_URL_PATTERNS:
+            if url_matches(href, host, path_prefix):
                 source = src
                 break
 

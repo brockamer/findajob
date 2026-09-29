@@ -131,7 +131,7 @@ POST /board/jobs/{fp}/prep  (findajob.web.routes.board_actions)
           ▼
 scripts/prep_application.py (45-line entry-point shim, detached subprocess)
   → findajob.prep.orchestrator.main() → _run_prep()
-  Loads JD from DB (never re-curls — LinkedIn etc. require auth)
+  Loads JD from DB (never fetches the URL; a JD under 50 chars fails prep with `prep_jd_unavailable`)
   Loads profile.md + master_resume.md (direct injection, no RAG)
   Builds shared cached_prefix blocks for cross-stage Anthropic prompt caching
 ```

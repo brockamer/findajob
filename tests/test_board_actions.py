@@ -1310,7 +1310,7 @@ class TestInterview:
         args = popen_calls[0]
         assert "interview_prep.py" in args[1]
         # Subprocess receives company, title, job_id (no URL — JD comes from DB).
-        assert args[2:] == ["Acme Corp", "Senior Ops", "id_applied"]
+        assert args[2:] == ["--", "Acme Corp", "Senior Ops", "id_applied"]
 
     def test_reclick_regenerates(self, client: TestClient, popen_calls):
         """Re-clicking 'Interviewing' on an already-interview job re-launches

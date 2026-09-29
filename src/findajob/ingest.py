@@ -35,6 +35,11 @@ from findajob.cleaning import (
     is_coarse_location,
     loose_fingerprint,
 )
+from findajob.urlcheck import is_http_url
+
+
+class InvalidJobUrl(ValueError):
+    """The submitted job URL is not an ``http(s)`` link with a host."""
 
 
 @dataclass(frozen=True)
@@ -134,6 +139,8 @@ def ingest_manual_job(
     company = clean_company(company.strip())
     title = clean_title(title.strip())
     url = url.strip()
+    if not is_http_url(url):
+        raise InvalidJobUrl("The job URL must start with http:// or https://.")
     location = location.strip()
     remote_status = remote_status.strip() or "Unknown"
     notes = notes.strip()

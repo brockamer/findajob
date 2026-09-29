@@ -23,6 +23,7 @@ from datetime import datetime
 
 from findajob.audit import log_event
 from findajob.background_tasks import writeback_subprocess
+from findajob.cliargs import positional_argv
 from findajob.db import connect
 from findajob.interview.flashcards import build_all as build_flashcards
 from findajob.llm.role_runner import run_role
@@ -71,11 +72,12 @@ def main() -> None:
 
 
 def _run_interview_prep() -> None:
-    if len(sys.argv) < 4:
-        print("Usage: interview_prep.py <company> <title> <job_id>", file=sys.stderr)
+    fields = positional_argv()
+    if len(fields) < 3:
+        print("Usage: interview_prep.py [--] <company> <title> <job_id>", file=sys.stderr)
         sys.exit(2)
 
-    company, title, job_id = sys.argv[1], sys.argv[2], sys.argv[3]
+    company, title, job_id = fields[0], fields[1], fields[2]
 
     # ── Look up job + prep folder ──
     conn = connect(DB_PATH, timeout=30)

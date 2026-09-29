@@ -9,10 +9,9 @@ Launched as a detached subprocess from POST /board/jobs/{fp}/prep (see
 findajob.web.routes.board_actions).
 """
 
-import sys
-
 from findajob.actions import reset_prep_to_scored
 from findajob.audit import log_event
+from findajob.cliargs import positional_argv
 from findajob.db import connect
 from findajob.paths import BASE
 from findajob.prep.orchestrator import main
@@ -26,9 +25,10 @@ if __name__ == "__main__":
     except Exception as exc:
         # Recover from any unhandled error: log failure and reset stage so
         # the job can be retried on the next poll cycle.
-        job_id = sys.argv[4] if len(sys.argv) > 4 else "unknown"
-        company = sys.argv[1] if len(sys.argv) > 1 else "unknown"
-        title = sys.argv[2] if len(sys.argv) > 2 else "unknown"
+        fields = positional_argv()
+        job_id = fields[3] if len(fields) > 3 else "unknown"
+        company = fields[0] if len(fields) > 0 else "unknown"
+        title = fields[1] if len(fields) > 1 else "unknown"
         log_event(
             "prep_failed",
             job_id=job_id,

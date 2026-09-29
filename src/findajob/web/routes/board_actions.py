@@ -170,11 +170,12 @@ def _launch_prep_subprocess(
             [
                 sys.executable,
                 f"{IMAGE_ROOT}/scripts/prep_application.py",
+                *extra_args,
+                "--",
                 job["company"],
                 job["title"],
                 job["url"],
                 job["id"],
-                *extra_args,
             ],
             start_new_session=True,
             env={**os.environ, TASK_ID_ENV_VAR: str(task_id)},
@@ -200,6 +201,7 @@ def _launch_interview_prep_subprocess(db: sqlite3.Connection, job: sqlite3.Row) 
             [
                 sys.executable,
                 f"{IMAGE_ROOT}/scripts/interview_prep.py",
+                "--",
                 job["company"],
                 job["title"],
                 job["id"],

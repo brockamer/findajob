@@ -84,40 +84,18 @@ def fetch_linkedin_jd(api_id):
 
 def fetch_greenhouse_jd(url):
     """Re-fetch JD from a Greenhouse URL. Returns stripped text or None."""
-    import subprocess as sp
+    from findajob.fetchers import fetch_jd_http
 
-    from findajob.paths import PANDOC
-
-    try:
-        raw = sp.run(["curl", "-sL", "--max-time", "15", url], capture_output=True, text=True).stdout
-        if not raw or len(raw.strip()) < 50:
-            return None
-        text = sp.run(
-            [PANDOC, "-f", "html", "-t", "plain"], input=raw, capture_output=True, text=True, timeout=10
-        ).stdout
-        text = strip_jd_boilerplate(text)[:JD_MAX_CHARS]
-        return text if len(text.strip()) >= 50 else None
-    except Exception:
-        return None
+    text = fetch_jd_http(url)
+    return text if not text.startswith("[ERROR") and len(text.strip()) >= 50 else None
 
 
 def fetch_curl_jd(url):
-    """Re-fetch JD by curling a public URL. Returns stripped text or None."""
-    import subprocess as sp
+    """Re-fetch JD by fetching a public URL. Returns stripped text or None."""
+    from findajob.fetchers import fetch_jd_http
 
-    from findajob.paths import PANDOC
-
-    try:
-        raw = sp.run(["curl", "-sL", "--max-time", "15", url], capture_output=True, text=True).stdout
-        if not raw or len(raw.strip()) < 50:
-            return None
-        text = sp.run(
-            [PANDOC, "-f", "html", "-t", "plain"], input=raw, capture_output=True, text=True, timeout=10
-        ).stdout
-        text = strip_jd_boilerplate(text)[:JD_MAX_CHARS]
-        return text if len(text.strip()) >= 50 else None
-    except Exception:
-        return None
+    text = fetch_jd_http(url)
+    return text if not text.startswith("[ERROR") and len(text.strip()) >= 50 else None
 
 
 def backfill_truncated(dry_run=False):
