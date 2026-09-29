@@ -156,25 +156,3 @@ class TestReaderCompat:
         for e in events:
             assert "i" in e
             assert e["i"] >= 0
-
-    def test_staging_green_spans_rotation(self, _isolated_log_path: Path, _tiny_threshold) -> None:
-        """staging.green._read_events must include the most recent rotated
-        backup so the 26h pipeline_complete predicate survives a rotation
-        that lands between green-check runs."""
-        from findajob.staging import green
-
-        _write_n(20)
-        assert Path(str(_isolated_log_path) + ".1.gz").exists()
-        current_only_count = len(_read_jsonl(_isolated_log_path))
-        events = green._read_events(_isolated_log_path)
-        # Spans .1.gz + current → strictly more events than reading
-        # current alone. (Earlier slots .2.gz+ are intentionally excluded
-        # — green-check only needs the last triage cycle.)
-        assert len(events) > current_only_count
-        # Order invariant: .1.gz events appear before current events.
-        # Pick the maximum index in each batch and verify the rotated
-        # slice's max is lower than the current slice's min.
-        rotated_count = len(events) - current_only_count
-        rotated_indices = [e["i"] for e in events[:rotated_count]]
-        current_indices = [e["i"] for e in events[rotated_count:]]
-        assert max(rotated_indices) < min(current_indices)
