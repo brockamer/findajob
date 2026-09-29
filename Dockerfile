@@ -22,8 +22,8 @@
 # findajob is `source = { editable = "." }` in uv.lock, so `uv sync` installs it
 # EDITABLE: the venv carries a .pth/finder pointing at /app/src rather than a
 # built wheel. This is deliberate. findajob ships load-bearing non-Python package
-# data (web templates, CSS/JS, the SVG, SQL migrations, the staging persona
-# fixture) under src/findajob with no package-data/MANIFEST.in config; a
+# data (web templates, CSS/JS, the SVG, SQL migrations) under src/findajob
+# with no package-data/MANIFEST.in config; a
 # `--no-editable` setuptools wheel would silently exclude those files and uvicorn
 # would 500 on every page. The editable install exposes the live source tree
 # instead, so the runtime stage MUST also COPY src/ to the identical /app/src.
