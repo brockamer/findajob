@@ -265,8 +265,8 @@ def _parse_ntfy_topic_body(body: str) -> str:
     """Parse the ``ntfy_topic.txt`` emission body into the bare topic string.
 
     Tolerates either of:
-      - ``NTFY_TOPIC=judy-jobsearch-2026`` (key=value form)
-      - ``judy-jobsearch-2026`` (bare value form)
+      - ``NTFY_TOPIC=example-topic-1234`` (key=value form)
+      - ``example-topic-1234`` (bare value form)
     Returns the trimmed value. Empty result raises ValueError so onboarding
     fails loudly rather than writing an empty topic that silently misroutes.
     """

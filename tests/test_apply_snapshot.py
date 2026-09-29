@@ -118,9 +118,9 @@ def test_move_folder_to_applied_snapshots_md_files(db, tmp_path, monkeypatch):
 
     src_folder = fake_base / "companies" / "Acme_Eng_2026-05-13_120000"
     src_folder.mkdir(parents=True)
-    (src_folder / "Brock Resume.md").write_text("resume")
-    (src_folder / "Brock Cover.md").write_text("cover")
-    (src_folder / "Brock Resume.docx").write_bytes(b"\x50\x4b\x03\x04")  # binary placeholder
+    (src_folder / "Candidate Resume.md").write_text("resume")
+    (src_folder / "Candidate Cover.md").write_text("cover")
+    (src_folder / "Candidate Resume.docx").write_bytes(b"\x50\x4b\x03\x04")  # binary placeholder
 
     db.execute(
         "INSERT INTO jobs (id, fingerprint, url, title, company, stage, prep_folder_path) "
@@ -144,8 +144,8 @@ def test_move_folder_to_applied_snapshots_md_files(db, tmp_path, monkeypatch):
 
     today = datetime.now(UTC).strftime("%Y-%m-%d")
     applied_dir = tmp_path / "companies" / "_applied" / src_folder.name
-    assert (applied_dir / f"Brock Resume.applied-{today}.md").read_text() == "resume"
-    assert (applied_dir / f"Brock Cover.applied-{today}.md").read_text() == "cover"
+    assert (applied_dir / f"Candidate Resume.applied-{today}.md").read_text() == "resume"
+    assert (applied_dir / f"Candidate Cover.applied-{today}.md").read_text() == "cover"
     # .docx never snapshotted
     assert not list(applied_dir.glob("*.docx.applied-*"))
 

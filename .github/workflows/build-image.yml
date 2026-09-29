@@ -60,7 +60,7 @@ jobs:
           elif [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
             # PR builds publish only :pr-{N} — :latest stays aligned with main HEAD.
             # The PR-branch image lets pre-merge walkthrough verification
-            # (e.g. findajob-test) run against the actual PR code.
+            # (e.g. on a test stack) run against the actual PR code.
             TAGS="${IMAGE}:pr-${PR_NUMBER}"
           fi
           echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"

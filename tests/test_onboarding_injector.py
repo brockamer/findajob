@@ -595,20 +595,20 @@ def test_inject_writes_timezone_file(tmp_path: Path) -> None:
 
 def test_inject_ntfy_topic_strips_key_prefix(tmp_path: Path) -> None:
     """Body 'NTFY_TOPIC=foo-bar' yields just 'foo-bar' in data/.env."""
-    files = {**_MIN_FILES, "ntfy_topic.txt": "NTFY_TOPIC=judy-jobsearch-2026-17"}
+    files = {**_MIN_FILES, "ntfy_topic.txt": "NTFY_TOPIC=example-topic-1234"}
     inject(tmp_path, files, skip_smoke_check=True)
     env_content = (tmp_path / "data" / ".env").read_text()
-    assert "NTFY_TOPIC=judy-jobsearch-2026-17" in env_content
+    assert "NTFY_TOPIC=example-topic-1234" in env_content
     # No nested NTFY_TOPIC=NTFY_TOPIC=... shape
     assert "NTFY_TOPIC=NTFY_TOPIC" not in env_content
 
 
 def test_inject_ntfy_topic_accepts_bare_value(tmp_path: Path) -> None:
     """Body 'just-the-topic' (no KEY= prefix) works too."""
-    files = {**_MIN_FILES, "ntfy_topic.txt": "judy-jobsearch-2026-17"}
+    files = {**_MIN_FILES, "ntfy_topic.txt": "example-topic-1234"}
     inject(tmp_path, files, skip_smoke_check=True)
     env_content = (tmp_path / "data" / ".env").read_text()
-    assert "NTFY_TOPIC=judy-jobsearch-2026-17" in env_content
+    assert "NTFY_TOPIC=example-topic-1234" in env_content
 
 
 def test_inject_ntfy_topic_empty_body_raises(tmp_path: Path) -> None:
