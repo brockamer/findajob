@@ -195,7 +195,7 @@ def test_interview_page_includes_streaming_form_pointing_at_turn_stream(
     # submit BEFORE onboarding-stream.js's handler runs and fires an XHR GET
     # to the form's default action — the streaming endpoint is never hit and
     # the chat page silently reload-renders. Caught in browser verification
-    # against findajob-clean after #740 merged; one-line regression guard.
+    # against a clean-install stack after #740 merged; one-line regression guard.
     assert 'hx-boost="false"' in body
     # Pair with structural containment: the opt-out must be on the streaming
     # form specifically. Look at the rendered slice containing the form tag.

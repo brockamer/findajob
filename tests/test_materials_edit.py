@@ -102,11 +102,11 @@ def client_factory(tmp_path: Path, monkeypatch):
 def test_save_cover_letter_writes_md_and_regens_docx(client_factory, pandoc_calls):
     client = client_factory(
         files={
-            "Brock Cover - Acme - Senior Ops - 20260513-120000.md": "OLD",
-            "Brock Cover - Acme - Senior Ops - 20260513-120000.docx": "OLD-DOCX",
+            "Candidate Cover - Acme - Senior Ops - 20260513-120000.md": "OLD",
+            "Candidate Cover - Acme - Senior Ops - 20260513-120000.docx": "OLD-DOCX",
         },
     )
-    md_name = "Brock Cover - Acme - Senior Ops - 20260513-120000.md"
+    md_name = "Candidate Cover - Acme - Senior Ops - 20260513-120000.md"
 
     resp = client.post(
         f"/materials/{client._fingerprint}/files/{md_name}",
@@ -126,11 +126,11 @@ def test_save_cover_letter_writes_md_and_regens_docx(client_factory, pandoc_call
 def test_save_briefing_passes_yaml_frontmatter_flag(client_factory, pandoc_calls):
     client = client_factory(
         files={
-            "Brock Briefing - Acme - Senior Ops - 20260513-120000.md": "OLD",
-            "Brock Briefing - Acme - Senior Ops - 20260513-120000.docx": "OLD-DOCX",
+            "Candidate Briefing - Acme - Senior Ops - 20260513-120000.md": "OLD",
+            "Candidate Briefing - Acme - Senior Ops - 20260513-120000.docx": "OLD-DOCX",
         },
     )
-    md_name = "Brock Briefing - Acme - Senior Ops - 20260513-120000.md"
+    md_name = "Candidate Briefing - Acme - Senior Ops - 20260513-120000.md"
 
     resp = client.post(
         f"/materials/{client._fingerprint}/files/{md_name}",
@@ -145,11 +145,11 @@ def test_save_briefing_passes_yaml_frontmatter_flag(client_factory, pandoc_calls
 def test_save_resume_linkifies_contact_info(client_factory, pandoc_calls):
     client = client_factory(
         files={
-            "Brock Resume - Acme - Senior Ops - 20260513-120000.md": "OLD",
-            "Brock Resume - Acme - Senior Ops - 20260513-120000.docx": "OLD-DOCX",
+            "Candidate Resume - Acme - Senior Ops - 20260513-120000.md": "OLD",
+            "Candidate Resume - Acme - Senior Ops - 20260513-120000.docx": "OLD-DOCX",
         },
     )
-    md_name = "Brock Resume - Acme - Senior Ops - 20260513-120000.md"
+    md_name = "Candidate Resume - Acme - Senior Ops - 20260513-120000.md"
     raw_content = "Jordan Smith\njordan@example.com  •  linkedin.com/in/jordansmith"
 
     resp = client.post(
@@ -166,11 +166,11 @@ def test_save_resume_linkifies_contact_info(client_factory, pandoc_calls):
 def test_one_shot_bak_created_on_first_edit(client_factory, pandoc_calls):
     client = client_factory(
         files={
-            "Brock Cover - Acme - Senior Ops - 20260513-120000.md": "ORIGINAL",
-            "Brock Cover - Acme - Senior Ops - 20260513-120000.docx": "OLD-DOCX",
+            "Candidate Cover - Acme - Senior Ops - 20260513-120000.md": "ORIGINAL",
+            "Candidate Cover - Acme - Senior Ops - 20260513-120000.docx": "OLD-DOCX",
         },
     )
-    md_name = "Brock Cover - Acme - Senior Ops - 20260513-120000.md"
+    md_name = "Candidate Cover - Acme - Senior Ops - 20260513-120000.md"
 
     client.post(f"/materials/{client._fingerprint}/files/{md_name}", data={"content": "EDIT 1"})
     client.post(f"/materials/{client._fingerprint}/files/{md_name}", data={"content": "EDIT 2"})
@@ -184,10 +184,10 @@ def test_docx_absent_skips_regen(client_factory, pandoc_calls):
     """Resume Changes / Review Checklist have no .docx companion — save succeeds, no pandoc."""
     client = client_factory(
         files={
-            "Brock Resume Changes - Acme - Senior Ops - 20260513-120000.md": "OLD",
+            "Candidate Resume Changes - Acme - Senior Ops - 20260513-120000.md": "OLD",
         },
     )
-    md_name = "Brock Resume Changes - Acme - Senior Ops - 20260513-120000.md"
+    md_name = "Candidate Resume Changes - Acme - Senior Ops - 20260513-120000.md"
 
     resp = client.post(
         f"/materials/{client._fingerprint}/files/{md_name}",
@@ -205,11 +205,11 @@ def test_pandoc_binary_missing_saves_md_and_surfaces_error(client_factory, monke
     the infra error in the partial. Caught a real bug during Step E smoke."""
     client = client_factory(
         files={
-            "Brock Cover - Acme - Senior Ops - 20260513-120000.md": "OLD",
-            "Brock Cover - Acme - Senior Ops - 20260513-120000.docx": "OLD-DOCX",
+            "Candidate Cover - Acme - Senior Ops - 20260513-120000.md": "OLD",
+            "Candidate Cover - Acme - Senior Ops - 20260513-120000.docx": "OLD-DOCX",
         },
     )
-    md_name = "Brock Cover - Acme - Senior Ops - 20260513-120000.md"
+    md_name = "Candidate Cover - Acme - Senior Ops - 20260513-120000.md"
 
     # Point findajob.prep.docx_render at a non-existent pandoc binary so the
     # real subprocess.run raises FileNotFoundError. This exercises the real
@@ -233,11 +233,11 @@ def test_pandoc_binary_missing_saves_md_and_surfaces_error(client_factory, monke
 def test_pandoc_failure_saves_md_and_surfaces_error(client_factory, monkeypatch):
     client = client_factory(
         files={
-            "Brock Cover - Acme - Senior Ops - 20260513-120000.md": "OLD",
-            "Brock Cover - Acme - Senior Ops - 20260513-120000.docx": "OLD-DOCX",
+            "Candidate Cover - Acme - Senior Ops - 20260513-120000.md": "OLD",
+            "Candidate Cover - Acme - Senior Ops - 20260513-120000.docx": "OLD-DOCX",
         },
     )
-    md_name = "Brock Cover - Acme - Senior Ops - 20260513-120000.md"
+    md_name = "Candidate Cover - Acme - Senior Ops - 20260513-120000.md"
 
     def _fail(*_a, **_kw):
         raise subprocess.CalledProcessError(
@@ -266,11 +266,11 @@ def test_reject_snapshot_filename(client_factory, pandoc_calls):
     """Snapshots are read-only audit artifacts."""
     client = client_factory(
         files={
-            "Brock Resume - Acme - Senior Ops - 20260513-120000.md": "live",
-            "Brock Resume - Acme - Senior Ops - 20260513-120000.applied-2026-05-13.md": "snapshot",
+            "Candidate Resume - Acme - Senior Ops - 20260513-120000.md": "live",
+            "Candidate Resume - Acme - Senior Ops - 20260513-120000.applied-2026-05-13.md": "snapshot",
         },
     )
-    snap = "Brock Resume - Acme - Senior Ops - 20260513-120000.applied-2026-05-13.md"
+    snap = "Candidate Resume - Acme - Senior Ops - 20260513-120000.applied-2026-05-13.md"
 
     resp = client.post(
         f"/materials/{client._fingerprint}/files/{snap}",
@@ -284,11 +284,11 @@ def test_reject_snapshot_filename(client_factory, pandoc_calls):
 def test_reject_bak_filename(client_factory, pandoc_calls):
     client = client_factory(
         files={
-            "Brock Resume - Acme - Senior Ops - 20260513-120000.md": "live",
-            "Brock Resume - Acme - Senior Ops - 20260513-120000.md.bak": "backup",
+            "Candidate Resume - Acme - Senior Ops - 20260513-120000.md": "live",
+            "Candidate Resume - Acme - Senior Ops - 20260513-120000.md.bak": "backup",
         },
     )
-    bak = "Brock Resume - Acme - Senior Ops - 20260513-120000.md.bak"
+    bak = "Candidate Resume - Acme - Senior Ops - 20260513-120000.md.bak"
 
     resp = client.post(
         f"/materials/{client._fingerprint}/files/{bak}",
@@ -300,11 +300,11 @@ def test_reject_bak_filename(client_factory, pandoc_calls):
 
 def test_reject_non_md_extension(client_factory, pandoc_calls):
     client = client_factory(
-        files={"Brock Resume - Acme - Senior Ops - 20260513-120000.docx": "binary"},
+        files={"Candidate Resume - Acme - Senior Ops - 20260513-120000.docx": "binary"},
     )
 
     resp = client.post(
-        f"/materials/{client._fingerprint}/files/Brock Resume - Acme - Senior Ops - 20260513-120000.docx",
+        f"/materials/{client._fingerprint}/files/Candidate Resume - Acme - Senior Ops - 20260513-120000.docx",
         data={"content": "nope"},
     )
 
@@ -326,9 +326,9 @@ def test_reject_unclassified_md(client_factory, pandoc_calls):
 def test_reject_when_stage_prep_in_progress(client_factory, pandoc_calls):
     client = client_factory(
         stage="prep_in_progress",
-        files={"Brock Cover - Acme - Senior Ops - 20260513-120000.md": "ORIGINAL"},
+        files={"Candidate Cover - Acme - Senior Ops - 20260513-120000.md": "ORIGINAL"},
     )
-    md_name = "Brock Cover - Acme - Senior Ops - 20260513-120000.md"
+    md_name = "Candidate Cover - Acme - Senior Ops - 20260513-120000.md"
 
     resp = client.post(
         f"/materials/{client._fingerprint}/files/{md_name}",
@@ -340,10 +340,10 @@ def test_reject_when_stage_prep_in_progress(client_factory, pandoc_calls):
 
 
 def test_404_on_unknown_fingerprint(client_factory, pandoc_calls):
-    client = client_factory(files={"Brock Cover - Acme - Senior Ops - 20260513-120000.md": "x"})
+    client = client_factory(files={"Candidate Cover - Acme - Senior Ops - 20260513-120000.md": "x"})
 
     resp = client.post(
-        "/materials/fp_unknown/files/Brock Cover - Acme - Senior Ops - 20260513-120000.md",
+        "/materials/fp_unknown/files/Candidate Cover - Acme - Senior Ops - 20260513-120000.md",
         data={"content": "y"},
     )
 
@@ -351,7 +351,7 @@ def test_404_on_unknown_fingerprint(client_factory, pandoc_calls):
 
 
 def test_path_traversal_rejected(client_factory, pandoc_calls):
-    client = client_factory(files={"Brock Cover - Acme - Senior Ops - 20260513-120000.md": "x"})
+    client = client_factory(files={"Candidate Cover - Acme - Senior Ops - 20260513-120000.md": "x"})
 
     # Backslash path-traversal attempt — FastAPI route matches verbatim filename
     resp = client.post(
@@ -368,11 +368,11 @@ def test_path_traversal_rejected(client_factory, pandoc_calls):
 def test_atomic_write_leaves_no_tmp_on_success(client_factory, pandoc_calls):
     client = client_factory(
         files={
-            "Brock Cover - Acme - Senior Ops - 20260513-120000.md": "OLD",
-            "Brock Cover - Acme - Senior Ops - 20260513-120000.docx": "OLD-DOCX",
+            "Candidate Cover - Acme - Senior Ops - 20260513-120000.md": "OLD",
+            "Candidate Cover - Acme - Senior Ops - 20260513-120000.docx": "OLD-DOCX",
         },
     )
-    md_name = "Brock Cover - Acme - Senior Ops - 20260513-120000.md"
+    md_name = "Candidate Cover - Acme - Senior Ops - 20260513-120000.md"
 
     resp = client.post(
         f"/materials/{client._fingerprint}/files/{md_name}",

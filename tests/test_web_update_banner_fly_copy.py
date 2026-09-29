@@ -39,7 +39,7 @@ def _force_update_available(monkeypatch) -> None:
 
 
 def test_fly_banner_does_not_claim_dashboard_deploy_updates(client, monkeypatch) -> None:
-    monkeypatch.setenv("FLY_APP_NAME", "findajob-test")  # detect_substrate() -> "fly"
+    monkeypatch.setenv("FLY_APP_NAME", "example-app")  # detect_substrate() -> "fly"
     _force_update_available(monkeypatch)
 
     r = client.get("/board/dashboard")

@@ -55,10 +55,10 @@ def folder_client(tmp_path: Path, monkeypatch):
         companies.mkdir(exist_ok=True)
         folder = companies / "Acme_Eng_2026-05-13_120000"
         folder.mkdir(exist_ok=True)
-        (folder / "Brock Resume - Acme - Sr Ops - 20260513-120000.md").write_text("R")
-        (folder / "Brock Cover - Acme - Sr Ops - 20260513-120000.md").write_text("C")
+        (folder / "Candidate Resume - Acme - Sr Ops - 20260513-120000.md").write_text("R")
+        (folder / "Candidate Cover - Acme - Sr Ops - 20260513-120000.md").write_text("C")
         for d in snapshot_dates:
-            (folder / f"Brock Resume - Acme - Sr Ops - 20260513-120000.applied-{d}.md").write_text("snap")
+            (folder / f"Candidate Resume - Acme - Sr Ops - 20260513-120000.applied-{d}.md").write_text("snap")
 
         db_path = tmp_path / "pipeline.db"
         if not db_path.exists():
