@@ -4,7 +4,7 @@
 
 The modern job search grinds people down — hundreds of listings per day, most irrelevant; the same cover letter rewritten at midnight; black-hole rejections that tell you nothing about whether you targeted wrong, wrote wrong, or got unlucky. findajob absorbs the triage, the tailoring, and the tracking so your attention goes to the few applications actually worth sending.
 
-Built and operated daily; pre-1.0 means active development.
+Pre-1.0 means active development.
 
 **Who this is for.** findajob is maintained for operators who are comfortable with Docker, a terminal, git and SQLite, and who run it for themselves or on behalf of other people. It is not optimized for a non-technical job seeker installing it alone, and the documentation assumes those skills ([Decision 37](docs/roadmap.md)).
 
@@ -19,9 +19,9 @@ Built and operated daily; pre-1.0 means active development.
 - **Cuts the noise so you can focus.** Every morning it pulls hundreds of fresh listings, scores each one against your background, and surfaces only the handful worth your attention. Most job tools track what you applied to; this one finds the few worth applying to.
 - **Writes the application for you to finish.** Flag a job and findajob researches the company and drafts a briefing; approve it and a second pass produces the full package — a tailored resume, a cover letter, and outreach drafts that name real contacts from your network.
 - **Learns from every rejection.** Each job that doesn't pan out gets tagged with a reason — *Skills Mismatch*, *Geography*, *Compensation* — and those reasons train the next day's scoring. No other job tool closes that loop.
-- **Works for any field.** Built by a data-center-ops candidate, but it works just as well for a social worker, teacher, accountant, software engineer, or trades professional. Only your profile changes.
+- **Works for any field.** It works for a social worker, teacher, accountant, software engineer, or trades professional alike. Only your profile changes.
 
-Thirty days on the operator's own instance:
+Example: thirty days on one instance:
 
 ```
 Listings ingested                8,393   ── 30-day window
