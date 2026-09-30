@@ -304,6 +304,25 @@ Do the same for any other job that does heavyweight network or LLM work (`discov
 
 The full job list lives at `ops/scheduled-jobs.yaml` in the repo. To inspect what your running container actually scheduled: `docker exec <container> cat /app/crontab` (the rendered output).
 
+## Multi-tenant hosts: one set of API keys per instance
+
+Give every instance its own API keys: `OPENROUTER_API_KEY`, `RAPIDAPI_KEY` and, if you set it, `GEMINI_API_KEY`. Never copy `state/data/.env` from one instance to another. The same applies to a whole `state/` directory and to a backup archive, because each of them carries the `.env`. When you clone or restore one instance's data into another, replace the keys afterwards.
+
+findajob does not enforce this. Nothing in the code detects a key that two instances share, so the operator carries the obligation. Instances that share a key share its usage, its spend and its exposure. One leaked key exposes every instance that holds it, and the provider's usage report cannot tell the instances apart.
+
+To check a host, print a short digest of each key. The command below never prints a key. Replace `<stack-a> <stack-b>` with every stack directory on the host:
+
+```bash
+for k in OPENROUTER_API_KEY RAPIDAPI_KEY GEMINI_API_KEY; do
+  for d in <stack-a> <stack-b>; do
+    v=$(sed -n "s/^$k=//p" "$d/state/data/.env" | head -n1 | tr -d "\"'")
+    [ -n "$v" ] && printf '%s %s %s\n' "$k" "$(printf %s "$v" | sha256sum | cut -c1-12)" "$d"
+  done
+done | sort
+```
+
+Two lines with the same key name and the same digest mean those two instances share a key. Rotate the key on one of them (see [Rotating an API key](#rotating-an-api-key)) and run the command again. A key that an instance does not set prints no line.
+
 ## Operating an existing stack
 
 ### Rotating an API key
