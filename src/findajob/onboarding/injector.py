@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from findajob.audit import log_event
+from findajob.env_file import check_value
 
 # Imported lazily inside inject() to avoid a circular import on the
 # discoverer side, and to keep this module importable even when the
@@ -236,7 +237,11 @@ def merge_env_content(existing: str, example: str, updates: dict[str, str]) -> s
         with the new value. Keys that didn't appear get appended at the end.
 
     Pure function — does no I/O. Tests can verify exact line-level output.
+    Raises ValueError if a value contains a line break, which would inject a
+    second env line (see :func:`findajob.env_file.check_value`).
     """
+    for key, value in updates.items():
+        check_value(key, value)
     base = existing if existing else example
     new_lines: list[str] = []
     handled: set[str] = set()

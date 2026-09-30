@@ -166,6 +166,23 @@ def test_auth_password_too_short_returns_error(client: TestClient) -> None:
     assert "at least 8" in r.text
 
 
+def test_auth_password_with_line_break_returns_error(client: TestClient, base_root: Path) -> None:
+    """A line break in a credential would inject an extra data/.env line; the form rejects it."""
+    bad = "password123\nOPENROUTER_API_KEY=attacker"
+    r = client.post(
+        "/onboarding/auth",
+        data={
+            "setup_token": _setup_token(client),
+            "auth_username": "user",
+            "auth_password": bad,
+            "auth_password_confirm": bad,
+        },
+    )
+    assert r.status_code == 400
+    assert "line breaks" in r.text
+    assert not (base_root / "data" / ".env").exists()
+
+
 def test_auth_empty_username_returns_error(client: TestClient) -> None:
     r = client.post(
         "/onboarding/auth",

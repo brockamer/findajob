@@ -20,6 +20,8 @@ import tarfile
 from dataclasses import dataclass
 from pathlib import Path
 
+from findajob.env_file import write_private
+
 MAX_UPLOAD_BYTES = 512 * 1024 * 1024  # 512 MB
 
 _TARBALL_PREFIX = "state/"
@@ -147,7 +149,11 @@ def restore_from_tarball(raw: bytes, base: Path) -> RestoreResult:
                     dest.parent.mkdir(parents=True, exist_ok=True)
                     f = tar.extractfile(member)
                     if f is not None:
-                        dest.write_bytes(f.read())
+                        if stripped in _SECRETS_FILES:
+                            # 0600 from the first byte, not only after the final chmod below.
+                            write_private(dest, f.read())
+                        else:
+                            dest.write_bytes(f.read())
 
         rollback.mkdir(parents=True, exist_ok=True)
 

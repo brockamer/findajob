@@ -109,6 +109,32 @@ class TestRestoreFromTarball:
         assert not (mode & stat.S_IRGRP)
         assert not (mode & stat.S_IROTH)
 
+    def test_secret_files_are_owner_only_while_staged(self, tmp_path: Path) -> None:
+        """Secrets must be 0600 from extraction on, not only after the final chmod."""
+        import os
+        import shutil
+        from unittest.mock import patch
+
+        base = tmp_path / "base"
+        base.mkdir()
+        seen: dict[str, int] = {}
+        real_move = shutil.move
+
+        def spy(src: str, dst: str) -> object:
+            if Path(src).name in (".env", "gmail.json"):
+                seen[Path(src).name] = stat.S_IMODE(os.stat(src).st_mode)
+            return real_move(src, dst)
+
+        raw = _make_tarball(**{"state/config/gmail.json": b'{"app_password": "x"}'})
+        old = os.umask(0o022)
+        try:
+            with patch("findajob.web.restore.shutil.move", side_effect=spy):
+                result = restore_from_tarball(raw, base)
+        finally:
+            os.umask(old)
+        assert result.success is True
+        assert seen == {".env": 0o600, "gmail.json": 0o600}
+
     def test_replaces_existing_state(self, tmp_path: Path) -> None:
         base = tmp_path / "base"
         data = base / "data"

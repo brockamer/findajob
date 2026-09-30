@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import imaplib
 import json
-import os
 import socket
 import ssl
 from dataclasses import asdict, dataclass, field
@@ -20,6 +19,7 @@ from enum import Enum
 from pathlib import Path
 
 from findajob.audit import log_event
+from findajob.env_file import write_private
 from findajob.paths import BASE
 
 GMAIL_CONFIG_PATH = f"{BASE}/config/gmail.json"
@@ -197,20 +197,12 @@ def load_state() -> GmailState:
 def save_state(state: GmailState) -> None:
     """Atomically persist :class:`GmailState`."""
     payload = {"_schema": _SCHEMA_VERSION, **asdict(state)}
-    p = Path(GMAIL_STATE_PATH)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = f"{GMAIL_STATE_PATH}.tmp"
-    with open(tmp_path, "w") as fh:
-        json.dump(payload, fh, indent=2)
-        fh.flush()
-        os.fsync(fh.fileno())
-    os.replace(tmp_path, GMAIL_STATE_PATH)
     # State is non-secret, but match config posture for consistency.
-    os.chmod(GMAIL_STATE_PATH, 0o600)
+    write_private(GMAIL_STATE_PATH, json.dumps(payload, indent=2))
 
 
 def save_config(config: GmailConfig) -> None:
-    """Atomically persist :class:`GmailConfig` with chmod 600."""
+    """Atomically persist :class:`GmailConfig`, mode 0600 throughout."""
     payload = {
         "_schema": _SCHEMA_VERSION,
         "address": config.address,
@@ -219,15 +211,7 @@ def save_config(config: GmailConfig) -> None:
         "configured_at": config.configured_at,
         "rejection_sender_allowlist": list(config.rejection_sender_allowlist),
     }
-    p = Path(GMAIL_CONFIG_PATH)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = f"{GMAIL_CONFIG_PATH}.tmp"
-    with open(tmp_path, "w") as fh:
-        json.dump(payload, fh, indent=2)
-        fh.flush()
-        os.fsync(fh.fileno())
-    os.replace(tmp_path, GMAIL_CONFIG_PATH)
-    os.chmod(GMAIL_CONFIG_PATH, 0o600)
+    write_private(GMAIL_CONFIG_PATH, json.dumps(payload, indent=2))
 
 
 class TestResult(Enum):
