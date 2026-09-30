@@ -18,7 +18,7 @@ import sqlite3
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
 
-from findajob.ingest import IngestResult, ingest_manual_job
+from findajob.ingest import IngestResult, InvalidJobUrl, ingest_manual_job
 from findajob.web.routes.materials import get_db
 
 router = APIRouter()
@@ -77,18 +77,21 @@ def submit_manual(
             message=f"Missing required field(s): {', '.join(missing)}.",
         )
 
-    result: IngestResult = ingest_manual_job(
-        db,
-        company=company,
-        title=title,
-        url=url,
-        location=location,
-        remote_status=remote_status,
-        notes=notes,
-        known_contacts=known_contacts,
-        raw_jd_text=raw_jd_text,
-        source="web_manual",
-    )
+    try:
+        result: IngestResult = ingest_manual_job(
+            db,
+            company=company,
+            title=title,
+            url=url,
+            location=location,
+            remote_status=remote_status,
+            notes=notes,
+            known_contacts=known_contacts,
+            raw_jd_text=raw_jd_text,
+            source="web_manual",
+        )
+    except InvalidJobUrl as exc:
+        return _render_result(request, outcome="error", message=str(exc))
 
     if result.status == "already_applied":
         return _render_result(

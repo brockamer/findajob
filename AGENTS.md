@@ -251,7 +251,7 @@ Internally-branded teams, programs, or org names with ambiguous abbreviations mu
 `config/roles/company_discoverer.md` runs weekly via supercronic and after onboarding completion. It emits `candidate_context/discovered_companies.md` + `.json` (gitignored), read by the scorer and Greenhouse-slug derivation as INPUTS, not floors. The static `## Target Companies / Organizations` section in profile.md remains as a strategic-preference signal — orthogonal to the competency-fit signal the discoverer produces. Do not delete the static list to "consolidate"; they serve different purposes.
 
 ### JD at Prep Time
-`prep_application.py` reads JD from the database. Never re-curls the URL at prep time.
+`prep_application.py` reads JD from the database and never fetches the URL at prep time. A non-synthetic job whose stored JD is under 50 characters fails prep with a `prep_jd_unavailable` event instead. Server-side JD fetches happen at triage only, through `findajob.fetchers.fetch_jd_http` (https, public hosts, redirects re-checked by `findajob.urlcheck`); never shell out to `curl` with a job field.
 
 ### company_match() Discipline
 Two regression-prone rules every `company_match()` implementation must observe:

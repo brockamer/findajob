@@ -46,6 +46,7 @@ from findajob.paths import BASE, load_env
 from findajob.scoring import _build_feedback_block, score_job
 from findajob.triage.contacts import find_contacts
 from findajob.triage.null_score_retry import score_null_manual_review_rows
+from findajob.urlcheck import is_http_url
 
 DB_PATH = f"{BASE}/data/pipeline.db"
 PROFILE_PATH = f"{BASE}/candidate_context/profile.md"
@@ -245,6 +246,15 @@ def main(gmail_since_days: int | None = None):
 
     for job in raw_jobs:
         if not job.get("title") or not job.get("url"):
+            continue
+        if not is_http_url(job["url"]):
+            log_event(
+                "ingest_skipped",
+                reason="non_http_url",
+                title=job.get("title", "")[:80],
+                company=job.get("company", "")[:80],
+            )
+            noise_count += 1
             continue
 
         # ── Ingest noise filters ──

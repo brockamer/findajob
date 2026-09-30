@@ -22,12 +22,12 @@ from datetime import UTC, datetime
 from findajob.actions import reset_prep_to_scored
 from findajob.audit import log_event, write_audit
 from findajob.background_tasks import writeback_subprocess
-from findajob.classification import JD_MAX_CHARS
+from findajob.cliargs import positional_argv
 from findajob.db import connect
 from findajob.llm.openrouter import LLMSpendCeilingExceeded
 from findajob.llm.role_runner import run_role
 from findajob.notifications.ntfy import send as ntfy_send
-from findajob.paths import BASE, IMAGE_ROOT, PANDOC, load_env
+from findajob.paths import BASE, IMAGE_ROOT, load_env
 from findajob.prep.briefing import read_briefing
 from findajob.prep.cost_projection import compute_projection
 from findajob.prep.docx_postprocess import _add_cover_letter_spacing, _linkify_contact_info
@@ -39,6 +39,9 @@ from findajob.profile import load_voice_samples, read_file_prefix
 DB_PATH = f"{BASE}/data/pipeline.db"
 PROFILE_PATH = f"{BASE}/candidate_context/profile.md"
 MASTER_RESUME_PATH = f"{BASE}/candidate_context/master_resume.md"
+
+# A stored JD shorter than this is treated as missing; prep never fetches one.
+_MIN_JD_CHARS = 50
 
 _PROBABILITY_HEADING_RE = re.compile(r"##\s*🎯\s*Probability Assessment")
 _PERCENT_SCORE_RE = re.compile(r":\s*\d{1,3}%")
@@ -180,7 +183,7 @@ def _handle_prep_runtime_failure(
 
 def _run_prep() -> None:
     """Legacy wrapper: run Phase A then Phase B in sequence (--phase=all default)."""
-    company, title, url, job_id = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+    company, title, url, job_id = positional_argv()[:4]
     _run_prep_phase_a(company, title, url, job_id)
     _run_prep_phase_b(company, title, url, job_id)
 
@@ -232,7 +235,8 @@ def _run_prep_phase_a(company: str, title: str, url: str, job_id: str) -> None:
     log_event("prep_started", company=company, title=title, job_id=job_id, file_prefix=file_prefix)
 
     # ── Step 1: Load JD from DB (already fetched during triage) ──
-    # Do NOT re-curl — LinkedIn and many other URLs require auth and will return garbage.
+    # Never fetch the URL here — the JD was stored at ingest, and a fetch at prep
+    # time would follow whatever the stored URL says.
     conn = connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     try:
@@ -246,15 +250,18 @@ def _run_prep_phase_a(company: str, title: str, url: str, job_id: str) -> None:
             row["speculative_briefing_folder"] if row and "speculative_briefing_folder" in row.keys() else None
         )
 
-        if not jd_text or len(jd_text) < 50:
-            # Fallback: try curling for Greenhouse/Lever/public URLs only
-            try:
-                raw = subprocess.run(["curl", "-sL", "--max-time", "15", url], capture_output=True, text=True).stdout
-                jd_text = subprocess.run(
-                    [PANDOC, "-f", "html", "-t", "plain"], input=raw, capture_output=True, text=True
-                ).stdout[:JD_MAX_CHARS]
-            except Exception:
-                jd_text = "[ERROR: Could not fetch JD]"
+        if not is_synthetic and len(jd_text) < _MIN_JD_CHARS:
+            log_event(
+                "prep_jd_unavailable", phase="a", company=company, title=title, job_id=job_id, jd_chars=len(jd_text)
+            )
+            shutil.rmtree(outdir, ignore_errors=True)
+            reset_prep_to_scored(conn, job_id, reason="jd_unavailable")
+            ntfy_send(
+                f"Prep failed: {company} — {title}",
+                "A: jd_unavailable\nNo usable job description is stored. Paste the JD on the ingest form.",
+                kind="prep_failure",
+            )
+            return
 
         with open(out["jd_txt"], "w") as f:
             f.write(jd_text)
@@ -590,15 +597,12 @@ def _run_prep_phase_b(company: str, title: str, url: str, job_id: str) -> None:
             )
             raise SystemExit(1)
 
-        if not jd_text or len(jd_text) < 50:
-            # Fallback curl (same as Phase A)
-            try:
-                raw = subprocess.run(["curl", "-sL", "--max-time", "15", url], capture_output=True, text=True).stdout
-                jd_text = subprocess.run(
-                    [PANDOC, "-f", "html", "-t", "plain"], input=raw, capture_output=True, text=True
-                ).stdout[:JD_MAX_CHARS]
-            except Exception:
-                jd_text = "[ERROR: Could not fetch JD]"
+        if not is_synthetic and len(jd_text) < _MIN_JD_CHARS:
+            log_event(
+                "prep_jd_unavailable", phase="b", company=company, title=title, job_id=job_id, jd_chars=len(jd_text)
+            )
+            _handle_phase_b_failure(conn, job_id, company, title, "jd_unavailable")
+            raise SystemExit(1)
 
         # ── Re-read profile and master resume ──
         try:

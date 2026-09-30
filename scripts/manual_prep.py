@@ -84,7 +84,7 @@ def main():
 
     # Kick off prep
     result = subprocess.run(
-        [sys.executable, f"{IMAGE_ROOT}/scripts/prep_application.py", company, title, url, job_id], text=True
+        [sys.executable, f"{IMAGE_ROOT}/scripts/prep_application.py", "--", company, title, url, job_id], text=True
     )
     sys.exit(result.returncode)
 
