@@ -69,7 +69,7 @@ def resolves_to_public(url: object) -> bool:
         infos = socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)
     except (OSError, UnicodeError):
         return False
-    addrs = {info[4][0].split("%", 1)[0] for info in infos}
+    addrs = {str(info[4][0]).split("%", 1)[0] for info in infos}
     if not addrs:
         return False
     try:
