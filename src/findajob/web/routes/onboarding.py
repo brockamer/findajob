@@ -294,7 +294,10 @@ def onboarding_auth(
         return _render_auth_error(request, "Passwords do not match.", username)
 
     base_root: Path = request.app.state.base_root
-    write_auth_credentials(base_root, username, password)
+    try:
+        write_auth_credentials(base_root, username, password)
+    except ValueError:
+        return _render_auth_error(request, "Username and password cannot contain line breaks.", "")
 
     request.app.state.auth_user = username
     request.app.state.auth_pass = password

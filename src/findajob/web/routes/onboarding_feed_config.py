@@ -13,6 +13,7 @@ from pathlib import Path
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
+from findajob.env_file import check_value, set_vars
 from findajob.fetchers.adapters.curation import (
     AdapterMetadata,
     CurationLoadError,
@@ -65,27 +66,6 @@ def _read_queries(base: Path) -> list[str]:
     return [line.strip() for line in queries_path.read_text().splitlines() if line.strip() and not line.startswith("#")]
 
 
-def _write_env_var(env_path: Path, var_name: str, value: str) -> None:
-    """Set or overwrite VAR=value in data/.env, preserving all other lines."""
-    if not env_path.exists():
-        env_path.write_text(f"{var_name}={value}\n")
-        return
-    lines = env_path.read_text().splitlines(keepends=True)
-    out: list[str] = []
-    replaced = False
-    for line in lines:
-        stripped = line.lstrip()
-        if not stripped.startswith("#") and stripped.startswith(f"{var_name}="):
-            out.append(f"{var_name}={value}\n")
-            replaced = True
-        else:
-            out.append(line)
-    if not replaced:
-        ending = "" if out and out[-1].endswith("\n") else "\n"
-        out.append(f"{ending}{var_name}={value}\n")
-    env_path.write_text("".join(out))
-
-
 @router.get("/{session_id}", response_class=HTMLResponse)
 def get_feed_config_form(session_id: str, request: Request, voice_redact_failed: int = 0) -> HTMLResponse:
     base = Path(request.app.state.base_root)
@@ -134,6 +114,10 @@ def post_feed_config(
 
     # Set env var in-process so the adapter can pick it up, then run the live test.
     env_var = meta.required_env_var
+    try:
+        check_value(env_var, api_key)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="API key cannot contain line breaks.") from exc
     os.environ[env_var] = api_key
 
     queries = _read_queries(base)
@@ -142,7 +126,7 @@ def post_feed_config(
 
     if result.ok:
         # Live test succeeded — persist the key for future sessions.
-        _write_env_var(base / "data" / ".env", env_var, api_key)
+        set_vars(base / "data" / ".env", {env_var: api_key})
     else:
         # Failure — do NOT persist the key; roll back env mutation.
         os.environ.pop(env_var, None)

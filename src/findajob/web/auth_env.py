@@ -1,9 +1,8 @@
 """Read / write FINDAJOB_AUTH_USER + FINDAJOB_AUTH_PASS in ``data/.env``.
 
-Follows the same read-modify-write pattern as
-:mod:`findajob.web.routes.settings_gemini` — parse existing lines, replace
-or append, write back, then mirror into ``os.environ`` so in-process code
-sees the change immediately.
+Writes go through :func:`findajob.env_file.set_vars` (atomic, mode 0600),
+then mirror into ``os.environ`` so in-process code sees the change
+immediately.
 
 Separated from :mod:`findajob.web.auth` because auth.py is middleware
 (imported early, minimal deps); this module handles file I/O for the
@@ -14,6 +13,8 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+
+from findajob.env_file import set_vars
 
 _ENV_FILE = "data/.env"
 _AUTH_KEYS = ("FINDAJOB_AUTH_USER", "FINDAJOB_AUTH_PASS")
@@ -41,31 +42,12 @@ def is_auth_configured(base_root: Path) -> bool:
 
 
 def write_auth_credentials(base_root: Path, username: str, password: str) -> None:
-    """Persist auth credentials to ``data/.env`` and ``os.environ``."""
-    env_path = base_root / _ENV_FILE
-    lines: list[str] = []
-    found_keys: set[str] = set()
+    """Persist auth credentials to ``data/.env`` and ``os.environ``.
 
-    if env_path.is_file():
-        for line in env_path.read_text(encoding="utf-8").splitlines():
-            stripped = line.strip()
-            key_name = stripped.split("=", 1)[0].strip() if "=" in stripped else ""
-            if key_name in _AUTH_KEYS or (stripped.startswith("#") and any(k in stripped for k in _AUTH_KEYS)):
-                if key_name == "FINDAJOB_AUTH_USER" or "FINDAJOB_AUTH_USER" in stripped:
-                    lines.append(f"FINDAJOB_AUTH_USER={username}")
-                    found_keys.add("FINDAJOB_AUTH_USER")
-                elif key_name == "FINDAJOB_AUTH_PASS" or "FINDAJOB_AUTH_PASS" in stripped:
-                    lines.append(f"FINDAJOB_AUTH_PASS={password}")
-                    found_keys.add("FINDAJOB_AUTH_PASS")
-            else:
-                lines.append(line)
-
-    if "FINDAJOB_AUTH_USER" not in found_keys:
-        lines.append(f"FINDAJOB_AUTH_USER={username}")
-    if "FINDAJOB_AUTH_PASS" not in found_keys:
-        lines.append(f"FINDAJOB_AUTH_PASS={password}")
-
-    env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    Raises ValueError, before anything is written, if either value contains a
+    line break (see :func:`findajob.env_file.set_vars`).
+    """
+    set_vars(base_root / _ENV_FILE, {"FINDAJOB_AUTH_USER": username, "FINDAJOB_AUTH_PASS": password})
 
     os.environ["FINDAJOB_AUTH_USER"] = username
     os.environ["FINDAJOB_AUTH_PASS"] = password

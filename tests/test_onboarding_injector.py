@@ -485,6 +485,14 @@ def test_inject_discovery_hook_soft_fails_when_openrouter_call_fails(tmp_path: P
 # ── #328: env merge + smoke check + new collected fields ───────────────────
 
 
+def test_merge_env_content_rejects_line_break_in_value() -> None:
+    """A value with a line break would inject a second data/.env line."""
+    from findajob.onboarding.injector import merge_env_content
+
+    with pytest.raises(ValueError, match="NTFY_TOPIC"):
+        merge_env_content("A=1\n", "", {"NTFY_TOPIC": "topic\nOPENROUTER_API_KEY=attacker"})
+
+
 def test_merge_env_content_replaces_existing_keys() -> None:
     """Existing KEY=value lines get their value replaced; everything else preserved."""
     from findajob.onboarding.injector import merge_env_content

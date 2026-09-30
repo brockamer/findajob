@@ -10,8 +10,10 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from fastapi import APIRouter, Form, Request
+from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+
+from findajob.env_file import set_vars
 
 router = APIRouter(prefix="/settings/gemini", tags=["settings"])
 
@@ -31,27 +33,8 @@ def _read_gemini_key(base_root: Path) -> str:
 
 
 def _write_gemini_key(base_root: Path, key: str) -> None:
-    """Write or remove GEMINI_API_KEY in data/.env atomically."""
-    env_path = base_root / _ENV_FILE
-    lines: list[str] = []
-    found = False
-
-    if env_path.is_file():
-        for line in env_path.read_text(encoding="utf-8").splitlines():
-            stripped = line.strip()
-            if stripped.startswith("GEMINI_API_KEY=") or (stripped.startswith("# GEMINI_API_KEY=")):
-                found = True
-                if key:
-                    lines.append(f"GEMINI_API_KEY={key}")
-                else:
-                    lines.append("# GEMINI_API_KEY=")
-            else:
-                lines.append(line)
-
-    if not found and key:
-        lines.append(f"GEMINI_API_KEY={key}")
-
-    env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    """Write GEMINI_API_KEY to data/.env, or remove it when ``key`` is empty (atomic, 0600)."""
+    set_vars(base_root / _ENV_FILE, {"GEMINI_API_KEY": key or None})
 
     if key:
         os.environ["GEMINI_API_KEY"] = key
@@ -99,7 +82,10 @@ def settings_gemini_save(
 
     key = gemini_api_key.strip()
     if key:
-        _write_gemini_key(base_root, key)
+        try:
+            _write_gemini_key(base_root, key)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="API key cannot contain line breaks.") from exc
         return RedirectResponse(url="/settings/gemini/?saved=1", status_code=303)
 
     return RedirectResponse(url="/settings/gemini/", status_code=303)

@@ -132,12 +132,12 @@ def test_save_config_uses_temp_then_rename(cfg_path):
         sender_allowlist=["jobalerts-noreply@linkedin.com"],
         configured_at="2026-04-30T00:00:00Z",
     )
-    with patch("findajob.gmail_imap.os.replace", wraps=os.replace) as m:
+    with patch("findajob.env_file.os.replace", wraps=os.replace) as m:
         gmail_imap.save_config(cfg)
     m.assert_called_once()
     src, dst = m.call_args.args
     assert src.endswith(".tmp")
-    assert dst == str(cfg_path)
+    assert str(dst) == str(cfg_path)
 
 
 @pytest.fixture
@@ -190,12 +190,12 @@ def test_save_state_round_trip(state_path):
 def test_save_state_atomic_replace(state_path):
     state_path.write_text("{}")
     s = gmail_imap.GmailState(last_uid=1)
-    with patch("findajob.gmail_imap.os.replace", wraps=os.replace) as m:
+    with patch("findajob.env_file.os.replace", wraps=os.replace) as m:
         gmail_imap.save_state(s)
     m.assert_called_once()
     src, dst = m.call_args.args
     assert src.endswith(".tmp")
-    assert dst == str(state_path)
+    assert str(dst) == str(state_path)
 
 
 @pytest.fixture
@@ -463,3 +463,32 @@ def test_fetch_steady_state_does_not_use_since(fake_config, state_path):
 # under #410.4 — they now exercise GmailLinkedInAdapter directly. The thin
 # `fetch_gmail_jobs(since_days=None)` wrapper kept for triage/orchestrator
 # compat is covered indirectly by the adapter tests.
+
+
+@pytest.mark.parametrize("which", ["config", "state"])
+def test_save_temp_file_is_owner_only_before_replace(cfg_path, state_path, which):
+    """The staged temp file holds the app password; it must never carry the umask mode."""
+    seen: list[int] = []
+    real_replace = os.replace
+
+    def spy(src, dst):
+        seen.append(stat.S_IMODE(os.stat(src).st_mode))
+        real_replace(src, dst)
+
+    old = os.umask(0o022)
+    try:
+        with patch("findajob.env_file.os.replace", side_effect=spy):
+            if which == "config":
+                gmail_imap.save_config(
+                    gmail_imap.GmailConfig(
+                        address="user@gmail.com",
+                        app_password="abcdefghijklmnop",
+                        sender_allowlist=[],
+                        configured_at="2026-04-30T00:00:00Z",
+                    )
+                )
+            else:
+                gmail_imap.save_state(gmail_imap.GmailState(last_uid=1))
+    finally:
+        os.umask(old)
+    assert seen == [0o600]
