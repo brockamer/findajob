@@ -41,7 +41,6 @@ The following surfaces are intended to be hardened. Vulnerabilities here will be
 - **Basic-auth gate** (`findajob.web.auth`). The gate enforces HTTP Basic Auth on every protected route when `FINDAJOB_AUTH_USER` and `FINDAJOB_AUTH_PASS` are set. Issues to report: bypasses, timing oracles, missing protection on a route that should be gated, header-injection.
 - **State write surface** (`findajob.web.routes.board_actions` + `findajob.actions`). Every state transition runs through these. Issues to report: unauthenticated state mutation, SQL injection, CSRF on state-changing POST handlers, race conditions that corrupt state.
 - **LLM transport** (`findajob.llm.openrouter.complete`). The single point of LLM call in the codebase. Issues to report: credential leakage in logs/responses, request smuggling.
-- **Per-instance key isolation** (#339). Each instance's `data/.env` carries only that instance's credentials. Issues to report: any code path that could read another instance's keys, or that could write keys somewhere they leak.
 - **Pre-commit PII protection**. The `.git/hooks/pre-commit` hook (template at `docs/getting-started/pre-commit-hook.example.sh`) and the CI counterpart at `.github/workflows/pii-scan.yml` are designed to keep personal data out of the public repo. Issues to report: bypasses, false negatives on the documented PATTERNS, or CI workflow injection.
 - **Onboarding flow** (`findajob.onboarding.*`, `findajob.web.routes.onboarding_*`). The flow collects API keys and writes them to `data/.env`. Issues to report: leakage to the browser/templates/logs, race conditions during the atomic-write/backup path, sentinel-write bypass that leaves a half-onboarded stack accessible.
 
@@ -53,6 +52,12 @@ These are residual risks acknowledged by the design but not project vulnerabilit
 - **Operator deployment topology.** How the stack is reverse-proxied, what perimeter VPN sits in front of it, how backups are exfiltrated — these are operator decisions documented in operator-private notes. Vulnerabilities in third-party services (NAS firmware, VPN products, reverse-proxy products) should be reported to those vendors, not here.
 - **Third-party API key abuse.** API keys live in the operator's `data/.env`. If a key is exfiltrated by malware on the operator's host, that's an endpoint-security issue, not a findajob issue.
 - **Supply-chain risk in declared dependencies.** Dependabot updates ride through the normal PR flow. Report supply-chain-attack patterns (typosquatting in `pyproject.toml`, malicious upstream releases) but routine CVEs in dependencies are tracked through GitHub's normal Dependabot alerts.
+
+### Operator responsibilities
+
+These properties hold only while the operator keeps them. findajob does not enforce them in code.
+
+- **One set of API keys per instance.** Give each instance its own `OPENROUTER_API_KEY`, `RAPIDAPI_KEY` and (if set) `GEMINI_API_KEY`. Never copy `data/.env`, or a `state/` directory or backup that contains it, from one instance to another. Instances that share a key share its usage, its spend and its exposure: a leak from one is a leak from all. The [operations guide](docs/operations/install-docker.md#multi-tenant-hosts-one-set-of-api-keys-per-instance) has a command that checks for shared keys without printing them. A code path that leaks a key is still in scope under the LLM transport and onboarding items above.
 
 ## Disclosure history
 
