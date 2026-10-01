@@ -328,6 +328,19 @@ def test_already_onboarded_hint_renders_when_sentinel_present_no_keys(client: Te
     assert "No OpenRouter key is saved for this findajob" in r.text
 
 
+def test_already_onboarded_hint_absent_on_manual_form_when_key_saved(
+    client: TestClient, base_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Change keys (?manual=1) on an onboarded instance with a saved key must not
+    claim that no key is saved."""
+    (base_root / "data" / ".onboarding-complete").write_text("2026-04-29T00:00:00Z\n")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-from-env-AB12")
+    r = client.get("/onboarding/?manual=1")
+    assert r.status_code == 200
+    assert 'name="openrouter_api_key"' in r.text  # the empty form still renders
+    assert "No OpenRouter key is saved for this findajob" not in r.text
+
+
 def test_already_onboarded_hint_suppressed_in_rerun_mode(client: TestClient, base_root: Path) -> None:
     """Hint is for accidental visits. In ?mode=rerun the user is here
     on purpose — show the rerun banner, not the soft hint."""

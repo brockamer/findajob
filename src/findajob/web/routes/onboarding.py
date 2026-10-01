@@ -126,7 +126,7 @@ def onboarding_index(
     """Landing page. ``mode=rerun`` flips on the backup warning.
 
     When the stack is already onboarded (sentinel file present) AND no
-    Step 1 credentials have been collected yet AND the user is not in
+    OpenRouter key is saved AND the user is not in
     rerun mode, surface a brief "you've already onboarded" hint so an
     already-configured user who lands here from a stale link or out
     of curiosity doesn't think findajob has forgotten them.
@@ -143,7 +143,7 @@ def onboarding_index(
 
     base_root: Path = request.app.state.base_root
     is_already_onboarded = (base_root / "data" / ".onboarding-complete").is_file()
-    show_already_onboarded_hint = is_already_onboarded and not keys_collected and mode != "rerun"
+    show_already_onboarded_hint = is_already_onboarded and not openrouter and mode != "rerun"
 
     return templates.TemplateResponse(
         request=request,

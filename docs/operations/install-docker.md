@@ -336,7 +336,7 @@ To replace the OpenRouter or RapidAPI feed key (`RAPIDAPI_KEY` — canonical; or
 3. Click **Save keys**. findajob checks the OpenRouter key (and the
    RapidAPI key, when you give one) with the provider, then writes the
    new values to the stack's `data/.env` atomically, readable only by
-   findajob. A field you leave blank keeps its saved value.
+   findajob. An optional field you leave blank keeps its saved value.
 
 The web app uses the new key at once; the pipeline uses it from its next
 scheduled run. No restart is needed. Saving keys does not back up the old
