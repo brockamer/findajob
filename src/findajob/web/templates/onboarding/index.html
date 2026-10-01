@@ -18,9 +18,8 @@
   {% endif %}
 
   {% if show_already_onboarded_hint %}
-  {# #339 advisor follow-up: render a soft hint when an already-onboarded
-     stack lands here without credentials in the new schema, so the user
-     doesn't think findajob has forgotten them. #}
+  {# Rendered when an already-onboarded instance lands here with no OpenRouter
+     key saved, so the user does not think findajob has forgotten them. #}
   <div class="border border-emerald-300 bg-emerald-50 text-emerald-900 px-4 py-3 rounded">
     <p class="font-medium">You've already onboarded.</p>
     <p class="text-sm mt-1">
