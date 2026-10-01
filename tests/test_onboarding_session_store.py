@@ -14,20 +14,17 @@ from pathlib import Path
 import pytest
 
 from findajob.onboarding.session_store import (
-    Credentials,
     Session,
     add_turn_cost,
     append_turn,
     clear_stored_keys,
     create_session,
-    find_credentials_only,
-    get_credentials,
     get_session,
     mark_complete,
-    set_credentials,
     set_error,
     update_captured_blocks,
 )
+from tests.conftest import seed_stored_keys
 
 
 @pytest.fixture
@@ -344,109 +341,6 @@ def test_find_active_max_age_hours_parameter_works(db):
 # and is covered by tests/test_db_migrate.py::test_legacy_v0_10_bridges_to_equilibrium.
 
 
-def test_set_and_get_credentials_round_trip(db):
-    """set_credentials stores values; get_credentials returns them intact."""
-    sid = create_session(db)
-    set_credentials(
-        db,
-        sid,
-        openrouter_api_key="sk-or-test-abc123",
-        rapidapi_key="rapi-test-xyz",
-    )
-    creds = get_credentials(db, sid)
-    assert creds is not None
-    assert creds.openrouter_api_key == "sk-or-test-abc123"
-    assert creds.rapidapi_key == "rapi-test-xyz"
-
-
-def test_set_credentials_blank_strings_stored_as_null(db):
-    """Blank strings must be coerced to NULL, not persisted as empty strings."""
-    sid = create_session(db)
-    set_credentials(
-        db,
-        sid,
-        openrouter_api_key="  ",  # whitespace only → NULL
-        rapidapi_key="rapi-test",
-    )
-    creds = get_credentials(db, sid)
-    assert creds is not None
-    assert creds.openrouter_api_key is None
-    assert creds.rapidapi_key == "rapi-test"
-
-    # Verify at the raw SQL level too.
-    row = db.execute(
-        "SELECT user_openrouter_key FROM onboarding_sessions WHERE id = ?",
-        (sid,),
-    ).fetchone()
-    assert row[0] is None
-
-
-def test_set_credentials_all_blank_get_returns_none(db):
-    """When both are blank, get_credentials must return None (not collected)."""
-    sid = create_session(db)
-    set_credentials(db, sid, openrouter_api_key="", rapidapi_key="")
-    assert get_credentials(db, sid) is None
-
-
-def test_set_credentials_raises_for_unknown_session(db):
-    """set_credentials must raise KeyError when session_id doesn't exist."""
-    with pytest.raises(KeyError):
-        set_credentials(
-            db,
-            "nonexistent-id",
-            openrouter_api_key="key",
-            rapidapi_key="key",
-        )
-
-
-def test_find_credentials_only_returns_credentialed_no_history_session(db):
-    """find_credentials_only should return the session with creds and no chat history."""
-    sid = create_session(db)
-    set_credentials(db, sid, openrouter_api_key="sk-or-x", rapidapi_key="rapi-x")
-    result = find_credentials_only(db)
-    assert result is not None
-    assert result.id == sid
-
-
-def test_find_credentials_only_excludes_session_with_chat_history(db):
-    """A session that already has chat turns must NOT be returned."""
-    sid = create_session(db)
-    set_credentials(db, sid, openrouter_api_key="sk-or-x", rapidapi_key="")
-    append_turn(db, sid, "assistant", "Welcome!")
-    assert find_credentials_only(db) is None
-
-
-def test_find_credentials_only_returns_most_recent_of_multiple(db):
-    """When multiple credentialed no-history sessions exist, the most recent wins."""
-    sid_older = create_session(db)
-    sid_newer = create_session(db)
-    set_credentials(db, sid_older, openrouter_api_key="sk-or-old", rapidapi_key="")
-    set_credentials(db, sid_newer, openrouter_api_key="sk-or-new", rapidapi_key="")
-    # Age the older session.
-    db.execute(
-        "UPDATE onboarding_sessions SET last_turn_at = datetime('now', '-2 hours') WHERE id = ?",
-        (sid_older,),
-    )
-    db.commit()
-
-    result = find_credentials_only(db)
-    assert result is not None
-    assert result.id == sid_newer
-
-
-def test_find_credentials_only_returns_none_when_no_credentialed_sessions(db):
-    """Returns None when no session has any credential set."""
-    _sid = create_session(db)  # no credentials set
-    assert find_credentials_only(db) is None
-
-
-def test_credentials_dataclass_is_frozen():
-    """Credentials must be frozen so callers can't accidentally mutate them."""
-    creds = Credentials(openrouter_api_key="x", rapidapi_key=None)
-    with pytest.raises(dataclasses.FrozenInstanceError):
-        creds.openrouter_api_key = "mutated"  # type: ignore[misc]
-
-
 def test_add_turn_cost_accumulates_across_calls(db):
     """Two turns of cost data sum into cumulative_cost_usd."""
     sid = create_session(db)
@@ -524,14 +418,17 @@ def test_lifetime_cost_usd_handles_missing_column_gracefully(tmp_path):
 def test_clear_stored_keys_leaves_no_trace_in_the_file(db):
     """The cleared values must not survive in freed pages, whatever the SQLite build's default."""
     db.execute("PRAGMA secure_delete = OFF")
-    sid = create_session(db)
     long_key = "sk-or-v1-CLEARME-" + "Q" * 6000  # spills into an overflow page
-    set_credentials(db, sid, openrouter_api_key=long_key, rapidapi_key="CLEARME-RAPID", gemini_api_key="CLEARME-GEM")
+    db_file = Path(db.execute("PRAGMA database_list").fetchone()[2])
+    sid = seed_stored_keys(db_file, openrouter=long_key, rapidapi="CLEARME-RAPID", gemini="CLEARME-GEM")
 
     clear_stored_keys(db)
 
-    assert get_credentials(db, sid) is None
-    db_file = Path(db.execute("PRAGMA database_list").fetchone()[2])
+    row = db.execute(
+        "SELECT user_openrouter_key, user_rapidapi_key, user_gemini_api_key FROM onboarding_sessions WHERE id = ?",
+        (sid,),
+    ).fetchone()
+    assert row == (None, None, None)
     assert b"CLEARME" not in db_file.read_bytes()
 
 
