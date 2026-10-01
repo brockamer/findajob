@@ -129,25 +129,19 @@ class TestStreamBackupTarball:
             assert secret not in contents
 
     def test_db_carries_no_onboarding_keys(self, tmp_path: Path) -> None:
-        """Onboarding Step 1 stores the API keys in onboarding_sessions; the backup's DB must not."""
-        from findajob.db import connect
-        from findajob.onboarding.session_store import create_session, set_credentials
-        from tests.conftest import init_test_db
+        """A DB from an older version holds API keys in onboarding_sessions; the backup's DB must not."""
+        from tests.conftest import init_test_db, seed_stored_keys
 
         base = tmp_path / "base"
         (base / "data").mkdir(parents=True)
         db_path = base / "data" / "pipeline.db"
         init_test_db(db_path)
-        conn = connect(db_path)
-        sid = create_session(conn)
-        set_credentials(
-            conn,
-            sid,
-            openrouter_api_key="sk-or-v1-DB-OPENROUTER-SECRET",
-            rapidapi_key="DB-RAPIDAPI-SECRET",
-            gemini_api_key="DB-GEMINI-SECRET",
+        seed_stored_keys(
+            db_path,
+            openrouter="sk-or-v1-DB-OPENROUTER-SECRET",
+            rapidapi="DB-RAPIDAPI-SECRET",
+            gemini="DB-GEMINI-SECRET",
         )
-        conn.close()
 
         raw = b"".join(stream_backup_tarball(base, db_path))
         with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as tar:

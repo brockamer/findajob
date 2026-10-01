@@ -1338,3 +1338,88 @@ def test_withdrawn_fallback_helper_is_idempotent(tmp_path: Path) -> None:
         assert rowid_after == rowid_before, "rebuild ran on second apply_pending — helper is not idempotent"
     finally:
         conn.close()
+
+
+# ── Legacy onboarding API keys are cleared on upgrade ───────────────────
+
+_LEGACY_SECRETS = (b"LEGACY-OR-SECRET", b"LEGACY-RAPID-SECRET", b"LEGACY-GEM-SECRET")
+
+
+def _raw_db_bytes(db_path: Path) -> bytes:
+    wal = db_path.with_name(db_path.name + "-wal")
+    return db_path.read_bytes() + (wal.read_bytes() if wal.exists() else b"")
+
+
+def _seed_legacy_keys(db_path: Path) -> None:
+    from tests.conftest import init_test_db, seed_stored_keys
+
+    init_test_db(db_path)
+    # Padded so the key lives on an overflow page: a short row's shrunken cell overwrites
+    # the old one, so only an overflow page shows whether the clear removed the bytes.
+    seed_stored_keys(
+        db_path,
+        openrouter="sk-or-v1-LEGACY-OR-SECRET" + "x" * 6000,
+        rapidapi="LEGACY-RAPID-SECRET",
+        gemini="LEGACY-GEM-SECRET",
+    )
+
+
+def test_byte_check_detects_a_plain_update(tmp_path: Path) -> None:
+    """Control for the next test: on this SQLite build, a plain UPDATE with
+    secure_delete OFF leaves the old bytes in the file, so the byte assertion
+    below is able to fail. If this control fails, the next test proves nothing."""
+    db = tmp_path / "pipeline.db"
+    _seed_legacy_keys(db)
+    conn = sqlite3.connect(db)
+    try:
+        conn.execute("PRAGMA secure_delete = OFF")
+        conn.execute(
+            "UPDATE onboarding_sessions SET user_openrouter_key = NULL, "
+            "user_rapidapi_key = NULL, user_gemini_api_key = NULL"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    assert any(s in _raw_db_bytes(db) for s in _LEGACY_SECRETS)
+
+
+def test_apply_pending_clears_legacy_onboarding_keys_columns_and_bytes(tmp_path: Path) -> None:
+    db = tmp_path / "pipeline.db"
+    _seed_legacy_keys(db)
+    assert all(s in _raw_db_bytes(db) for s in _LEGACY_SECRETS)  # control: seeded
+    conn = sqlite3.connect(db)
+    try:
+        apply_pending(conn)
+        rows = conn.execute(
+            "SELECT user_openrouter_key, user_rapidapi_key, user_gemini_api_key FROM onboarding_sessions"
+        ).fetchall()
+    finally:
+        conn.close()
+    assert rows == [(None, None, None)]  # the row stays; only the keys go
+    assert not any(s in _raw_db_bytes(db) for s in _LEGACY_SECRETS)
+
+
+def test_clear_keys_hook_is_noop_when_nothing_stored(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import findajob.onboarding.session_store as ss
+
+    calls: list[int] = []
+    db = tmp_path / "pipeline.db"
+    _seed_legacy_keys(db)
+    conn = sqlite3.connect(db)
+    try:
+        apply_pending(conn)  # first run clears
+        monkeypatch.setattr(ss, "clear_stored_keys", lambda c: calls.append(1))
+        apply_pending(conn)  # second run: nothing stored, no clear, no VACUUM
+    finally:
+        conn.close()
+    assert calls == []
+
+
+def test_clear_keys_hook_tolerates_missing_table() -> None:
+    from findajob.db.migrate import _clear_onboarding_keys_if_needed
+
+    conn = sqlite3.connect(":memory:")
+    try:
+        _clear_onboarding_keys_if_needed(conn)  # must not raise
+    finally:
+        conn.close()

@@ -319,7 +319,7 @@ created_at TEXT DEFAULT (datetime('now'))
 | `notes_history` | Audit trail of edits to a job's `user_notes` |
 | `view_prefs` | Per-board-tab persisted filter / column / sort state |
 | `duplicate_groups` | Maps duplicate job ids to their canonical fingerprint |
-| `onboarding_sessions` | First-run chat-interview state, captured profile blocks, per-user API keys, cumulative cost |
+| `onboarding_sessions` | First-run chat-interview state, captured profile blocks, cumulative cost (API keys live in `data/.env`, not here) |
 | `config_changes` | Ledger of scorer-config edits; the filter-proposals audit log (`changed_by='auto_tuner'`) |
 
 ---

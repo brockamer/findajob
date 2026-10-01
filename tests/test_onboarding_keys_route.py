@@ -1,19 +1,20 @@
-"""Tests for POST /onboarding/keys (#339 Step 1).
+"""Tests for POST /onboarding/keys and the Step 1 index states.
 
-The route collects three API keys, runs format + smoke validation, and
-persists into the credentials-only session row in onboarding_sessions.
-The UPDATE-not-INSERT semantic on retry prevents orphan rows from
-shadowing successful submissions in find_credentials_only().
+Step 1 validates the keys (format, then live smoke check) and saves them to
+data/.env and os.environ. It writes nothing to onboarding_sessions.
 """
 
 from __future__ import annotations
 
+import os
 import sqlite3
+import stat
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
+from findajob.onboarding.keys import current_keys
 from findajob.web.app import create_app
 
 _VALID_OR = "sk-or-v1-tester-fake-test-1234"
@@ -65,109 +66,161 @@ def client(base_root: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     return TestClient(app, follow_redirects=False)
 
 
-def _row_count(base_root: Path) -> int:
+def _env_text(base_root: Path) -> str:
+    path = base_root / "data" / ".env"
+    return path.read_text() if path.exists() else ""
+
+
+def _db_key_rows(base_root: Path) -> list[tuple[str | None, str | None, str | None]]:
     conn = sqlite3.connect(base_root / "data" / "pipeline.db")
     try:
-        return conn.execute("SELECT COUNT(*) FROM onboarding_sessions").fetchone()[0]
+        return conn.execute(
+            "SELECT user_openrouter_key, user_rapidapi_key, user_gemini_api_key FROM onboarding_sessions"
+        ).fetchall()
     finally:
         conn.close()
 
 
-def _stored_credentials(base_root: Path) -> tuple[str | None, str | None] | None:
-    conn = sqlite3.connect(base_root / "data" / "pipeline.db")
-    try:
-        row = conn.execute(
-            """SELECT user_openrouter_key, user_rapidapi_key
-               FROM onboarding_sessions ORDER BY started_at DESC LIMIT 1"""
-        ).fetchone()
-        return row if row else None
-    finally:
-        conn.close()
+def _assert_nothing_saved(base_root: Path) -> None:
+    assert _env_text(base_root) == ""
+    assert current_keys() == ("", "", "")
+    assert _db_key_rows(base_root) == []
 
 
-def test_post_both_valid_creates_one_row(client: TestClient, base_root: Path) -> None:
-    r = client.post(
-        "/onboarding/keys",
-        data={
-            "openrouter_api_key": _VALID_OR,
-            "rapidapi_key": _VALID_RAPID,
-        },
-    )
-    assert r.status_code == 303
-    assert r.headers["location"] == "/onboarding/"
-    assert _row_count(base_root) == 1
-    assert _stored_credentials(base_root) == (_VALID_OR, _VALID_RAPID)
-
-
-def test_post_only_openrouter_stores_optional_fields_null(client: TestClient, base_root: Path) -> None:
-    r = client.post(
-        "/onboarding/keys",
-        data={"openrouter_api_key": _VALID_OR},
-    )
-    assert r.status_code == 303
-    assert _row_count(base_root) == 1
-    assert _stored_credentials(base_root) == (_VALID_OR, None)
-
-
-def test_post_malformed_openrouter_does_not_write_db(client: TestClient, base_root: Path) -> None:
-    r = client.post(
-        "/onboarding/keys",
-        data={"openrouter_api_key": "not-a-valid-key"},
-    )
-    assert r.status_code == 400
-    # Form preserves the optional inputs (here none, so just the error renders).
-    assert "Couldn't save your keys" in r.text or "openrouter" in r.text.lower()
-    assert _row_count(base_root) == 0
-
-
-def test_post_smoke_failure_does_not_write_db(client: TestClient, base_root: Path) -> None:
-    # The fixture's smoke stub rejects keys without "tester" or "valid" in them;
-    # this key has the right prefix to pass format validation but fails live verify.
-    r = client.post(
-        "/onboarding/keys",
-        data={"openrouter_api_key": "sk-or-v1-rejected-by-smoke"},
-    )
-    assert r.status_code == 400
-    assert "rejected" in r.text.lower() or "verify" in r.text.lower()
-    assert _row_count(base_root) == 0
-
-
-def test_post_twice_with_different_keys_keeps_one_row_with_second_values(client: TestClient, base_root: Path) -> None:
+def test_post_both_valid_saves_to_env_not_db(client: TestClient, base_root: Path) -> None:
     r = client.post(
         "/onboarding/keys",
         data={"openrouter_api_key": _VALID_OR, "rapidapi_key": _VALID_RAPID},
     )
     assert r.status_code == 303
-    assert _row_count(base_root) == 1
+    assert r.headers["location"] == "/onboarding/"
+    text = _env_text(base_root)
+    assert f"OPENROUTER_API_KEY={_VALID_OR}\n" in text
+    assert f"RAPIDAPI_KEY={_VALID_RAPID}\n" in text
+    assert stat.S_IMODE((base_root / "data" / ".env").stat().st_mode) == 0o600
+    assert current_keys()[:2] == (_VALID_OR, _VALID_RAPID)
+    # No session row is created and no key column is written.
+    assert _db_key_rows(base_root) == []
 
+
+def test_post_only_openrouter_leaves_optional_keys_unset(client: TestClient, base_root: Path) -> None:
+    r = client.post("/onboarding/keys", data={"openrouter_api_key": _VALID_OR})
+    assert r.status_code == 303
+    assert current_keys() == (_VALID_OR, "", "")
+    assert "RAPIDAPI_KEY" not in _env_text(base_root)
+
+
+def test_post_blank_optional_keeps_saved_value(client: TestClient, base_root: Path) -> None:
+    (base_root / "data" / ".env").write_text("GEMINI_API_KEY=saved-gemini-key\n")
+    os.environ["GEMINI_API_KEY"] = "saved-gemini-key"
+    r = client.post("/onboarding/keys", data={"openrouter_api_key": _VALID_OR, "gemini_api_key": ""})
+    assert r.status_code == 303
+    assert "GEMINI_API_KEY=saved-gemini-key\n" in _env_text(base_root)
+    assert current_keys()[2] == "saved-gemini-key"
+
+
+def test_post_malformed_openrouter_saves_nothing(client: TestClient, base_root: Path) -> None:
+    r = client.post("/onboarding/keys", data={"openrouter_api_key": "not-a-valid-key"})
+    assert r.status_code == 400
+    assert "Couldn't save your keys" in r.text or "openrouter" in r.text.lower()
+    _assert_nothing_saved(base_root)
+
+
+def test_post_smoke_failure_saves_nothing(client: TestClient, base_root: Path) -> None:
+    r = client.post("/onboarding/keys", data={"openrouter_api_key": "sk-or-v1-rejected-by-smoke"})
+    assert r.status_code == 400
+    assert "rejected" in r.text.lower() or "verify" in r.text.lower()
+    _assert_nothing_saved(base_root)
+
+
+def test_post_twice_second_values_win(client: TestClient, base_root: Path) -> None:
+    client.post("/onboarding/keys", data={"openrouter_api_key": _VALID_OR, "rapidapi_key": _VALID_RAPID})
     second_or = "sk-or-v1-tester-different-key-xyz"
+    r = client.post("/onboarding/keys", data={"openrouter_api_key": second_or})
+    assert r.status_code == 303
+    text = _env_text(base_root)
+    assert text.count("OPENROUTER_API_KEY=") == 1
+    assert f"OPENROUTER_API_KEY={second_or}\n" in text
+    # Blank RapidAPI on the second save keeps the first value (D3).
+    assert f"RAPIDAPI_KEY={_VALID_RAPID}\n" in text
+
+
+def test_post_fail_fail_success_saves_once(client: TestClient, base_root: Path) -> None:
+    assert client.post("/onboarding/keys", data={"openrouter_api_key": "garbage"}).status_code == 400
+    assert client.post("/onboarding/keys", data={"openrouter_api_key": "sk-or-v1-rejected"}).status_code == 400
+    _assert_nothing_saved(base_root)
+    r3 = client.post("/onboarding/keys", data={"openrouter_api_key": _VALID_OR})
+    assert r3.status_code == 303
+    assert current_keys()[0] == _VALID_OR
+    assert _db_key_rows(base_root) == []
+
+
+def test_post_reset_redirects_to_manual_form_and_keeps_keys(client: TestClient, base_root: Path) -> None:
+    client.post("/onboarding/keys", data={"openrouter_api_key": _VALID_OR})
+    before = _env_text(base_root)
+    r = client.post("/onboarding/keys", data={"reset": "1"})
+    assert r.status_code == 303
+    assert r.headers["location"] == "/onboarding/?manual=1"
+    assert _env_text(base_root) == before
+    assert current_keys()[0] == _VALID_OR
+
+
+def test_post_gemini_with_line_break_is_rejected_without_writing(client: TestClient, base_root: Path) -> None:
     r = client.post(
         "/onboarding/keys",
-        data={"openrouter_api_key": second_or},
+        data={"openrouter_api_key": _VALID_OR, "gemini_api_key": "gem\nINJECTED=1"},
     )
-    assert r.status_code == 303
-    assert _row_count(base_root) == 1
-    # Second submission's values win; UPDATE semantic preserved.
-    creds = _stored_credentials(base_root)
-    assert creds == (second_or, None)
+    assert r.status_code == 400
+    assert "Couldn't save your keys" in r.text
+    _assert_nothing_saved(base_root)
 
 
-def test_post_fail_fail_success_results_in_one_row(client: TestClient, base_root: Path) -> None:
-    # Two failed attempts: one bad format, one bad smoke.
-    r1 = client.post("/onboarding/keys", data={"openrouter_api_key": "garbage"})
-    assert r1.status_code == 400
-    r2 = client.post("/onboarding/keys", data={"openrouter_api_key": "sk-or-v1-rejected"})
-    assert r2.status_code == 400
-    # No orphan rows from either failure.
-    assert _row_count(base_root) == 0
-    # Now the successful third attempt.
-    r3 = client.post(
-        "/onboarding/keys",
-        data={"openrouter_api_key": _VALID_OR},
-    )
-    assert r3.status_code == 303
-    assert _row_count(base_root) == 1
-    assert _stored_credentials(base_root) == (_VALID_OR, None)
+def test_index_with_no_keys_renders_empty_form(client: TestClient) -> None:
+    r = client.get("/onboarding/")
+    assert r.status_code == 200
+    assert 'name="openrouter_api_key"' in r.text
+    assert "Save your API keys above before continuing" in r.text
+
+
+def test_index_with_placeholder_openrouter_value_renders_empty_form(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The Docker install seeds data/.env from data/.env.example, which holds a
+    # placeholder; compose loads it into the web process. It is not a saved key.
+    monkeypatch.setenv("OPENROUTER_API_KEY", "your_key_here")
+    r = client.get("/onboarding/")
+    assert r.status_code == 200
+    assert 'name="openrouter_api_key"' in r.text
+    assert "***here" not in r.text
+    assert "Save your API keys above before continuing" in r.text
+
+
+def test_index_with_keys_in_environment_shows_keys_on_file(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-from-env-AB12")
+    monkeypatch.setenv("RAPIDAPI_KEY", "rapid-from-env-CD34")
+    r = client.get("/onboarding/")
+    assert r.status_code == 200
+    assert "***AB12" in r.text
+    assert "***CD34" in r.text
+    assert "Change keys" in r.text
+    assert 'name="openrouter_api_key"' not in r.text
+    assert "Use detected keys" not in r.text
+    assert "Save your API keys above before continuing" not in r.text
+
+
+def test_manual_param_shows_empty_form_even_with_keys_on_file(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-from-env-AB12")
+    r = client.get("/onboarding/?manual=1")
+    assert r.status_code == 200
+    assert 'name="openrouter_api_key"' in r.text
+    assert "***AB12" not in r.text
+
+
+def test_use_detected_route_is_gone(client: TestClient) -> None:
+    r = client.post("/onboarding/keys/use-detected")
+    assert r.status_code in (404, 405)
 
 
 def test_get_index_after_collection_renders_step2_enabled(client: TestClient, base_root: Path) -> None:
@@ -189,17 +242,6 @@ def test_get_index_before_collection_renders_step2_disabled(client: TestClient, 
     assert "Save your API keys above before continuing" in r.text
 
 
-def test_post_reset_clears_credentials(client: TestClient, base_root: Path) -> None:
-    client.post("/onboarding/keys", data={"openrouter_api_key": _VALID_OR})
-    assert _stored_credentials(base_root) == (_VALID_OR, None)
-    r = client.post("/onboarding/keys", data={"reset": "1"})
-    assert r.status_code == 303
-    # Row stays; just credentials columns are cleared (chat history would also
-    # remain if any existed — Task 4's "Change keys" semantic per plan).
-    assert _row_count(base_root) == 1
-    assert _stored_credentials(base_root) == (None, None)
-
-
 def test_post_invalid_rapidapi_does_not_write_db(client: TestClient, base_root: Path) -> None:
     r = client.post(
         "/onboarding/keys",
@@ -209,7 +251,7 @@ def test_post_invalid_rapidapi_does_not_write_db(client: TestClient, base_root: 
         },
     )
     assert r.status_code == 400
-    assert _row_count(base_root) == 0
+    _assert_nothing_saved(base_root)
 
 
 def test_post_openrouter_key_in_rapidapi_field_rejected_at_format(client: TestClient, base_root: Path) -> None:
@@ -224,7 +266,7 @@ def test_post_openrouter_key_in_rapidapi_field_rejected_at_format(client: TestCl
     )
     assert r.status_code == 400
     assert "OpenRouter" in r.text  # error message identifies the mistake
-    assert _row_count(base_root) == 0
+    _assert_nothing_saved(base_root)
 
 
 def test_post_rapidapi_smoke_failure_does_not_write_db(client: TestClient, base_root: Path) -> None:
@@ -241,7 +283,7 @@ def test_post_rapidapi_smoke_failure_does_not_write_db(client: TestClient, base_
     )
     assert r.status_code == 400
     assert "RapidAPI" in r.text or "rejected" in r.text.lower()
-    assert _row_count(base_root) == 0
+    _assert_nothing_saved(base_root)
 
 
 def test_post_blank_rapidapi_skips_smoke_and_persists(
@@ -265,7 +307,7 @@ def test_post_blank_rapidapi_skips_smoke_and_persists(
     )
     assert r.status_code == 303
     assert smoke_calls == []  # blank value skipped the live check
-    assert _stored_credentials(base_root) == (_VALID_OR, None)
+    assert current_keys() == (_VALID_OR, "", "")
 
 
 def test_post_preserves_rapidapi_on_failure(client: TestClient, base_root: Path) -> None:
@@ -296,6 +338,20 @@ def test_already_onboarded_hint_renders_when_sentinel_present_no_keys(client: Te
     r = client.get("/onboarding/")
     assert r.status_code == 200
     assert "You've already onboarded" in r.text
+    assert "No OpenRouter key is saved for this findajob" in r.text
+
+
+def test_already_onboarded_hint_absent_on_manual_form_when_key_saved(
+    client: TestClient, base_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Change keys (?manual=1) on an onboarded instance with a saved key must not
+    claim that no key is saved."""
+    (base_root / "data" / ".onboarding-complete").write_text("2026-04-29T00:00:00Z\n")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-from-env-AB12")
+    r = client.get("/onboarding/?manual=1")
+    assert r.status_code == 200
+    assert 'name="openrouter_api_key"' in r.text  # the empty form still renders
+    assert "No OpenRouter key is saved for this findajob" not in r.text
 
 
 def test_already_onboarded_hint_suppressed_in_rerun_mode(client: TestClient, base_root: Path) -> None:

@@ -22,6 +22,7 @@ on the path these tests already cover.
 
 from __future__ import annotations
 
+import os
 import shutil
 import sqlite3
 from pathlib import Path
@@ -83,18 +84,17 @@ def client(base_root: Path) -> TestClient:
 
 
 def _prepare_finalize_ready_session(base_root: Path) -> str:
-    """Create a session with credentials + all blocks captured, ready for /finalize."""
+    """Create a session with the instance key set + all blocks captured, ready for /finalize."""
     from findajob.onboarding.parser import parse_emission
     from findajob.onboarding.session_store import (
         create_session,
-        set_credentials,
         update_captured_blocks,
     )
 
+    os.environ["OPENROUTER_API_KEY"] = _USER_KEY
     conn = sqlite3.connect(base_root / "data" / "pipeline.db")
     try:
         sid = create_session(conn)
-        set_credentials(conn, sid, openrouter_api_key=_USER_KEY, rapidapi_key="")
         captured = parse_emission(_build_emission_blob()).found
         update_captured_blocks(conn, sid, captured)
     finally:

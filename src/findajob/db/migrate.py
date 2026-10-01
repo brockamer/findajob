@@ -582,6 +582,38 @@ def _add_fallback_tab_to_view_prefs_if_needed(conn: sqlite3.Connection) -> None:
     )
 
 
+def _clear_onboarding_keys_if_needed(conn: sqlite3.Connection) -> None:
+    """Remove API keys that an older version stored in ``onboarding_sessions``.
+
+    Onboarding used to keep the user's API keys in three columns of this table.
+    The keys now live only in ``data/.env`` and nothing writes the columns.
+    When the cheap probe finds a stored key, ``clear_stored_keys`` sets the
+    columns to NULL with ``secure_delete`` on and VACUUMs, so the old bytes
+    leave the file too. This is a hook, not a numbered ``.sql`` migration,
+    because each migration file runs inside a transaction and VACUUM cannot.
+    Idempotent: once cleared, the probe finds nothing and nothing runs.
+    """
+    try:
+        row = conn.execute(
+            """SELECT 1 FROM onboarding_sessions
+               WHERE user_openrouter_key IS NOT NULL
+                  OR user_rapidapi_key IS NOT NULL
+                  OR user_gemini_api_key IS NOT NULL
+               LIMIT 1"""
+        ).fetchone()
+    except sqlite3.OperationalError:
+        return  # no table (or no key columns): nothing to clear
+    if row is None:
+        return
+    if conn.in_transaction:
+        conn.commit()
+    # Imported here: session_store is an onboarding module, and the migration
+    # runner must stay importable without it at module load.
+    from findajob.onboarding import session_store
+
+    session_store.clear_stored_keys(conn)
+
+
 def _infer_baseline_version(conn: sqlite3.Connection) -> int:
     """Infer the starting schema_version when no ``_meta`` row exists.
 
@@ -718,5 +750,6 @@ def apply_pending(conn: sqlite3.Connection, *, dry_run: bool = False) -> list[Ap
         _add_study_materials_kinds_if_needed(conn)
         _add_withdrawn_fallback_stage_if_needed(conn)
         _add_fallback_tab_to_view_prefs_if_needed(conn)
+        _clear_onboarding_keys_if_needed(conn)
 
     return applied

@@ -191,15 +191,11 @@ class TestRestoreFromTarball:
         """
         import sqlite3
 
-        from findajob.db import connect
-        from findajob.onboarding.session_store import create_session, set_credentials
+        from tests.conftest import seed_stored_keys
 
         with tempfile.NamedTemporaryFile(suffix=".db") as tmp:
             init_test_db(Path(tmp.name))
-            conn = connect(Path(tmp.name))
-            sid = create_session(conn)
-            set_credentials(conn, sid, openrouter_api_key="sk-or-v1-SOURCE", rapidapi_key="SOURCE-RAPID")
-            conn.close()
+            seed_stored_keys(Path(tmp.name), openrouter="sk-or-v1-SOURCE", rapidapi="SOURCE-RAPID")
             db_bytes = Path(tmp.name).read_bytes()
 
         base = tmp_path / "base"

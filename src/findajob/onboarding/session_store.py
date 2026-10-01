@@ -33,15 +33,6 @@ class Session:
     cumulative_cost_usd: float = 0.0
 
 
-@dataclass(frozen=True)
-class Credentials:
-    """Per-user API credentials collected during onboarding (#339)."""
-
-    openrouter_api_key: str | None
-    rapidapi_key: str | None
-    gemini_api_key: str | None = None
-
-
 def _utcnow_iso() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -201,63 +192,7 @@ def find_active(db: sqlite3.Connection, *, max_age_hours: int = 24) -> Session |
     return _row_to_session(row)
 
 
-# ── Per-user credentials (#339) ──────────────────────────────────────────────
-
-
-def set_credentials(
-    db: sqlite3.Connection,
-    session_id: str,
-    *,
-    openrouter_api_key: str,
-    rapidapi_key: str,
-    gemini_api_key: str = "",
-) -> None:
-    """Persist API credentials on an existing session row.
-
-    Blank strings are coerced to ``None`` (stored as SQL NULL) so the DB
-    never holds empty-string sentinels.  Raises :exc:`KeyError` when
-    ``session_id`` doesn't exist.
-    """
-    if get_session(db, session_id) is None:
-        raise KeyError(session_id)
-    db.execute(
-        """UPDATE onboarding_sessions
-           SET user_openrouter_key  = ?,
-               user_rapidapi_key    = ?,
-               user_gemini_api_key  = ?
-           WHERE id = ?""",
-        (
-            openrouter_api_key.strip() or None,
-            rapidapi_key.strip() or None,
-            gemini_api_key.strip() or None,
-            session_id,
-        ),
-    )
-    db.commit()
-
-
-def get_credentials(db: sqlite3.Connection, session_id: str) -> Credentials | None:
-    """Return the stored credentials for a session, or ``None`` if all are NULL.
-
-    A ``Credentials`` instance is returned whenever at least one field is
-    non-NULL.  Returns ``None`` when both columns are NULL (i.e. not yet
-    collected).
-    """
-    row = db.execute(
-        """SELECT user_openrouter_key, user_rapidapi_key, user_gemini_api_key
-           FROM onboarding_sessions WHERE id = ?""",
-        (session_id,),
-    ).fetchone()
-    if row is None:
-        return None
-    or_key, rapi_key, gem_key = row
-    if or_key is None and rapi_key is None and gem_key is None:
-        return None
-    return Credentials(
-        openrouter_api_key=or_key,
-        rapidapi_key=rapi_key,
-        gemini_api_key=gem_key,
-    )
+# ── Keys stored by older versions ────────────────────────────────────────────
 
 
 def clear_stored_keys(db: sqlite3.Connection) -> None:
@@ -301,50 +236,3 @@ def lifetime_cost_usd(db: sqlite3.Connection) -> float:
         return float(row[0])
     except (TypeError, ValueError):
         return 0.0
-
-
-def has_any_credentials(db: sqlite3.Connection) -> bool:
-    """True iff at least one ``onboarding_sessions`` row has an OpenRouter
-    key set, regardless of session lifecycle state.
-
-    Used by the index page's Step-2 gate. The earlier check
-    (:func:`find_credentials_only`) was too narrow — it required
-    ``history_json = '[]'``, so once the interview started and the
-    credentials bound to the active session, the gate flipped back to
-    False mid-flow and disabled the resume affordance.
-    """
-    row = db.execute("SELECT 1 FROM onboarding_sessions WHERE user_openrouter_key IS NOT NULL LIMIT 1").fetchone()
-    return row is not None
-
-
-def find_credentials_only(db: sqlite3.Connection) -> Session | None:
-    """Return the most recent session that has credentials but no chat history.
-
-    Used by ``start_interview`` to "promote" the credentials-only row
-    (created by Step 1) into the active interview session, so chat
-    history attaches to the same row holding the user's key. Returns
-    ``None`` when no such session exists.
-
-    Conditions:
-    - At least one credential column is non-NULL
-    - ``history_json`` is the empty-list literal ``'[]'`` (no turns yet)
-    - ``completed_at IS NULL``
-
-    Return type matches :func:`find_active` so callers can swap between
-    the two without branching.
-    """
-    row = db.execute(
-        f"""SELECT {_SESSION_COLUMNS}
-            FROM onboarding_sessions
-            WHERE completed_at IS NULL
-              AND history_json = '[]'
-              AND (
-                    user_openrouter_key IS NOT NULL
-                 OR user_rapidapi_key   IS NOT NULL
-              )
-            ORDER BY last_turn_at DESC
-            LIMIT 1"""
-    ).fetchone()
-    if row is None:
-        return None
-    return _row_to_session(row)

@@ -49,7 +49,6 @@ PLAIN_FORM_ROUTES: frozenset[tuple[str, str]] = frozenset(
         ("POST", "/materials/{fingerprint}/reject"),
         ("POST", "/onboarding/auth"),
         ("POST", "/onboarding/keys"),
-        ("POST", "/onboarding/keys/use-detected"),
         ("POST", "/onboarding/interview/start"),
         ("POST", "/onboarding/interview/{session_id}/finalize"),
         ("POST", "/onboarding/connections/{session_id}/upload"),
