@@ -41,14 +41,14 @@ from findajob.llm.openrouter import (
 )
 from findajob.onboarding import OnboardingSmokeCheckFailed, inject
 from findajob.onboarding.interview_runner import InterviewRunnerError, _translate, run_turn
+from findajob.onboarding.keys import current_keys
 from findajob.onboarding.parser import ALLOWED_FILENAMES, parse_emission
 from findajob.onboarding.session_store import (
     add_turn_cost,
     append_turn,
     clear_error,
+    create_session,
     find_active,
-    find_credentials_only,
-    get_credentials,
     get_session,
     mark_complete,
     set_error,
@@ -69,29 +69,15 @@ _HTMX = [Depends(require_htmx)]
 _KICKOFF_USER_MESSAGE = "Begin the interview."
 
 
-def _resolved_chat_key(conn: sqlite3.Connection, session_id: str | None) -> str:
-    """Return the OpenRouter key for chat-runner calls.
+def _resolved_chat_key() -> str:
+    """Return this instance's OpenRouter key for chat-runner calls, or ``""``.
 
-    Reads the user's own key in precedence order:
-
-    1. The user's own key on the given session (if session_id provided
-       and credentials set on it).
-    2. The most-recent credentials-only session's OpenRouter key (when
-       called from /start before a chat session exists).
-    3. Empty string — caller surfaces a 503 with link back to /onboarding/.
-
-    User pays for their own chat — there is no operator-funded fallback.
+    The key is the one saved at /onboarding/ Step 1 (``data/.env`` and the
+    process environment). The user pays for their own chat — there is no
+    operator-funded fallback. An empty result makes the caller return a 503
+    that links back to /onboarding/.
     """
-    if session_id is not None:
-        creds = get_credentials(conn, session_id)
-        if creds is not None and creds.openrouter_api_key:
-            return creds.openrouter_api_key
-    fallback_session = find_credentials_only(conn)
-    if fallback_session is not None:
-        creds = get_credentials(conn, fallback_session.id)
-        if creds is not None and creds.openrouter_api_key:
-            return creds.openrouter_api_key
-    return ""
+    return current_keys()[0]
 
 
 def _unavailable_503() -> HTTPException:
@@ -172,18 +158,14 @@ def _render_error_partial(
     )
 
 
-def _keys_collected_for(conn: sqlite3.Connection, session_id: str) -> tuple[bool, str]:
+def _keys_collected_for() -> tuple[bool, str]:
     """Return ``(keys_collected, openrouter_last4)`` for finalize-form rendering.
 
-    True iff the session has a non-NULL ``user_openrouter_key``. Templates
-    use this to hide the finalize OR-input field when Step 1 already has
-    the key — typing a different one at finalize broke the smoke check
-    and stranded the user on an unfinishable session (the loop-back bug).
+    True iff an OpenRouter key is saved for this instance. Templates use it
+    to hide the finalize key input when Step 1 already has the key.
     """
-    creds = get_credentials(conn, session_id)
-    if creds is None or not creds.openrouter_api_key:
-        return False, ""
-    return True, creds.openrouter_api_key[-4:]
+    key = current_keys()[0]
+    return (True, key[-4:]) if key else (False, "")
 
 
 def _render_history(history: list[dict[str, str]]) -> list[dict[str, str]]:
@@ -252,24 +234,17 @@ def start_interview(request: Request) -> RedirectResponse:
     generated the first assistant message (~25-28s cold-model latency).
 
     Step 1 (API-key collection at ``/onboarding/keys``) is still mandatory:
-    if no session with credentials exists, 503 back to /onboarding/.
+    if no OpenRouter key is saved, 503 back to /onboarding/.
     """
     conn = _conn(request)
     try:
-        # find_active matches sessions with OR without history (an empty-history
-        # row created by Step 1 satisfies it too); find_credentials_only is the
-        # fallback for first-/start when last_turn_at predates the 24h window.
-        # Both shapes converge to "redirect to the same session id" — there's
-        # no separate "promote" step now that we don't write turns here.
-        session = find_active(conn) or find_credentials_only(conn)
-        if session is None:
+        # Check the key first so a 503 never leaves an empty session row behind.
+        if not _resolved_chat_key():
             raise _unavailable_503()
-        # Validate credentials resolve here so /start 503s instead of
-        # redirecting to a chat page that would immediately fail when
-        # /turn-stream tries to use the same key.
-        if not _resolved_chat_key(conn, session.id):
-            raise _unavailable_503()
-        session_id = session.id
+        active = find_active(conn)
+        # Step 1 no longer creates a row (keys live in data/.env), so a fresh
+        # instance has none: create the interview session here.
+        session_id = active.id if active is not None else create_session(conn)
     finally:
         conn.close()
 
@@ -289,7 +264,7 @@ def post_turn(
         if sess is None:
             raise HTTPException(status_code=404, detail="session not found")
 
-        chat_key = _resolved_chat_key(conn, session_id)
+        chat_key = _resolved_chat_key()
         if not chat_key:
             raise _unavailable_503()
 
@@ -347,7 +322,7 @@ def post_turn(
         if captured != sess.captured_blocks:
             update_captured_blocks(conn, session_id, captured)
 
-        keys_collected, openrouter_last4 = _keys_collected_for(conn, session_id)
+        keys_collected, openrouter_last4 = _keys_collected_for()
         # Re-read the session to pick up the cumulative cost we just added.
         refreshed = get_session(conn, session_id)
         cumulative_cost = refreshed.cumulative_cost_usd if refreshed else 0.0
@@ -561,7 +536,7 @@ def _stream_turn(
                     refreshed = get_session(conn, session_id)
                     cumulative_cost = refreshed.cumulative_cost_usd if refreshed else 0.0
 
-                    keys_collected, openrouter_last4 = _keys_collected_for(conn, session_id)
+                    keys_collected, openrouter_last4 = _keys_collected_for()
 
                     yield _sse_event(
                         "finish",
@@ -653,7 +628,7 @@ def post_turn_stream(
         if sess is None:
             raise HTTPException(status_code=404, detail="session not found")
 
-        chat_key = _resolved_chat_key(conn, session_id)
+        chat_key = _resolved_chat_key()
         if not chat_key:
             raise _unavailable_503()
 
@@ -713,7 +688,7 @@ def resume_interview(request: Request, session_id: str) -> HTMLResponse:
         sess = get_session(conn, session_id)
         if sess is None:
             raise HTTPException(status_code=404, detail="session not found")
-        keys_collected, openrouter_last4 = _keys_collected_for(conn, session_id)
+        keys_collected, openrouter_last4 = _keys_collected_for()
     finally:
         conn.close()
     return _render_chat(
@@ -735,8 +710,8 @@ def finalize_interview(
 ) -> HTMLResponse | RedirectResponse:
     """Validate captured blocks, run :func:`inject`, mark session complete.
 
-    Keys come from the credentials bound to this session at /onboarding/
-    Step 1 — that's the single collection point. The earlier form-input
+    Keys come from this instance's ``data/.env`` / environment, saved at
+    /onboarding/ Step 1 — the single collection point. The earlier form-input
     fallback existed for the paste-back path; it has been retired in
     favor of mandatory Step 1.
     """
@@ -746,7 +721,7 @@ def finalize_interview(
         if sess is None:
             raise HTTPException(status_code=404, detail="session not found")
 
-        keys_collected, openrouter_last4 = _keys_collected_for(conn, session_id)
+        keys_collected, openrouter_last4 = _keys_collected_for()
         cumulative_cost = sess.cumulative_cost_usd
 
         missing = [name for name in ALLOWED_FILENAMES if name not in sess.captured_blocks]
@@ -767,8 +742,8 @@ def finalize_interview(
                 status_code=400,
             )
 
-        creds = get_credentials(conn, session_id)
-        if creds is None or not creds.openrouter_api_key:
+        openrouter_key, rapidapi_key, gemini_key = current_keys()
+        if not openrouter_key:
             return _render_chat(
                 request,
                 session_id=session_id,
@@ -778,8 +753,8 @@ def finalize_interview(
                 openrouter_last4="",
                 cumulative_cost_usd=cumulative_cost,
                 error=(
-                    "Your OpenRouter key was cleared from this session. Go back to "
-                    "/onboarding/ Step 1, save your keys again, then return here and "
+                    "No OpenRouter key is saved for this findajob. Go back to "
+                    "/onboarding/ Step 1, save your keys, then return here and "
                     "click Finalize."
                 ),
                 status_code=400,
@@ -790,9 +765,9 @@ def finalize_interview(
             inject_result = inject(
                 base_root,
                 sess.captured_blocks,
-                openrouter_api_key=creds.openrouter_api_key.strip(),
-                rapidapi_key=(creds.rapidapi_key or "").strip(),
-                gemini_api_key=(creds.gemini_api_key or "").strip(),
+                openrouter_api_key=openrouter_key,
+                rapidapi_key=rapidapi_key,
+                gemini_api_key=gemini_key,
                 conn=conn,
             )
         except OnboardingSmokeCheckFailed as e:

@@ -11,6 +11,7 @@ shape so the chat UI is correct independent of route behavior:
 
 from __future__ import annotations
 
+import os
 import shutil
 import sqlite3
 from pathlib import Path
@@ -57,7 +58,8 @@ def _make_client(base_root: Path) -> TestClient:
 # After the OPENROUTER_OPERATOR_KEY revert (#401), the env-var distinction is
 # gone — there is only one client shape. The fixtures stay as aliases so
 # existing test bodies continue to read naturally; the difference between
-# "with key" and "no key" is now whether _plant_credentials has been called.
+# "with key" and "no key" is now whether _plant_credentials has been called
+# (it sets the instance key in the environment).
 @pytest.fixture
 def client_with_key(base_root: Path) -> TestClient:
     return _make_client(base_root)
@@ -93,18 +95,13 @@ def test_index_disables_step_two_when_keys_not_collected(client_with_key: TestCl
 
 
 def _plant_credentials(base_root: Path) -> str:
-    """Helper: insert a credentials-only session row directly."""
-    from findajob.onboarding.session_store import create_session, set_credentials
+    """Helper: set the instance OpenRouter key in the environment and insert a session row."""
+    from findajob.onboarding.session_store import create_session
 
+    os.environ["OPENROUTER_API_KEY"] = "sk-or-v1-render-test"
     conn = sqlite3.connect(base_root / "data" / "pipeline.db")
     try:
         sid = create_session(conn)
-        set_credentials(
-            conn,
-            sid,
-            openrouter_api_key="sk-or-v1-render-test",
-            rapidapi_key="",
-        )
     finally:
         conn.close()
     return sid
@@ -397,15 +394,9 @@ def test_turn_response_renders_user_and_assistant_bubbles(
     its own role-styled bubble. Otherwise the user's message disappears
     from view after the HTMX swap."""
     sid = _create_session_with_history(base_root, [])
-    # /turn now requires the session's credentials to resolve a chat key
-    # (no operator-env fallback after #401). Bind a user key to this row.
-    from findajob.onboarding.session_store import set_credentials
-
-    conn = sqlite3.connect(base_root / "data" / "pipeline.db")
-    try:
-        set_credentials(conn, sid, openrouter_api_key="sk-or-v1-render-test", rapidapi_key="")
-    finally:
-        conn.close()
+    # /turn requires a saved instance key to resolve a chat key (no
+    # operator-env fallback after #401).
+    os.environ["OPENROUTER_API_KEY"] = "sk-or-v1-render-test"
 
     def _fake(api_key, history, user_message):
         return "ASSISTANT_REPLY_MARKER", {}
@@ -443,13 +434,7 @@ def test_start_interview_button_has_alpine_loading_state(client_with_key: TestCl
 
 
 def _bind_credentials(base_root: Path, session_id: str) -> None:
-    from findajob.onboarding.session_store import set_credentials
-
-    conn = sqlite3.connect(base_root / "data" / "pipeline.db")
-    try:
-        set_credentials(conn, session_id, openrouter_api_key="sk-or-v1-render-test", rapidapi_key="")
-    finally:
-        conn.close()
+    os.environ["OPENROUTER_API_KEY"] = "sk-or-v1-render-test"
 
 
 def test_turn_partial_file_block_shows_badge_not_raw_delimiter(

@@ -10,6 +10,7 @@ All LLM calls are stubbed via monkeypatch so no real HTTP occurs.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import sqlite3
 from pathlib import Path
@@ -69,13 +70,13 @@ def client(base_root: Path) -> TestClient:
 
 
 def _create_session(base_root: Path, *, openrouter: str = _USER_KEY) -> str:
-    """Insert a session row with credentials bound to it."""
-    from findajob.onboarding.session_store import create_session, set_credentials
+    """Insert a session row and set the instance OpenRouter key in the environment."""
+    from findajob.onboarding.session_store import create_session
 
+    os.environ["OPENROUTER_API_KEY"] = openrouter
     conn = sqlite3.connect(base_root / "data" / "pipeline.db")
     try:
         sid = create_session(conn)
-        set_credentials(conn, sid, openrouter_api_key=openrouter, rapidapi_key="")
     finally:
         conn.close()
     return sid
@@ -162,7 +163,7 @@ def test_503_on_missing_key(client: TestClient, base_root: Path) -> None:
     conn = sqlite3.connect(base_root / "data" / "pipeline.db")
     try:
         sid = create_session(conn)
-        # No set_credentials call — no key on file
+        # No key in the environment — none saved
     finally:
         conn.close()
 

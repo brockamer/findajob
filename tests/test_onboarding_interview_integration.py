@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import shutil
 import sqlite3
 from pathlib import Path
@@ -171,18 +172,13 @@ def test_full_interview_flow_writes_all_files_and_sentinel(
         _fake_urlopen,
     )
 
-    # ── Step 1: plant credentials (mandatory before /start since 2026-05-02) ──
-    from findajob.onboarding.session_store import create_session, set_credentials
+    # ── Step 1: save the instance key (mandatory before /start since 2026-05-02) ──
+    os.environ["OPENROUTER_API_KEY"] = _USER_KEY
+    from findajob.onboarding.session_store import create_session
 
     conn = sqlite3.connect(base_root / "data" / "pipeline.db")
     try:
         creds_sid = create_session(conn)
-        set_credentials(
-            conn,
-            creds_sid,
-            openrouter_api_key=_USER_KEY,
-            rapidapi_key="",
-        )
     finally:
         conn.close()
 
@@ -190,8 +186,8 @@ def test_full_interview_flow_writes_all_files_and_sentinel(
     resp = client.post("/onboarding/interview/start")
     assert resp.status_code == 303, resp.text
     sid = resp.headers["location"].rsplit("/", 1)[-1]
-    # /start resolves the credentials-only row, so the chat session id
-    # should equal the credentials-only id (same row, history attached
+    # /start resumes the existing active session, so the chat session id
+    # should equal the pre-created id (same row, history attached
     # below by the kickoff /turn).
     assert sid == creds_sid
 
@@ -311,18 +307,13 @@ def test_full_interview_flow_skips_finalize_when_blocks_missing(
         lambda req, timeout=None: _ok_resp(next(response_iter)),
     )
 
-    # Plant Step 1 credentials so /start can promote them.
-    from findajob.onboarding.session_store import create_session, set_credentials
+    # Save the Step 1 key and pre-create the session so /start resumes it.
+    os.environ["OPENROUTER_API_KEY"] = _USER_KEY
+    from findajob.onboarding.session_store import create_session
 
     conn = sqlite3.connect(base_root / "data" / "pipeline.db")
     try:
-        creds_sid = create_session(conn)
-        set_credentials(
-            conn,
-            creds_sid,
-            openrouter_api_key=_USER_KEY,
-            rapidapi_key="",
-        )
+        create_session(conn)
     finally:
         conn.close()
 

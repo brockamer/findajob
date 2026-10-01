@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import io
 import json
+import os
 import shutil
 import sqlite3
 import time
@@ -73,13 +74,13 @@ def app(base_root: Path):
 
 
 def _create_session(base_root: Path) -> str:
-    """Insert a session row with credentials bound to it."""
-    from findajob.onboarding.session_store import create_session, set_credentials
+    """Insert a session row and set the instance OpenRouter key in the environment."""
+    from findajob.onboarding.session_store import create_session
 
+    os.environ["OPENROUTER_API_KEY"] = _USER_KEY
     conn = sqlite3.connect(base_root / "data" / "pipeline.db")
     try:
         sid = create_session(conn)
-        set_credentials(conn, sid, openrouter_api_key=_USER_KEY, rapidapi_key="")
     finally:
         conn.close()
     return sid

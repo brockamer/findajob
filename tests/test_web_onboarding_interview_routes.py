@@ -8,6 +8,7 @@ rows, captured_blocks, redirects, error_state.
 
 from __future__ import annotations
 
+import os
 import shutil
 import sqlite3
 from pathlib import Path
@@ -34,42 +35,33 @@ def _plant_credentials(
     openrouter: str = _USER_KEY,
     rapidapi: str = "",
 ) -> str:
-    """Insert a credentials-only session row directly via session_store.
+    """Set the instance keys in the environment and insert a session row.
 
-    Used by tests that need /start to find a credentials-only row to
-    promote, without going through the full /onboarding/keys POST cycle.
-    Returns the session id (in case the test needs it).
+    Used by tests that need /start to find an existing session and a saved
+    key, without going through the full /onboarding/keys POST cycle. The
+    autouse ``_isolate_api_key_env`` fixture restores the environment after
+    the test. Returns the session id (in case the test needs it).
     """
-    from findajob.onboarding.session_store import create_session, set_credentials
+    from findajob.onboarding.session_store import create_session
 
+    os.environ["OPENROUTER_API_KEY"] = openrouter
+    if rapidapi:
+        os.environ["RAPIDAPI_KEY"] = rapidapi
     conn = sqlite3.connect(base_root / "data" / "pipeline.db")
     try:
         sid = create_session(conn)
-        set_credentials(
-            conn,
-            sid,
-            openrouter_api_key=openrouter,
-            rapidapi_key=rapidapi,
-        )
     finally:
         conn.close()
     return sid
 
 
 def _set_credentials_on_session(base_root: Path, session_id: str, *, openrouter: str = _USER_KEY) -> None:
-    """Bind credentials to an existing session — used by /finalize tests."""
-    from findajob.onboarding.session_store import set_credentials
+    """Set the instance OpenRouter key in the environment — used by /finalize tests.
 
-    conn = sqlite3.connect(base_root / "data" / "pipeline.db")
-    try:
-        set_credentials(
-            conn,
-            session_id,
-            openrouter_api_key=openrouter,
-            rapidapi_key="",
-        )
-    finally:
-        conn.close()
+    ``base_root`` and ``session_id`` are kept so call sites read the same;
+    the key belongs to the instance, not the session.
+    """
+    os.environ["OPENROUTER_API_KEY"] = openrouter
 
 
 def _build_emission_blob() -> str:
@@ -118,7 +110,7 @@ def client(base_root: Path) -> TestClient:
 # Aliases for tests that historically distinguished env-key states. After
 # the OPENROUTER_OPERATOR_KEY revert (#401), there's only one client shape;
 # the difference between "with key" and "no key" is now whether a
-# credentials row has been planted via _plant_credentials.
+# key has been set in the environment via _plant_credentials.
 @pytest.fixture
 def client_with_key(client: TestClient) -> TestClient:
     return client
@@ -248,29 +240,88 @@ def test_start_creates_session_does_not_call_llm(
     assert error_state is None
 
 
+def test_finalize_succeeds_after_restore_cleared_session_keys(
+    client: TestClient, base_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A restore taken during an onboarding re-run leaves the active session with
+    NULL key columns. The key lives in data/.env and the environment, so finalize
+    must still succeed — with no 24 h wait."""
+    from findajob.onboarding.injector import DiscoveryStatus, InjectResult
+    from findajob.onboarding.parser import parse_emission
+    from findajob.onboarding.session_store import append_turn, clear_stored_keys, update_captured_blocks
+
+    sid = _create_session_directly(base_root, with_credentials=False)
+    conn = sqlite3.connect(base_root / "data" / "pipeline.db")
+    try:
+        append_turn(conn, sid, "user", "hello")
+        update_captured_blocks(conn, sid, parse_emission(_build_emission_blob()).found)
+        clear_stored_keys(conn)  # what restore does to the restored DB
+    finally:
+        conn.close()
+    monkeypatch.setenv("OPENROUTER_API_KEY", _USER_KEY)
+
+    seen: list[str] = []
+
+    def _fake_inject(  # type: ignore[no-untyped-def]
+        base_root, parsed_files, *, openrouter_api_key, rapidapi_key="", gemini_api_key="", conn=None, **_kw
+    ):
+        seen.append(openrouter_api_key)
+        return InjectResult(
+            backup_dir=Path("/tmp/fake-backup"),
+            discovery=DiscoveryStatus(success=True, count=0, error=None),
+        )
+
+    monkeypatch.setattr("findajob.web.routes.onboarding_interview.inject", _fake_inject)
+    resp = client.post(f"/onboarding/interview/{sid}/finalize")
+    assert resp.status_code == 303
+    assert seen == [_USER_KEY]
+    assert _read_session(base_root, sid)[2] is not None
+
+
+def test_start_creates_session_when_none_exists(
+    client: TestClient, base_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Step 1 no longer creates a session row; /start must create one."""
+    monkeypatch.setenv("OPENROUTER_API_KEY", _USER_KEY)
+    resp = client.post("/onboarding/interview/start")
+    assert resp.status_code == 303
+    sid = resp.headers["location"].rsplit("/", 1)[-1]
+    conn = sqlite3.connect(base_root / "data" / "pipeline.db")
+    try:
+        ids = [r[0] for r in conn.execute("SELECT id FROM onboarding_sessions").fetchall()]
+    finally:
+        conn.close()
+    assert ids == [sid]
+
+
+def test_start_503_and_no_row_without_key(client: TestClient, base_root: Path) -> None:
+    resp = client.post("/onboarding/interview/start")
+    assert resp.status_code == 503
+    conn = sqlite3.connect(base_root / "data" / "pipeline.db")
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM onboarding_sessions").fetchone()[0] == 0
+    finally:
+        conn.close()
+
+
 # ── /turn ─────────────────────────────────────────────────────────────────
 
 
 def _create_session_directly(base_root: Path, *, with_credentials: bool = True) -> str:
     """Insert a session row directly so /turn tests don't depend on /start.
 
-    By default, also binds user credentials to the session — /turn now
-    requires session credentials to resolve a chat key (no operator-env
+    By default, also sets the instance OpenRouter key in the environment —
+    /turn requires a saved key to resolve a chat key (no operator-env
     fallback after #401). Pass ``with_credentials=False`` to test the
-    no-credentials behavior (e.g. resume-banner suppression).
+    no-key behavior (e.g. resume-banner suppression).
     """
-    from findajob.onboarding.session_store import create_session, set_credentials
+    from findajob.onboarding.session_store import create_session
 
+    if with_credentials:
+        os.environ["OPENROUTER_API_KEY"] = _USER_KEY
     conn = sqlite3.connect(base_root / "data" / "pipeline.db")
     try:
         sid = create_session(conn)
-        if with_credentials:
-            set_credentials(
-                conn,
-                sid,
-                openrouter_api_key=_USER_KEY,
-                rapidapi_key="",
-            )
     finally:
         conn.close()
     return sid
@@ -415,26 +466,24 @@ def test_finalize_rejects_when_blocks_missing(client_with_key: TestClient, base_
     assert "missing" in resp.text.lower() or "complete" in resp.text.lower()
 
 
-def test_finalize_rejects_when_session_has_no_credentials(client_with_key: TestClient, base_root: Path) -> None:
-    """Finalize requires credentials bound to the session — those come from
-    Step 1 of /onboarding/. The earlier "blank form input" path was retired
-    along with the form OR-key field on 2026-05-02."""
+def test_finalize_rejects_when_no_key_is_saved(client_with_key: TestClient, base_root: Path) -> None:
+    """Finalize requires an OpenRouter key saved at Step 1 of /onboarding/
+    (data/.env and the environment). The earlier "blank form input" path was
+    retired along with the form OR-key field on 2026-05-02."""
     from findajob.onboarding.parser import parse_emission
     from findajob.onboarding.session_store import update_captured_blocks
 
-    sid = _create_session_directly(base_root)
+    sid = _create_session_directly(base_root, with_credentials=False)
     conn = sqlite3.connect(base_root / "data" / "pipeline.db")
     try:
         all_captured = parse_emission(_build_emission_blob()).found
         update_captured_blocks(conn, sid, all_captured)
     finally:
         conn.close()
-    # Note: NOT calling _set_credentials_on_session — leaving it bare.
 
     resp = client_with_key.post(f"/onboarding/interview/{sid}/finalize")
     assert resp.status_code == 400
-    body = resp.text.lower()
-    assert "step 1" in body or "key" in body
+    assert "no openrouter key is saved" in resp.text.lower()
 
 
 def test_finalize_calls_inject_and_marks_complete(
