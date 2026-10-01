@@ -25,6 +25,19 @@ from pathlib import Path
 
 _KEY_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
+# State-relative paths of every file that holds a credential: API keys and the Basic
+# Auth pair (data/.env), the Gmail app password (config/gmail.json). The web backup
+# leaves them out, and restore keeps the target's own copies when a tarball has none.
+# gmail_token.json, gsheets_creds.json and ntfy_topic.txt are no longer written, but
+# an older state directory can still hold them (ntfy reads the topic file first).
+SECRET_STATE_FILES = (
+    "data/.env",
+    "config/gmail.json",
+    "config/gmail_token.json",
+    "config/gsheets_creds.json",
+    "config/ntfy_topic.txt",
+)
+
 # Every character str.splitlines() splits on, plus NUL. The readers of data/.env
 # split lines with both ``for line in f`` (\n only) and ``.splitlines()`` (all of
 # these), so any one of them can end a value early and start an injected line.

@@ -147,6 +147,86 @@ class TestRestoreFromTarball:
         assert not (data / "old_file.txt").exists()
         assert (data / "pipeline.db").exists()
 
+    def test_keeps_existing_secrets_when_tarball_has_none(self, tmp_path: Path) -> None:
+        """Backups carry no secrets, and restore replaces data/ and config/ wholesale.
+
+        Without the carry-forward, restoring onto a running instance deletes its
+        data/.env -- the API keys and the Basic Auth pair written by onboarding --
+        and Basic Auth is off after the next restart.
+        """
+        base = tmp_path / "base"
+        (base / "data").mkdir(parents=True)
+        (base / "config").mkdir()
+        env = b"OPENROUTER_API_KEY=sk-live\nFINDAJOB_AUTH_USER=u\nFINDAJOB_AUTH_PASS=p\n"
+        (base / "data" / ".env").write_bytes(env)
+        (base / "config" / "gmail.json").write_bytes(b'{"app_password": "live"}')
+
+        raw = _make_tarball(**{"state/data/.env": None})
+        result = restore_from_tarball(raw, base)
+
+        assert result.success is True
+        assert (base / "data" / ".env").read_bytes() == env
+        assert (base / "config" / "gmail.json").read_bytes() == b'{"app_password": "live"}'
+        assert (base / "config" / "prefilter_rules.yaml").exists()
+        for kept in (base / "data" / ".env", base / "config" / "gmail.json"):
+            assert stat.S_IMODE(kept.stat().st_mode) == 0o600
+        assert [p.name for p in (base / "data").iterdir() if p.name.startswith(".restore-")] == []
+
+    def test_secrets_in_an_older_backup_still_restore(self, tmp_path: Path) -> None:
+        """Backups made before secrets were left out still carry data/.env; it wins."""
+        base = tmp_path / "base"
+        (base / "data").mkdir(parents=True)
+        (base / "data" / ".env").write_bytes(b"OPENROUTER_API_KEY=sk-live\n")
+
+        result = restore_from_tarball(_make_tarball(), base)
+
+        assert result.success is True
+        assert (base / "data" / ".env").read_bytes() == b"OPENROUTER_API_KEY=sk-test\n"
+
+    def test_onboarding_keys_in_an_older_backup_are_cleared(self, tmp_path: Path) -> None:
+        """An older backup's DB holds the source's API keys in onboarding_sessions.
+
+        Left in place, the target's onboarding would offer them as already
+        collected and write them into the target's data/.env.
+        """
+        import sqlite3
+
+        from findajob.db import connect
+        from findajob.onboarding.session_store import create_session, set_credentials
+
+        with tempfile.NamedTemporaryFile(suffix=".db") as tmp:
+            init_test_db(Path(tmp.name))
+            conn = connect(Path(tmp.name))
+            sid = create_session(conn)
+            set_credentials(conn, sid, openrouter_api_key="sk-or-v1-SOURCE", rapidapi_key="SOURCE-RAPID")
+            conn.close()
+            db_bytes = Path(tmp.name).read_bytes()
+
+        base = tmp_path / "base"
+        base.mkdir()
+        result = restore_from_tarball(_make_tarball(**{"state/data/pipeline.db": db_bytes}), base)
+
+        assert result.success is True
+        c = sqlite3.connect(base / "data" / "pipeline.db")
+        rows = c.execute(
+            "SELECT user_openrouter_key, user_rapidapi_key, user_gemini_api_key FROM onboarding_sessions"
+        ).fetchall()
+        c.close()
+        assert rows == [(None, None, None)]
+
+    def test_tarball_without_config_leaves_target_config_alone(self, tmp_path: Path) -> None:
+        base = tmp_path / "base"
+        (base / "config").mkdir(parents=True)
+        (base / "config" / "gmail.json").write_bytes(b'{"app_password": "live"}')
+        (base / "config" / "prefilter_rules.yaml").write_bytes(b"rules: [live]\n")
+
+        raw = _make_tarball(**{"state/data/.env": None, "state/config/prefilter_rules.yaml": None})
+        result = restore_from_tarball(raw, base)
+
+        assert result.success is True
+        assert (base / "config" / "gmail.json").read_bytes() == b'{"app_password": "live"}'
+        assert (base / "config" / "prefilter_rules.yaml").read_bytes() == b"rules: [live]\n"
+
     def test_rejects_path_traversal(self, tmp_path: Path) -> None:
         base = tmp_path / "base"
         base.mkdir()
@@ -288,6 +368,21 @@ class TestMigrationFailureRollsBack:
             assert (base / "data" / "pipeline.db").read_bytes() == original, (
                 "the swap was left standing: the failed backup's DB is live"
             )
+
+    def test_kept_secrets_survive_a_failed_restore(self, monkeypatch) -> None:
+        from findajob.web import restore as restore_mod
+
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            (base / "data").mkdir(parents=True)
+            (base / "data" / "pipeline.db").write_bytes(b"ORIGINAL")
+            (base / "data" / ".env").write_bytes(b"OPENROUTER_API_KEY=sk-live\n")
+
+            monkeypatch.setattr(restore_mod, "_run_schema_migration", lambda _p: "boom")
+            result = restore_from_tarball(_make_tarball(**{"state/data/.env": None}), base)
+
+            assert result.success is False
+            assert (base / "data" / ".env").read_bytes() == b"OPENROUTER_API_KEY=sk-live\n"
 
     def test_no_restore_workdir_survives_a_failed_restore(self, monkeypatch) -> None:
         from findajob.web import restore as restore_mod

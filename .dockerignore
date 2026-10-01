@@ -13,6 +13,9 @@ README.md
 # (usage, troubleshooting, setup/*) from /app/docs/. Exclude only the
 # internal plan/spec subtree which is large and not user-facing.
 docs/superpowers
+# docs/archive/ is gitignored (personal notes); without this line a local
+# build's `COPY docs/ /app/docs/` would put it in the image.
+docs/archive
 
 # Python caches (glob patterns need ** to recurse in .dockerignore)
 **/__pycache__

@@ -1,7 +1,8 @@
 """#841: Core backup logic — streaming tarball creation with sqlite3 .backup.
 
 Produces a gzipped tarball whose top-level directory is ``state/`` to match
-the contract in ``docs/operations/restore.md``. On disk paths are BASE-relative;
+the contract in ``docs/operations/restore.md``. The tarball never contains the
+files in ``findajob.env_file.SECRET_STATE_FILES``. On disk paths are BASE-relative;
 the ``state/`` prefix is added during archival so the tarball is portable across
 Docker (BASE=/app) and Fly (BASE=/app/state) deployments.
 
@@ -19,6 +20,8 @@ from collections.abc import Generator
 from pathlib import Path
 
 from findajob.db import connect as db_connect
+from findajob.env_file import SECRET_STATE_FILES
+from findajob.onboarding.session_store import clear_stored_keys
 
 _TARBALL_PREFIX = "state"
 
@@ -30,7 +33,9 @@ _EXCLUDED_NAMES = frozenset(
     }
 )
 
-_EXCLUDED_SUFFIXES = (".bak",)
+# ".tmp": an interrupted env_file.write_private leaves ``<name>.<random>.tmp``
+# holding the full secret.
+_EXCLUDED_SUFFIXES = (".bak", ".tmp")
 
 _STATE_DIRS = ("data", "config", "candidate_context", "companies", "logs")
 
@@ -47,12 +52,18 @@ def _should_exclude(path: str) -> bool:
 
 
 def _tar_filter(tarinfo: tarfile.TarInfo) -> tarfile.TarInfo | None:
-    """Filter callback for tarfile.add — exclude transient files, add prefix.
+    """Filter callback for tarfile.add — exclude transient and secret files, add prefix.
 
     Called after tarfile has already set tarinfo.name to dirname-relative
     paths (because we pass arcname=dirname to tar.add).
+
+    Secret files are left out because anyone who can sign in can download a
+    backup, and on an instance run for someone else that is not only the
+    operator. Restore keeps the target's own secrets (see ``restore.py``).
     """
     if _should_exclude(tarinfo.name):
+        return None
+    if tarinfo.name in SECRET_STATE_FILES:
         return None
     if tarinfo.name == "data/pipeline.db":
         return None
@@ -61,12 +72,16 @@ def _tar_filter(tarinfo: tarfile.TarInfo) -> tarfile.TarInfo | None:
 
 
 def _backup_db(db_path: Path, dest: Path) -> None:
-    """Online backup of a live SQLite database to a destination file."""
+    """Online backup of a live SQLite database to a destination file.
+
+    The copy's stored onboarding API keys are cleared; the live DB is untouched.
+    """
     src_conn = db_connect(db_path, ro=True)
     try:
         dst_conn = db_connect(dest)
         try:
             src_conn.backup(dst_conn)
+            clear_stored_keys(dst_conn)
         finally:
             dst_conn.close()
     finally:

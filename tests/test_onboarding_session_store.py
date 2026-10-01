@@ -18,6 +18,7 @@ from findajob.onboarding.session_store import (
     Session,
     add_turn_cost,
     append_turn,
+    clear_stored_keys,
     create_session,
     find_credentials_only,
     get_credentials,
@@ -518,3 +519,23 @@ def test_lifetime_cost_usd_handles_missing_column_gracefully(tmp_path):
         assert lifetime_cost_usd(conn) == 0.0
     finally:
         conn.close()
+
+
+def test_clear_stored_keys_leaves_no_trace_in_the_file(db):
+    """The cleared values must not survive in freed pages, whatever the SQLite build's default."""
+    db.execute("PRAGMA secure_delete = OFF")
+    sid = create_session(db)
+    long_key = "sk-or-v1-CLEARME-" + "Q" * 6000  # spills into an overflow page
+    set_credentials(db, sid, openrouter_api_key=long_key, rapidapi_key="CLEARME-RAPID", gemini_api_key="CLEARME-GEM")
+
+    clear_stored_keys(db)
+
+    assert get_credentials(db, sid) is None
+    db_file = Path(db.execute("PRAGMA database_list").fetchone()[2])
+    assert b"CLEARME" not in db_file.read_bytes()
+
+
+def test_clear_stored_keys_ignores_a_db_without_the_table(tmp_path):
+    conn = sqlite3.connect(str(tmp_path / "empty.db"))
+    clear_stored_keys(conn)
+    conn.close()
