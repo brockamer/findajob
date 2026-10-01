@@ -306,7 +306,7 @@ The full job list lives at `ops/scheduled-jobs.yaml` in the repo. To inspect wha
 
 ## Multi-tenant hosts: one set of API keys per instance
 
-Give every instance its own API keys: `OPENROUTER_API_KEY`, `RAPIDAPI_KEY` and, if you set it, `GEMINI_API_KEY`. Never copy `state/data/.env` from one instance to another. The same applies to a whole `state/` directory and to a backup archive, because each of them carries the `.env`. When you clone or restore one instance's data into another, replace the keys afterwards.
+Give every instance its own API keys: `OPENROUTER_API_KEY`, `RAPIDAPI_KEY` and, if you set it, `GEMINI_API_KEY`. Never copy `state/data/.env` from one instance to another. The same applies to a whole `state/` directory, which carries the `.env`, and to a backup made before backups left credentials out. A backup from `/settings/backup/` carries no credentials, and restoring it keeps the target instance's own keys (see [Restore from backup](restore.md#credentials-are-not-in-a-backup)). When you clone one instance's `state/` into another, replace the keys afterwards.
 
 findajob does not enforce this. Nothing in the code detects a key that two instances share, so the operator carries the obligation. Instances that share a key share its usage, its spend and its exposure. One leaked key exposes every instance that holds it, and the provider's usage report cannot tell the instances apart.
 

@@ -49,9 +49,13 @@ class TestGetBackupPage:
         assert r.status_code == 200
         assert "Download backup tarball" in r.text
 
-    def test_shows_secrets_warning(self, client: TestClient) -> None:
+    def test_shows_personal_data_warning(self, client: TestClient) -> None:
         r = client.get("/settings/backup/")
-        assert "API keys and personal data" in r.text
+        assert "personal data" in r.text
+
+    def test_says_credentials_are_left_out(self, client: TestClient) -> None:
+        r = client.get("/settings/backup/")
+        assert "does not contain your API keys" in r.text
 
 
 class TestPostDownload:
@@ -64,7 +68,7 @@ class TestPostDownload:
         with tarfile.open(fileobj=io.BytesIO(r.content), mode="r:gz") as tar:
             names = tar.getnames()
             assert "state/data/pipeline.db" in names
-            assert "state/data/.env" in names
+            assert "state/data/.env" not in names
             assert "state/config/prefilter_rules.yaml" in names
 
     def test_db_in_tarball_is_valid(self, client: TestClient) -> None:

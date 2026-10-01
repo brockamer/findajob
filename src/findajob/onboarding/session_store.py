@@ -260,6 +260,29 @@ def get_credentials(db: sqlite3.Connection, session_id: str) -> Credentials | No
     )
 
 
+def clear_stored_keys(db: sqlite3.Connection) -> None:
+    """Set every session's stored API key columns to NULL, then VACUUM.
+
+    Used on the copy of ``pipeline.db`` that goes into a backup, and on a
+    restored DB, so one instance's keys never travel to another. Freed space
+    must not keep the old values: ``secure_delete`` is on by default only in
+    some SQLite builds, so it is set here, and the VACUUM rebuilds the file. A
+    DB without the table is left as it is.
+    """
+    db.execute("PRAGMA secure_delete = ON")
+    try:
+        db.execute(
+            """UPDATE onboarding_sessions
+               SET user_openrouter_key = NULL,
+                   user_rapidapi_key   = NULL,
+                   user_gemini_api_key = NULL"""
+        )
+    except sqlite3.OperationalError:
+        return
+    db.commit()
+    db.execute("VACUUM")
+
+
 def lifetime_cost_usd(db: sqlite3.Connection) -> float:
     """Return the all-time onboarding-chat cost on this stack.
 

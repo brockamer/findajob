@@ -6,7 +6,8 @@ Restore flow:
 2. Extract to a staging directory under BASE with path-traversal protection.
 3. Atomic swap: rename existing state dirs to a rollback dir, move staging
    dirs into place.
-4. Fix permissions on secrets files.
+4. Keep the target's own secrets files that the tarball does not supply, and fix
+   permissions on secrets files.
 5. Write the onboarding sentinel.
 
 On failure mid-swap, the rollback dir allows recovery.
@@ -20,7 +21,7 @@ import tarfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from findajob.env_file import write_private
+from findajob.env_file import SECRET_STATE_FILES, write_private
 
 MAX_UPLOAD_BYTES = 512 * 1024 * 1024  # 512 MB
 
@@ -35,7 +36,7 @@ _REQUIRED_ENTRIES = frozenset(
 
 _STATE_DIRS = ("data", "config", "candidate_context", "companies", "logs")
 
-_SECRETS_FILES = ("data/.env", "config/gmail.json")
+_SECRETS_FILES = SECRET_STATE_FILES
 _STAGING_PREFIX = ".restore-staging-"
 _ROLLBACK_PREFIX = ".restore-rollback-"
 
@@ -180,6 +181,17 @@ def restore_from_tarball(raw: bytes, base: Path) -> RestoreResult:
                     continue
                 shutil.move(str(child), str(existing / child.name))
 
+        # Backups leave secrets out (backup.py), so the swap above has just moved
+        # this instance's own data/.env -- API keys and the Basic Auth pair -- into
+        # the rollback dir, which is deleted on success. Keep every secret the
+        # tarball does not supply. Copy rather than move: a later failure rolls back
+        # from that dir and must still find the original there.
+        for secret_rel in _SECRETS_FILES:
+            kept = rollback / secret_rel
+            target = base / secret_rel
+            if kept.is_file() and not target.exists():
+                write_private(target, kept.read_bytes())
+
         for secret_rel in _SECRETS_FILES:
             secret_path = base / secret_rel
             if secret_path.is_file():
@@ -213,10 +225,13 @@ def _run_schema_migration(db_path: Path) -> str | None:
     """Run pending schema migrations on the restored DB. Returns error or None."""
     from findajob.db import connect as db_connect
     from findajob.db.migrate import apply_pending
+    from findajob.onboarding.session_store import clear_stored_keys
 
     conn = db_connect(db_path)
     try:
         apply_pending(conn)
+        # An older backup's DB carries the source instance's API keys.
+        clear_stored_keys(conn)
         return None
     except Exception as exc:
         return (

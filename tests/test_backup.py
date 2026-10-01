@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from findajob.env_file import SECRET_STATE_FILES
 from findajob.web.backup import _should_exclude, stream_backup_tarball
 
 
@@ -32,6 +33,11 @@ def state_tree(tmp_path: Path) -> tuple[Path, Path]:
     config = base / "config"
     config.mkdir()
     (config / "prefilter_rules.yaml").write_text("rules: []\n")
+    (config / "gmail.json").write_text('{"app_password": "gmail-secret"}\n')
+    (config / "gsheets_creds.json").write_text('{"private_key": "legacy-secret"}\n')
+    (config / "gmail_token.json").write_text('{"token": "legacy-token-secret"}\n')
+    (config / "ntfy_topic.txt").write_text("legacy-topic-secret\n")
+    (data / ".env.abc123.tmp").write_text("OPENROUTER_API_KEY=sk-crashed-write\n")
 
     cc = base / "candidate_context"
     cc.mkdir()
@@ -86,7 +92,6 @@ class TestStreamBackupTarball:
         with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as tar:
             names = tar.getnames()
             assert "state/data/pipeline.db" in names
-            assert "state/data/.env" in names
             assert "state/data/.onboarding-complete" in names
             assert "state/config/prefilter_rules.yaml" in names
             assert "state/candidate_context/profile.md" in names
@@ -102,6 +107,71 @@ class TestStreamBackupTarball:
             assert not any("pipeline.db-shm" in n for n in names)
             assert not any(".stale" in n for n in names)
             assert not any(".bak" in n for n in names)
+
+    def test_leaves_out_secret_files(self, state_tree: tuple[Path, Path]) -> None:
+        """Anyone who can sign in can download a backup, so it must carry no credentials."""
+        base, db_path = state_tree
+        raw = b"".join(stream_backup_tarball(base, db_path))
+
+        with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as tar:
+            names = tar.getnames()
+            for secret_rel in SECRET_STATE_FILES:
+                assert f"state/{secret_rel}" not in names
+            contents = b"".join(f.read() for m in tar.getmembers() if m.isfile() and (f := tar.extractfile(m)))
+        for secret in (
+            b"sk-test",
+            b"gmail-secret",
+            b"legacy-secret",
+            b"legacy-token-secret",
+            b"legacy-topic-secret",
+            b"sk-crashed-write",
+        ):
+            assert secret not in contents
+
+    def test_db_carries_no_onboarding_keys(self, tmp_path: Path) -> None:
+        """Onboarding Step 1 stores the API keys in onboarding_sessions; the backup's DB must not."""
+        from findajob.db import connect
+        from findajob.onboarding.session_store import create_session, set_credentials
+        from tests.conftest import init_test_db
+
+        base = tmp_path / "base"
+        (base / "data").mkdir(parents=True)
+        db_path = base / "data" / "pipeline.db"
+        init_test_db(db_path)
+        conn = connect(db_path)
+        sid = create_session(conn)
+        set_credentials(
+            conn,
+            sid,
+            openrouter_api_key="sk-or-v1-DB-OPENROUTER-SECRET",
+            rapidapi_key="DB-RAPIDAPI-SECRET",
+            gemini_api_key="DB-GEMINI-SECRET",
+        )
+        conn.close()
+
+        raw = b"".join(stream_backup_tarball(base, db_path))
+        with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as tar:
+            f = tar.extractfile("state/data/pipeline.db")
+            assert f is not None
+            db_bytes = f.read()
+
+        # Raw bytes, not just the columns: a plain UPDATE can leave the old values in free pages.
+        for secret in (b"DB-OPENROUTER-SECRET", b"DB-RAPIDAPI-SECRET", b"DB-GEMINI-SECRET"):
+            assert secret not in db_bytes
+        restored = tmp_path / "restored.db"
+        restored.write_bytes(db_bytes)
+        c = sqlite3.connect(restored)
+        rows = c.execute(
+            "SELECT user_openrouter_key, user_rapidapi_key, user_gemini_api_key FROM onboarding_sessions"
+        ).fetchall()
+        c.close()
+        assert rows == [(None, None, None)]
+        # The live DB is untouched.
+        c = sqlite3.connect(db_path)
+        assert c.execute("SELECT user_openrouter_key FROM onboarding_sessions").fetchone() == (
+            "sk-or-v1-DB-OPENROUTER-SECRET",
+        )
+        c.close()
 
     def test_db_is_consistent_backup(self, state_tree: tuple[Path, Path]) -> None:
         base, db_path = state_tree

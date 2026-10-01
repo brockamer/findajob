@@ -14,12 +14,13 @@
 
   <div class="rounded-lg border-2 border-amber-300 bg-amber-50 p-4">
     <p class="text-sm font-semibold text-amber-900">
-      This file contains your API keys and personal data. Keep it private.
+      This file contains your personal data. Keep it private.
     </p>
     <p class="text-xs text-amber-800 mt-1">
-      The tarball includes your <code>.env</code> (API keys), candidate profile,
-      resume, cover letters, and LinkedIn connections. Treat it like a password
-      export&thinsp;—&thinsp;don't post it publicly or share it over unencrypted channels.
+      The tarball includes your candidate profile, resume, cover letters, and
+      LinkedIn connections&thinsp;—&thinsp;don't post it publicly or share it over
+      unencrypted channels. It does not contain your API keys, your sign-in
+      password, or your Gmail app password.
     </p>
   </div>
 
@@ -32,7 +33,9 @@
       {% endfor %}
     </ul>
     <p class="text-xs text-slate-500 mt-2">
-      Excludes: WAL sidecars, <code>.stale/</code>, <code>*.bak</code> files.
+      Excludes: <code>data/.env</code> and other credential files, WAL sidecars,
+      <code>.stale/</code>, <code>*.bak</code> and <code>*.tmp</code> files. API keys
+      stored by onboarding are cleared from the database copy.
     </p>
   </div>
 
@@ -52,8 +55,9 @@
     <p class="mt-2">
       To restore this backup on a new findajob instance, go through initial setup
       and choose <strong>"Restore from backup"</strong> on the onboarding page.
-      Upload this tarball and the new instance will pick up exactly where this one
-      left off — no interview needed.
+      Upload this tarball and the new instance will pick up where this one left
+      off — no interview needed. The new instance keeps its own API keys and
+      sign-in, so set those up there; restoring this backup leaves them in place.
     </p>
   </details>
 </div>
