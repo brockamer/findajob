@@ -24,6 +24,14 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 - **The container smoke test no longer depends on JSearch** (#1095). `scripts/test_container_integration.sh` seeded `jsearch` as an active source, but JSearch's RapidAPI listing no longer accepts subscriptions. The smoke now seeds only `jobs-api14` and `jobs-api14-indeed`. `docs/maintainers/release-process.md` and the script header now state that the image build needs BuildKit (`docker-buildx` on Ubuntu's `docker.io`), and that triage needs only `OPENROUTER_API_KEY` and `RAPIDAPI_KEY`, from keys dedicated to testing. No `migration-required`: test tooling and docs only.
 
+### Changed
+
+- Onboarding Step 1 saves the API keys to `data/.env` (atomic, owner-only)
+  and uses them at once, instead of holding them on the interview session
+  until finalize. Keys already in the container's environment show as
+  saved; the separate "Use detected keys" button is gone. "Change keys"
+  shows the empty form and keeps the saved keys until new ones are saved.
+
 ### Removed
 
 - **The staging soak-test tooling is gone** (#1148). Nothing under `src/` or `scripts/` imported `findajob.staging`; its only runtime references were four `staging-*` cron jobs in `ops/scheduled-jobs.yaml`, all `enabled: false`, written for a maintainer staging stack that no longer exists. Removed: the `findajob.staging` package (`clicker`, `green`, `reset`, and the synthetic persona fixture), the four `staging-*` cron entries and their `FINDAJOB_STAGING_*_ENABLED` / `_SCHEDULE` overrides, the matching tests, the rotation test that only covered `staging.green`, the persona-fixture step in `.github/workflows/pii-scan.yml`, and the Dockerfile comment that named the fixture as a reason for the editable install. Operators who never enabled the jobs see no change. No `migration-required`: the removed cron entries were disabled by default, so the rendered crontab for a default stack loses only the four `# staging-*: DISABLED` comment lines and no active entry changes.
@@ -41,6 +49,13 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 - **The Gmail card keeps what you typed, and Test waits for Save** (#1133). Pressing *Test connection* before *Save* re-rendered the card with "Save credentials before testing." and a blank password field, so a first-time user had to type the app password again. *Test connection* is now disabled until a configuration is saved, and the card says that Save runs the connection test (it has since #690). A validation error from Save or Test now replaces only the card's error message, so the address, sender list and app password the user typed stay in the form, and the typed password is not sent back in the response. The card also stops rendering the saved app password back into the form: once a password is saved the field is blank, a blank field on Save keeps the saved password, and a new value replaces it. The onboarding Gmail step and `docs/getting-started/` (`gmail.md`, `README.md`, `install-fly.md`, `start-here-fly.md`) now say Save instead of Save then Test. No `migration-required`: no config or schema change.
 
 - **The one-time `FINDAJOB_SETUP_TOKEN` reaches the container logs again** (#1049). The web app wrote the auth status and the setup token with Python `logging`, but nothing configured a handler for the `findajob` loggers — uvicorn's `--log-level` covers only uvicorn's own — so the lines were dropped and `docker logs … | grep FINDAJOB_SETUP_TOKEN` found nothing. An operator who deployed without `FINDAJOB_AUTH_USER` / `FINDAJOB_AUTH_PASS` could not finish the onboarding password step. The uvicorn factory (`findajob.web.app.default_app`) now sends `findajob` INFO+ lines to stdout, unless logging is already configured in the process. `docs/operations/install-docker.md` now shows where to find the token; `tests/test_web_startup_logging.py` boots the factory in a fresh interpreter and checks stdout. No `migration-required`: no config or schema change.
+
+### Security
+
+- API keys are no longer stored in `pipeline.db`. On upgrade, keys an
+  older version stored in `onboarding_sessions` are cleared from the
+  database file. An onboarding in progress during the upgrade must save
+  its keys again at Step 1.
 
 ## [0.35.0] — 2026-09-27
 

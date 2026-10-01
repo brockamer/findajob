@@ -181,12 +181,13 @@ settings — it's a connectivity check, not a yield benchmark.
 To rotate any key:
 
 1. Generate a new key at the provider (using the steps above).
-2. Visit `/onboarding/?mode=rerun` on your findajob instance.
-3. Paste the new key. The injector backs up the existing `data/.env`
-   under `.backups/{UTC-stamp}/` and writes the new value in place.
+2. Visit `/onboarding/` on your findajob instance and click **Change keys** in Step 1.
+3. Paste the new key and click **Save keys**. findajob writes it to
+   `data/.env`, readable only by findajob. A field you leave blank keeps
+   its saved value.
 
-The pipeline picks up the new key on its next scheduled run; no
-restart needed.
+The web app uses the new key at once and the pipeline from its next
+scheduled run; no restart needed.
 
 If you manage your own stack (self-hosted or on Fly), you can also edit
 `data/.env` directly:

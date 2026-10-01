@@ -325,6 +325,7 @@ def test_already_onboarded_hint_renders_when_sentinel_present_no_keys(client: Te
     r = client.get("/onboarding/")
     assert r.status_code == 200
     assert "You've already onboarded" in r.text
+    assert "No OpenRouter key is saved for this findajob" in r.text
 
 
 def test_already_onboarded_hint_suppressed_in_rerun_mode(client: TestClient, base_root: Path) -> None:

@@ -331,13 +331,16 @@ To replace the OpenRouter or RapidAPI feed key (`RAPIDAPI_KEY` — canonical; or
 
 **Option A — Web UI (recommended):**
 
-1. Visit `/onboarding/?mode=rerun` in a browser.
-2. Use Step 1's "Change keys" affordance to clear and re-enter the values.
-3. Click **Save keys**. The new values smoke-check against the provider
-   and overwrite the stack's `data/.env` atomically.
+1. Visit `/onboarding/` in a browser.
+2. In Step 1, click **Change keys**, then paste the new values.
+3. Click **Save keys**. findajob checks the OpenRouter key (and the
+   RapidAPI key, when you give one) with the provider, then writes the
+   new values to the stack's `data/.env` atomically, readable only by
+   findajob. A field you leave blank keeps its saved value.
 
-The injector backs up the existing `data/.env` to `.backups/{UTC-stamp}/`
-before overwriting.
+The web app uses the new key at once; the pipeline uses it from its next
+scheduled run. No restart is needed. Saving keys does not back up the old
+`data/.env` — keep the old key at the provider until the new one works.
 
 **Option B — SSH (operator-side):**
 
