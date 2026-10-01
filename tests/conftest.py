@@ -7,6 +7,7 @@ each test so a test's config edits don't leak into the next test.
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from pathlib import Path
 
@@ -44,6 +45,38 @@ def init_test_db(db_path: Path) -> None:
         conn.close()
 
 
+def seed_stored_keys(
+    db_path: Path,
+    *,
+    openrouter: str | None = None,
+    rapidapi: str | None = None,
+    gemini: str | None = None,
+) -> str:
+    """Add an ``onboarding_sessions`` row holding API keys in the legacy key columns.
+
+    findajob no longer writes these columns. Tests use this helper to build the
+    state an older version left behind (a live DB before the upgrade, or an old
+    backup). ``secure_delete`` is OFF, so a test can tell whether a later clear
+    really removed the bytes. Returns the new row's id.
+    """
+    from findajob.onboarding.session_store import create_session
+
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("PRAGMA secure_delete = OFF")
+        sid = create_session(conn)
+        conn.execute(
+            """UPDATE onboarding_sessions
+               SET user_openrouter_key = ?, user_rapidapi_key = ?, user_gemini_api_key = ?
+               WHERE id = ?""",
+            (openrouter, rapidapi, gemini, sid),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return sid
+
+
 @pytest.fixture(autouse=True)
 def _use_fixture_configs(monkeypatch):
     monkeypatch.setattr(config_loader, "_RULES_PATH", FIXTURES / "prefilter_rules.yaml")
@@ -73,3 +106,22 @@ def _no_live_update_check():
     update_check._cache["checked_at"] = update_check._now()
     update_check._cache["latest"] = None
     yield
+
+
+_API_KEY_ENV = ("OPENROUTER_API_KEY", "RAPIDAPI_KEY", "GEMINI_API_KEY")
+
+
+@pytest.fixture(autouse=True)
+def _isolate_api_key_env():
+    """Start every test with no API keys in ``os.environ``; restore the caller's afterwards.
+
+    Onboarding Step 1 writes the keys into ``os.environ`` and its gate reads them
+    there. Without this, a key set by one test, or exported in the developer's
+    shell, would change the result of another test.
+    """
+    saved = {name: os.environ.pop(name, None) for name in _API_KEY_ENV}
+    yield
+    for name, value in saved.items():
+        os.environ.pop(name, None)
+        if value is not None:
+            os.environ[name] = value
