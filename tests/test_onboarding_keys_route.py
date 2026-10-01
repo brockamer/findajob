@@ -182,6 +182,19 @@ def test_index_with_no_keys_renders_empty_form(client: TestClient) -> None:
     assert "Save your API keys above before continuing" in r.text
 
 
+def test_index_with_placeholder_openrouter_value_renders_empty_form(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The Docker install seeds data/.env from data/.env.example, which holds a
+    # placeholder; compose loads it into the web process. It is not a saved key.
+    monkeypatch.setenv("OPENROUTER_API_KEY", "your_key_here")
+    r = client.get("/onboarding/")
+    assert r.status_code == 200
+    assert 'name="openrouter_api_key"' in r.text
+    assert "***here" not in r.text
+    assert "Save your API keys above before continuing" in r.text
+
+
 def test_index_with_keys_in_environment_shows_keys_on_file(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-from-env-AB12")
     monkeypatch.setenv("RAPIDAPI_KEY", "rapid-from-env-CD34")

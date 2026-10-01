@@ -304,6 +304,21 @@ def test_start_503_and_no_row_without_key(client: TestClient, base_root: Path) -
         conn.close()
 
 
+def test_start_503_and_no_row_with_placeholder_key(
+    client: TestClient, base_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # data/.env.example's placeholder reaches the process environment on a fresh
+    # Docker install; it must not count as a saved key.
+    monkeypatch.setenv("OPENROUTER_API_KEY", "your_key_here")
+    resp = client.post("/onboarding/interview/start")
+    assert resp.status_code == 503
+    conn = sqlite3.connect(base_root / "data" / "pipeline.db")
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM onboarding_sessions").fetchone()[0] == 0
+    finally:
+        conn.close()
+
+
 # ── /turn ─────────────────────────────────────────────────────────────────
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from pathlib import Path
 
@@ -89,25 +90,22 @@ def test_tools_page_links_to_onboarding_rerun(client: TestClient) -> None:
 
 @pytest.fixture()
 def client_with_credentials_only_session(tmp_path: Path) -> TestClient:
-    """Client whose DB holds a credentials-only session (history=[]) but no
-    chat turns.  This is the exact post-Step-1 state that triggered the
-    resume-banner false positive (#401 PR B Task 1).
+    """Client with a saved OpenRouter key and an empty-history session row.
+
+    That is the state after the user clicks Start but never sends a chat turn:
+    ``/onboarding/interview/start`` creates the session row, and the key comes
+    from the environment (the autouse ``_isolate_api_key_env`` fixture restores
+    it). The resume-banner false positive (#401 PR B Task 1) needed this state.
     """
+    os.environ["OPENROUTER_API_KEY"] = "sk-or-v1-fake-tester-key-for-test"
     db_path = tmp_path / "pipeline.db"
     _build_pipeline_db(db_path)
-    # Insert a credentials-only session row WITH its user credential
-    # already set. Under the M5 migration runner, all schema columns
-    # exist by the time create_app runs, so we can write the row in
-    # one shot rather than the prior two-phase pattern (insert row,
-    # then UPDATE the column post-create_app).
     conn = sqlite3.connect(db_path)
     conn.execute(
         """INSERT INTO onboarding_sessions
-               (id, history_json, captured_blocks_json, started_at, last_turn_at,
-                user_openrouter_key)
+               (id, history_json, captured_blocks_json, started_at, last_turn_at)
            VALUES ('cred-only-session', '[]', '{}',
-                   datetime('now'), datetime('now'),
-                   'sk-or-v1-fake-tester-key-for-test')"""
+                   datetime('now'), datetime('now'))"""
     )
     conn.commit()
     conn.close()
@@ -123,12 +121,13 @@ def client_with_credentials_only_session(tmp_path: Path) -> TestClient:
 def test_credentials_only_session_does_not_trigger_resume_banner(
     client_with_credentials_only_session: TestClient,
 ) -> None:
-    """A credentials-only session (history=[]) must NOT show the resume banner.
+    """An empty-history session row must NOT show the resume banner.
 
-    Bug: _active_session_for_index returned the credentials-only row created by
-    POST /onboarding/keys because find_active matched it (no completed_at, recent
-    last_turn_at).  The fix adds a post-find_active guard: if history is empty,
-    treat it as no active session.
+    Bug: _active_session_for_index returned a session row with no chat turns
+    because find_active matched it (no completed_at, recent last_turn_at).  The
+    fix adds a post-find_active guard: if history is empty, treat it as no
+    active session.  A key is saved in the fixture so the capability gate passes
+    and this guard is what the test exercises.
     """
     resp = client_with_credentials_only_session.get("/onboarding/")
     assert resp.status_code == 200

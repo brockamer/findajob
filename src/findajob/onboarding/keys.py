@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 
 from findajob.env_file import set_vars
+from findajob.onboarding.key_validation import validate_openrouter_format
 
 ENV_RELPATH = "data/.env"
 OPENROUTER = "OPENROUTER_API_KEY"
@@ -48,5 +49,14 @@ def _env(name: str) -> str:
 
 
 def current_keys() -> tuple[str, str, str]:
-    """Return ``(openrouter, rapidapi, gemini)`` from the environment; ``""`` when unset."""
-    return (_env(OPENROUTER), _env(RAPIDAPI), _env(GEMINI))
+    """Return ``(openrouter, rapidapi, gemini)`` from the environment; ``""`` when unset.
+
+    An OpenRouter value that is not a well-formed key counts as unset.
+    ``data/.env.example`` ships ``OPENROUTER_API_KEY=your_key_here`` and the
+    Docker install seeds ``data/.env`` from it, so a fresh instance can start
+    with that placeholder in its environment.
+    """
+    openrouter = _env(OPENROUTER)
+    if not validate_openrouter_format(openrouter)[0]:
+        openrouter = ""
+    return (openrouter, _env(RAPIDAPI), _env(GEMINI))

@@ -27,6 +27,18 @@ def test_current_keys_empty_when_unset() -> None:
     assert current_keys() == ("", "", "")
 
 
+def test_current_keys_treats_placeholder_openrouter_value_as_unset() -> None:
+    # data/.env.example ships OPENROUTER_API_KEY=your_key_here and the Docker
+    # install seeds data/.env from it, so the web process can start with it.
+    os.environ["OPENROUTER_API_KEY"] = "your_key_here"
+    assert current_keys()[0] == ""
+
+
+def test_current_keys_returns_well_formed_openrouter_value_unchanged() -> None:
+    os.environ["OPENROUTER_API_KEY"] = "sk-or-v1-abcdef123456"
+    assert current_keys()[0] == "sk-or-v1-abcdef123456"
+
+
 def test_save_creates_env_file_0600_and_sets_environ(base: Path) -> None:
     assert not _env_file(base).exists()
     save_keys(base, openrouter_api_key=" sk-or-v1-abc ", rapidapi_key="rapid123", gemini_api_key="gem456")
