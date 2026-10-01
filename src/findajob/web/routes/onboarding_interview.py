@@ -5,16 +5,17 @@ surface so non-technical users can complete onboarding without leaving
 findajob's UI.
 
 Routes always register (#339); the in-app affordance is gated at runtime
-on user credentials being collected (Step 1 of /onboarding/). When no
-credentials are present the routes return 503 with an actionable error
-pointing the user back to /onboarding/ Step 1.
+on an OpenRouter key being saved (Step 1 of /onboarding/ writes it to
+``data/.env``). When no key is saved the routes return 503 with an
+actionable error pointing the user back to /onboarding/ Step 1.
 
 Cross-task constraints (from #336 Session 2026-05-01):
 - Emission detection runs against the cumulative assistant transcript on every
   turn, driven by :data:`findajob.onboarding.parser.ALLOWED_FILENAMES` (NEVER
   hardcoded counts) so #212 / #283 changes land cleanly.
-- Finalize reads the user's OpenRouter key from collected credentials when
-  available (#339); the form-supplied key is a legacy safety net only.
+- Finalize reads the OpenRouter key saved in this instance's ``data/.env``
+  (the process environment) when available (#339); the form-supplied key is
+  a legacy safety net only.
 """
 
 from __future__ import annotations
@@ -226,7 +227,7 @@ def _render_chat(
 
 @router.post("/onboarding/interview/start", response_model=None)
 def start_interview(request: Request) -> RedirectResponse:
-    """Promote the credentials-only session into an interview, redirect to chat.
+    """Create (or reuse) the interview session, redirect to chat.
 
     #755: the greeting LLM call is deferred to ``/turn-stream`` — auto-fired
     by the chat page on load. ``/start`` is now a fast session-resolve + 303
@@ -234,7 +235,9 @@ def start_interview(request: Request) -> RedirectResponse:
     generated the first assistant message (~25-28s cold-model latency).
 
     Step 1 (API-key collection at ``/onboarding/keys``) is still mandatory:
-    if no OpenRouter key is saved, 503 back to /onboarding/.
+    the OpenRouter key comes from this instance's ``data/.env`` / environment,
+    and if none is saved, 503 back to /onboarding/. Start reuses the active
+    session when one exists and creates one otherwise.
     """
     conn = _conn(request)
     try:

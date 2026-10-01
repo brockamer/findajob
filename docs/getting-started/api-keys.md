@@ -182,7 +182,7 @@ To rotate any key:
 
 1. Generate a new key at the provider (using the steps above).
 2. Visit `/onboarding/` on your findajob instance and click **Change keys** in Step 1.
-3. Paste the new values and click **Save keys**. findajob writes it to
+3. Paste the new values and click **Save keys**. findajob writes them to
    `data/.env`, readable only by findajob. An optional field you leave
    blank keeps its saved value.
 

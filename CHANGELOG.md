@@ -26,11 +26,7 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ### Changed
 
-- Onboarding Step 1 saves the API keys to `data/.env` (atomic, owner-only)
-  and uses them at once, instead of holding them on the interview session
-  until finalize. Keys already in the container's environment show as
-  saved; the separate "Use detected keys" button is gone. "Change keys"
-  shows the empty form and keeps the saved keys until new ones are saved.
+- **Onboarding Step 1 saves the API keys to `data/.env` and uses them at once.** Until now the keys sat on the interview session in `pipeline.db` until finalize. Step 1 now writes them to `data/.env` (atomic, owner-only) and to the running process, and the web app and the scheduled pipeline read the same keys. Keys already in the container's environment show as saved, and the separate "Use detected keys" button is gone. A placeholder or otherwise malformed `OPENROUTER_API_KEY` (the `your_key_here` value in `data/.env.example`) counts as no key, so Step 2 stays disabled until a real key is saved. "Change keys" shows the empty form and keeps the saved keys until new ones are saved. The Start button now creates the interview session. No `migration-required`: no schema or config change, and no action for the operator.
 
 ### Removed
 
@@ -52,10 +48,7 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ### Security
 
-- API keys are no longer stored in `pipeline.db`. On upgrade, keys an
-  older version stored in `onboarding_sessions` are cleared from the
-  database file. An onboarding in progress during the upgrade must save
-  its keys again at Step 1.
+- **API keys are no longer stored in `pipeline.db`.** Older versions kept the keys typed at onboarding Step 1 in the `onboarding_sessions` table. They now live only in `data/.env`. On upgrade, any keys an older version stored are cleared from the database file automatically at the next container start or restore; there is no manual step. An onboarding in progress during the upgrade must save its keys again at Step 1. No `migration-required`: no schema or config change, and no manual step.
 
 ## [0.35.0] — 2026-09-27
 

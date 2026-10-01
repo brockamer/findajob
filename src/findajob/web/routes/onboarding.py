@@ -95,10 +95,11 @@ def _active_session_for_index(request: Request) -> Session | None:
         return None
     try:
         active = find_active(conn)
-        # A credentials-only session row (created by POST /onboarding/keys)
-        # satisfies find_active's filter (no completed_at, recent last_turn_at)
-        # but has history=[]. The resume banner should only fire when the user
-        # has actually started chatting.
+        # A session row the user created by clicking Start
+        # (/onboarding/interview/start) but never chatted in satisfies
+        # find_active's filter (no completed_at, recent last_turn_at) but has
+        # history=[]. The resume banner should only fire when the user has
+        # actually started chatting.
         if active is not None and not active.history:
             active = None
         return active
