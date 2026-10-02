@@ -2,7 +2,7 @@
 
 > **New to findajob?** Start at [`../usage.md`](../usage.md). This page is the operator reference for running the stack by hand — triage, sync, prep, notifications — from a shell.
 
-Day-to-day operation of the pipeline. The `ghcr.io/brockamer/findajob` image runs supercronic + uvicorn co-process inside one container. Setup: [`install-docker.md`](install-docker.md). For cloud deployment on Fly.io — one Fly app per tenant, image runs unchanged — see [`fly-deploy.md`](fly-deploy.md).
+Day-to-day operation of the pipeline. The `ghcr.io/brockamer/findajob` image runs supercronic + uvicorn co-process inside one container. Setup: [`install-docker.md`](install-docker.md). Running an instance for someone else: [`data-handling.md`](data-handling.md). For cloud deployment on Fly.io — one Fly app per tenant, image runs unchanged — see [`fly-deploy.md`](fly-deploy.md).
 
 **Command forms:**
 - Docker: `docker compose exec scheduler python3 scripts/<script>.py`

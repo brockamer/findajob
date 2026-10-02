@@ -115,6 +115,7 @@ def client(tmp_path: Path) -> TestClient:
     (docs / "operations" / "config-reference.md").write_text(CONFIG_REFERENCE_MD)
     (docs / "operations" / "README.md").write_text(OPERATIONS_README_MD)
     (docs / "operations" / "internet-exposure.md").write_text(OPERATIONS_INTERNET_EXPOSURE_MD)
+    (docs / "operations" / "data-handling.md").write_text("# Data handling for operator-run instances\n\nBody.\n")
 
     return TestClient(create_app(companies_root=companies, db_path=db, base_root=tmp_path, image_root=tmp_path))
 
@@ -185,6 +186,12 @@ def test_operations_readme_renders(client: TestClient) -> None:
     r = client.get("/docs/operations")
     assert r.status_code == 200
     assert ">Operations</h1>" in r.text
+
+
+def test_data_handling_subpage_renders(client: TestClient) -> None:
+    r = client.get("/docs/operations/data-handling")
+    assert r.status_code == 200
+    assert "Data handling for operator-run instances" in r.text
 
 
 def test_internet_exposure_subpage_renders(client: TestClient) -> None:

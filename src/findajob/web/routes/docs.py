@@ -38,6 +38,7 @@ _PAGES: dict[str, str] = {
     "operations/config-reference": "operations/config-reference.md",
     "operations/internet-exposure": "operations/internet-exposure.md",
     "operations/restore": "operations/restore.md",
+    "operations/data-handling": "operations/data-handling.md",
 }
 
 _SEQUENCE: dict[str, str] = {
