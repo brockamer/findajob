@@ -32,21 +32,24 @@ newlines, and caps the result at 32,000 characters (~8,000 tokens). The combined
 text is injected into the cover letter and outreach prompts as a `VOICE SAMPLES:`
 section under explicit "use for style only, not topic" guard rails.
 
-## Onboarding flow handles this for you
+## Onboarding flow handles this for candidates
 
-If you went through the `/onboarding/` interview, you were prompted in Phase 3f
-to paste long-form prose. The interview emits a `voice-samples.md` block; the
-paste-back injector runs it through a structural-cleaning pass (strips markdown
-headers, image tags, link syntax, footnotes, code fences, etc. without altering
-prose) plus an Opus 4.8 PII-generalization pass (replaces specific dates, named
-third parties, named places, named institutions with generic equivalents while
-preserving voice). The result lands here as `voice-samples.md`. To re-trigger,
-visit `/onboarding/?mode=rerun`.
+If a candidate goes through the `/onboarding/` interview, they are prompted in
+Phase 3f to paste long-form prose. The interview emits a `voice-samples.md`
+block; the paste-back injector runs it through a structural-cleaning pass
+(strips markdown headers, image tags, link syntax, footnotes, code fences,
+etc. without altering prose) plus an Opus 4.8 PII-generalization pass (replaces
+specific dates, named third parties, named places, named institutions with
+generic equivalents while preserving voice). The result lands here as
+`voice-samples.md`. To re-trigger, the candidate visits
+`/onboarding/?mode=rerun`.
 
 ## Manual addition
 
-If you didn't go through onboarding, or want to add additional samples, drop
-files here directly. The loader picks them up on the next prep run.
+If a candidate didn't go through onboarding, or you want to add additional
+samples, place files in this directory. In the Docker deployment, copy them
+into the running container (e.g. via `docker compose exec` or a bound volume);
+the loader picks them up on the next prep run.
 
 ## Naming
 
@@ -62,4 +65,5 @@ ignored by the loader.
 This directory is gitignored. **Do not commit writing samples.** They contain
 personal voice, employer names, and context that should not be public.
 
-Add your files here manually after cloning the repo.
+Place files here through your Docker volume mount or `docker compose exec`,
+not by editing the source tree.
