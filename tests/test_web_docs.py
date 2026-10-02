@@ -187,6 +187,12 @@ def test_operations_readme_renders(client: TestClient) -> None:
     assert ">Operations</h1>" in r.text
 
 
+def test_data_handling_subpage_renders(client: TestClient) -> None:
+    r = client.get("/docs/operations/data-handling")
+    assert r.status_code == 200
+    assert "Data handling for operator-run instances" in r.text
+
+
 def test_internet_exposure_subpage_renders(client: TestClient) -> None:
     """#327: pattern doc reachable in-app under operations/ via the docs viewer's slug allowlist."""
     r = client.get("/docs/operations/internet-exposure")
