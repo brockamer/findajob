@@ -88,7 +88,9 @@ findajob is a real, daily-driven system, and the codebase is a worked example of
 
 ## Privacy
 
-The repo contains zero personal data. All candidate content — resume, profile, writing samples, API keys — lives in gitignored paths populated from `.example` templates, and a pre-commit hook blocks PII you accidentally try to commit. Your materials stay in your own stack's storage; the only outbound calls are to the AI providers you configure.
+The repo contains no personal data. Candidate content lives in the stack's own `state/` directory, which is gitignored. Some of it comes from `.example` templates, such as `candidate_context/profile.md.example`. Onboarding writes the rest, such as the master resume. The pre-commit hook that blocks PII is an opt-in install for each clone; see [`CONTRIBUTING.md`](CONTRIBUTING.md).
+
+An instance calls only the services you configure: the AI provider through OpenRouter, RapidAPI for job search, Gmail over IMAP if you connect it, ntfy.sh for push notifications, and Google Gemini for podcast audio if you set a key. If you run an instance for someone else, read [Data handling for operator-run instances](docs/operations/data-handling.md).
 
 - **[Issues](https://github.com/brockamer/findajob/issues)** — file a bug, request a feature, or ask a question
 - **Security** — please don't file public issues for security bugs; see [`SECURITY.md`](SECURITY.md)
