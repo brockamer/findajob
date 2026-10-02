@@ -1,11 +1,10 @@
 <!--
 Thanks for sending a PR. A few notes before you submit:
 
-- See CONTRIBUTING.md for the full contributor guide (dev setup, commit conventions,
+- See AGENTS.md for the full contributor guide (dev setup, commit conventions,
   architectural invariants).
-- For substantive changes, please file an issue first so we can align on shape.
-- Run `uv run pytest`, `uv run ruff check src/ tests/`, and
-  `uv run ruff format --check src/ tests/` before opening the PR.
+- Run `uv run ruff check src/ tests/`, `uv run ruff format --check src/ tests/`,
+  and `uv run pytest` before opening the PR.
 -->
 
 ## Summary
@@ -29,6 +28,10 @@ Thanks for sending a PR. A few notes before you submit:
 If this PR adds/removes a schema column, changes config layout, modifies the
 compose template, edits crontab/scheduled-jobs.yaml, or changes bind mounts,
 mark below — release notes will surface the PR for external operators.
+
+Typical migration triggers: new/removed database column, changed environment
+variable contract, altered docker-compose service/volume, updated cron schedule,
+or modified bind mount path.
 -->
 
 - [ ] **Migration required** — schema, config, compose, crontab, or mount change
