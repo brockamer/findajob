@@ -57,7 +57,9 @@ jobs:
           PATTERNS: ${{ secrets.PII_PATTERNS_REGEX }}
           # A missing head repository (a deleted fork) counts as a fork.
           IS_FORK_PR: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
-          IS_DEPENDABOT: ${{ github.actor == 'dependabot[bot]' }}
+          # The pull request's author covers a maintainer's re-run of a Dependabot
+          # run, where the actor is the maintainer but the secret is still absent.
+          IS_DEPENDABOT: ${{ github.actor == 'dependabot[bot]' || github.event.pull_request.user.login == 'dependabot[bot]' }}
         run: |
           set -euo pipefail
           if [ -z "${PATTERNS:-}" ]; then

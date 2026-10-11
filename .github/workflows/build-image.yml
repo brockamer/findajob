@@ -88,7 +88,9 @@ jobs:
           push: ${{ env.IS_FORK_PR != 'true' }}
           tags: ${{ steps.tags.outputs.tags }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # A fork's cache write is scoped to its own pull request ref. If GitHub
+          # refuses it, do not fail a build that has nothing to push.
+          cache-to: ${{ env.IS_FORK_PR == 'true' && 'type=gha,mode=max,ignore-error=true' || 'type=gha,mode=max' }}
           build-args: |
             BUILD_SHA=${{ github.sha }}
           labels: |
