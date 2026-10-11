@@ -287,8 +287,11 @@ Two details in that recipe matter:
   matches. The last `sed` expression turns `\\` into `\`; a pattern written `\.` in the
   hook passes through unchanged.
 
-**When unset:** the workflow logs a warning and passes (so external/fork PRs that
-can't access secrets aren't blocked — they shouldn't have operator PII anyway).
+**When unset:** on a same-repository pull request the workflow fails — a missing secret
+there is a misconfiguration. GitHub passes no Actions secrets to a pull request from a
+fork or to a run Dependabot triggers; for those the workflow passes, writes a job summary
+saying the scan did not run, and the maintainer scans the diff locally before merging
+([`docs/maintainers/fork-pull-requests.md`](../maintainers/fork-pull-requests.md), #1223).
 
 **When set and any pattern matches:** the workflow fails the PR check; the matched
 pattern is printed in the run log (the matched line itself is NOT printed to avoid

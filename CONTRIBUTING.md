@@ -38,7 +38,7 @@ cp docs/getting-started/pre-commit-hook.example.sh .git/hooks/pre-commit
 chmod +x .git/hooks/pre-commit
 ```
 
-CI runs an equivalent scan (`.github/workflows/pii-scan.yml`). Commits that pass the local hook will pass CI.
+CI runs an equivalent scan (`.github/workflows/pii-scan.yml`). Commits that pass the local hook will pass CI. On a pull request from a fork the CI scan cannot run (no secrets), so the maintainer runs it locally — see [`docs/maintainers/fork-pull-requests.md`](docs/maintainers/fork-pull-requests.md).
 
 ---
 
@@ -70,3 +70,5 @@ git fetch && git checkout -b feat/<n>-<description> origin/main
 - [ ] Docs updated in the same PR if a documented surface changed.
 - [ ] `### Migration required` entry in CHANGELOG if applicable.
 - [ ] `migration-required` label added to the PR if applicable. See [`docs/maintainers/release-process.md`](docs/maintainers/release-process.md) for criteria.
+
+**Pull requests from forks** are welcome. Their CI builds the image but pushes no `pr-<N>` tag, and the PII scan cannot run, because GitHub gives a fork's pull request no write token and no secrets. The maintainer scans the diff locally before merging: see [`docs/maintainers/fork-pull-requests.md`](docs/maintainers/fork-pull-requests.md).
