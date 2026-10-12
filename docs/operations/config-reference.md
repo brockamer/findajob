@@ -298,7 +298,11 @@ pattern is printed in the run log (the matched line itself is NOT printed to avo
 leaking the PII to public CI logs). Find the line locally, fix, push.
 
 **Updating patterns:** when you add new PII patterns to the local hook, re-run
-the install command above to push the updated list to the secret.
+the install command above to push the updated list to the secret. If you also keep a
+Dependabot copy so that Dependabot pull requests are scanned in CI (see
+[`fork-pull-requests.md`](../maintainers/fork-pull-requests.md)), update it at the same
+time: run the same recipe with `gh secret set PII_PATTERNS_REGEX --app dependabot`.
+The two copies are separate secrets, and nothing keeps them in step.
 
 **Private operator patterns (beyond standard PII).** You may keep additional private
 patterns operator-side — for example, personal workflow-discipline terms you never want
