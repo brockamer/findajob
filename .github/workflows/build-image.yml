@@ -22,6 +22,15 @@ concurrency:
 jobs:
   build-push:
     runs-on: ubuntu-latest
+    env:
+      # GitHub gives a fork's pull request a read-only GITHUB_TOKEN whatever the
+      # `permissions:` block above says, so a push to GHCR fails. A fork's pull
+      # request still builds the image (the Dockerfile stays tested) and pushes
+      # nothing (#1223). A missing head repository (a deleted fork) counts as a
+      # fork. Do not move this workflow to `pull_request_target` to get a write
+      # token: that event runs the contributor's code with this repository's
+      # secrets.
+      IS_FORK_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
@@ -36,6 +45,7 @@ jobs:
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
       - name: Log in to GHCR
+        if: env.IS_FORK_PR != 'true'
         uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
         with:
           registry: ghcr.io
@@ -64,17 +74,23 @@ jobs:
             TAGS="${IMAGE}:pr-${PR_NUMBER}"
           fi
           echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
-          echo "Will push: ${TAGS}"
+          if [[ "${IS_FORK_PR}" == "true" ]]; then
+            echo "Pull request from a fork: build only, push nothing."
+          else
+            echo "Will push: ${TAGS}"
+          fi
 
       - name: Build and push
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           platforms: linux/amd64,linux/arm64
-          push: true
+          push: ${{ env.IS_FORK_PR != 'true' }}
           tags: ${{ steps.tags.outputs.tags }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # A fork's cache write is scoped to its own pull request ref. If GitHub
+          # refuses it, do not fail a build that has nothing to push.
+          cache-to: ${{ env.IS_FORK_PR == 'true' && 'type=gha,mode=max,ignore-error=true' || 'type=gha,mode=max' }}
           build-args: |
             BUILD_SHA=${{ github.sha }}
           labels: |

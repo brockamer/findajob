@@ -6,17 +6,22 @@ name: PII Scan
 # Secret, so a defect in the local hook doesn't leave us unprotected.
 #
 # The secret PII_PATTERNS_REGEX holds one regex per line — same format as
-# the local hook's PATTERNS array (sans bash quoting). When unset (e.g. on
-# fork PRs that don't get repo secrets), the workflow logs a warning and
-# passes — failing closed on missing secrets would block external
-# contributions, and external contributors shouldn't have operator PII
-# anyway.
+# the local hook's PATTERNS array (sans bash quoting). GitHub does not pass
+# Actions secrets to a pull request from a fork, nor to a run that Dependabot
+# triggers. In those two cases the job passes, but its summary and a warning
+# say the scan did not run, and the maintainer scans the diff locally before
+# merging (docs/maintainers/fork-pull-requests.md, #1223). Failing them would
+# block every external contribution and every Dependabot bump. On any other
+# pull request a missing secret is a misconfiguration, so the job fails.
 #
-# Security note: the only ${{ }} interpolation in this file is
-# `${{ secrets.PII_PATTERNS_REGEX }}` which is passed via `env:` to the
-# shell rather than substituted into a run: command directly. No untrusted
-# input from event payloads (PR title/body/etc.) is used in any shell
-# command.
+# Do not move this workflow to `pull_request_target` to get the secret: that
+# event runs the contributor's code with this repository's secrets.
+#
+# Security note: the ${{ }} interpolations in this file are the secret and
+# two booleans computed from the event (fork / Dependabot). All three reach
+# the shell via `env:`, never substituted into a run: command. No untrusted
+# string from the event payload (PR title/body/branch name/etc.) is used in
+# any shell command.
 
 on:
   pull_request:
@@ -50,12 +55,39 @@ jobs:
       - name: Scan against PII patterns
         env:
           PATTERNS: ${{ secrets.PII_PATTERNS_REGEX }}
+          # A missing head repository (a deleted fork) counts as a fork.
+          IS_FORK_PR: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
+          # The pull request's author covers a maintainer's re-run of a Dependabot
+          # run, where the actor is the maintainer but the secret is still absent.
+          IS_DEPENDABOT: ${{ github.actor == 'dependabot[bot]' || github.event.pull_request.user.login == 'dependabot[bot]' }}
         run: |
           set -euo pipefail
           if [ -z "${PATTERNS:-}" ]; then
-            echo "::warning::PII_PATTERNS_REGEX secret not set — skipping scan."
-            echo "::warning::Install per docs/operations/config-reference.md or this guard is inert."
-            exit 0
+            if [ "$IS_FORK_PR" = "true" ] || [ "$IS_DEPENDABOT" = "true" ]; then
+              if [ "$IS_FORK_PR" = "true" ]; then
+                why="This pull request comes from a fork"
+              else
+                why="Dependabot triggered this run"
+              fi
+              echo "::warning::PII scan did not run: ${why}, and GitHub does not pass the PII_PATTERNS_REGEX secret to it."
+              echo "::warning::Before merging, scan the diff locally: docs/maintainers/fork-pull-requests.md"
+              {
+                echo "## PII scan did not run"
+                echo ""
+                echo "${why}, and GitHub does not pass the \`PII_PATTERNS_REGEX\` secret to it. This check is green, but **nothing was scanned**."
+                echo ""
+                echo "**Maintainer:** before merging, scan this pull request's diff with your local pre-commit hook. The steps are in \`docs/maintainers/fork-pull-requests.md\`."
+              } >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            echo "::error::PII_PATTERNS_REGEX secret is not set. A same-repository pull request must be scanned."
+            echo "::error::Install the secret per docs/operations/config-reference.md (CI-side defense)."
+            {
+              echo "## PII scan failed: secret missing"
+              echo ""
+              echo "The \`PII_PATTERNS_REGEX\` secret is not set, so this same-repository pull request could not be scanned. Install it per \`docs/operations/config-reference.md\`."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
           fi
 
           if [ ! -s /tmp/pr_added_lines.txt ]; then
