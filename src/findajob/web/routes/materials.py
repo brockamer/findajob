@@ -28,7 +28,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse
 
-from findajob.prep.briefing import read_briefing
+from findajob.prep.briefing import find_briefing, read_briefing
 from findajob.prep.docx_postprocess import _linkify_contact_info
 from findajob.prep.docx_render import render_md_to_docx
 from findajob.web.folder_resolver import resolve_folder
@@ -368,7 +368,7 @@ def folder_view(
             return RedirectResponse(url=f"/jobs/{fingerprint}/jd", status_code=303)
         raise HTTPException(status_code=404, detail="folder not found")
     row = db.execute(
-        "SELECT id, title, company, stage, stage_updated FROM jobs WHERE fingerprint = ?",
+        "SELECT id, title, company, stage, stage_updated, prep_folder_path FROM jobs WHERE fingerprint = ?",
         (fingerprint,),
     ).fetchone()
     title = row["title"] if row else ""
@@ -393,7 +393,15 @@ def folder_view(
 
     # Briefing-first gate (#691). Load reject_reasons only when the gate is
     # active so the folder view stays cheap for the other 99% of states.
-    is_briefing_gate = stage == BRIEFING_GATE_STAGE
+    # #1222: a scored row whose prep folder still holds a briefing was reset by
+    # the decision-window reaper; the dashboard links it here, so it gets the
+    # gate too (Continue resurfaces it first, see continue_prep_from_materials).
+    # Checked on prep_folder_path, not ``folder``: an unflagged synthetic row
+    # resolves to its speculative folder, which resurface_briefing cannot use.
+    prep_folder = row["prep_folder_path"] if row else None
+    is_briefing_gate = stage == BRIEFING_GATE_STAGE or (
+        stage == "scored" and bool(prep_folder) and find_briefing(prep_folder) is not None
+    )
     reject_reasons: tuple[str, ...] = ()
     if is_briefing_gate:
         from findajob.config_loader import load_reject_reasons
@@ -940,6 +948,7 @@ def continue_prep_from_materials(
     (mirrors ``regenerate_from_materials``'s ``?regen_error=queue_full``
     convention).
     """
+    from findajob.actions import resurface_briefing
     from findajob.spend_ceiling import check_launch_gate
     from findajob.web.routes.board_actions import _claim_prep_slot, _launch_prep_subprocess
 
@@ -955,7 +964,13 @@ def continue_prep_from_materials(
     if job["stage"] in ("prep_in_progress", "materials_drafted"):
         return RedirectResponse(url=f"/materials/{fingerprint}", status_code=303)
 
-    if job["stage"] != "briefing_ready":
+    # #1222: a scored row whose folder still holds a briefing goes back to
+    # briefing_ready first (its own audit row), then is claimed like any other.
+    stage = job["stage"]
+    if stage == "scored" and resurface_briefing(db, job["id"]):
+        stage = "briefing_ready"
+
+    if stage != "briefing_ready":
         raise HTTPException(
             status_code=409,
             detail="Continue-prep only valid for jobs at stage='briefing_ready'",
@@ -969,7 +984,7 @@ def continue_prep_from_materials(
 
     # Atomic claim from briefing_ready (#957) — cap enforced in the same statement,
     # replacing the old _prep_in_flight read + separate UPDATE.
-    claim = _claim_prep_slot(db, job["id"], from_stages=("briefing_ready",), audit_old_value=job["stage"])
+    claim = _claim_prep_slot(db, job["id"], from_stages=("briefing_ready",), audit_old_value=stage)
     if claim == "queue_full":
         return RedirectResponse(url="/materials/?continue_prep_error=queue_full", status_code=303)
     if claim == "invalid_stage":

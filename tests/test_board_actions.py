@@ -210,6 +210,125 @@ class TestPrep:
         assert _fetch_stage(client, "fp_scored") == "prep_in_progress"
 
 
+def _seed_expired_briefing(
+    client: TestClient,
+    fingerprint: str = "fp_expired",
+    *,
+    job_id: str = "id_expired",
+    briefing: bool = True,
+    folder_exists: bool = True,
+) -> Path:
+    """A scored row whose briefing outlived the decision window (#1222).
+
+    The watchdog reset it from briefing_ready to scored and kept
+    prep_folder_path, so the folder (and its briefing) is still on disk.
+    """
+    folder = client._tmp_path / "companies" / "Expired_Co_Senior_Ops_2026-10-01_120000"
+    if folder_exists:
+        folder.mkdir()
+        if briefing:
+            (folder / "Cand Briefing - Expired Co - Senior Ops - 20261001-120000.md").write_text("# Briefing\n")
+    conn = sqlite3.connect(client._db_path)
+    conn.execute(
+        "INSERT INTO jobs (id, fingerprint, url, title, company, source, stage, relevance_score, "
+        "prep_folder_path, fit_score, probability_score) "
+        "VALUES (?, ?, 'https://example.com/job', 'Senior Ops', 'Expired Co', 'test', 'scored', 8, ?, 72, 60)",
+        (job_id, fingerprint, str(folder)),
+    )
+    conn.commit()
+    conn.close()
+    return folder
+
+
+def _fetch_job(client: TestClient, fingerprint: str) -> sqlite3.Row:
+    conn = sqlite3.connect(client._db_path)
+    conn.row_factory = sqlite3.Row
+    row = conn.execute("SELECT * FROM jobs WHERE fingerprint=?", (fingerprint,)).fetchone()
+    conn.close()
+    return row
+
+
+class TestPrepResurfacesExistingBriefing:
+    """#1222: re-flagging a row whose prep folder still holds a briefing must
+    bring that briefing back, not run (and bill) Phase A again."""
+
+    def test_reflag_resurfaces_briefing_without_launching_phase_a(self, client: TestClient, popen_calls):
+        folder = _seed_expired_briefing(client)
+
+        response = client.post("/board/jobs/fp_expired/prep")
+
+        assert response.status_code == 200
+        row = _fetch_job(client, "fp_expired")
+        assert row["stage"] == "briefing_ready"
+        assert row["prep_folder_path"] == str(folder)
+        assert row["apply_flag"] == 1
+        assert [c for c in popen_calls if "prep_application.py" in c[1]] == []
+        assert _fetch_background_tasks(client, "id_expired") == []
+        assert _fetch_audit(client, "fp_expired") == [("stage", "scored", "briefing_ready")]
+        # The swapped-in row links the briefing, like any briefing_ready row.
+        assert 'href="/materials/fp_expired"' in response.text
+
+    def test_reflag_logs_resurface_event(self, client: TestClient, popen_calls):
+        _seed_expired_briefing(client)
+
+        client.post("/board/jobs/fp_expired/prep")
+
+        events = (client._tmp_path / "events.jsonl").read_text()
+        assert '"briefing_resurfaced"' in events
+        assert '"web_prep_dispatched"' not in events
+
+    def test_reflag_resurfaces_even_when_spend_ceiling_reached(self, client: TestClient, popen_calls, monkeypatch):
+        """Resurfacing spends nothing, so the spend ceiling must not block it."""
+        from findajob.spend_ceiling import LaunchGateRefusal
+        from findajob.web.routes import board_actions
+
+        monkeypatch.setattr(
+            board_actions,
+            "check_launch_gate",
+            lambda _db: LaunchGateRefusal(ceiling_usd=50.0, current_sum_usd=51.23),
+        )
+        _seed_expired_briefing(client)
+
+        response = client.post("/board/jobs/fp_expired/prep")
+
+        assert response.status_code == 200
+        assert _fetch_stage(client, "fp_expired") == "briefing_ready"
+
+    def test_folder_without_briefing_runs_phase_a(self, client: TestClient, popen_calls):
+        _seed_expired_briefing(client, briefing=False)
+
+        client.post("/board/jobs/fp_expired/prep")
+
+        assert _fetch_stage(client, "fp_expired") == "prep_in_progress"
+        prep_calls = [c for c in popen_calls if "prep_application.py" in c[1]]
+        assert len(prep_calls) == 1
+        assert "--phase=a" in prep_calls[0]
+
+    def test_missing_folder_runs_phase_a(self, client: TestClient, popen_calls):
+        _seed_expired_briefing(client, folder_exists=False)
+
+        client.post("/board/jobs/fp_expired/prep")
+
+        assert _fetch_stage(client, "fp_expired") == "prep_in_progress"
+        assert len([c for c in popen_calls if "prep_application.py" in c[1]]) == 1
+
+
+def test_resurface_briefing_refuses_rows_not_in_from_stage(client: TestClient):
+    """The guarded UPDATE only moves a row from the named stage."""
+    from findajob import actions
+
+    _seed_expired_briefing(client)
+    conn = sqlite3.connect(client._db_path)
+    conn.row_factory = sqlite3.Row
+    conn.execute("UPDATE jobs SET stage='applied' WHERE id='id_expired'")
+    conn.commit()
+
+    assert actions.resurface_briefing(conn, "id_expired") is False
+    conn.close()
+    assert _fetch_stage(client, "fp_expired") == "applied"
+    assert _fetch_audit(client, "fp_expired") == []
+
+
 def test_router_registered_on_app(client: TestClient):
     """The new board_actions router must be included in the aggregated router."""
     # Smoke-check the aggregated router has the new path registered.

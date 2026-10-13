@@ -92,6 +92,14 @@ jq -c 'select(.event | test("prep"))' state/logs/pipeline.jsonl | tail -10
 
 Common causes: Anthropic API rate limit, Perplexity rate limit, pandoc conversion failure on the `.docx` step. Pandoc / `find_contacts.py` subprocess failures roll the stage back to `scored` immediately and emit `prep_subprocess_failed` (#495); the prep folder is preserved with a `.failed_subprocess` sentinel containing the cmd, returncode, and stderr tail for inspection.
 
+### "A job shows 'Briefing ready (N days)' but is back in the scored list"
+
+After Flag for Prep, a briefing waits for you to choose Continue prep or Reject. If you do not choose within the decision window (14 days by default, set by `FINDAJOB_BRIEFING_READY_WINDOW_DAYS` in `data/.env`; `0` turns it off), the watchdog returns the job to `scored`. The briefing is kept. Open it from the dashboard link and choose Continue prep or Reject there, or use Flag for Prep on the dashboard: either one brings the briefing back without running the research again or paying for it twice.
+
+```bash
+jq -c 'select(.event == "briefing_ready_stale_reset" or .event == "briefing_resurfaced")' state/logs/pipeline.jsonl | tail -5
+```
+
 ### "The `/ingest/` web form isn't saving jobs"
 
 Web form at `http://<your-host>:${FINDAJOB_MATERIALS_PORT}/ingest/` is the primary manual-ingest path.

@@ -19,6 +19,7 @@ Resolution order:
 from __future__ import annotations
 
 import os
+import time
 from pathlib import Path
 
 
@@ -42,6 +43,26 @@ def find_briefing(prep_folder: str | os.PathLike[str]) -> Path | None:
     if bare.is_file():
         return bare
     return None
+
+
+def briefing_age_days(prep_folder: str | os.PathLike[str] | None) -> int | None:
+    """Whole days since the folder's briefing was last written, or None when
+    there is no briefing.
+
+    The dashboard's "Briefing ready (N days)" label (#1222). The age comes
+    from the briefing file, not ``jobs.stage_updated``: the decision-window
+    reset rewrites ``stage_updated``, so it would show the reset's age.
+    """
+    if not prep_folder:
+        return None
+    path = find_briefing(prep_folder)
+    if path is None:
+        return None
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        return None
+    return max(0, int((time.time() - mtime) // 86400))
 
 
 def read_briefing(prep_folder: str | os.PathLike[str]) -> str:

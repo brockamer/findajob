@@ -198,6 +198,13 @@ Materials viewer reflects new folder immediately (no sync required)
 `scripts/watchdog.py` (runs every 10 min): resets any job stuck in
 `prep_in_progress > 60 min` back to `scored` so the operator can re-flag.
 
+The same watchdog run also ends the briefing decision window: a job left at
+`briefing_ready` for longer than `FINDAJOB_BRIEFING_READY_WINDOW_DAYS` (default
+14; `0` turns this off) returns to `scored`. `prep_folder_path` is kept, so the
+dashboard still links the briefing, and Flag for Prep moves the job straight
+back to `briefing_ready` without running Phase A again
+(`findajob.actions.resurface_briefing`, #1222).
+
 If a pandoc or `find_contacts` subprocess fails (non-zero exit), the
 orchestrator immediately rolls stage back to `scored`, writes a
 `.failed_subprocess` sentinel into the prep folder (cmd / returncode /

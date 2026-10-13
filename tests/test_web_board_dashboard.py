@@ -257,3 +257,72 @@ def test_jd_viewer_404_for_unknown_fingerprint(tmp_path: Path) -> None:
 
     r = client.get("/jobs/nope/jd")
     assert r.status_code == 404
+
+
+# ── #1222: a briefing outlives the decision window ─────────────────────────
+
+
+@pytest.fixture
+def briefing_client(tmp_path: Path) -> TestClient:
+    """Rows around the briefing link: one reset to scored with its briefing
+    on disk, one reset whose folder is gone, one still briefing_ready."""
+    import os
+    from datetime import UTC, datetime, timedelta
+
+    db = tmp_path / "pipeline.db"
+    init_test_db(db)
+    companies = tmp_path / "companies"
+    companies.mkdir()
+
+    expired = companies / "Expired_Co_Ops_2026-10-01_120000"
+    expired.mkdir()
+    briefing = expired / "Cand Briefing - Expired Co - Ops - 20261001-120000.md"
+    briefing.write_text("# Briefing\n")
+    ten_days_ago = (datetime.now(UTC) - timedelta(days=10, hours=1)).timestamp()
+    os.utime(briefing, (ten_days_ago, ten_days_ago))
+
+    fresh = companies / "Fresh_Co_Ops_2026-10-13_120000"
+    fresh.mkdir()
+    (fresh / "Cand Briefing - Fresh Co - Ops - 20261013-120000.md").write_text("# Briefing\n")
+
+    reset_yesterday = (datetime.now(UTC) - timedelta(days=1)).isoformat()
+    conn = sqlite3.connect(db)
+    rows = [
+        ("jidE", "fpE", "Expired Co", "scored", str(expired)),
+        ("jidG", "fpG", "Gone Co", "scored", str(companies / "Gone_Co_Ops_2026-09-01_120000")),
+        ("jidF", "fpF", "Fresh Co", "briefing_ready", str(fresh)),
+    ]
+    for jid, fp, company, stage, folder in rows:
+        conn.execute(
+            "INSERT INTO jobs (id, fingerprint, url, title, company, source, stage, relevance_score, "
+            "prep_folder_path, stage_updated) VALUES (?, ?, 'https://example.com/j', 'Ops', ?, 'test', ?, 8, ?, ?)",
+            (jid, fp, company, stage, folder, reset_yesterday),
+        )
+    conn.commit()
+    conn.close()
+    mark_complete(tmp_path)
+    return TestClient(create_app(companies_root=companies, db_path=db, base_root=tmp_path))
+
+
+def test_scored_row_with_briefing_links_it_with_its_age(briefing_client: TestClient) -> None:
+    """The reset row must not look like a bare scored row: it links the
+    briefing, aged from the briefing file, not from the reset's stage_updated."""
+    r = briefing_client.get("/board/dashboard")
+
+    assert r.status_code == 200
+    assert 'href="/materials/fpE"' in r.text
+    assert "Briefing ready (10 days)" in r.text
+
+
+def test_scored_row_whose_folder_is_gone_shows_no_briefing_link(briefing_client: TestClient) -> None:
+    r = briefing_client.get("/board/dashboard")
+
+    assert 'data-fingerprint="fpG"' in r.text
+    assert 'href="/materials/fpG"' not in r.text
+
+
+def test_briefing_ready_row_shows_briefing_link_with_age(briefing_client: TestClient) -> None:
+    r = briefing_client.get("/board/dashboard")
+
+    assert 'href="/materials/fpF"' in r.text
+    assert "Briefing ready (today)" in r.text
