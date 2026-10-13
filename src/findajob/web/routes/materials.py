@@ -399,9 +399,10 @@ def folder_view(
     # Checked on prep_folder_path, not ``folder``: an unflagged synthetic row
     # resolves to its speculative folder, which resurface_briefing cannot use.
     prep_folder = row["prep_folder_path"] if row else None
-    is_briefing_gate = stage == BRIEFING_GATE_STAGE or (
-        stage == "scored" and bool(prep_folder) and find_briefing(prep_folder) is not None
-    )
+    reset_with_briefing = False
+    if stage == "scored" and prep_folder:
+        reset_with_briefing = find_briefing(prep_folder) is not None
+    is_briefing_gate = stage == BRIEFING_GATE_STAGE or reset_with_briefing
     reject_reasons: tuple[str, ...] = ()
     if is_briefing_gate:
         from findajob.config_loader import load_reject_reasons
