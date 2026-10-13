@@ -19,7 +19,7 @@ import subprocess
 import sys
 from datetime import UTC, datetime
 
-from findajob.actions import reset_prep_to_scored
+from findajob.actions import reset_prep_to_scored, resurface_briefing
 from findajob.audit import log_event, write_audit
 from findajob.background_tasks import writeback_subprocess
 from findajob.cliargs import positional_argv
@@ -206,6 +206,27 @@ def _run_prep_phase_a(company: str, title: str, url: str, job_id: str) -> None:
         log_event("prep_skipped_duplicate", company=company, title=title, job_id=job_id)
         print(f"PREP_SKIPPED: materials already drafted for {job_id}")
         return
+
+    # Resume, don't re-run (#1222): when the tracked folder already holds a
+    # briefing, Phase A's work is on disk. Launch paths that keep the folder —
+    # reactivate-and-prep of a job waitlisted after its briefing, a manual CLI
+    # run — land here. Runs before the quarantine and the new folder, so
+    # nothing is created, moved or billed. /regenerate clears the path first,
+    # so a requested fresh briefing still runs Phase A.
+    if existing and existing["stage"] == "prep_in_progress":
+        resume_conn = connect(DB_PATH, timeout=30)
+        try:
+            resumed = resurface_briefing(resume_conn, job_id, from_stage="prep_in_progress")
+        finally:
+            resume_conn.close()
+        if resumed:
+            ntfy_send(
+                f"Briefing ready: {company} — {title}",
+                existing["prep_folder_path"],
+                kind="prep_briefing_ready",
+            )
+            print(f"PREP_PHASE_A_RESUMED:{existing['prep_folder_path']}")
+            return
 
     # Sanitize company for filesystem safety (title already goes through abbrev_title)
     safe_company = re.sub(r"[^\w\s\-&.,]", "_", company).strip()

@@ -256,6 +256,111 @@ def test_phase_b_transitions_to_materials_drafted(isolated_base, mocked_orchestr
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# #1222 — Phase A resumes an existing briefing instead of re-running
+# ═══════════════════════════════════════════════════════════════════════════
+
+_PHASE_A_ROLES = ("company_researcher", "briefing_writer", "fit_analyst")
+
+
+def _seed_job_with_briefing(base: Path, *, briefing: bool = True) -> Path:
+    """A claimed (prep_in_progress) job whose prep folder already holds a
+    briefing — e.g. reactivate-and-prep of a job waitlisted after Phase A."""
+    folder = base / "companies" / "Acme_Lab_Services_Dir_Lab_2026-10-01_120000"
+    folder.mkdir()
+    if briefing:
+        (folder / "TST Briefing - Acme Lab Services - Director - 20261001-120000.md").write_text(FAKE_BRIEFING)
+    db_path = str(base / "data" / "pipeline.db")
+    _seed_job(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "UPDATE jobs SET prep_folder_path=?, fit_score=72, probability_score=60 WHERE id=?",
+        (str(folder), JOB_ID),
+    )
+    conn.commit()
+    conn.close()
+    return folder
+
+
+def _no_phase_a_llm(role: str, prompt: str, **kwargs) -> str:
+    if role in _PHASE_A_ROLES:
+        raise AssertionError(f"Phase A must not re-run {role} when a briefing exists")
+    return _fake_run_role(role, prompt, **kwargs)
+
+
+def _events(log_path: Path) -> list[dict]:
+    import json
+
+    if not log_path.exists():
+        return []
+    return [json.loads(line) for line in log_path.read_text().splitlines() if line.strip()]
+
+
+def test_phase_a_resumes_existing_briefing_without_rerunning(
+    isolated_base, mocked_orchestrator, isolate_event_log, monkeypatch
+) -> None:
+    import findajob.prep.orchestrator as orch
+
+    monkeypatch.setattr(orch, "run_role", _no_phase_a_llm)
+    sent: list[dict] = []
+    monkeypatch.setattr(orch, "ntfy_send", lambda *a, **kw: sent.append(kw))
+    folder = _seed_job_with_briefing(isolated_base)
+    db_path = str(isolated_base / "data" / "pipeline.db")
+
+    orch._run_prep_phase_a(COMPANY, TITLE, URL, JOB_ID)
+
+    row = _read_job(db_path)
+    assert row["stage"] == "briefing_ready"
+    assert row["prep_folder_path"] == str(folder)
+    assert row["fit_score"] == 72, "the stored Phase A scores must survive"
+    assert [p.name for p in (isolated_base / "companies").iterdir()] == [folder.name], "no new prep folder"
+    names = [e["event"] for e in _events(isolate_event_log)]
+    assert "briefing_resurfaced" in names
+    assert "prep_started" not in names
+    assert "prep_cost_projection" not in names
+    conn = sqlite3.connect(db_path)
+    audit = conn.execute("SELECT old_value, new_value FROM audit_log WHERE job_id=?", (JOB_ID,)).fetchall()
+    conn.close()
+    assert audit == [("prep_in_progress", "briefing_ready")]
+    assert [kw.get("kind") for kw in sent] == ["prep_briefing_ready"]
+
+
+def test_phase_a_without_briefing_in_folder_runs_normally(
+    isolated_base, mocked_orchestrator, isolate_event_log
+) -> None:
+    """A tracked folder with no briefing (e.g. a partial run) is not a resume point."""
+    from findajob.prep.orchestrator import _run_prep_phase_a
+
+    old = _seed_job_with_briefing(isolated_base, briefing=False)
+
+    _run_prep_phase_a(COMPANY, TITLE, URL, JOB_ID)
+
+    row = _read_job(str(isolated_base / "data" / "pipeline.db"))
+    assert row["stage"] == "briefing_ready"
+    assert row["prep_folder_path"] != str(old), "Phase A ran and wrote its own folder"
+    assert "prep_started" in [e["event"] for e in _events(isolate_event_log)]
+
+
+def test_full_chain_after_resume_drafts_materials_without_phase_a(
+    isolated_base, mocked_orchestrator, isolate_event_log, monkeypatch
+) -> None:
+    """reactivate-and-prep launches --phase=all; with a briefing on disk the
+    chain skips Phase A and Phase B still drafts the materials."""
+    import findajob.prep.orchestrator as orch
+
+    monkeypatch.setattr(orch, "run_role", _no_phase_a_llm)
+    folder = _seed_job_with_briefing(isolated_base)
+    db_path = str(isolated_base / "data" / "pipeline.db")
+    monkeypatch.setattr(orch.sys, "argv", ["prep_application.py", "--", COMPANY, TITLE, URL, JOB_ID])
+
+    orch._run_prep()
+
+    row = _read_job(db_path)
+    assert row["stage"] == "materials_drafted"
+    assert row["prep_folder_path"] == str(folder)
+    assert any("Resume" in p.name for p in folder.glob("*.md"))
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # Phase B failure path — resets to briefing_ready, NOT scored
 # ═══════════════════════════════════════════════════════════════════════════
 

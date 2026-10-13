@@ -18,6 +18,7 @@ from fastapi.templating import Jinja2Templates
 from findajob.audit import log_event
 from findajob.db import connect
 from findajob.paths import IMAGE_ROOT
+from findajob.prep.briefing import briefing_age_days
 from findajob.web.auth import install_basic_auth
 from findajob.web.constants import FOLDER_STAGES
 from findajob.web.helpers import (
@@ -51,6 +52,7 @@ def create_app(
     templates.env.globals["remote_cell_class"] = remote_cell_class
     templates.env.globals["stage_row_class"] = stage_row_class
     templates.env.globals["filter_qs_with"] = filter_qs_with
+    templates.env.globals["briefing_age_days"] = briefing_age_days
 
     def _reject_reason_options() -> tuple[str, ...]:
         from findajob.config_loader import load_reject_reasons

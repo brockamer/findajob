@@ -444,12 +444,13 @@ def reset_briefing_ready_to_scored(
 ) -> bool:
     """Roll a stuck briefing_ready job back to scored after the decision-window expires.
 
-    For the #691 48h watchdog reaper. A briefing the operator never
-    decided on isn't dead — the briefing folder remains on disk so the
-    operator can re-flag the job (via the standard /prep route) and the
-    folder link will resurface the existing briefing rather than
-    re-paying Phase A. The DB row drops out of the "awaiting decision"
-    section without forfeiting the Phase A work.
+    For the watchdog's decision-window reaper (#691; window configurable
+    since #1222). A briefing the operator never decided on isn't dead — the
+    briefing folder remains on disk and stays tracked, so the dashboard
+    keeps linking it and a re-flag (``POST /board/jobs/{fp}/prep``) calls
+    :func:`resurface_briefing` instead of re-paying Phase A. The DB row
+    drops out of the "awaiting decision" state without forfeiting the
+    Phase A work.
 
     Guards on stage='briefing_ready' to avoid clobbering a job that the
     operator continued in the meantime. Critically does NOT null
@@ -468,6 +469,54 @@ def reset_briefing_ready_to_scored(
     # Stage UPDATE + audit row commit together (#958).
     write_audit(conn, job_id, "stage", "briefing_ready", "scored")
     log_event("briefing_ready_stale_reset", job_id=job_id, reason=reason)
+    return True
+
+
+def resurface_briefing(
+    conn: sqlite3.Connection,
+    job_id: str,
+    *,
+    from_stage: str = "scored",
+    changed_by: str | None = None,
+) -> bool:
+    """Move a job back to ``briefing_ready`` when its prep folder still holds a briefing.
+
+    The re-flag half of #1222. A row that the decision-window reaper reset to
+    ``scored`` keeps ``prep_folder_path``; when that folder still holds a
+    briefing (:func:`findajob.prep.briefing.find_briefing`), Phase A's work is
+    on disk and re-running it would bill it twice. Callers:
+
+    - ``POST /board/jobs/{fp}/prep`` (``from_stage='scored'``) — before the
+      spend-ceiling gate, because resurfacing spends nothing.
+    - ``POST /materials/{fp}/continue-prep`` (``from_stage='scored'``) — then
+      claims the row for Phase B as usual.
+    - Phase A in ``prep/orchestrator.py`` (``from_stage='prep_in_progress'``)
+      — covers launch paths that keep the folder, such as
+      ``reactivate_and_prep`` and a manual CLI run.
+
+    The UPDATE is guarded on ``from_stage`` and on the unchanged
+    ``prep_folder_path``, so a concurrent transition wins. Returns True if the
+    row moved; False (and no write) when there is no briefing or the row
+    changed underneath.
+    """
+    from findajob.prep.briefing import find_briefing
+
+    row = conn.execute("SELECT stage, prep_folder_path FROM jobs WHERE id=?", (job_id,)).fetchone()
+    if row is None or row[0] != from_stage or not row[1] or find_briefing(row[1]) is None:
+        return False
+    folder = row[1]
+    now = datetime.now(UTC).isoformat()
+    cur = conn.execute(
+        "UPDATE jobs SET stage='briefing_ready', stage_updated=?, updated_at=? "
+        "WHERE id=? AND stage=? AND prep_folder_path=?",
+        (now, now, job_id, from_stage, folder),
+    )
+    if cur.rowcount == 0:
+        conn.commit()  # release the no-op transaction
+        return False
+    # Stage UPDATE + audit row commit together (#958).
+    write_audit(conn, job_id, "stage", from_stage, "briefing_ready", changed_by=changed_by)
+    log_event("briefing_resurfaced", job_id=job_id, from_stage=from_stage, folder=folder)
     return True
 
 

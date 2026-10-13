@@ -34,14 +34,15 @@ def folder_client(tmp_path: Path, monkeypatch):
     """Build a TestClient with one job at a chosen stage and a briefing folder."""
     monkeypatch.setattr(audit, "LOG_PATH", str(tmp_path / "events.jsonl"))
 
-    def _make(*, stage: str, reject_reasons_yaml: str | None = None) -> TestClient:
+    def _make(*, stage: str, reject_reasons_yaml: str | None = None, briefing: bool = True) -> TestClient:
         companies = tmp_path / "companies"
         companies.mkdir(exist_ok=True)
         folder = companies / "Acme_Eng_2026-05-13_120000"
         folder.mkdir(exist_ok=True)
         # Phase A produced a briefing — file presence matches what
         # `_run_prep_phase_a` writes.
-        (folder / "Tester Briefing - Acme - Sr Ops - 20260513-120000.md").write_text("# Briefing\n\nBody.")
+        if briefing:
+            (folder / "Tester Briefing - Acme - Sr Ops - 20260513-120000.md").write_text("# Briefing\n\nBody.")
         (folder / "JD - Acme - Sr Ops.txt").write_text("JD body.")
 
         db_path = tmp_path / "pipeline.db"
@@ -92,9 +93,48 @@ def test_gate_panel_absent_for_materials_drafted(folder_client):
     assert "decide before continuing prep" not in resp.text
 
 
-def test_gate_panel_absent_for_scored(folder_client):
+def test_gate_panel_absent_for_scored_without_briefing(folder_client):
+    client = folder_client(stage="scored", briefing=False)
+    resp = client.get("/materials/fp")
+    assert resp.status_code == 200
+    assert "decide before continuing prep" not in resp.text
+
+
+def test_gate_panel_renders_for_scored_row_with_briefing(folder_client):
+    """#1222: the decision-window reaper resets briefing_ready to scored but
+    keeps the folder. The dashboard links that briefing here, so the page must
+    offer the same decision, not a dead end."""
     client = folder_client(stage="scored")
     resp = client.get("/materials/fp")
+    assert resp.status_code == 200
+    assert "decide before continuing prep" in resp.text
+    assert 'action="/materials/fp/continue-prep"' in resp.text
+
+
+def test_gate_panel_absent_for_unflagged_synthetic_row(tmp_path, monkeypatch):
+    """A synthetic row sits at scored with only its speculative briefing folder
+    (prep_folder_path is NULL until Flag for Prep). The folder view falls back
+    to that folder, but there is no prep folder to resurface, so no gate."""
+    monkeypatch.setattr(audit, "LOG_PATH", str(tmp_path / "events.jsonl"))
+    companies = tmp_path / "companies"
+    spec = companies / "_speculative" / "Acme_spec_1"
+    spec.mkdir(parents=True)
+    (spec / "briefing.md").write_text("# Briefing\n")
+    db_path = tmp_path / "pipeline.db"
+    init_test_db(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "INSERT INTO jobs (id, fingerprint, url, title, company, source, stage, synthetic, "
+        "speculative_briefing_folder) VALUES ('jid', 'fp', 'https://x.test', '[SPEC] Ops', 'Acme', "
+        "'web_speculative', 'scored', 1, '_speculative/Acme_spec_1')"
+    )
+    conn.commit()
+    conn.close()
+    mark_complete(tmp_path)
+    client = TestClient(create_app(companies_root=companies, db_path=db_path, base_root=tmp_path))
+
+    resp = client.get("/materials/fp")
+
     assert resp.status_code == 200
     assert "decide before continuing prep" not in resp.text
 
@@ -266,12 +306,30 @@ class TestContinuePrepFromMaterials:
         assert resp.status_code == 404
         assert popen_calls == []
 
-    def test_409_on_scored_stage(self, folder_client, tmp_path, popen_calls):
-        client = folder_client(stage="scored")
+    def test_409_on_scored_stage_without_briefing(self, folder_client, tmp_path, popen_calls):
+        client = folder_client(stage="scored", briefing=False)
         resp = client.post("/materials/fp/continue-prep", follow_redirects=False)
         assert resp.status_code == 409
         assert _stage_from_tmp(tmp_path) == "scored"
         assert popen_calls == []
+
+    def test_scored_row_with_briefing_resurfaces_then_runs_phase_b(self, folder_client, tmp_path, popen_calls):
+        """#1222: Continue on a reset row brings the briefing back (one audit
+        row) and claims it for Phase B (a second audit row). Phase A does not run."""
+        client = folder_client(stage="scored")
+        resp = client.post("/materials/fp/continue-prep", follow_redirects=False)
+        assert resp.status_code == 303
+        assert resp.headers["location"] == "/materials/fp"
+        assert _stage_from_tmp(tmp_path) == "prep_in_progress"
+        conn = sqlite3.connect(str(tmp_path / "pipeline.db"))
+        audit_rows = conn.execute(
+            "SELECT old_value, new_value FROM audit_log WHERE job_id='jid' AND field_changed='stage' ORDER BY id"
+        ).fetchall()
+        conn.close()
+        assert audit_rows == [("scored", "briefing_ready"), ("briefing_ready", "prep_in_progress")]
+        prep_calls = [c for c in popen_calls if "prep_application.py" in c[1]]
+        assert len(prep_calls) == 1
+        assert "--phase=b" in prep_calls[0]
 
     def test_idempotent_on_prep_in_progress(self, folder_client, tmp_path, popen_calls):
         """Double-submit: second POST finds stage already advanced and redirects

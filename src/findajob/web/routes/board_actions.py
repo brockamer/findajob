@@ -31,6 +31,7 @@ from findajob.actions import (
     notify_waitlist_resurface,
     promote_from_fallback,
     promote_to_scored,
+    resurface_briefing,
     snapshot_applied_md_files,
     un_apply_job,
     un_interview_job,
@@ -385,16 +386,6 @@ def prep(
     request: Request,
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
 ) -> HTMLResponse:
-    refusal = check_launch_gate(db)
-    if refusal is not None:
-        raise HTTPException(
-            status_code=402,
-            detail=(
-                f"Monthly LLM spend ceiling reached: ${refusal.current_sum_usd:.2f} / "
-                f"${refusal.ceiling_usd:.2f}. Raise or disable the ceiling in /settings/."
-            ),
-        )
-
     row = _fetch_dashboard_row(db, fingerprint)
     if row is None:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -407,6 +398,27 @@ def prep(
         "SELECT id, title, company, url, stage FROM jobs WHERE fingerprint=?",
         (fingerprint,),
     ).fetchone()
+
+    # #1222: a scored row whose prep folder still holds a briefing (the
+    # decision-window reaper reset it) goes straight back to briefing_ready.
+    # Phase A's work is on disk, so no subprocess and no spend — which is why
+    # this runs before the spend-ceiling gate.
+    if resurface_briefing(db, job["id"]):
+        db.execute("UPDATE jobs SET apply_flag=1 WHERE id=?", (job["id"],))
+        db.commit()
+        updated = _fetch_dashboard_row(db, fingerprint)
+        assert updated is not None  # we just updated this row
+        return _render_dashboard_row(request, updated, db)
+
+    refusal = check_launch_gate(db)
+    if refusal is not None:
+        raise HTTPException(
+            status_code=402,
+            detail=(
+                f"Monthly LLM spend ceiling reached: ${refusal.current_sum_usd:.2f} / "
+                f"${refusal.ceiling_usd:.2f}. Raise or disable the ceiling in /settings/."
+            ),
+        )
 
     # Atomic claim: a single conditional UPDATE flips stage to prep_in_progress
     # only if the job is still claimable and the cap has room, so a double-click /

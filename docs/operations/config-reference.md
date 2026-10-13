@@ -147,6 +147,7 @@ NTFY_TOPIC=your-topic-name
 # OPENROUTER_CREDIT_RED_USD=1     # nav credit chip turns red below this (default $1)    #665
 # FINDAJOB_WATCHTOWER_HTTP_URL=http://watchtower:8080  # Watchtower HTTP API base URL (optional; enables the dashboard "Update now" button #1017)
 # FINDAJOB_WATCHTOWER_HTTP_TOKEN=...                   # Watchtower HTTP API token (optional; required with FINDAJOB_WATCHTOWER_HTTP_URL)
+# FINDAJOB_BRIEFING_READY_WINDOW_DAYS=14               # days a briefing waits for Continue prep / Reject before the job returns to scored (default 14; 0 = never) #1222
 ```
 
 Protect this file: `chmod 600 data/.env`

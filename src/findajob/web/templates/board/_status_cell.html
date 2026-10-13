@@ -9,15 +9,19 @@
 {% set stage = row.stage %}
 <td class="px-3 py-1 align-top text-sm whitespace-nowrap">
   {% if tab == 'dashboard' %}
+    {# #1222: age from the briefing file. A scored row whose folder still holds a
+       briefing was reset by the decision-window reaper; it links the briefing too,
+       so it never looks like a bare scored row. #}
+    {% set briefing_age = briefing_age_days(row.prep_folder_path) if stage in ('briefing_ready', 'scored') and row.prep_folder_path else none %}
     <div class="flex items-center gap-2">
       {% if stage == 'prep_in_progress' %}
         <span class="text-xs text-slate-500" title="Prep subprocess running">Prep…</span>
-      {% elif stage == 'briefing_ready' %}
+      {% elif stage == 'briefing_ready' or (stage == 'scored' and briefing_age is not none) %}
         {# #691: Phase A complete — briefing awaits operator review on /materials/.
            Link rather than plain badge so the operator's path to the decision is one click. #}
         <a href="/materials/{{ fp }}"
            class="text-xs font-medium text-teal-700 hover:underline"
-           title="Briefing ready — open materials page to continue or reject">📋 Briefing</a>
+           title="Briefing ready — open materials page to continue or reject">📋 Briefing ready{% if briefing_age is not none %} ({% if briefing_age == 0 %}today{% elif briefing_age == 1 %}1 day{% else %}{{ briefing_age }} days{% endif %}){% endif %}</a>
       {% elif stage == 'materials_drafted' %}
         <span class="text-xs font-medium text-emerald-700" title="Materials drafted — ready to apply">Ready</span>
       {% endif %}

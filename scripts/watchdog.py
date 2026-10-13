@@ -25,6 +25,7 @@ launcher inserts it, before ``stage_updated`` writes happen).
 
 from __future__ import annotations
 
+import os
 import shutil
 import sqlite3
 from datetime import UTC, datetime, timedelta
@@ -45,11 +46,14 @@ ORPHAN_FOLDER_MIN_AGE_MIN = 120
 """2h grace before sweeping an orphan — long enough that an in-flight prep
 that hasn't yet written prep_folder_path won't get swept mid-run."""
 
-BRIEFING_READY_STALE_AGE_HOURS = 48
-"""Briefing-ready jobs the operator hasn't decided on within 48h reset to
-``scored``. Keeps the dashboard's awaiting-decision section honest while
-preserving ``prep_folder_path`` so a re-flag resurfaces the existing
-briefing rather than re-paying Phase A (#691)."""
+BRIEFING_READY_WINDOW_ENV = "FINDAJOB_BRIEFING_READY_WINDOW_DAYS"
+BRIEFING_READY_WINDOW_DEFAULT_DAYS = 14
+"""Briefing-ready jobs the operator hasn't decided on within this many days
+reset to ``scored``. ``prep_folder_path`` is kept, so the dashboard still
+links the briefing and a re-flag resurfaces it instead of re-running Phase A.
+#691 set 48h; #1222 raised the default to 14 days, because a user who checks
+the board weekly never saw a 48h briefing. ``0`` in the env var turns the
+reset off."""
 
 _WATCHDOG_REASON = "watchdog_stale_reset"
 _BRIEFING_STALE_REASON = "watchdog_briefing_ready_stale"
@@ -100,21 +104,50 @@ def reap_prep_phase_b(conn: sqlite3.Connection) -> int:
     return count
 
 
-def reap_briefing_ready_stale(conn: sqlite3.Connection) -> int:
-    """Reset briefing_ready jobs older than 48h to ``scored``.
+def briefing_ready_window_days() -> int:
+    """The decision window from ``FINDAJOB_BRIEFING_READY_WINDOW_DAYS``.
 
-    The 48h ceiling on the operator decision window (#691). A briefing
-    the operator never decided on isn't dead — ``prep_folder_path`` is
-    preserved so a re-flag resurfaces the existing briefing rather than
-    re-paying Phase A. This reaper cleans up the dashboard's
-    awaiting-decision section without forfeiting Phase A's work.
+    Read from the process environment on every run (Docker stacks get it
+    from ``data/.env`` through compose ``env_file``). A value that is not a
+    whole number >= 0 falls back to the default and logs
+    ``briefing_ready_window_invalid``.
+    """
+    raw = os.environ.get(BRIEFING_READY_WINDOW_ENV, "").strip()
+    if not raw:
+        return BRIEFING_READY_WINDOW_DEFAULT_DAYS
+    try:
+        days = int(raw)
+    except ValueError:
+        days = -1
+    if days < 0:
+        log_event(
+            "briefing_ready_window_invalid",
+            value=raw,
+            default_days=BRIEFING_READY_WINDOW_DEFAULT_DAYS,
+        )
+        return BRIEFING_READY_WINDOW_DEFAULT_DAYS
+    return days
+
+
+def reap_briefing_ready_stale(conn: sqlite3.Connection) -> int:
+    """Reset briefing_ready jobs older than the decision window to ``scored``.
+
+    The window is :func:`briefing_ready_window_days` (default 14 days; ``0``
+    disables the reset). A briefing the operator never decided on isn't
+    dead — ``prep_folder_path`` is preserved, so the dashboard keeps the
+    briefing link and a re-flag resurfaces the existing briefing instead of
+    re-paying Phase A (#1222). This reaper only takes the row out of the
+    dashboard's awaiting-decision state.
 
     Distinct from :func:`reap_prep_phase_b`: this one is time-since-stage,
     not subprocess-stuck. No ``background_tasks`` row to mark failed —
     Phase A already finished cleanly; only the operator's decision is
     overdue. Uses ``jobs.stage_updated`` as the age signal.
     """
-    cutoff = (datetime.now(UTC) - timedelta(hours=BRIEFING_READY_STALE_AGE_HOURS)).isoformat()
+    window_days = briefing_ready_window_days()
+    if window_days == 0:
+        return 0
+    cutoff = (datetime.now(UTC) - timedelta(days=window_days)).isoformat()
     stale = conn.execute(
         "SELECT id FROM jobs WHERE stage='briefing_ready' AND stage_updated < ?",
         (cutoff,),

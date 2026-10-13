@@ -6,6 +6,7 @@ After M6 the watchdog reads ``background_tasks`` rows instead of
 """
 
 import json
+import os
 import sqlite3
 import sys
 import uuid
@@ -466,25 +467,35 @@ def _backdate_stage(conn, job_id: str, *, hours_ago: int) -> None:
     conn.commit()
 
 
-def test_reap_briefing_ready_stale_resets_after_48h(db, _patch_log):
-    """A briefing_ready job whose stage_updated is older than the 48h
-    ceiling resets to scored, preserving prep_folder_path so a re-flag
+_WINDOW_H = watchdog.BRIEFING_READY_WINDOW_DEFAULT_DAYS * 24
+"""The default decision window in hours (#1222: 14 days, was 48h under #691)."""
+
+
+@pytest.fixture(autouse=True)
+def _clear_window_env(monkeypatch):
+    """Each test starts from the default window; tests that need an override set it."""
+    monkeypatch.delenv(watchdog.BRIEFING_READY_WINDOW_ENV, raising=False)
+
+
+def test_reap_briefing_ready_stale_resets_after_window(db, _patch_log):
+    """A briefing_ready job whose stage_updated is older than the decision
+    window resets to scored, preserving prep_folder_path so a re-flag
     resurfaces the existing briefing."""
     job_id = _insert_job_with_folder(db, stage="briefing_ready", prep_folder_path="/tmp/briefing_xyz")
-    _backdate_stage(db, job_id, hours_ago=watchdog.BRIEFING_READY_STALE_AGE_HOURS + 1)
+    _backdate_stage(db, job_id, hours_ago=_WINDOW_H + 1)
 
     count = watchdog.reap_briefing_ready_stale(db)
 
     assert count == 1
     row = db.execute("SELECT stage, prep_folder_path FROM jobs WHERE id=?", (job_id,)).fetchone()
     assert row["stage"] == "scored"
-    assert row["prep_folder_path"] == "/tmp/briefing_xyz", "48h reaper must preserve the briefing folder"
+    assert row["prep_folder_path"] == "/tmp/briefing_xyz", "the reaper must preserve the briefing folder"
 
 
 def test_reap_briefing_ready_stale_leaves_fresh_rows_alone(db, _patch_log):
-    """A briefing_ready job inside the 48h decision window is not reaped."""
+    """A briefing_ready job inside the decision window is not reaped."""
     job_id = _insert_job_with_folder(db, stage="briefing_ready", prep_folder_path="/tmp/fresh")
-    _backdate_stage(db, job_id, hours_ago=watchdog.BRIEFING_READY_STALE_AGE_HOURS - 2)
+    _backdate_stage(db, job_id, hours_ago=_WINDOW_H - 2)
 
     count = watchdog.reap_briefing_ready_stale(db)
 
@@ -492,12 +503,95 @@ def test_reap_briefing_ready_stale_leaves_fresh_rows_alone(db, _patch_log):
     assert db.execute("SELECT stage FROM jobs WHERE id=?", (job_id,)).fetchone()["stage"] == "briefing_ready"
 
 
+def test_reap_briefing_ready_stale_default_window_is_14_days(db, _patch_log):
+    """#1222: the 48h window reset briefings before a weekly user saw them.
+    With no override, a 3-day-old briefing stays and a 15-day-old one resets."""
+    assert watchdog.BRIEFING_READY_WINDOW_DEFAULT_DAYS == 14
+    recent = _insert_job_with_folder(db, stage="briefing_ready", prep_folder_path="/tmp/recent")
+    _backdate_stage(db, recent, hours_ago=3 * 24)
+    old = _insert_job_with_folder(db, stage="briefing_ready", prep_folder_path="/tmp/old")
+    _backdate_stage(db, old, hours_ago=15 * 24)
+
+    count = watchdog.reap_briefing_ready_stale(db)
+
+    assert count == 1
+    assert db.execute("SELECT stage FROM jobs WHERE id=?", (recent,)).fetchone()["stage"] == "briefing_ready"
+    assert db.execute("SELECT stage FROM jobs WHERE id=?", (old,)).fetchone()["stage"] == "scored"
+
+
+def test_reap_briefing_ready_stale_window_env_override(db, _patch_log, monkeypatch):
+    """FINDAJOB_BRIEFING_READY_WINDOW_DAYS sets the window, read on each run."""
+    monkeypatch.setenv(watchdog.BRIEFING_READY_WINDOW_ENV, "3")
+    inside = _insert_job_with_folder(db, stage="briefing_ready", prep_folder_path="/tmp/inside")
+    _backdate_stage(db, inside, hours_ago=2 * 24)
+    outside = _insert_job_with_folder(db, stage="briefing_ready", prep_folder_path="/tmp/outside")
+    _backdate_stage(db, outside, hours_ago=4 * 24)
+
+    count = watchdog.reap_briefing_ready_stale(db)
+
+    assert count == 1
+    assert db.execute("SELECT stage FROM jobs WHERE id=?", (inside,)).fetchone()["stage"] == "briefing_ready"
+    assert db.execute("SELECT stage FROM jobs WHERE id=?", (outside,)).fetchone()["stage"] == "scored"
+
+
+def test_reap_briefing_ready_stale_window_zero_disables(db, _patch_log, monkeypatch):
+    """A window of 0 turns the reaper off: briefings wait for the operator."""
+    monkeypatch.setenv(watchdog.BRIEFING_READY_WINDOW_ENV, "0")
+    job_id = _insert_job_with_folder(db, stage="briefing_ready", prep_folder_path="/tmp/kept")
+    _backdate_stage(db, job_id, hours_ago=365 * 24)
+
+    count = watchdog.reap_briefing_ready_stale(db)
+
+    assert count == 0
+    assert db.execute("SELECT stage FROM jobs WHERE id=?", (job_id,)).fetchone()["stage"] == "briefing_ready"
+
+
+@pytest.mark.parametrize("bad", ["two weeks", "-3", "1.5"])
+def test_reap_briefing_ready_stale_invalid_window_uses_default(db, _patch_log, monkeypatch, bad):
+    """An unparseable or negative value falls back to the default and logs why."""
+    monkeypatch.setenv(watchdog.BRIEFING_READY_WINDOW_ENV, bad)
+    recent = _insert_job_with_folder(db, stage="briefing_ready", prep_folder_path="/tmp/recent")
+    _backdate_stage(db, recent, hours_ago=_WINDOW_H - 2)
+    old = _insert_job_with_folder(db, stage="briefing_ready", prep_folder_path="/tmp/old")
+    _backdate_stage(db, old, hours_ago=_WINDOW_H + 1)
+
+    count = watchdog.reap_briefing_ready_stale(db)
+
+    assert count == 1
+    events = [e for e in _read_events(_patch_log) if e["event"] == "briefing_ready_window_invalid"]
+    assert len(events) == 1
+    assert events[0]["value"] == bad
+
+
+def test_reaped_briefing_folder_survives_orphan_sweep_and_quarantine(db, tmp_path, monkeypatch, _patch_log):
+    """#1222 AC3: after the reset, the folder is still tracked by prep_folder_path,
+    so neither the watchdog orphan sweep nor the prep-start quarantine moves it."""
+    from findajob.prep.quarantine import quarantine_stale_prep_folders
+
+    monkeypatch.setattr(watchdog, "BASE", str(tmp_path))
+    companies = tmp_path / "companies"
+    companies.mkdir()
+    folder = companies / "Acme_Ops_2026-10-01_120000"
+    folder.mkdir()
+    (folder / "Cand Briefing - Acme - Ops - 20261001-120000.md").write_text("# Briefing\n")
+    old_ts = (datetime.now(UTC) - timedelta(days=20)).timestamp()
+    os.utime(folder, (old_ts, old_ts))
+    job_id = _insert_job_with_folder(db, stage="briefing_ready", prep_folder_path=str(folder))
+    _backdate_stage(db, job_id, hours_ago=_WINDOW_H + 1)
+
+    assert watchdog.reap_briefing_ready_stale(db) == 1
+    assert watchdog.sweep_orphan_folders(db) == 0
+    assert quarantine_stale_prep_folders(db, str(companies), "Acme_Ops_", "Acme_Ops_2026-10-13_090000") == []
+    assert folder.is_dir()
+    assert not (companies / ".stale").exists()
+
+
 def test_reap_briefing_ready_stale_ignores_other_stages(db, _patch_log):
     """Old jobs at other stages (scored, materials_drafted, etc.) are
-    untouched — the 48h reset is specific to the awaiting-decision stage."""
+    untouched — the reset is specific to the awaiting-decision stage."""
     for stage in ("scored", "materials_drafted", "prep_in_progress"):
         job_id = _insert_job_with_folder(db, stage=stage, prep_folder_path=f"/tmp/{stage}")
-        _backdate_stage(db, job_id, hours_ago=watchdog.BRIEFING_READY_STALE_AGE_HOURS + 24)
+        _backdate_stage(db, job_id, hours_ago=_WINDOW_H + 24)
 
     count = watchdog.reap_briefing_ready_stale(db)
 
@@ -506,7 +600,7 @@ def test_reap_briefing_ready_stale_ignores_other_stages(db, _patch_log):
 
 def test_reap_briefing_ready_stale_writes_audit_log_entry(db, _patch_log):
     job_id = _insert_job_with_folder(db, stage="briefing_ready", prep_folder_path="/tmp/audit")
-    _backdate_stage(db, job_id, hours_ago=watchdog.BRIEFING_READY_STALE_AGE_HOURS + 1)
+    _backdate_stage(db, job_id, hours_ago=_WINDOW_H + 1)
 
     watchdog.reap_briefing_ready_stale(db)
 
@@ -531,7 +625,7 @@ def test_main_emits_phase_b_and_briefing_stale_counts(db, monkeypatch, _patch_lo
 
     # Stale briefing_ready
     job_br = _insert_job_with_folder(db, stage="briefing_ready", prep_folder_path="/tmp/br")
-    _backdate_stage(db, job_br, hours_ago=watchdog.BRIEFING_READY_STALE_AGE_HOURS + 1)
+    _backdate_stage(db, job_br, hours_ago=_WINDOW_H + 1)
 
     watchdog.main()
 

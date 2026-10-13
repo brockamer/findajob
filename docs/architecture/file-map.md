@@ -68,7 +68,7 @@ When this map drifts from the actual code (renamed file, new route module, retir
 
 # ── Entry point scripts (called by systemd / CLI) ──────────────────────────
 <repo>/scripts/triage.py                    # daily ingest → score → DB
-<repo>/scripts/watchdog.py                  # resets stuck prep_in_progress jobs > 60 min (every 10 min cron)
+<repo>/scripts/watchdog.py                  # resets stuck prep_in_progress jobs > 60 min and undecided briefings past the decision window (every 10 min cron)
 <repo>/scripts/prep_application.py          # entry-point shim → findajob.prep.orchestrator
 <repo>/scripts/find_contacts.py             # entry-point shim → findajob.find_contacts
 <repo>/scripts/notify.py                    # ntfy push notifications — subcommands: daily-stats, health-check, apply-reminder, feedback-review, send-raw
