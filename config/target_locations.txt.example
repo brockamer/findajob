@@ -1,0 +1,22 @@
+# Target locations — EXAMPLE
+# Copy this file to config/target_locations.txt and replace with your own places.
+# Onboarding writes it from your geography answer.
+#
+# One place per line. Blank lines and # comments are ignored. Two uses:
+#   1. The paid job-search feeds (RapidAPI) search these places.
+#   2. Scoring: a posting whose US state or country is not listed scores 2
+#      without an LLM call (Flag reason: location_mismatch). A posting the gate
+#      cannot place (a city name alone, "See posting", blank) or a remote posting
+#      in a listed country goes to the scorer, which caps an out-of-area role at 3.
+#
+# Forms: Remote / City, ST / City, Country (name in full) / United States
+#   - A commute area that crosses a state line needs one line per state.
+#   - Remote only: list Remote and your country.
+#   - Open to the whole US: a single United States line.
+#
+# No file: the feeds search the whole United States and scoring has no gate.
+# To turn the scoring gate off and keep the file, set FINDAJOB_LOCATION_GATE=off
+# in data/.env.
+
+Remote
+United States

@@ -11,6 +11,7 @@ config/profile.md
 config/target_companies.md
 config/jsearch_queries.txt
 config/feed_urls.txt
+config/target_locations.txt
 candidate_context/profile.md
 candidate_context/master_resume.md
 candidate_context/discovered_companies.md

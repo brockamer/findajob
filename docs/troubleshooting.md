@@ -76,6 +76,8 @@ docker compose exec scheduler python3 -c "from findajob.llm.openrouter import co
 
 **Score 5/6 for jobs without a JD is normal** — Stage 2 of the prefilter deterministically scores 5 when no JD is present, because there's nothing for the LLM to score. Not a bug.
 
+**Score 2 with Flag reason `location_mismatch`** — the location gate (#1217) found a US state or country in the posting's location that `config/target_locations.txt` does not cover, so no LLM was called. If a job you want was filtered out, add its state or country to the file at `/config/` (a commute area that crosses a state line needs one line per state). To turn the gate off and keep the file, set `FINDAJOB_LOCATION_GATE=off` in `data/.env`. Details: [config/target_locations.txt](operations/config-reference.md#configtarget_locationstxt).
+
 ### "Prep is stuck in 'Prep in Progress'"
 
 Prep normally finishes in 3–5 minutes. If a job stays in `prep_in_progress` beyond 60 minutes, the watchdog rolls it back to `scored` automatically.

@@ -95,6 +95,49 @@ Companies that don't use Greenhouse won't have a slug — use LinkedIn/Indeed se
 
 ---
 
+## config/target_locations.txt
+
+Where the candidate can work — one place per line. Onboarding writes it from the
+geography answer; edit it at `/config/`. Template: `config/target_locations.txt.example`.
+
+```
+Denver, CO
+Boulder, CO
+Remote
+```
+
+Accepted forms: `Remote`, `City, ST`, `City, Country` (country name in full),
+`United States`. Blank lines and `#` comments are ignored.
+
+The file has two uses:
+
+1. **Fetching.** The RapidAPI feeds search these places. With no file, they search
+   the whole United States.
+2. **Scoring (#1217).** The prefilter's location gate (`findajob.location_gate`)
+   scores a posting 2, without an LLM call, when its location names a US state, a
+   country or a non-US region (`EMEA`, `APAC`, …) that the file does not cover.
+   The board shows Flag reason `location_mismatch`. The scorer prompt also gets the
+   list, and the scorer caps an out-of-area role at 3.
+
+The gate compares US states and countries, never cities. Because of this:
+
+- A posting in a listed state but another city passes the gate. The scorer decides.
+- A posting the gate cannot place passes: a city name alone (`Dublin`), `See posting`,
+  blank, or a coarse value (`United States`, `Remote`).
+- A posting with several locations passes if any of them is covered.
+- A remote posting passes if it is in a listed country. `Remote - India` against a
+  US list scores 2.
+- **A commute area that crosses a state line needs one line per state.** A metro on
+  a state border with one line rejects postings on the other side of the border.
+- A list with only `Remote` names no state or country, so the gate is off. Add a
+  line for your country. A `United States` line lets any US state through.
+
+The gate is off when the file is absent, or when `FINDAJOB_LOCATION_GATE=off` is
+set in `data/.env`. Jobs scored before a change keep their scores; the gate applies
+from the next triage run.
+
+---
+
 ## config/target_companies.md
 
 A human-readable target company list.
@@ -148,6 +191,7 @@ NTFY_TOPIC=your-topic-name
 # FINDAJOB_WATCHTOWER_HTTP_URL=http://watchtower:8080  # Watchtower HTTP API base URL (optional; enables the dashboard "Update now" button #1017)
 # FINDAJOB_WATCHTOWER_HTTP_TOKEN=...                   # Watchtower HTTP API token (optional; required with FINDAJOB_WATCHTOWER_HTTP_URL)
 # FINDAJOB_BRIEFING_READY_WINDOW_DAYS=14               # days a briefing waits for Continue prep / Reject before the job returns to scored (default 14; 0 = never) #1222
+# FINDAJOB_LOCATION_GATE=off                           # turns the scoring location gate off and keeps config/target_locations.txt (default on when the file exists) #1217
 ```
 
 Protect this file: `chmod 600 data/.env`

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import time
 
@@ -11,6 +12,7 @@ from findajob.classification import jd_is_usable
 from findajob.db import connect
 from findajob.llm.openrouter import CompletionResult, OpenRouterError, complete
 from findajob.llm_parsing import extract_json_payload, validate_llm_json
+from findajob.location_gate import target_lines
 from findajob.paths import BASE
 from findajob.scorer_prefilter import _hard_reject_match, prefilter_score
 from findajob.tiers import resolve_tier
@@ -27,12 +29,18 @@ _REMOTE_NORM: dict[str, str] = {
     "in office": "Onsite",
 }
 
+# The job_scorer role caps a location mismatch at this relevance (#1217); the
+# code enforces it, because a prompt rule alone is not a guarantee.
+_LOCATION_MISMATCH_CAP = 3
+_LOCATION_MISMATCH_FLAG_RE = re.compile(r"^location[\s_]+mismatch", re.IGNORECASE)
+
 
 def _normalize_llm_output(raw: str) -> str:
     """Normalize common LLM output issues before schema validation.
 
     Fixes: remote_status variants ("Remote-Friendly" → "Remote"),
-           score values outside 1-10 range.
+           score values outside 1-10 range,
+           a location_mismatch flag with relevance above the cap (#1217).
     """
     text = extract_json_payload(raw)
     try:
@@ -58,6 +66,13 @@ def _normalize_llm_output(raw: str) -> str:
             d[field] = 1
         elif isinstance(v, int) and v > 10:
             d[field] = 10
+
+    flag = d.get("score_flag_reason")
+    if isinstance(flag, str) and _LOCATION_MISMATCH_FLAG_RE.match(flag.strip()):
+        d["score_flag_reason"] = "location_mismatch"
+        rel = d.get("relevance_score")
+        if isinstance(rel, int) and rel > _LOCATION_MISMATCH_CAP:
+            d["relevance_score"] = _LOCATION_MISMATCH_CAP
 
     return json.dumps(d)
 
@@ -156,22 +171,27 @@ def score_job(
     """
     usable = jd_is_usable(jd_text)
 
-    # Stage 1 & 2: deterministic pre-filter — no LLM call
-    pre, reason = prefilter_score(title, company, usable)
+    # Stage 1, location gate, Stage 2: deterministic pre-filter — no LLM call
+    pre, reason = prefilter_score(title, company, usable, location=location)
     if pre is not None:
         log_event("score_prefilter", title=title, company=company, reason=reason, score=pre.get("relevance_score"))
         return pre, 0, None
 
     # Stage 3: LLM scoring via findajob.llm.openrouter.
     #
-    # The cached_prefix carries the candidate profile + rejection-history
-    # feedback block — content that is stable across every scoring call
+    # The cached_prefix carries the candidate profile, the target locations
+    # (#1217; omitted when config/target_locations.txt is absent) and the
+    # rejection-history feedback block — content that is stable across every scoring call
     # within a session. The prompt argument carries only the per-job tail
     # (title, company, location, JD). Even though job_scorer uses DeepSeek
     # (which does not honor cache_control), the split sets the pattern for
     # Phase 2's Opus-using ports where caching does cut cost.
     effective_jd = jd_text if usable else "[Job description unavailable — score from title and company only]"
-    cached_prefix = f"CANDIDATE PROFILE:\n{candidate_profile}\n{feedback_block}\n\n---\n\n"
+    targets = target_lines()
+    target_block = (
+        "\nTARGET LOCATIONS (config/target_locations.txt):\n" + "".join(f"- {t}\n" for t in targets) if targets else ""
+    )
+    cached_prefix = f"CANDIDATE PROFILE:\n{candidate_profile}\n{target_block}{feedback_block}\n\n---\n\n"
     job_tail = (
         f"Evaluate this job posting for the candidate described above.\n"
         f"Job: {title} at {company}\n"

@@ -248,9 +248,15 @@ Mirror that sentence back and ask the user to approve it before moving on.
 
 Capture city/region, willingness to commute, remote tolerance, and any relocation limits.
 Extract 1–3 *specific, machine-readable target values* from the answer — these become the
-per-line entries in `target_locations.txt` (emitted in Phase 5 when RapidAPI is active).
-Accepted forms: `Remote`, `New York, NY`, `Boston, MA`, `Los Angeles, CA`, `United States`.
+per-line entries in `target_locations.txt` (always emitted in Phase 5). The paid job-search
+feeds search these places, and the scorer gives a low score, without reading the posting,
+to any job whose US state or country is not on the list.
+Accepted forms: `Remote`, `New York, NY`, `Boston, MA`, `Los Angeles, CA`, `United States`,
+and a city with its country, written in full, outside the US (`London, United Kingdom`).
 If the user is open to the full US with no preference, a single `United States` line is correct.
+If the commute area crosses a state line, add one line for a city in each state — a posting
+in a state that is not listed is filtered out. If the user wants remote work only, write
+`Remote` and a line for their country (for example `United States`).
 Do **not** add narrative here — just the clean location values you'll emit later.
 
 ### 3c. Target employers
@@ -402,14 +408,18 @@ Capture the user's selection. The selection determines which file blocks
 you emit in Phase 5:
 
 - `a` (RapidAPI) selected → emit `<<<FILE: jsearch_queries.txt>>>` AND
-  `<<<FILE: target_locations.txt>>>` AND continue to sub-phase 3h to pick
-  which RapidAPI feed; that sub-phase emits `<<<FILE: rapidapi_feed.txt>>>`.
+  continue to sub-phase 3h to pick which RapidAPI feed; that sub-phase
+  emits `<<<FILE: rapidapi_feed.txt>>>`.
 - `b` (company feeds) selected → emit `<<<FILE: feed-urls.txt>>>`
 - `c` (Gmail alerts) selected → emit `<<<FILE: jsearch_queries.txt>>>`
   (used as saved-search seed text on LinkedIn/Indeed) AND `<<<FILE:
   linkedin-alerts.md>>>` (the setup checklist)
 - "none" → emit none of the three; Phase 5 emits only the standard 9
   required files
+
+`<<<FILE: target_locations.txt>>>` is emitted for every selection,
+including "none": the scorer uses it to filter out-of-area postings from
+every source, not only the paid feeds.
 
 Note that if both `a` and `c` are selected, `jsearch_queries.txt` is
 emitted once — the queries serve both the RapidAPI calls and the
@@ -806,13 +816,13 @@ Group 2 — **Targeting** (emit applicable files back-to-back, then pause):
 6. `target_companies.md` — always emitted
 7. `business_sector_employers_reference.md` — always emitted
 8. `jsearch_queries.txt` — **conditional**, emit only if 3g selection includes `a` (paid service) OR `c` (Gmail alerts). Skip if user picked only `b` or "none".
-9. `target_locations.txt` — **conditional**, emit only if 3g selection includes `a` (paid service). Content derived from 3b geography answer. Skip if user picked only `b`, `c`, or "none".
+9. `target_locations.txt` — always emitted. Content derived from 3b geography answer. The paid feeds search these places, and the scorer filters out postings in a US state or country that is not listed.
 10. `rapidapi_feed.txt` — **conditional**, emit only if 3g selection includes `a` AND 3h confirmed (candidate chose a listed adapter rather than "skip"). Single-line content: the chosen adapter's registry name (e.g. `jsearch` or `jobs-api14`). Skip otherwise.
 11. `feed-urls.txt` — **conditional**, emit only if 3g selection includes `b` (company career-page feeds). Skip otherwise.
 12. `linkedin-alerts.md` — **conditional**, emit only if 3g selection includes `c` (Gmail alerts). Skip otherwise.
 
-If the user picked "none" (manual only) at sub-phase 3g, emit only files 6 and 7
-in this group — no source-config files at all. The injector tolerates this
+If the user picked "none" (manual only) at sub-phase 3g, emit only files 6, 7 and 9
+in this group — no source-config files. The injector tolerates this
 gracefully; the candidate's pipeline will use only manual `/ingest/` form input.
 
 Group 3 — **Filters** (emit all three back-to-back, then pause):
@@ -850,7 +860,7 @@ the same delimiters.
 
 Internally you know which filenames belong to each group-letter:
 - a (Identity): `profile.md`, `master_resume.md`, `display_name.txt`, `timezone.txt`, `ntfy_topic.txt`
-- b (Targeting): `target_companies.md`, `business_sector_employers_reference.md`, plus `jsearch_queries.txt` / `target_locations.txt` / `rapidapi_feed.txt` / `feed-urls.txt` / `linkedin-alerts.md` per the 3g/3h selection (see the conditional rules above)
+- b (Targeting): `target_companies.md`, `business_sector_employers_reference.md`, `target_locations.txt`, plus `jsearch_queries.txt` / `rapidapi_feed.txt` / `feed-urls.txt` / `linkedin-alerts.md` per the 3g/3h selection (see the conditional rules above)
 - c (Filters): `prefilter_rules.yaml`, `in_domain_patterns.yaml`, `reject_reasons.yaml`
 - d (Writing voice): `voice-samples.md` (only if provided)
 
@@ -1062,16 +1072,19 @@ LinkedIn handles those separately.
 
 ### `target_locations.txt`
 
-**Conditional emission.** Emit this block only if the user picked `a`
-(paid service) in sub-phase 3g. Skip if they picked only `b`, `c`, or "none".
+**Always emitted,** whatever the user picked in sub-phase 3g. The scorer
+uses it for postings from every source.
 
 ```
 # Generated by findajob onboarding interviewer v3 — 2026-05-02
-# One location per line. Used to narrow paid job-search fetches by geography.
-# Accepted values: Remote / city, state / United States (fallback = US-wide).
-# JSearch returns metro-area results (nearby cities included); jobs-api14
-# LinkedIn/Indeed return strictly filtered results per location.
-# If absent, the pipeline defaults to United States-wide fetches.
+# One location per line. Two uses:
+# 1. Paid job-search fetches search these places. JSearch returns metro-area
+#    results (nearby cities included); jobs-api14 LinkedIn/Indeed return
+#    strictly filtered results per location.
+# 2. Scoring gives 2, without reading the posting, to any job whose US state
+#    or country is not listed. List one city per state the commute covers.
+# Accepted values: Remote / city, state / city, country / United States.
+# If absent, fetches default to United States-wide and scoring has no gate.
 
 Remote
 New York, NY
@@ -1080,12 +1093,16 @@ Boston, MA
 
 **Derivation:** read directly from the 3b geography answer. Convert the user's
 stated preferences into the clean location values captured during 3b. One line
-per distinct target geography. If the user is open to the full US with no preference,
-emit a single `United States` line.
+per distinct target geography, plus one line for a city in each other state the commute
+area crosses. If the user is open to the full US with no preference, emit a single
+`United States` line. If the user wants remote work only, emit `Remote` and a line for
+their country.
 
-**Constraint:** use recognizable city/state pairs or `Remote` or `United States`.
-Do not use country codes, abbreviations, or multi-word region descriptions — the
-API passes these as-is to the location filter.
+**Constraint:** use recognizable city/state pairs, city/country pairs outside
+the US (country name in full), `Remote`, or `United States`. Do not use country
+codes, abbreviations, or multi-word region descriptions — the API passes these
+as-is to the location filter, and the scoring gate may not recognize a code or
+an abbreviation.
 
 ### `feed-urls.txt`
 

@@ -516,3 +516,48 @@ def test_stage2_indomain_nojd_returns_scored_by():
     if result is not None:
         assert result["scored_by"] == "prefilter_stage2"
         assert "company_tier" in result
+
+
+# ── Location gate (#1217) ─────────────────────────────────────────────────────
+
+
+class TestLocationGate:
+    """The location gate runs after the title and employer hard rejects and before Stage 2."""
+
+    @pytest.fixture
+    def denver_targets(self, tmp_path, monkeypatch):
+        from findajob import location_gate
+
+        f = tmp_path / "target_locations.txt"
+        f.write_text("Denver, CO\nRemote\n")
+        monkeypatch.setattr(location_gate, "_TARGET_LOCATIONS_PATH", f)
+
+    def test_out_of_area_posting_scores_2_without_llm(self, denver_targets):
+        result, reason = prefilter_score("Product Manager", "Acme", True, location="Seoul, South Korea")
+        assert result is not None
+        assert result["relevance_score"] == 2
+        assert result["score_status"] == "scored"
+        assert result["score_flag_reason"] == "location_mismatch"
+        assert result["scored_by"] == "prefilter_location"
+        assert "Seoul, South Korea" in result["ai_notes"]
+        assert "Denver, CO" in result["ai_notes"]
+        assert reason == result["ai_notes"]
+
+    def test_in_area_posting_falls_through(self, denver_targets):
+        assert prefilter_score("Product Manager", "Acme", True, location="Boulder, CO") == (None, None)
+
+    def test_out_of_area_in_domain_no_jd_scores_2_not_5(self, denver_targets):
+        result, _ = prefilter_score("Data Center Operations Manager", "Acme Corp", False, location="Singapore")
+        assert result is not None
+        assert result["relevance_score"] == 2
+
+    def test_title_hard_reject_wins_over_location(self, denver_targets):
+        result, _ = prefilter_score("Software Engineer", "Acme", True, location="Singapore")
+        assert result is not None
+        assert result["relevance_score"] == 1
+
+    def test_gate_is_off_without_a_target_file(self):
+        assert prefilter_score("Product Manager", "Acme", True, location="Singapore") == (None, None)
+
+    def test_location_defaults_to_empty(self, denver_targets):
+        assert prefilter_score("Product Manager", "Acme", True) == (None, None)

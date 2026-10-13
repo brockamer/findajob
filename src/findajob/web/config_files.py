@@ -27,6 +27,10 @@ EDITABLE_CATEGORIES: dict[str, list[str] | str] = {
         "config/prefilter_rules.yaml",
         "config/in_domain_patterns.yaml",
         "config/jsearch_queries.txt",
+        # #1217 — one place per line. The RapidAPI fetchers search these, and
+        # the scoring location gate scores a posting outside them 2. Read on
+        # every triage run.
+        "config/target_locations.txt",
         "config/feed_urls.txt",
         # #362 — operator-curated company-name aliases for the rejection-detection
         # matcher. Edited live via /config/; hot-reloaded on the next detection

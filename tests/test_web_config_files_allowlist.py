@@ -26,6 +26,8 @@ from findajob.web.config_files import (
         "config/jsearch_queries.txt",
         "config/feed_urls.txt",
         "config/company_aliases.yaml",
+        # #1217 — drives the scoring location gate as well as RapidAPI fetches.
+        "config/target_locations.txt",
         "config/roles/job_scorer.md",
         "config/roles/cover_letter_writer.md",
         "config/roles/onboarding_interviewer.md",
