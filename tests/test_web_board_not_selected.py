@@ -115,7 +115,7 @@ def test_not_selected_renders_audit_log_date(client: TestClient) -> None:
 
 
 def test_not_selected_rows_filter_endpoint(client: TestClient) -> None:
-    r = client.get("/board/not-selected/rows?title=Principal")
+    r = client.get("/board/not-selected/rows?title=Principal", headers={"HX-Request": "true"})
     assert r.status_code == 200
     assert "Principal Eng" in r.text
     assert "Director" not in r.text

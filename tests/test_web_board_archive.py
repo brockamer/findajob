@@ -40,7 +40,7 @@ def test_archive_first_page_100_rows_plus_sentinel(client: TestClient) -> None:
 
 
 def test_archive_second_page_via_rows_endpoint(client: TestClient) -> None:
-    r = client.get("/board/archive/rows?offset=100")
+    r = client.get("/board/archive/rows?offset=100", headers={"HX-Request": "true"})
     assert r.status_code == 200
     # Remaining 50 rows, no sentinel (end reached)
     assert r.text.count("<tr") == 50
@@ -48,7 +48,7 @@ def test_archive_second_page_via_rows_endpoint(client: TestClient) -> None:
 
 
 def test_archive_rows_endpoint_returns_fragment_not_full_page(client: TestClient) -> None:
-    r = client.get("/board/archive/rows?offset=0")
+    r = client.get("/board/archive/rows?offset=0", headers={"HX-Request": "true"})
     assert r.status_code == 200
     assert "<body" not in r.text.lower()
 
@@ -123,7 +123,7 @@ def test_archive_no_promote_button_on_non_scored_rows(scored_client: TestClient)
 
 def test_archive_rows_htmx_respects_min_score(scored_client: TestClient) -> None:
     """#238: HTMX partial /board/archive/rows also filters on relevance_score_min for consistency."""
-    r = scored_client.get("/board/archive/rows?offset=0&relevance_score_min=6")
+    r = scored_client.get("/board/archive/rows?offset=0&relevance_score_min=6", headers={"HX-Request": "true"})
     assert r.status_code == 200
     assert "Six Alpha" in r.text
     assert "Three Only" not in r.text
@@ -187,7 +187,7 @@ def test_archive_explicit_stage_scored_still_excludes_rejected(reject_mix_client
 
 def test_archive_rows_htmx_default_excludes_rejected(reject_mix_client: TestClient) -> None:
     """#281: HTMX partial /board/archive/rows shares the same default-exclude behavior."""
-    r = reject_mix_client.get("/board/archive/rows?offset=0")
+    r = reject_mix_client.get("/board/archive/rows?offset=0", headers={"HX-Request": "true"})
     assert r.status_code == 200
     assert "Scored Job" in r.text
     assert "Rejected Job" not in r.text

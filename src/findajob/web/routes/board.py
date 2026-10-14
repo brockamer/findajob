@@ -662,6 +662,9 @@ def fallback_rows(
     request: Request,
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
 ) -> HTMLResponse:
+    page_redirect = _rows_page_redirect(request)
+    if page_redirect is not None:
+        return page_redirect  # type: ignore[return-value]
     specs = filter_registry.FALLBACK_COLUMNS
     parsed = parse_filter_params(specs, request.query_params)
     _persist_view(db, "fallback", parsed)
@@ -670,7 +673,7 @@ def fallback_rows(
     materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
     visible = _resolve_visible(specs, parsed)
     templates = request.app.state.templates
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         request=request,
         name="_job_rows_fragment.html",
         context={
@@ -681,6 +684,7 @@ def fallback_rows(
             "materials_base_url": materials_base_url,
         },
     )
+    return _push_page_url(request, response)
 
 
 _REJECTED_DEFAULT_SORT = "rejected_date"
@@ -759,6 +763,9 @@ def rejected_rows(
     request: Request,
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
 ) -> HTMLResponse:
+    page_redirect = _rows_page_redirect(request)
+    if page_redirect is not None:
+        return page_redirect  # type: ignore[return-value]
     specs = filter_registry.REJECTED_COLUMNS
     parsed = parse_filter_params(specs, request.query_params)
     _persist_view(db, "rejected", parsed)
@@ -767,7 +774,7 @@ def rejected_rows(
     materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
     visible = _resolve_visible(specs, parsed)
     templates = request.app.state.templates
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         request=request,
         name="_job_rows_fragment.html",
         context={
@@ -778,6 +785,7 @@ def rejected_rows(
             "materials_base_url": materials_base_url,
         },
     )
+    return _push_page_url(request, response)
 
 
 _NOT_SELECTED_BASE_WHERE = "j.stage = 'not_selected'"
@@ -857,6 +865,9 @@ def not_selected_rows(
     request: Request,
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
 ) -> HTMLResponse:
+    page_redirect = _rows_page_redirect(request)
+    if page_redirect is not None:
+        return page_redirect  # type: ignore[return-value]
     specs = filter_registry.NOT_SELECTED_COLUMNS
     parsed = parse_filter_params(specs, request.query_params)
     _persist_view(db, "not_selected", parsed)
@@ -865,7 +876,7 @@ def not_selected_rows(
     materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
     visible = _resolve_visible(specs, parsed)
     templates = request.app.state.templates
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         request=request,
         name="_job_rows_fragment.html",
         context={
@@ -876,6 +887,7 @@ def not_selected_rows(
             "materials_base_url": materials_base_url,
         },
     )
+    return _push_page_url(request, response)
 
 
 _ARCHIVE_DEFAULT_SORT = "created_at"
@@ -963,6 +975,9 @@ def archive_rows(
     offset: int = Query(default=0),
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
 ) -> HTMLResponse:
+    page_redirect = _rows_page_redirect(request)
+    if page_redirect is not None:
+        return page_redirect  # type: ignore[return-value]
     specs = filter_registry.ARCHIVE_COLUMNS
     parsed = parse_filter_params(specs, request.query_params)
     _persist_view(db, "archive", parsed)
@@ -972,7 +987,7 @@ def archive_rows(
     materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
     visible = _resolve_visible(specs, parsed)
     templates = request.app.state.templates
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         request=request,
         name="board/_archive_rows.html",
         context={
@@ -985,6 +1000,7 @@ def archive_rows(
             "materials_base_url": materials_base_url,
         },
     )
+    return _push_page_url(request, response)
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -993,11 +1009,52 @@ def archive_rows(
 # ──────────────────────────────────────────────────────────────────────
 
 
+def _rows_page_url(request: Request) -> str:
+    """The page a /rows request stands for: same tab, same querystring.
+
+    The querystring passes through verbatim, not re-serialized: #844 drops a
+    ``cols=`` clause that equals the defaults, and the URL must keep it so a
+    reload shows the columns the operator chose.
+    """
+    page = request.url.path.removesuffix("/rows")
+    return f"{page}?{request.url.query}" if request.url.query else page
+
+
+def _rows_page_redirect(request: Request) -> RedirectResponse | None:
+    """303 to the page when the request expects a page, not a fragment (#1218).
+
+    A plain GET (a reload, a bookmark, an old history entry), a boosted link,
+    and an htmx history restore all swap the whole <body>; the bare rows
+    fragment there renders a page without layout. Callers return early on a
+    non-None result, before ``_persist_view``.
+    """
+    headers = request.headers
+    if not headers.get("HX-Request") or headers.get("HX-Boosted") or headers.get("HX-History-Restore-Request"):
+        return RedirectResponse(url=_rows_page_url(request), status_code=303)
+    return None
+
+
+def _push_page_url(request: Request, response: HTMLResponse) -> HTMLResponse:
+    """Point the address bar at the page, not the /rows endpoint (#1218).
+
+    Only a swap of the whole ``#rows`` tbody is a new page state; archive
+    load-more swaps its own <tr> (no ``HX-Target``) and leaves the URL alone.
+    The header overrides any ``hx-push-url`` attribute, so the filter inputs
+    carry none.
+    """
+    if request.headers.get("HX-Target") == "rows":
+        response.headers["HX-Push-Url"] = _rows_page_url(request)
+    return response
+
+
 @router.get("/board/dashboard/rows", response_class=HTMLResponse)
 def dashboard_rows(
     request: Request,
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
 ) -> HTMLResponse:
+    page_redirect = _rows_page_redirect(request)
+    if page_redirect is not None:
+        return page_redirect  # type: ignore[return-value]
     specs = filter_registry.DASHBOARD_COLUMNS
     parsed = parse_filter_params(specs, request.query_params)
     _persist_view(db, "dashboard", parsed)
@@ -1007,7 +1064,7 @@ def dashboard_rows(
     materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
     visible = _resolve_visible(specs, parsed)
     templates = request.app.state.templates
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         request=request,
         name="_job_rows_fragment.html",
         context={
@@ -1019,6 +1076,7 @@ def dashboard_rows(
             "materials_base_url": materials_base_url,
         },
     )
+    return _push_page_url(request, response)
 
 
 @router.get("/board/applied/rows", response_class=HTMLResponse)
@@ -1026,6 +1084,9 @@ def applied_rows(
     request: Request,
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
 ) -> HTMLResponse:
+    page_redirect = _rows_page_redirect(request)
+    if page_redirect is not None:
+        return page_redirect  # type: ignore[return-value]
     specs = filter_registry.APPLIED_COLUMNS
     parsed = parse_filter_params(specs, request.query_params)
     _persist_view(db, "applied", parsed)
@@ -1034,7 +1095,7 @@ def applied_rows(
     materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
     visible = _resolve_visible(specs, parsed)
     templates = request.app.state.templates
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         request=request,
         name="_job_rows_fragment.html",
         context={
@@ -1045,6 +1106,7 @@ def applied_rows(
             "materials_base_url": materials_base_url,
         },
     )
+    return _push_page_url(request, response)
 
 
 @router.get("/board/review/rows", response_class=HTMLResponse)
@@ -1052,6 +1114,9 @@ def review_rows(
     request: Request,
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
 ) -> HTMLResponse:
+    page_redirect = _rows_page_redirect(request)
+    if page_redirect is not None:
+        return page_redirect  # type: ignore[return-value]
     specs = filter_registry.REVIEW_COLUMNS
     parsed = parse_filter_params(specs, request.query_params)
     _persist_view(db, "review", parsed)
@@ -1060,7 +1125,7 @@ def review_rows(
     materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
     visible = _resolve_visible(specs, parsed)
     templates = request.app.state.templates
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         request=request,
         name="_job_rows_fragment.html",
         context={
@@ -1071,6 +1136,7 @@ def review_rows(
             "materials_base_url": materials_base_url,
         },
     )
+    return _push_page_url(request, response)
 
 
 @router.get("/board/waitlist/rows", response_class=HTMLResponse)
@@ -1078,6 +1144,9 @@ def waitlist_rows(
     request: Request,
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
 ) -> HTMLResponse:
+    page_redirect = _rows_page_redirect(request)
+    if page_redirect is not None:
+        return page_redirect  # type: ignore[return-value]
     specs = filter_registry.WAITLIST_COLUMNS
     parsed = parse_filter_params(specs, request.query_params)
     _persist_view(db, "waitlist", parsed)
@@ -1087,7 +1156,7 @@ def waitlist_rows(
     materials_base_url = os.environ.get("FINDAJOB_MATERIALS_BASE_URL", "")
     visible = _resolve_visible(specs, parsed)
     templates = request.app.state.templates
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         request=request,
         name="_job_rows_fragment.html",
         context={
@@ -1099,6 +1168,7 @@ def waitlist_rows(
             "materials_base_url": materials_base_url,
         },
     )
+    return _push_page_url(request, response)
 
 
 # ──────────────────────────────────────────────────────────────────────

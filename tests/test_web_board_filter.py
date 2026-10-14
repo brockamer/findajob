@@ -37,7 +37,7 @@ def client(tmp_path: Path) -> TestClient:
 
 
 def test_dashboard_filter_narrows_by_company(client: TestClient) -> None:
-    r = client.get("/board/dashboard/rows?company=meta")
+    r = client.get("/board/dashboard/rows?company=meta", headers={"HX-Request": "true"})
     assert r.status_code == 200
     assert "NPI PM" in r.text
     assert "TPM" in r.text
@@ -45,6 +45,6 @@ def test_dashboard_filter_narrows_by_company(client: TestClient) -> None:
 
 
 def test_filter_fragment_has_no_body_tag(client: TestClient) -> None:
-    r = client.get("/board/dashboard/rows?q=")
+    r = client.get("/board/dashboard/rows?q=", headers={"HX-Request": "true"})
     assert r.status_code == 200
     assert "<body" not in r.text.lower()
