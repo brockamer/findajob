@@ -145,6 +145,7 @@ def main():
                 relevance_score=?, interview_likelihood=?, strengths_alignment=?,
                 industry_sector=?, comp_estimate=?, ai_notes=?,
                 score_status=?, score_flag_reason=?, remote_status=?,
+                scored_by=?, company_tier=?,
                 stage=?, stage_updated=?, status=?, updated_at=?
             WHERE id=?
         """,
@@ -158,6 +159,8 @@ def main():
                 scored.get("score_status", "manual_review"),
                 scored.get("score_flag_reason", ""),
                 scored.get("remote_status", "Unknown"),
+                scored.get("scored_by", ""),
+                scored.get("company_tier", "unknown"),
                 new_stage,
                 now,
                 new_status,

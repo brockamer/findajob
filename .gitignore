@@ -19,6 +19,15 @@ candidate_context/discovered_companies.json
 candidate_context/voice_samples/*
 !candidate_context/voice_samples/README.md
 candidate_context/critique_aggregate/
+# Also written by onboarding (src/findajob/onboarding/injector.py) or kept per instance
+candidate_context/display_name.txt
+candidate_context/linkedin-alerts.md
+config/business_sector_employers_reference.md
+config/spend_ceiling.txt
+data/timezone
+data/.onboarding-complete
+# Onboarding backups: copies of the profile, resume and config files
+.backups/
 CLAUDE.local.md
 data/pipeline.db
 data/pipeline.db-journal
