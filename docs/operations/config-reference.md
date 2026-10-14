@@ -40,6 +40,8 @@ Your complete, unabridged resume in Markdown. This is the source of truth for th
 
 The resume tailor selects and reorders content from this file — it doesn't add content that isn't here.
 
+Tailored resumes include your Education section whenever this file has one. To leave it off, say so in `profile.md` under `## Employer Formatting Rules` or `## Things to Avoid Mentioning`.
+
 ---
 
 ## config/jsearch_queries.txt
