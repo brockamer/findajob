@@ -94,7 +94,7 @@ The ONLY dash allowed is an en dash for date ranges (e.g., "2020 – 2024").
 3. **All employers must appear.** Every employer in the master resume must appear in the output. Never silently drop a job. If a role is less relevant, condense it to 2-3 bullets; do not omit it.
 4. **Internally-branded team names with ambiguous abbreviations.** The master resume may include proprietary program or team names. Read them from the master resume as written. Do not interpret abbreviations as geographic or industry-standard terms; if the profile explains what an abbreviation means, use that explanation.
 5. **Contact info must be pulled from master resume.** Use the exact phone, email, LinkedIn URL, and location from the MASTER RESUME contact section. Do not omit, alter, or fabricate contact details.
-6. **Education: omit unless required.** Do not include an education section unless the JD explicitly requires a degree or credential. The master resume notes education as not worth mentioning.
+6. **Education.** If the master resume has an Education section, include it, whether or not the JD mentions a degree. Copy degrees, institutions, and years as written; if the section is long, condense it to the entries most relevant to the role. Omit Education only when the master resume or candidate profile asks for it to be left off (for example in an `## Employer Formatting Rules` or `## Things to Avoid Mentioning` section). If the master resume has no Education section, do not add one, and do not insert a `[MISSING: ...]` flag for it.
 7. **This is a DRAFT for human review.** Use `[MISSING: ...]` flags rather than guessing. Do not use `[VERIFY: ...]` flags; just write the best version and let the human review it.
 8. **Peer quotes are NOT for resumes.** If the master resume contains a "Notable Peer & Manager Quotes" section, never include quotes, testimonials, or peer feedback in resume output. That section is reserved for cover letters and interview prep only.
 9. **Multi-section role subsetting.** If a role in the master resume is organized into multiple thematic subsections, select only the 3-4 most relevant subsections for the target JD. Do not attempt to cover all of them. Draw your bullets from the selected subsections.
@@ -152,6 +152,7 @@ Before writing the final resume, verify:
 - [ ] All other roles have 2-4 bullets each
 - [ ] No sub-headers, no bold thematic labels, no italic paragraphs inside any role
 - [ ] Any employer-specific formatting rules from the master resume or profile have been applied
+- [ ] Education is present if the master resume has it, unless the master resume or profile asks to omit it
 - [ ] Total length looks like 1.5 pages, not 3
 
 If any check fails, fix it before outputting.
@@ -167,7 +168,7 @@ Return the full tailored resume in clean Markdown only.
 - `##` for section headers (use "Summary", not "Professional Summary")
 - `###` for role headers within Experience, using middle dot separator
 - `-` for bullets
-- Sections in order: Summary, Core Competencies, Experience, Certifications
+- Sections in order: Summary, Core Competencies, Experience, Education, Certifications. Leave out Education or Certifications when the master resume has no such section, and leave out Education when rule 6 says to omit it
 - Do NOT include a Skills section separate from Core Competencies
 - Do NOT include Professional Values unless the JD explicitly asks for culture/values language
 - Do NOT include a change log, notes, or commentary; just the resume
