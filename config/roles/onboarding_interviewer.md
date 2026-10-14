@@ -1101,8 +1101,8 @@ their country.
 **Constraint:** use recognizable city/state pairs, city/country pairs outside
 the US (country name in full), `Remote`, or `United States`. Do not use country
 codes, abbreviations, or multi-word region descriptions — the API passes these
-as-is to the location filter, and the scoring gate may not recognize a code or
-an abbreviation.
+as-is to the location filter, and a line in any other form turns the scoring
+gate off.
 
 ### `feed-urls.txt`
 

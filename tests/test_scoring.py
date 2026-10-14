@@ -226,7 +226,13 @@ def _llm_json(relevance: int, flag: str | None) -> str:
 
 @pytest.mark.parametrize(
     "flag",
-    ["location_mismatch", "Location mismatch", "LOCATION_MISMATCH", "location_mismatch: posting is in another city"],
+    [
+        "location_mismatch",
+        "Location mismatch",
+        "LOCATION_MISMATCH",
+        "location-mismatch",
+        "location_mismatch: posting is in another city",
+    ],
 )
 def test_normalize_caps_a_flagged_location_mismatch_at_3(flag):
     out = json.loads(_normalize_llm_output(_llm_json(8, flag)))

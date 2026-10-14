@@ -6,31 +6,43 @@ place outside ``config/target_locations.txt`` is scored 2 with
 ``score_flag_reason = "location_mismatch"`` and never reaches the LLM.
 
 The gate is a recognizer, not a matcher. It compares only what it can name with
-confidence: a US state (code or full name), a country, or a non-US region such
-as ``EMEA``. City names are never compared, so a posting in a target state but
-another city passes to the scorer, whose role prompt caps it. A location the
-gate cannot classify (``Dublin`` alone, ``See posting``, blank) passes too,
-because a Stage-1 reject is never seen by the LLM or the operator.
+confidence: a US state, a country, or a region such as ``EMEA``. City names are
+never compared, so a posting in a target state but another city passes to the
+scorer, whose role prompt caps it. A location the gate cannot classify
+(``Dublin`` alone, ``See posting``, blank) passes too, because a Stage-1 reject
+is never seen by the LLM or the operator. Every doubtful reading resolves to a
+pass:
+
+- A two-letter code is a US state only after a comma (``Austin, TX``), and only
+  when the target list includes the US. ``LA`` alone, ``SF / LA`` and
+  ``IN-OFFICE`` name no state. A code that is also a country code also counts
+  as that country (``Berlin, DE``).
+- A name with two meanings keeps both (``Washington`` is WA or DC).
+- A work-mode word next to a place in one segment (``US Remote``,
+  ``Remote in Canada``) does not hide the place.
 
 Rules, in order — the first that holds lets the posting through:
 
 1. Nothing in the location is recognized.
-2. A named US state is a target state.
-3. A named non-US country is a target country.
-4. The posting is in the US and the target list covers the whole US (a
+2. It names a world region (``Worldwide``, ``Global``, ``Anywhere``), or a
+   region that covers the US (``Americas``, ``North America``) and the US is a
+   target country.
+3. A named US state is a target state.
+4. A named non-US country is a target country.
+5. The posting is in the US and the target list covers the whole US (a
    ``United States`` line), or the posting names the US without a state.
-5. The posting is remote and in the US, and the US is a target country.
-6. The posting names only a non-US region and the targets are not US-only.
+6. The posting is remote and in the US, and the US is a target country.
+7. The posting names only a non-US region and the targets are not US-only.
 
 So ``Remote - India`` is a mismatch for a US target list, and a bare ``Remote``
-passes. A work-mode word next to a place in one segment (``US Remote``,
-``Remote in Canada``) does not hide the place. A metro area that spans a state
-line needs one target line per state.
+passes. A metro area that spans a state line needs one target line per state.
 
-The gate is off when the file is absent, when no line names a recognized place
-(``Remote`` alone), or when ``FINDAJOB_LOCATION_GATE=off``. The RapidAPI
-fetchers also read the file (``fetchers/adapters/_locations.py``), so the
-switch lets an operator turn the gate off without changing what they fetch.
+The gate is off when the file is absent, when ``FINDAJOB_LOCATION_GATE=off``,
+when no line names a state or country (``Remote`` alone), or when any line is
+not a form the gate can read (a city alone, a region, a province) — then it
+logs ``location_gate_off`` once. The RapidAPI fetchers also read the file
+(``fetchers/adapters/_locations.py``), so the switch lets an operator turn the
+gate off without changing what they fetch.
 """
 
 from __future__ import annotations
@@ -40,6 +52,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from findajob.audit import log_event
 from findajob.paths import BASE
 
 _TARGET_LOCATIONS_PATH = Path(BASE) / "config" / "target_locations.txt"
@@ -109,9 +122,33 @@ _STATE_CODES: frozenset[str] = frozenset(_STATE_NAMES.values())
 # reject hides the job.
 _AMBIGUOUS_STATES: dict[str, frozenset[str]] = {"washington": frozenset({"WA", "DC"})}
 _AMBIGUOUS_COUNTRIES: dict[str, str] = {"georgia": "georgia"}
-# Two-letter codes that feeds also use for a country. Applied to postings only:
-# in target_locations.txt, ``CA`` means California.
-_CODE_ALSO_COUNTRY: dict[str, str] = {"CA": "canada"}
+# State codes that are also ISO country codes. Applied to postings only (in
+# target_locations.txt, ``CA`` means California), and only as a hint: the
+# country can make a posting match, never make it a mismatch, because
+# ``Chennai, TN`` is in India, not Tunisia.
+_CODE_ALSO_COUNTRY: dict[str, str] = {
+    "AL": "albania",
+    "AR": "argentina",
+    "AZ": "azerbaijan",
+    "CA": "canada",
+    "CO": "colombia",
+    "DE": "germany",
+    "GA": "gabon",
+    "ID": "indonesia",
+    "IL": "israel",
+    "IN": "india",
+    "LA": "laos",
+    "MA": "morocco",
+    "MD": "moldova",
+    "ME": "montenegro",
+    "MN": "mongolia",
+    "MT": "malta",
+    "NE": "niger",
+    "PA": "panama",
+    "SC": "seychelles",
+    "SD": "sudan",
+    "TN": "tunisia",
+}
 
 _COUNTRY_ALIASES: dict[str, str] = {
     "us": _US,
@@ -161,7 +198,7 @@ _COUNTRIES: frozenset[str] = frozenset(
         "namibia", "nepal", "netherlands", "new zealand", "nicaragua", "niger", "nigeria",
         "north korea", "north macedonia", "norway", "oman", "pakistan", "panama",
         "papua new guinea", "paraguay", "peru", "philippines", "poland", "portugal", "qatar",
-        "romania", "russia", "rwanda", "saudi arabia", "senegal", "serbia", "sierra leone",
+        "romania", "russia", "rwanda", "saudi arabia", "senegal", "serbia", "seychelles", "sierra leone",
         "singapore", "slovakia", "slovenia", "somalia", "south africa", "south korea",
         "spain", "sri lanka", "sudan", "suriname", "sweden", "switzerland", "syria", "taiwan",
         "tajikistan", "tanzania", "thailand", "togo", "trinidad and tobago", "tunisia",
@@ -181,21 +218,27 @@ _NON_US_REGIONS: frozenset[str] = frozenset(
         "nordics", "oceania", "south america", "southeast asia",
     }
 )  # fmt: skip
+# Regions that include the US, and regions that include everywhere.
+_US_REGIONS: frozenset[str] = frozenset({"americas", "the americas", "amer", "namer", "noram", "north america"})
+_WORLD_REGIONS: frozenset[str] = frozenset({"worldwide", "global", "anywhere"})
 
-# Separators between the parts of a location. " or " between words separates
+# Separators between the parts of a location, captured so a code can be read
+# as a state only when a comma comes before it. " or " between words separates
 # alternatives in any case; "Salem, OR" keeps Oregon, because a comma, not a
 # space, comes before it.
-_SPLIT_RE = re.compile(r"[,;|/()\[\]·•\n\-–—]|\s+or\s+", re.IGNORECASE)
+_SPLIT_RE = re.compile(r"(\s+or\s+|[,;:|/()\[\]·•\n\-–—])", re.IGNORECASE)
+# "IN-OFFICE" and "On-site" would otherwise split into a bare "IN" or "On".
+_WORK_MODE_COMPOUND_RE = re.compile(r"\b(?:in|on)[\s\-–—]+(?:office|site)\b", re.IGNORECASE)
 _CODE_RE = re.compile(r"^(?P<code>[A-Z]{2})(?:\s+\d{5}(?:-\d{4})?)?$")
-_TRAILING_CODE_RE = re.compile(r"\s(?P<code>[A-Z]{2})(?:\s+\d{5}(?:-\d{4})?)?$")
 _REMOTE_RE = re.compile(r"\b(?:remote|anywhere|work from home|wfh|telecommut\w*)\b", re.IGNORECASE)
 # Work-mode and filler words around a place in one segment: "US Remote",
 # "Remote in the US". Removed only when the whole segment is not a place.
 _WORK_MODE_RE = re.compile(
-    r"\b(?:remote|anywhere|work from home|wfh|telecommut\w*|hybrid|onsite|in office|office"
+    r"\b(?:remote|work from home|wfh|telecommut\w*|hybrid|onsite|office"
     r"|in|the|from|only|based|within|national|nationwide)\b",
     re.IGNORECASE,
 )
+_WORLD_WORD_RE = re.compile(r"\b(?:anywhere|worldwide|global)\b", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -214,36 +257,58 @@ class _Place:
     states: frozenset[str]
     countries: frozenset[str]
     region: bool
+    covers_us: bool = False
+    covers_all: bool = False
+    hint_countries: frozenset[str] = frozenset()
 
 
-def _segments(location: str) -> list[str]:
-    parts = (re.sub(r"\s+", " ", p.replace(".", "")).strip() for p in _SPLIT_RE.split(location or ""))
-    return [p for p in parts if p]
+@dataclass(frozen=True)
+class _Segment:
+    text: str
+    after_comma: bool
 
 
-def _classify(segment: str, *, posting: bool) -> _Place | None:
+def _segments(location: str) -> list[_Segment]:
+    parts = _SPLIT_RE.split(_WORK_MODE_COMPOUND_RE.sub(" onsite ", location or ""))
+    segments: list[_Segment] = []
+    separator = ""
+    for i, part in enumerate(parts):
+        if i % 2:
+            separator = part
+            continue
+        text = re.sub(r"\s+", " ", part.replace(".", "")).strip()
+        if text:
+            segments.append(_Segment(text=text, after_comma=separator == ","))
+    return segments
+
+
+def _squash(text: str) -> str:
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _classify(segment: _Segment, *, posting: bool, codes_are_states: bool) -> _Place | None:
     """Name the place one segment refers to, or None when it is not recognized."""
-    place = _classify_exact(segment, posting=posting)
-    if place is not None:
-        return place
-    core = re.sub(r"\s+", " ", _WORK_MODE_RE.sub(" ", segment)).strip()
-    if core and core != segment:
-        place = _classify_exact(core, posting=posting)
-    return place
+    without_work_mode = _squash(_WORK_MODE_RE.sub(" ", segment.text))
+    for text in (segment.text, without_work_mode, _squash(_WORLD_WORD_RE.sub(" ", without_work_mode))):
+        if text:
+            place = _classify_exact(text, segment.after_comma, posting=posting, codes_are_states=codes_are_states)
+            if place is not None:
+                return place
+    return None
 
 
-def _classify_exact(segment: str, *, posting: bool) -> _Place | None:
+def _classify_exact(text: str, after_comma: bool, *, posting: bool, codes_are_states: bool) -> _Place | None:
     states: set[str] = set()
     countries: set[str] = set()
-    m = _CODE_RE.match(segment)
-    if m is None and any(c.islower() for c in segment):
-        m = _TRAILING_CODE_RE.search(segment)
+    hint_countries: set[str] = set()
+    m = _CODE_RE.match(text) if after_comma else None
     if m is not None and m.group("code") in _STATE_CODES:
         code = m.group("code")
-        states.add(code)
+        if codes_are_states:
+            states.add(code)
         if posting and code in _CODE_ALSO_COUNTRY:
-            countries.add(_CODE_ALSO_COUNTRY[code])
-    key = segment.lower()
+            hint_countries.add(_CODE_ALSO_COUNTRY[code])
+    key = text.lower()
     if key in _AMBIGUOUS_STATES:
         states |= _AMBIGUOUS_STATES[key]
     elif key in _STATE_NAMES:
@@ -255,34 +320,62 @@ def _classify_exact(segment: str, *, posting: bool) -> _Place | None:
     elif key in _COUNTRIES and key not in _STATE_NAMES:
         countries.add(key)
     region = key in _NON_US_REGIONS
-    if not states and not countries and not region:
+    covers_us = key in _US_REGIONS
+    covers_all = key in _WORLD_REGIONS
+    if not (states or countries or region or covers_us or covers_all or hint_countries):
         return None
-    return _Place(label=segment, states=frozenset(states), countries=frozenset(countries), region=region)
+    return _Place(
+        label=text,
+        states=frozenset(states),
+        countries=frozenset(countries),
+        region=region,
+        covers_us=covers_us,
+        covers_all=covers_all,
+        hint_countries=frozenset(hint_countries),
+    )
 
 
-def parse_targets(lines: list[str]) -> LocationTargets | None:
-    """Build the gate from target lines; None when no line names a recognized place."""
+def _read_targets(lines: list[str]) -> tuple[LocationTargets | None, list[str]]:
+    """Build the gate from target lines; also return the lines it cannot read.
+
+    A line counts when it names a US state or a country. A line of work-mode
+    words only (``Remote``, ``Hybrid``) is skipped. Any other line — a city
+    alone, a region, a province, ``Anywhere`` — means the gate cannot know the
+    whole target area, so the gate is off.
+    """
     states: set[str] = set()
     countries: set[str] = set()
     us_wide = False
+    unreadable: list[str] = []
     for line in lines:
-        places = [p for seg in _segments(line) if (p := _classify(seg, posting=False))]
+        segments = _segments(line)
+        places = [p for seg in segments if (p := _classify(seg, posting=False, codes_are_states=True))]
         line_states = {s for p in places for s in p.states}
         line_countries = {c for p in places for c in p.countries}
+        if not line_states and not line_countries:
+            if any(_squash(_WORK_MODE_RE.sub(" ", seg.text)) for seg in segments):
+                unreadable.append(line)
+            continue
         if line_states:
             line_countries.add(_US)
         elif _US in line_countries:
             us_wide = True
         states |= line_states
         countries |= line_countries
-    if not states and not countries:
-        return None
-    return LocationTargets(
+    if unreadable or (not states and not countries):
+        return None, unreadable
+    targets = LocationTargets(
         states=frozenset(states),
         countries=frozenset(countries),
         us_wide=us_wide,
         lines=tuple(lines),
     )
+    return targets, unreadable
+
+
+def parse_targets(lines: list[str]) -> LocationTargets | None:
+    """Build the gate from target lines; None when the gate is off for them."""
+    return _read_targets(lines)[0]
 
 
 def target_lines(path: Path | None = None) -> list[str]:
@@ -294,24 +387,39 @@ def target_lines(path: Path | None = None) -> list[str]:
     return [line for line in lines if line and not line.startswith("#")]
 
 
+# Unreadable target lines already reported by this process, so triage logs
+# one event, not one per scored job.
+_warned: set[str] = set()
+
+
 def load_targets(path: Path | None = None) -> LocationTargets | None:
     """The gate for this instance, or None when it is off."""
     if os.environ.get("FINDAJOB_LOCATION_GATE", "").strip().lower() in _OFF_VALUES:
         return None
-    return parse_targets(target_lines(path))
+    targets, unreadable = _read_targets(target_lines(path))
+    key = "\n".join(unreadable)
+    if unreadable and key not in _warned:
+        _warned.add(key)
+        log_event("location_gate_off", reason="unreadable_lines", lines=unreadable)
+    return targets
 
 
 def location_mismatch(location: str, targets: LocationTargets) -> str | None:
     """Return the place that puts the posting outside the targets, or None to pass."""
+    us_target = _US in targets.countries
     segments = _segments(location)
-    places = [p for seg in segments if (p := _classify(seg, posting=True))]
+    places = [p for seg in segments if (p := _classify(seg, posting=True, codes_are_states=us_target))]
+    if any(p.covers_all or (p.covers_us and us_target) for p in places):
+        return None
+    if {c for p in places for c in p.hint_countries} & targets.countries:
+        return None
+    places = [p for p in places if p.states or p.countries or p.region]
     if not places:
         return None
-    remote = any(_REMOTE_RE.search(seg) for seg in segments)
+    remote = any(_REMOTE_RE.search(seg.text) for seg in segments)
     states = {s for p in places for s in p.states}
     countries = {c for p in places for c in p.countries}
     in_us = bool(states) or _US in countries
-    us_target = _US in targets.countries
 
     if states & targets.states:
         return None

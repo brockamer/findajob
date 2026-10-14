@@ -63,6 +63,8 @@ class TestMetroPersona:
             "Hybrid (Denver, CO)",
             "Denver, Colorado, United States",
             "Denver CO",
+            # A two-letter code counts only after a comma.
+            "Austin TX",
             # Names the gate cannot place: the scorer decides.
             "Dublin",
             "Portland",
@@ -93,7 +95,6 @@ class TestMetroPersona:
             "Cambridge, MA",
             "Austin, Texas",
             "AUSTIN, TX",
-            "Austin TX",
             "Washington, D.C.",
             "Remote - India",
             "Remote - Europe",
@@ -138,15 +139,18 @@ class TestNonUsCandidate:
     def test_passes(self, location):
         assert location_mismatch(location, UK) is None
 
-    @pytest.mark.parametrize("location", ["Berlin, Germany", "Austin, TX", "Remote (US)"])
+    @pytest.mark.parametrize("location", ["Berlin, Germany", "Austin, Texas", "Remote (US)"])
     def test_rejects(self, location):
         assert location_mismatch(location, UK) is not None
+
+    def test_us_state_code_is_ignored_without_a_us_target(self):
+        assert location_mismatch("Austin, TX", UK) is None
 
     def test_ca_as_country_code_still_matches_canada(self):
         assert location_mismatch("Toronto, ON, CA", CANADA) is None
 
-    def test_us_state_rejects_for_canadian_targets(self):
-        assert location_mismatch("Seattle, WA", CANADA) is not None
+    def test_us_state_name_rejects_for_canadian_targets(self):
+        assert location_mismatch("Seattle, Washington, United States", CANADA) is not None
 
 
 class TestAmbiguousNames:
@@ -238,3 +242,95 @@ class TestRealFeedStrings:
     def test_oregon_code_after_a_comma_is_still_a_state(self):
         assert location_mismatch("Salem, OR", parse_targets(["Portland, OR"])) is None
         assert location_mismatch("Salem, OR", METRO) == "OR"
+
+
+class TestReviewFindings:
+    """False-reject shapes found in review of the first implementation (2026-10-13)."""
+
+    @pytest.mark.parametrize(
+        "location",
+        [
+            "Americas, EMEA",
+            "North America, Europe",
+            "Remote - Americas or EMEA",
+            "AMER, EMEA",
+            "Remote: North America / Europe",
+        ],
+    )
+    def test_region_that_covers_the_us_passes_for_us_targets(self, location):
+        assert location_mismatch(location, METRO) is None
+
+    @pytest.mark.parametrize("location", ["Worldwide, EMEA", "Global; APAC", "Remote - Worldwide"])
+    def test_world_region_passes_for_us_targets(self, location):
+        assert location_mismatch(location, METRO) is None
+
+    @pytest.mark.parametrize("location", ["Worldwide, United States", "US, Worldwide"])
+    def test_world_region_passes_for_non_us_targets(self, location):
+        assert location_mismatch(location, UK) is None
+
+    def test_emea_alone_still_rejects_for_us_targets(self):
+        assert location_mismatch("Remote - EMEA", METRO) == "EMEA"
+
+    @pytest.mark.parametrize(
+        "location",
+        ["Los Angeles / LA", "Santa Monica (LA)", "LA (Hybrid)", "SF / LA", "LA or SF", "LA", "Los Angeles, CA"],
+    )
+    def test_a_code_without_a_comma_is_not_a_state(self, location):
+        assert location_mismatch(location, parse_targets(["Los Angeles, CA"])) is None
+
+    @pytest.mark.parametrize(
+        "location",
+        ["Seattle - IN-OFFICE", "Seattle (IN-OFFICE)", "Seattle - HYBRID OR IN-OFFICE", "Seattle, IN-OFFICE"],
+    )
+    def test_in_office_is_not_indiana(self, location):
+        assert location_mismatch(location, parse_targets(["Seattle, WA"])) is None
+
+    @pytest.mark.parametrize(
+        ("location", "targets"),
+        [
+            ("Bangalore, IN", ["Bangalore, India"]),
+            ("Bangalore, KA, IN", ["Bangalore, India"]),
+            ("Berlin, DE", ["Berlin, Germany"]),
+            ("Tel Aviv, IL", ["Tel Aviv, Israel"]),
+            ("Bogota, CO", ["Bogota, Colombia"]),
+            ("Perth, WA", ["Perth, Australia"]),
+            ("Chennai, TN", ["Chennai, India"]),
+            ("Curitiba, PR", ["Sao Paulo, Brazil"]),
+            ("Bangalore, IN", ["Seattle, WA", "Bangalore, India"]),
+        ],
+    )
+    def test_country_and_region_codes_match_non_us_targets(self, location, targets):
+        assert location_mismatch(location, parse_targets(targets)) is None
+
+    def test_us_state_code_still_rejects_for_us_targets(self):
+        assert location_mismatch("Bangalore, IN", METRO) is not None
+
+    @pytest.mark.parametrize(
+        "lines",
+        [
+            ["Seattle", "Portland, OR"],
+            ["Bay Area", "Austin, TX"],
+            ["NYC", "Jersey City, NJ"],
+            ["SEATTLE WA", "Portland, OR"],
+            ["Vancouver, BC", "Seattle, WA"],
+            ["Toronto, Ontario", "Remote, US"],
+            ["London, United Kingdom", "Remote - Europe"],
+            ["Seattle, WA", "Remote - North America"],
+            ["Denver, CO", "Remote - Anywhere"],
+        ],
+    )
+    def test_a_line_the_gate_cannot_read_turns_it_off(self, lines):
+        assert parse_targets(lines) is None
+
+    def test_work_mode_lines_do_not_turn_it_off(self):
+        assert parse_targets(["Denver, CO", "Remote", "Hybrid"]) is not None
+
+    def test_unreadable_line_is_logged_once(self, tmp_path, monkeypatch):
+        events = []
+        monkeypatch.setattr(location_gate, "log_event", lambda event, **kw: events.append((event, kw)))
+        monkeypatch.setattr(location_gate, "_warned", set())
+        f = tmp_path / "target_locations.txt"
+        f.write_text("Bay Area\nAustin, TX\n")
+        assert load_targets(f) is None
+        assert load_targets(f) is None
+        assert events == [("location_gate_off", {"reason": "unreadable_lines", "lines": ["Bay Area"]})]

@@ -223,8 +223,8 @@ Stage 1: title regex → score 1, no LLM. Location gate (#1217): a US state, cou
 non-US region outside `config/target_locations.txt` → score 2, `location_mismatch`, no LLM.
 Stage 2: in-domain + no JD → score 5/6, no LLM.
 The location gate is a recognizer, not a matcher: it compares states and countries, never
-cities, and anything it cannot place passes to the scorer. Keep it that way — a wrong
-Stage-1 reject is never seen by the LLM or the operator.
+cities, anything it cannot place passes to the scorer, and a target line it cannot read turns
+it off. Keep it that way — a wrong Stage-1 reject is never seen by the LLM or the operator.
 Never rely on LLM prompt instructions alone for boolean classification tasks.
 
 ### Cost Tracking Is Native

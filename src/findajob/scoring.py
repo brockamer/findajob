@@ -32,7 +32,7 @@ _REMOTE_NORM: dict[str, str] = {
 # The job_scorer role caps a location mismatch at this relevance (#1217); the
 # code enforces it, because a prompt rule alone is not a guarantee.
 _LOCATION_MISMATCH_CAP = 3
-_LOCATION_MISMATCH_FLAG_RE = re.compile(r"^location[\s_]+mismatch", re.IGNORECASE)
+_LOCATION_MISMATCH_FLAG_RE = re.compile(r"^location[\s_-]+mismatch", re.IGNORECASE)
 
 
 def _normalize_llm_output(raw: str) -> str:

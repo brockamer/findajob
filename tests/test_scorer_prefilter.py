@@ -556,6 +556,11 @@ class TestLocationGate:
         assert result is not None
         assert result["relevance_score"] == 1
 
+    def test_excluded_employer_wins_over_location(self, denver_targets):
+        result, _ = prefilter_score("Product Manager", "Excluded Corp", True, location="Singapore")
+        assert result is not None
+        assert result["score_flag_reason"] == "excluded_employer"
+
     def test_gate_is_off_without_a_target_file(self):
         assert prefilter_score("Product Manager", "Acme", True, location="Singapore") == (None, None)
 

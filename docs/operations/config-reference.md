@@ -119,11 +119,16 @@ The file has two uses:
    The board shows Flag reason `location_mismatch`. The scorer prompt also gets the
    list, and the scorer caps an out-of-area role at 3.
 
-The gate compares US states and countries, never cities. Because of this:
+The gate compares US states and countries, never cities, and every doubtful reading
+passes to the scorer. Because of this:
 
 - A posting in a listed state but another city passes the gate. The scorer decides.
 - A posting the gate cannot place passes: a city name alone (`Dublin`), `See posting`,
   blank, or a coarse value (`United States`, `Remote`).
+- A world region (`Worldwide`, `Global`, `Anywhere`) passes. A region that covers the
+  US (`Americas`, `North America`) passes when the list includes the US.
+- A two-letter code is a US state only after a comma (`Austin, TX`) and only when the
+  list includes the US. `LA` alone, `SF / LA` and `IN-OFFICE` name no state.
 - A posting with several locations passes if any of them is covered.
 - A remote posting passes if it is in a listed country. `Remote - India` against a
   US list scores 2.
@@ -131,10 +136,16 @@ The gate compares US states and countries, never cities. Because of this:
   a state border with one line rejects postings on the other side of the border.
 - A list with only `Remote` names no state or country, so the gate is off. Add a
   line for your country. A `United States` line lets any US state through.
+- **A line in another form turns the gate off** — a city alone (`Bay Area`), a
+  region (`Remote - Europe`), a province (`Vancouver, BC`), or `Anywhere`. The gate
+  cannot know the whole area, so it does not guess. Triage logs one
+  `location_gate_off` event in `logs/pipeline.jsonl` that names the line.
 
 The gate is off when the file is absent, or when `FINDAJOB_LOCATION_GATE=off` is
-set in `data/.env`. Jobs scored before a change keep their scores; the gate applies
-from the next triage run.
+set in `data/.env`. With the switch off, the scorer still gets the list and still
+caps an out-of-area role at 3. Jobs scored before a change keep their scores until
+they are re-scored (`scripts/rescore_all.py` applies the gate); new jobs get it from
+the next triage run.
 
 ---
 
