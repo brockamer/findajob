@@ -90,6 +90,20 @@ def _use_fixture_configs(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _location_gate_off(monkeypatch):
+    """Start every test with the #1217 location gate off: no target file, no switch.
+
+    Tests that exercise the gate point ``_TARGET_LOCATIONS_PATH`` at a tmp file.
+    Without this, a developer's own ``config/target_locations.txt`` would turn
+    the gate on and change prefilter results across the suite.
+    """
+    from findajob import location_gate
+
+    monkeypatch.setattr(location_gate, "_TARGET_LOCATIONS_PATH", FIXTURES / "target_locations.absent")
+    monkeypatch.delenv("FINDAJOB_LOCATION_GATE", raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _no_live_update_check():
     """Stop the #1016 update-availability check from firing a live GitHub call
     when tests hit ``/board/dashboard``. That route schedules a ``BackgroundTasks``

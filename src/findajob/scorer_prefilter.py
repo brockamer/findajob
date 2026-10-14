@@ -1,24 +1,28 @@
 #!/usr/bin/env python3
 """
 Deterministic pre-filter for job scoring.
-Runs BEFORE any LLM call. Two stages:
+Runs BEFORE any LLM call. Two stages, with the location gate between them:
 
   Stage 1 — Hard reject by title regex OR excluded company → score 1,
             scored, no LLM. Title check runs first; company check second.
             (context_suppressors in prefilter_rules.yaml can override
             the title branch.)
+  Location — Location names a US state, country or non-US region outside
+            config/target_locations.txt → score 2, no LLM (#1217; rules in
+            findajob.location_gate).
   Stage 2 — In-domain title + no usable JD → score 5, no LLM
 
-If neither stage fires, returns (None, None) and caller should invoke the LLM.
+If no stage fires, returns (None, None) and caller should invoke the LLM.
 
 Rules are loaded from config/prefilter_rules.yaml, config/in_domain_patterns.yaml,
-and config/excluded_employers.yaml (all gitignored). See
-src/findajob/config_loader.py. If any file is missing, that branch becomes a
-no-op — install config files per docs/operations/config-reference.md.
+config/excluded_employers.yaml and config/target_locations.txt (all gitignored).
+See src/findajob/config_loader.py and src/findajob/location_gate.py. If any file
+is missing, that branch becomes a no-op — install config files per
+docs/operations/config-reference.md.
 
 Usage:
     from findajob.scorer_prefilter import prefilter_score
-    result, reason = prefilter_score(title, company, jd_is_usable)
+    result, reason = prefilter_score(title, company, jd_is_usable, location=location)
     if result is not None:
         return result, 0   # latency=0, no subprocess
     # ... LLM path
@@ -31,6 +35,7 @@ from findajob.config_loader import (
     load_hard_reject_rules,
     load_in_domain_rules,
 )
+from findajob.location_gate import load_targets, location_mismatch
 from findajob.tiers import resolve_tier
 
 
@@ -68,14 +73,15 @@ def _in_domain_match(title: str) -> bool:
     return bool(in_domain_re.search(title))
 
 
-def prefilter_score(title: str, company: str, jd_usable: bool) -> tuple[dict[str, object] | None, str | None]:
+def prefilter_score(
+    title: str, company: str, jd_usable: bool, *, location: str = ""
+) -> tuple[dict[str, object] | None, str | None]:
     """
     Returns (result_dict, reason_str) if a deterministic decision can be made,
     or (None, None) if the LLM should be invoked.
 
-    `company` is accepted for signature stability; no per-company rule is
-    supported today. Kept for callers (scoring.py) and potential future
-    per-company overrides.
+    `company` drives the excluded-employer branch and the company tier.
+    `location` drives the location gate; the default "" never trips it.
     """
     t = (title or "").strip()
 
@@ -111,6 +117,27 @@ def prefilter_score(title: str, company: str, jd_usable: bool) -> tuple[dict[str
             "score_flag_reason": "excluded_employer",
             "remote_status": "Unknown",
             "scored_by": "prefilter_stage1",
+            "company_tier": resolve_tier(company),
+        }, reason
+
+    # ── Location gate: place outside target_locations.txt → score 2 ───────────
+    targets = load_targets() if location else None
+    if targets is not None and (outside := location_mismatch(location, targets)) is not None:
+        reason = (
+            f'Pre-filter location mismatch: "{location}" names {outside}, '
+            f"outside the target locations ({'; '.join(targets.lines)})"
+        )
+        return {
+            "score_status": "scored",
+            "relevance_score": 2,
+            "interview_likelihood": 1,
+            "strengths_alignment": "Location mismatch — the posting is outside the candidate's target locations.",
+            "industry_sector": None,
+            "comp_estimate": None,
+            "ai_notes": reason,
+            "score_flag_reason": "location_mismatch",
+            "remote_status": "Unknown",
+            "scored_by": "prefilter_location",
             "company_tier": resolve_tier(company),
         }, reason
 

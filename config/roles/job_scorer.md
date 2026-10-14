@@ -53,6 +53,30 @@ candidate has excluded is a hard reject even at a Tier 1 company.
 
 ---
 
+## LOCATION CONSTRAINTS
+
+The candidate's geography is in the profile: where they live, how far they will commute,
+whether they will relocate, and whether they want remote work. When the prompt also has a
+`TARGET LOCATIONS` list, read it as the machine-readable form of the same rules.
+
+A posting is a location mismatch when its location is outside those rules and the role is
+not remote-eligible for the candidate — for example, an onsite or hybrid role in a city,
+state or country the candidate has not named. For a mismatch:
+
+- cap relevance_score at 3,
+- set score_flag_reason to exactly "location_mismatch",
+- name the posting's location and the rule it breaks in ai_notes.
+
+These are not a mismatch by themselves: a coarse location (blank, "Remote", "See posting",
+or a country the candidate targets), or a posting that lists several locations when any one
+of them fits. A remote role that is open only in a country the candidate does not target is
+a mismatch.
+
+**The location cap takes priority over the Tier 1 floor below.** An out-of-area role at a
+Tier 1 company still scores 3 or lower.
+
+---
+
 ## TIER 1 COMPANY EXCEPTION
 
 The candidate has listed explicit Tier 1 target companies in their profile (typically under

@@ -18,7 +18,8 @@ When this map drifts from the actual code (renamed file, new route module, retir
 <repo>/src/findajob/fetchers/adapters/      # JobSourceAdapter Protocol + REGISTERED_ADAPTERS + per-source adapter classes (jobs_api14, jobs_api14_indeed, jobs_api14_bing, jsearch, greenhouse, ashby, lever, gmail, workday_cxs, gem); curation.py = per-adapter signup metadata loaded by /onboarding/feed-config/
 <repo>/src/findajob/fetchers/feed_probe.py  # shared ATS feed-URL liveness probe (#984) — probe_feed_line/probe_feed_urls/is_plausible_company_name + FeedProbeResult; reuses each adapter's _SLUG_RE/_ENDPOINT_TEMPLATE/User-Agent (no drift), never raises; reused by onboarding validation (#984) + verify-feed-urls button (#985); the #983 404 health-check is a separate path that reads logged *_fetch_skip outcomes, not this helper
 <repo>/src/findajob/scoring.py              # score_job(), _build_feedback_block() — calls findajob.llm.openrouter (#470)
-<repo>/src/findajob/scorer_prefilter.py     # deterministic pre-filter (Stage 1 + 2)
+<repo>/src/findajob/scorer_prefilter.py     # deterministic pre-filter (Stage 1, location gate, Stage 2)
+<repo>/src/findajob/location_gate.py        # location gate (#1217) — load_targets/location_mismatch over config/target_locations.txt; compares US states + countries only, unplaceable locations pass
 <repo>/src/findajob/llm/openrouter.py       # canonical OpenRouter HTTP wrapper (#470) — complete(), CompletionResult, OpenRouterError; cache_control on cached_prefix + cache_system axes
 <repo>/src/findajob/llm/tts.py              # Gemini TTS wrapper (#870) — generate_audio(), pcm_to_mp3(), generate_podcast(); MultiSpeakerVoiceConfig two-speaker rendering via Google AI API
 <repo>/src/findajob/cost_rollups.py         # SQL helpers backing all cost surfaces — per_job_cost, per_job_breakdown, weekly_spend, projected_monthly, spend_this_month

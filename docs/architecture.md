@@ -75,9 +75,10 @@ Everything between them is mediated by SQLite.
           ┌────────────▼────────────────────────────┐
           │  scorer_prefilter.py                    │
           │  Stage 1: title regex → score 1, skip   │
+          │  Location: off-target state → score 2   │
           │  Stage 2: in-domain, no JD → score 5/6  │
           └────────────┬────────────────────────────┘
-                       │  (jobs that pass both stages)
+                       │  (jobs that pass every stage)
           ┌────────────▼────────────────┐
           │  OpenRouter wrapper         │
           │  Role: job_scorer           │
@@ -337,7 +338,7 @@ created_at TEXT DEFAULT (datetime('now'))
 |---|---|
 | SQLite as canonical store | The DB is ACID, queryable, and zero-config. No external dependencies for the core data model. |
 | Direct profile injection (not RAG) | RAG chunking drops contact info, employer names, and dates. Profile is short enough to inject raw. |
-| Two-stage prefilter before LLM | Hard rejects (wrong domain, title-deterministic) don't need LLM calls. Saves ~$0.10/day and speeds triage. |
+| Deterministic prefilter before LLM | Hard rejects (wrong domain, title-deterministic) and out-of-area postings (a US state or country outside `config/target_locations.txt`, #1217) don't need LLM calls. Saves ~$0.10/day and speeds triage. |
 | JSON output validation | `jsonschema` validates every LLM scoring response. Malformed output → manual_review, not a crash. |
 | Web materials viewer (not Drive) | Prep folders are served locally via uvicorn/FastAPI — no cloud sync dependency. Markdown rendered inline; `.docx` offered as download. |
 | Web POST handlers are the sole write surface | Every handler in `findajob.web.routes.board_actions` calls straight into `findajob.actions` and responds in the same request — no poll cycle, no mirror table, single source of truth in SQLite. |

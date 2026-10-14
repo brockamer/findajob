@@ -2,6 +2,8 @@
 
 import json
 
+import pytest
+
 from findajob.scoring import _normalize_llm_output
 
 
@@ -199,3 +201,110 @@ def test_score_job_llm_branch_has_scored_by(monkeypatch):
     )
     assert result["scored_by"] == "llm"
     assert "company_tier" in result
+
+
+# ── Location constraints (#1217) ──────────────────────────────────────────────
+
+_USABLE_JD = "A long usable JD about running operations programs. " * 20
+
+
+def _llm_json(relevance: int, flag: str | None) -> str:
+    return json.dumps(
+        {
+            "score_status": "scored",
+            "relevance_score": relevance,
+            "interview_likelihood": 6,
+            "strengths_alignment": "x",
+            "industry_sector": None,
+            "comp_estimate": None,
+            "ai_notes": "",
+            "score_flag_reason": flag,
+            "remote_status": "Onsite",
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    "flag",
+    [
+        "location_mismatch",
+        "Location mismatch",
+        "LOCATION_MISMATCH",
+        "location-mismatch",
+        "location_mismatch: posting is in another city",
+    ],
+)
+def test_normalize_caps_a_flagged_location_mismatch_at_3(flag):
+    out = json.loads(_normalize_llm_output(_llm_json(8, flag)))
+    assert out["relevance_score"] == 3
+    assert out["score_flag_reason"] == "location_mismatch"
+
+
+def test_normalize_keeps_a_flagged_score_already_at_or_below_3():
+    out = json.loads(_normalize_llm_output(_llm_json(2, "location_mismatch")))
+    assert out["relevance_score"] == 2
+
+
+@pytest.mark.parametrize("flag", [None, "Seniority unclear"])
+def test_normalize_leaves_an_unflagged_score_alone(flag):
+    out = json.loads(_normalize_llm_output(_llm_json(8, flag)))
+    assert out["relevance_score"] == 8
+    assert out["score_flag_reason"] == flag
+
+
+def _denver_targets(tmp_path, monkeypatch):
+    from findajob import location_gate
+
+    f = tmp_path / "target_locations.txt"
+    f.write_text("Denver, CO\nRemote\n")
+    monkeypatch.setattr(location_gate, "_TARGET_LOCATIONS_PATH", f)
+
+
+def _capture_complete(monkeypatch) -> dict:
+    from unittest.mock import MagicMock
+
+    captured: dict = {}
+    fake = MagicMock()
+    fake.text = _llm_json(7, None)
+
+    def _complete(**kw):
+        captured.update(kw)
+        return fake
+
+    monkeypatch.setattr("findajob.scoring.complete", _complete)
+    return captured
+
+
+def test_score_job_prefilters_an_out_of_area_posting_without_the_llm(tmp_path, monkeypatch):
+    from findajob.scoring import score_job
+
+    _denver_targets(tmp_path, monkeypatch)
+    captured = _capture_complete(monkeypatch)
+
+    result, latency, completion = score_job(
+        "Product Manager", "Acme", "Seoul, South Korea", _USABLE_JD, "CANDIDATE PROFILE: example"
+    )
+    assert result["relevance_score"] == 2
+    assert result["score_flag_reason"] == "location_mismatch"
+    assert completion is None
+    assert captured == {}
+
+
+def test_score_job_gives_the_target_locations_to_the_scorer(tmp_path, monkeypatch):
+    from findajob.scoring import score_job
+
+    _denver_targets(tmp_path, monkeypatch)
+    captured = _capture_complete(monkeypatch)
+
+    score_job("Product Manager", "Acme", "Boulder, CO", _USABLE_JD, "CANDIDATE PROFILE: example")
+    assert "Denver, CO" in captured["cached_prefix"]
+    assert "Remote" in captured["cached_prefix"]
+
+
+def test_score_job_without_a_target_file_names_no_target_locations(monkeypatch):
+    from findajob.scoring import score_job
+
+    captured = _capture_complete(monkeypatch)
+
+    score_job("Product Manager", "Acme", "Boulder, CO", _USABLE_JD, "CANDIDATE PROFILE: example")
+    assert "TARGET LOCATIONS" not in captured["cached_prefix"]

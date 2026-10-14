@@ -79,7 +79,7 @@ Model assignment for the core pipeline and interview-materials roles, plus the c
 | Master resume | `candidate_context/master_resume.md` |
 | Profile | `candidate_context/profile.md` |
 | DB | `data/pipeline.db` |
-| Pre-filter | `src/findajob/scorer_prefilter.py` — Stage 1 regex hard reject, Stage 2 no-JD default |
+| Pre-filter | `src/findajob/scorer_prefilter.py` — Stage 1 regex hard reject, location gate (`src/findajob/location_gate.py`, #1217), Stage 2 no-JD default |
 | Board writes | `src/findajob/web/routes/board_actions.py` — every STATUS / REJECT_REASON transition is a POST handler calling `findajob.actions`. SQLite is the single source of truth. |
 | Watchdog | `scripts/watchdog.py` every 10 min — resets jobs stuck in `prep_in_progress` > 60 min; returns `briefing_ready` jobs past the decision window (`FINDAJOB_BRIEFING_READY_WINDOW_DAYS`, default 14, `0` = off) to `scored` |
 | Scheduler | supercronic in-container; schedules declared in `ops/scheduled-jobs.yaml`, rendered to `/app/crontab` by `scripts/render_crontab.py` at entrypoint. Per-job env overrides: `FINDAJOB_<JOB>_SCHEDULE` / `FINDAJOB_<JOB>_ENABLED` (#344). |
@@ -219,7 +219,12 @@ the same contract.
 
 ### Hard Rejects are Code
 `scorer_prefilter.py` handles hard rejects deterministically before any LLM call.
-Stage 1: title regex → score 1, no LLM. Stage 2: in-domain + no JD → score 5/6, no LLM.
+Stage 1: title regex → score 1, no LLM. Location gate (#1217): a US state, country or
+non-US region outside `config/target_locations.txt` → score 2, `location_mismatch`, no LLM.
+Stage 2: in-domain + no JD → score 5/6, no LLM.
+The location gate is a recognizer, not a matcher: it compares states and countries, never
+cities, anything it cannot place passes to the scorer, and a target line it cannot read turns
+it off. Keep it that way — a wrong Stage-1 reject is never seen by the LLM or the operator.
 Never rely on LLM prompt instructions alone for boolean classification tasks.
 
 ### Cost Tracking Is Native
