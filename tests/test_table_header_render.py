@@ -57,7 +57,9 @@ def test_table_header_renders_filter_row(tmp_path) -> None:
     assert 'name="stage"' in rendered and "data-filter-input" in rendered
     # HTMX wiring present.
     assert 'hx-get="/board/dashboard/rows"' in rendered
-    assert 'hx-push-url="true"' in rendered
+    # #1218: the rows route sends HX-Push-Url with the page URL; an
+    # hx-push-url attribute would push the /rows request URL instead.
+    assert "hx-push-url" not in rendered
 
 
 def test_enum_hidden_input_has_htmx_change_trigger(tmp_path) -> None:
@@ -99,11 +101,11 @@ def test_enum_hidden_input_has_htmx_change_trigger(tmp_path) -> None:
 
 
 def test_sort_link_uses_canonical_page_path_when_on_rows_endpoint(tmp_path) -> None:
-    """#340 — after a filter input fires hx-push-url='true', the address bar
-    sits on /board/dashboard/rows. A subsequent sort click on a relative
-    href would resolve to the rows endpoint and return raw <tr> rows that
-    hx-boost dumps into <body> ('all rows expand'). Sort links must use the
-    canonical page path so resolution works regardless of the URL bar."""
+    """#340 — before #1218 a filter change left the address bar on
+    /board/dashboard/rows, and a relative sort href resolved to the rows
+    endpoint and returned raw <tr> rows that hx-boost dumped into <body>
+    ('all rows expand'). Sort links must use the canonical page path so
+    resolution works regardless of the URL bar."""
     from findajob.web.app import create_app
 
     app = create_app(

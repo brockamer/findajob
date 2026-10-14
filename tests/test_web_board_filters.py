@@ -108,7 +108,7 @@ def test_archive_score_min_5_surfaces_buried_gems(
     _insert_job(db_path, id="b2", fingerprint="fp-b2", relevance_score=5, title="Five")
     _insert_job(db_path, id="b3", fingerprint="fp-b3", relevance_score=4, title="Four")
 
-    r = client.get("/board/archive/rows?relevance_score_min=5")
+    r = client.get("/board/archive/rows?relevance_score_min=5", headers={"HX-Request": "true"})
     assert r.status_code == 200
     assert "fp-b1" in r.text
     assert "fp-b2" in r.text
@@ -165,7 +165,7 @@ def test_dashboard_text_filter_on_title(
     _insert_job(db_path, id="c1", fingerprint="fp-c1", relevance_score=8, title="Director of NPI")
     _insert_job(db_path, id="c2", fingerprint="fp-c2", relevance_score=8, title="VP Engineering")
 
-    r = client.get("/board/dashboard/rows?title=director")
+    r = client.get("/board/dashboard/rows?title=director", headers={"HX-Request": "true"})
     assert r.status_code == 200
     assert "fp-c1" in r.text
     assert "fp-c2" not in r.text
@@ -178,7 +178,7 @@ def test_dashboard_sort_changes_preserve_filter(
     _insert_job(db_path, id="d1", fingerprint="fp-d1", relevance_score=8, title="A")
     _insert_job(db_path, id="d2", fingerprint="fp-d2", relevance_score=9, title="A2")
 
-    r = client.get("/board/dashboard/rows?relevance_score_min=7&sort=created_at&desc=0")
+    r = client.get("/board/dashboard/rows?relevance_score_min=7&sort=created_at&desc=0", headers={"HX-Request": "true"})
     assert r.status_code == 200
     assert "fp-d1" in r.text
     assert "fp-d2" in r.text
@@ -222,7 +222,7 @@ def test_applied_filter_by_days_since_applied(
     _insert_job(db_path, id="ap2", fingerprint="fp-ap2", stage="applied", title="Fresh App")
     _audit_log(db_path, job_id="ap2", new_value="applied", changed_at=fresh)
 
-    r = client.get("/board/applied/rows?days_since_applied_min=14")
+    r = client.get("/board/applied/rows?days_since_applied_min=14", headers={"HX-Request": "true"})
     assert r.status_code == 200
     assert "fp-ap1" in r.text
     assert "fp-ap2" not in r.text
@@ -255,7 +255,7 @@ def test_rejected_filter_by_reason(
     )
     _audit_log(db_path, job_id="rj2", new_value="rejected", changed_at=now)
 
-    r = client.get("/board/rejected/rows?reject_reason=Compensation")
+    r = client.get("/board/rejected/rows?reject_reason=Compensation", headers={"HX-Request": "true"})
     assert r.status_code == 200
     assert "fp-rj1" in r.text
     assert "fp-rj2" not in r.text
@@ -271,7 +271,7 @@ def test_archive_filter_by_source(
     _insert_job(db_path, id="ar1", fingerprint="fp-ar1", source="greenhouse_json")
     _insert_job(db_path, id="ar2", fingerprint="fp-ar2", source="jobsapi_indeed")
 
-    r = client.get("/board/archive/rows?source=greenhouse_json")
+    r = client.get("/board/archive/rows?source=greenhouse_json", headers={"HX-Request": "true"})
     assert r.status_code == 200
     assert "fp-ar1" in r.text
     assert "fp-ar2" not in r.text
@@ -284,7 +284,7 @@ def test_invalid_param_silently_dropped(
     app_with_db: tuple[TestClient, Path],
 ) -> None:
     client, _ = app_with_db
-    r = client.get("/board/dashboard/rows?bogus=value&title__bad=x")
+    r = client.get("/board/dashboard/rows?bogus=value&title__bad=x", headers={"HX-Request": "true"})
     assert r.status_code == 200
 
 
@@ -299,4 +299,6 @@ def test_filter_input_attrs_render_for_htmx_include(
     r = client.get("/board/dashboard")
     assert r.status_code == 200
     assert "data-filter-input" in r.text
-    assert 'hx-push-url="true"' in r.text
+    # #1218: the address bar is set by the rows route's HX-Push-Url header.
+    # No input (Columns dropdown or header filter) may push the /rows URL.
+    assert "hx-push-url" not in r.text

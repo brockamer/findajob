@@ -73,7 +73,7 @@ def test_page_get_with_filter_persists_to_view_prefs(client_and_db: tuple[TestCl
 
 def test_rows_get_with_filter_persists_to_view_prefs(client_and_db: tuple[TestClient, Path]) -> None:
     client, db = client_and_db
-    r = client.get("/board/dashboard/rows?company=meta")
+    r = client.get("/board/dashboard/rows?company=meta", headers={"HX-Request": "true"})
     assert r.status_code == 200
     assert _read_view_prefs(db, "dashboard") == "company=meta"
 

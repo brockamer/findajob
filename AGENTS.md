@@ -168,6 +168,8 @@ Declarative framework at `findajob.web.filters`. Each board tab declares a `tupl
 
 URL contract — flat, type-suffixed param names: `?col=sub` (TEXT), `?col_min=&col_max=` (SCORE/INTEGER), `?col=a,b,c` (ENUM), `?col_from=&col_to=` (DATE), `?sort=col&desc=1`, `?cols=a,b,c` (visibility).
 
+The page URL is the only URL the address bar may hold (#1218). Filter inputs fetch `/board/<tab>/rows`; that route sends `HX-Push-Url: /board/<tab>?<query>` when the swap targets `#rows`, and 303-redirects to the page when the request expects one (no `HX-Request`, `HX-Boosted`, or `HX-History-Restore-Request`). Do not put `hx-push-url` on a filter input — it would push the `/rows` URL.
+
 Adding a new tab: declare ColumnSpec list in `registry.py`, add base WHERE + `_<tab>_query()` in `routes/board.py`, include `_filters.html` + `_table_header.html` in the template.
 
 **Per-tab persistence (#277).** The framework's URL state persists per tab via the `view_prefs` SQLite table (migration 0005). Cascade for what filters/cols apply on load: **URL ?cols= + filter params > persisted `view_prefs` row > `ColumnSpec.default_visible`**.

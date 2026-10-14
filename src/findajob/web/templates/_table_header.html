@@ -12,11 +12,12 @@
    up; popovers use Alpine.js (x-data/x-show) and write their committed values
    into hidden inputs that share the same data-filter-input attribute.
 #}
-{# After a filter input fires, hx-push-url='true' shifts the address bar to
-   the /rows endpoint. A subsequent click on a sort <a href='?sort=...'>
-   would then resolve relative to /rows and return a raw <tr> fragment,
-   which hx-boost would dump into <body> ("all rows expand," #340). Pin the
-   sort links to the canonical page path by stripping any trailing /rows. #}
+{# Sort links use the canonical page path, never a relative href. Before
+   #1218 a filter change pushed the /rows endpoint into the address bar, and
+   a relative sort link then fetched a raw <tr> fragment that hx-boost dumped
+   into <body> ("all rows expand," #340). The rows routes now push the page
+   URL (HX-Push-Url) and redirect page requests; the /rows strip below stays
+   as a guard. #}
 {% set raw_path = request.url.path.rstrip('/') %}
 {% set page_path = raw_path[:-5] if raw_path.endswith('/rows') else raw_path %}
 {% set rows_url = page_path + '/rows' %}
@@ -61,8 +62,7 @@
                  hx-trigger="keyup changed delay:200ms"
                  hx-target="#rows"
                  hx-swap="innerHTML"
-                 hx-include="[data-filter-input]"
-                 hx-push-url="true">
+                 hx-include="[data-filter-input]">
         {% elif s.kind.value in ('score', 'integer') %}
           {% set lo, hi = parsed.numeric_range.get(s.name, (none, none)) %}
           <span class="inline-flex items-center gap-0.5">
@@ -76,8 +76,7 @@
                    hx-trigger="keyup changed delay:200ms"
                    hx-target="#rows"
                    hx-swap="innerHTML"
-                   hx-include="[data-filter-input]"
-                   hx-push-url="true">
+                   hx-include="[data-filter-input]">
             <span class="text-slate-400">–</span>
             <input type="number"
                    name="{{ s.name }}_max"
@@ -89,8 +88,7 @@
                    hx-trigger="keyup changed delay:200ms"
                    hx-target="#rows"
                    hx-swap="innerHTML"
-                   hx-include="[data-filter-input]"
-                   hx-push-url="true">
+                   hx-include="[data-filter-input]">
           </span>
         {% elif s.kind.value == 'enum' %}
           {% set picks = parsed.enum.get(s.name, ()) %}
@@ -109,8 +107,7 @@
                    hx-trigger="change"
                    hx-target="#rows"
                    hx-swap="innerHTML"
-                   hx-include="[data-filter-input]"
-                   hx-push-url="true">
+                   hx-include="[data-filter-input]">
             <div x-show="open"
                  x-cloak
                  @click.outside="open = false"
@@ -157,8 +154,7 @@
                    hx-trigger="change"
                    hx-target="#rows"
                    hx-swap="innerHTML"
-                   hx-include="[data-filter-input]"
-                   hx-push-url="true">
+                   hx-include="[data-filter-input]">
             <input type="hidden"
                    name="{{ s.name }}_to"
                    data-filter-input
@@ -192,8 +188,9 @@
       </th>
     {% endfor %}
   </tr>
-  {# Hidden sort inputs so HTMX hx-include picks them up regardless of column visibility #}
+  {# Hidden sort inputs so HTMX hx-include picks them up regardless of column visibility.
+     No hidden cols here: the Columns dropdown's input in _filters.html carries it, and a
+     second cols sent the old value last, which the server kept (#1218). #}
   {% if parsed.sort %}<input type="hidden" name="sort" value="{{ parsed.sort }}" data-filter-input>{% endif %}
   <input type="hidden" name="desc" value="{{ '1' if parsed.desc else '0' }}" data-filter-input>
-  {% if parsed.cols %}<input type="hidden" name="cols" value="{{ parsed.cols | join(',') }}" data-filter-input>{% endif %}
 </thead>
