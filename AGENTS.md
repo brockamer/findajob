@@ -39,7 +39,7 @@ Two categories the hook can't fully catch — be deliberate about these:
 - **Operator topology** — hostnames, deployment paths (`/opt/stacks/...`), backup destinations, consumer infra brand names (hypervisor / NAS / VPN mesh products), per-stack port numbers, the operator's domain. Setup docs use placeholders: `<deployment-host>`, `<operator-handle>`, `<operator-domain>`.
 - **Field-locked content** — hardcoded company lists, single-field title patterns, industry vocabulary in role prompts. Belong in gitignored config (`config/target_companies.md`, `config/prefilter_rules.yaml`) or referenced from the candidate profile, not enumerated in tracked files. Tracking doc: [`docs/maintainers/generalization.md`](docs/maintainers/generalization.md).
 
-Plans, specs, and experiment notes for public features are committed under [`docs/superpowers/`](docs/superpowers/README.md) (#1188). They are public like every other tracked file, so every rule in this section applies to them. Anything about running a specific instance of findajob stays out of this repo — see [`## Project Board, Plans, Releases`](#project-board-plans-releases). Plan-content conventions are in [`## Plan Structure`](#plan-structure) below.
+Plans, specs, and experiment notes for public features are committed under [`docs/superpowers/`](docs/superpowers/README.md) (#1188). They are public like every other tracked file, so every rule in this section applies to them. Anything about running a specific instance of findajob stays out of this repo — see [`## Project Board, Plans, Releases`](#project-board-plans-releases). Plan-content conventions are in [`docs/superpowers/README.md` § Plan structure](docs/superpowers/README.md#plan-structure).
 
 If you find yourself wanting to put a real name, real employer, real city, or a tech-only example into a tracked file: move it to `CLAUDE.local.md` or a gitignored config and reference it instead.
 
@@ -51,9 +51,6 @@ The pipeline is Docker-only: image `ghcr.io/brockamer/findajob`, supercronic + u
 
 When authoring scripts or tests:
 
-- Always use `findajob.paths.BASE` — never hardcode `/home/...` or `/app/`.
-- Binary subprocess calls go through `PANDOC` from `findajob.paths`.
-- LLM calls go through `findajob.llm.openrouter.complete()`.
 - Tests must not depend on absolute paths — use tmpdirs or `BASE`-relative paths.
 
 ---
@@ -223,34 +220,8 @@ The one rule worth restating here because it bites often: **Same-PR docs rule.**
 
 - **Project board** — GitHub Projects v2 at https://github.com/users/brockamer/projects/1 is the single source of truth. Not on the board = not on the roadmap. Conventions in [`docs/project-board.md`](docs/project-board.md) (also jared's config file — the machine-readable header block is parsed on every board operation). Use the `/jared file` skill instead of manual `gh` calls — issue creation requires both `gh issue create` AND `gh project item-add` (new issues do not auto-add).
 - **Instance-specific work is tracked privately** — Work about running specific instances of findajob (the maintainer's own, or instances run for other people) and other maintainer-operational work is tracked in the maintainer's private tracker, not on this board. Public issues stay generic: no host names, instance names, people or business detail. When private work needs a product change, file a generic issue here; the link runs private → public only.
-- **Plans, specs, experiments** — generic plans and specs for public features are committed under `docs/superpowers/` (layout in its [README](docs/superpowers/README.md)); anything about the maintainer's own instances stays out of this repo (rule above). Content conventions in [`## Plan Structure`](#plan-structure) below. A plan without a **Documentation Impact** section is incomplete — push back rather than execute it.
+- **Plans, specs, experiments** — generic plans and specs for public features are committed under `docs/superpowers/` (layout in its [README](docs/superpowers/README.md)); anything about the maintainer's own instances stays out of this repo (rule above). Content conventions in its [§ Plan structure](docs/superpowers/README.md#plan-structure). A plan without a **Documentation Impact** section is incomplete — push back rather than execute it.
 - **Releases** — Docker image tagged from main; CHANGELOG.md is the release-notes source. PRs with schema / config / crontab / mount / compose changes get `migration-required` at PR-open time.
-
----
-
-## Plan Structure
-
-Implementation plans are committed in the `plans/` folder of `docs/superpowers/`. They are the bridge between a brainstormed spec and the actual commits.
-
-### Required sections
-
-Every plan must include the sections below. Skipping one is a smell — push back rather than write a plan that hides scope.
-
-1. **Goal + scope** — One paragraph: what's being built and why. One paragraph: what's intentionally NOT in scope (and links to the issues that cover the deferred work).
-2. **Tasks** — Numbered, bite-sized tasks. Each spells out **Files** to create/modify, **Steps** as a checklist, **Verification** commands and their expected outputs, and a **Commit message** body. Prescriptive enough that a fresh subagent can execute the task without re-reading the spec.
-3. **Documentation Impact** — **Mandatory, even if the answer is "none."** For each documentation surface the work touches, name the file and the change: `README.md` (install path, tech stack, quick-start), `docs/getting-started/*.md`, `AGENTS.md` / `CLAUDE.local.md`, the reference docs under `docs/architecture/`, `CHANGELOG.md`, the feature's spec (does this plan amend it?), in-code docstrings. If an item belongs to a follow-up issue, name the issue. If no docs are touched, write "None — no user-visible or developer-facing surface changes." Don't leave it empty.
-4. **Verification gate** — The smoke checks, integration tests, or manual validations that must pass before the PR opens. Distinct from per-task verification — this is the whole-feature acceptance gate.
-5. **Self-review checklist** — Spec coverage map (every spec section → tasks that implement it), placeholder scan (no `TBD`/`TODO` left), type/contract consistency across files.
-
-**Why Documentation Impact is required:** doc drift is silent. Code reviews catch behavioral bugs but rarely a stale README or an agent-instructions table listing the wrong scheduler. Enumerating every surface before implementing turns "doc updates" from an afterthought into part of the task list.
-
-### Storage and naming
-
-`plans/YYYY-MM-DD-short-feature-slug.md` under `docs/superpowers/` — one plan per feature, dated for ordering. Specs use the same naming in `specs/`. A mid-implementation handoff uses the `-CHECKPOINT.md` suffix and is deleted once the next session resumes.
-
-### Relationship to specs
-
-Specs (the `specs/` folder) describe **what** and **why** — the design + decision-log artifact from brainstorming. Plans describe **how** — concrete tasks with verifications. A spec without a plan can't be executed; a plan without a spec usually means the design wasn't really thought through. When a plan reveals a flaw in the spec, fix the spec in the same PR (often via a "Decisions made during implementation" subsection appended to the spec). Don't let plan and spec drift.
 
 ---
 
