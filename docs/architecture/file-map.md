@@ -1,6 +1,6 @@
 # findajob — Key File Locations
 
-This is the authoritative file map for the findajob codebase. Pointed at from `CLAUDE.md` § Key File Locations.
+This is the authoritative file map for the findajob codebase. Pointed at from `AGENTS.md` § Key File Locations.
 
 When this map drifts from the actual code (renamed file, new route module, retired script), update this file in the same change. CLAUDE.md keeps only the pointer; the inventory lives here.
 
@@ -108,6 +108,13 @@ When this map drifts from the actual code (renamed file, new route module, retir
 
 # ── Operations ──────────────────────────────────────────────────────────────
 <repo>/docs/operations/install-docker.md               # external-user Docker install + operations guide
+
+# ── Agent / maintainer reference (linked from AGENTS.md § Key File Locations) ─
+<repo>/docs/architecture/models-and-paths.md   # per-role models, pipeline plumbing, container path shifts
+<repo>/docs/architecture/data-ownership.md     # backup-critical vs rebuildable state, per path
+<repo>/docs/architecture/web-frontend.md       # URL groups, /settings/ + /onboarding/ detail, per-column filter framework
+<repo>/docs/architecture/board-lifecycle.md    # board route table, generator subprocesses, stage semantics
+<repo>/docs/architecture/scripts.md            # scripts/ reference: args, outputs, manual runs
 
 # ── Plans and specs ─────────────────────────────────────────────────────────
 <repo>/docs/superpowers/README.md          # layout + naming for committed plans/, specs/, experiments/ (public; #1188)
