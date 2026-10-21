@@ -33,7 +33,7 @@
       ) %}
       <th class="px-3 py-2 {% if is_filtered %}bg-blue-50{% endif %}">
         {% if s.sortable %}
-          <a href="{{ page_path }}?sort={{ s.name }}&desc={% if parsed.sort == s.name and parsed.desc %}0{% else %}1{% endif %}{% if parsed.cols %}&cols={{ parsed.cols | join(',') }}{% endif %}">
+          <a class="no-underline" href="{{ page_path }}?sort={{ s.name }}&desc={% if parsed.sort == s.name and parsed.desc %}0{% else %}1{% endif %}{% if parsed.cols %}&cols={{ parsed.cols | join(',') }}{% endif %}">
             {{ s.label }}{% if parsed.sort == s.name %}{% if parsed.desc %} ▼{% else %} ▲{% endif %}{% endif %}
           </a>
         {% else %}

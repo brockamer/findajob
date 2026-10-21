@@ -20,6 +20,23 @@ html {
   --color-history-yellow: #fff3b0;  /* not_selected within 90d (#234) */
 }
 
+/* Link style for page-content anchors (#1225). Tailwind's preflight resets
+   every <a> to `color: inherit; text-decoration: inherit`, so a bare anchor
+   (e.g. the job list on /materials/) read as plain text. This restores a link
+   look for UNCLASSED anchors inside <main> only: the nav is outside <main>,
+   Tailwind-styled links carry a class, and rendered Markdown (.prose) styles
+   its own anchors. Specificity (0,2,2) beats preflight's (0,0,1) regardless of
+   stylesheet order. */
+main a:not([class]):not(.prose a) {
+  color: #1d4ed8;  /* blue-700, 6.4:1 on the slate-50 page background */
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+main a:not([class]):not(.prose a):hover,
+main a:not([class]):not(.prose a):focus-visible {
+  color: #1e3a8a;  /* blue-900 */
+}
+
 /* Apply via Tailwind arbitrary-value utilities: bg-[var(--color-applied-fresh)] */
 
 .row-applied-fresh  { background-color: var(--color-applied-fresh); }
