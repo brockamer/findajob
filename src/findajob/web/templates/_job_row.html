@@ -21,9 +21,6 @@
   {% if tab in ('dashboard', 'applied', 'review', 'waitlist', 'fallback') %}
     {% include "board/_status_cell.html" %}
     {% include "board/_reject_cell.html" %}
-    {% if tab == 'dashboard' %}
-      {% include "board/_exclude_cell.html" %}
-    {% endif %}
   {% elif tab == 'rejected' %}
     {% include "board/_unreject_cell.html" %}
     {% include "board/_change_reject_reason_cell.html" %}
@@ -74,4 +71,9 @@
     </td>
     {% endif %}
   {% endfor %}
+  {# The exclusion-Rule cell sits after the data columns: status, title,
+     company and location come first (#1220). #}
+  {% if tab == 'dashboard' %}
+    {% include "board/_exclude_cell.html" %}
+  {% endif %}
 </tr>

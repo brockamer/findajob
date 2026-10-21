@@ -1,0 +1,11 @@
+-- 0013_view_prefs_cols_ordered.sql — mark saved views whose cols order is a choice (#1220).
+--
+-- Since #1220 the ``cols=`` list order in a saved view is the column order.
+-- Before it, the Columns dropdown listed its checkboxes in registry order,
+-- so every saved ``cols`` holds the old registry order (scores first) by
+-- accident, not by choice. The DEFAULT 0 marks every existing row as such a
+-- legacy row; ``findajob.web.view_prefs.load`` puts a legacy row's ``cols``
+-- in the new registry order once and sets the flag. ``save`` always sets it.
+--
+-- Single statement, no data rewrite in SQL.
+ALTER TABLE view_prefs ADD COLUMN cols_ordered INTEGER NOT NULL DEFAULT 0;

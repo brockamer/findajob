@@ -1,5 +1,11 @@
 """Per-tab ColumnSpec lists for the 7 board tabs.
 
+Spec order is the default column order (#1220). Every tab follows one rule:
+title, company, location, then the score columns, then the rest. The
+Status/Reject action cells render before the spec columns (leading_cols).
+The user's own order from the Columns dropdown arrives as the ``?cols=``
+list order — see ``filters.url.ordered_specs``.
+
 Visibility defaults are tuned to what the operator needs to *decide* on each
 tab — see "Per-tab visibility defaults" in the board-filter-framework design
 notes (maintainer-private). Hidden columns remain in the spec so the
@@ -53,12 +59,13 @@ def _reject_reason_values() -> tuple[str, ...]:
 
 # ─── Dashboard ────────────────────────────────────────────────────────────────
 DASHBOARD_COLUMNS: tuple[ColumnSpec, ...] = (
+    ColumnSpec(name="title", label="Title", kind=Kind.TEXT),
+    ColumnSpec(name="company", label="Company", kind=Kind.TEXT),
+    ColumnSpec(name="location", label="Location", kind=Kind.TEXT),
     ColumnSpec(name="relevance_score", label="Rel", kind=Kind.SCORE),
     ColumnSpec(name="interview_likelihood", label="Likelihood", kind=Kind.SCORE),
     ColumnSpec(name="fit_score", label="Fit", kind=Kind.SCORE),
     ColumnSpec(name="probability_score", label="Prob", kind=Kind.SCORE),
-    ColumnSpec(name="title", label="Title", kind=Kind.TEXT),
-    ColumnSpec(name="company", label="Company", kind=Kind.TEXT),
     ColumnSpec(
         name="company_history",
         label="History",
@@ -66,7 +73,6 @@ DASHBOARD_COLUMNS: tuple[ColumnSpec, ...] = (
         sortable=False,
         filterable=False,
     ),
-    ColumnSpec(name="location", label="Location", kind=Kind.TEXT),
     ColumnSpec(
         name="remote_status",
         label="Remote",
@@ -98,6 +104,7 @@ validate_specs(DASHBOARD_COLUMNS)
 APPLIED_COLUMNS: tuple[ColumnSpec, ...] = (
     ColumnSpec(name="title", label="Title", kind=Kind.TEXT, db_expr="j.title"),
     ColumnSpec(name="company", label="Company", kind=Kind.TEXT, db_expr="j.company"),
+    ColumnSpec(name="location", label="Location", kind=Kind.TEXT, db_expr="j.location"),
     ColumnSpec(
         name="applied_date",
         label="Applied",
@@ -124,7 +131,6 @@ APPLIED_COLUMNS: tuple[ColumnSpec, ...] = (
         kind=Kind.TEXT,
         db_expr="j.known_contacts",
     ),
-    ColumnSpec(name="location", label="Location", kind=Kind.TEXT, db_expr="j.location"),
     ColumnSpec(
         name="remote_status",
         label="Remote",
@@ -177,13 +183,7 @@ validate_specs(REVIEW_COLUMNS)
 WAITLIST_COLUMNS: tuple[ColumnSpec, ...] = (
     ColumnSpec(name="title", label="Title", kind=Kind.TEXT, db_expr="w.title"),
     ColumnSpec(name="company", label="Company", kind=Kind.TEXT, db_expr="w.company"),
-    ColumnSpec(
-        name="company_history",
-        label="History",
-        kind=Kind.COMPUTED,
-        sortable=False,
-        filterable=False,
-    ),
+    ColumnSpec(name="location", label="Location", kind=Kind.TEXT, db_expr="w.location"),
     ColumnSpec(
         name="relevance_score",
         label="Rel",
@@ -203,7 +203,13 @@ WAITLIST_COLUMNS: tuple[ColumnSpec, ...] = (
         kind=Kind.SCORE,
         db_expr="w.probability_score",
     ),
-    ColumnSpec(name="location", label="Location", kind=Kind.TEXT, db_expr="w.location"),
+    ColumnSpec(
+        name="company_history",
+        label="History",
+        kind=Kind.COMPUTED,
+        sortable=False,
+        filterable=False,
+    ),
     ColumnSpec(
         name="remote_status",
         label="Remote",
@@ -234,6 +240,13 @@ validate_specs(WAITLIST_COLUMNS)
 REJECTED_COLUMNS: tuple[ColumnSpec, ...] = (
     ColumnSpec(name="title", label="Title", kind=Kind.TEXT, db_expr="j.title"),
     ColumnSpec(name="company", label="Company", kind=Kind.TEXT, db_expr="j.company"),
+    ColumnSpec(name="location", label="Location", kind=Kind.TEXT, db_expr="j.location"),
+    ColumnSpec(
+        name="relevance_score",
+        label="Rel",
+        kind=Kind.SCORE,
+        db_expr="j.relevance_score",
+    ),
     ColumnSpec(
         name="reject_reason",
         label="Reason",
@@ -241,13 +254,6 @@ REJECTED_COLUMNS: tuple[ColumnSpec, ...] = (
         enum_values=_reject_reason_values,
         db_expr="j.reject_reason",
     ),
-    ColumnSpec(
-        name="relevance_score",
-        label="Rel",
-        kind=Kind.SCORE,
-        db_expr="j.relevance_score",
-    ),
-    ColumnSpec(name="location", label="Location", kind=Kind.TEXT, db_expr="j.location"),
     ColumnSpec(
         name="remote_status",
         label="Remote",
@@ -289,6 +295,13 @@ validate_specs(REJECTED_COLUMNS)
 NOT_SELECTED_COLUMNS: tuple[ColumnSpec, ...] = (
     ColumnSpec(name="title", label="Title", kind=Kind.TEXT, db_expr="j.title"),
     ColumnSpec(name="company", label="Company", kind=Kind.TEXT, db_expr="j.company"),
+    ColumnSpec(name="location", label="Location", kind=Kind.TEXT, db_expr="j.location"),
+    ColumnSpec(
+        name="relevance_score",
+        label="Rel",
+        kind=Kind.SCORE,
+        db_expr="j.relevance_score",
+    ),
     ColumnSpec(
         name="reject_reason",
         label="Reason",
@@ -302,13 +315,6 @@ NOT_SELECTED_COLUMNS: tuple[ColumnSpec, ...] = (
         kind=Kind.DATE,
         db_expr="al.not_selected_date",
     ),
-    ColumnSpec(
-        name="relevance_score",
-        label="Rel",
-        kind=Kind.SCORE,
-        db_expr="j.relevance_score",
-    ),
-    ColumnSpec(name="location", label="Location", kind=Kind.TEXT, db_expr="j.location"),
     ColumnSpec(
         name="remote_status",
         label="Remote",
@@ -337,6 +343,13 @@ validate_specs(NOT_SELECTED_COLUMNS)
 FALLBACK_COLUMNS: tuple[ColumnSpec, ...] = (
     ColumnSpec(name="title", label="Title", kind=Kind.TEXT, db_expr="j.title"),
     ColumnSpec(name="company", label="Company", kind=Kind.TEXT, db_expr="j.company"),
+    ColumnSpec(name="location", label="Location", kind=Kind.TEXT, db_expr="j.location"),
+    ColumnSpec(
+        name="relevance_score",
+        label="Rel",
+        kind=Kind.SCORE,
+        db_expr="j.relevance_score",
+    ),
     ColumnSpec(
         name="reject_reason",
         label="Reason",
@@ -350,13 +363,6 @@ FALLBACK_COLUMNS: tuple[ColumnSpec, ...] = (
         db_expr="al.withdrawn_date",
     ),
     ColumnSpec(
-        name="relevance_score",
-        label="Rel",
-        kind=Kind.SCORE,
-        db_expr="j.relevance_score",
-    ),
-    ColumnSpec(name="location", label="Location", kind=Kind.TEXT, db_expr="j.location"),
-    ColumnSpec(
         name="remote_status",
         label="Remote",
         kind=Kind.ENUM,
@@ -369,16 +375,16 @@ validate_specs(FALLBACK_COLUMNS)
 
 # ─── Archive ──────────────────────────────────────────────────────────────────
 ARCHIVE_COLUMNS: tuple[ColumnSpec, ...] = (
-    ColumnSpec(name="relevance_score", label="Rel", kind=Kind.SCORE),
     ColumnSpec(name="title", label="Title", kind=Kind.TEXT),
     ColumnSpec(name="company", label="Company", kind=Kind.TEXT),
+    ColumnSpec(name="location", label="Location", kind=Kind.TEXT),
+    ColumnSpec(name="relevance_score", label="Rel", kind=Kind.SCORE),
     ColumnSpec(
         name="stage",
         label="Stage",
         kind=Kind.ENUM,
         enum_values=_STAGE_VALUES,
     ),
-    ColumnSpec(name="location", label="Location", kind=Kind.TEXT),
     ColumnSpec(
         name="remote_status",
         label="Remote",
@@ -401,6 +407,18 @@ ARCHIVE_COLUMNS: tuple[ColumnSpec, ...] = (
     ),
 )
 validate_specs(ARCHIVE_COLUMNS)
+
+# Spec list per view_prefs storage tab (the ``view_prefs.tab`` values).
+STORAGE_TAB_COLUMNS: dict[str, tuple[ColumnSpec, ...]] = {
+    "dashboard": DASHBOARD_COLUMNS,
+    "applied": APPLIED_COLUMNS,
+    "review": REVIEW_COLUMNS,
+    "waitlist": WAITLIST_COLUMNS,
+    "fallback": FALLBACK_COLUMNS,
+    "rejected": REJECTED_COLUMNS,
+    "not_selected": NOT_SELECTED_COLUMNS,
+    "archive": ARCHIVE_COLUMNS,
+}
 
 
 __all__ = [

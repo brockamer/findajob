@@ -45,14 +45,25 @@
          @click.outside="open = false"
          class="absolute z-10 mt-1 bg-white border border-slate-300 rounded shadow-lg p-2 min-w-[12rem]">
       <div class="font-semibold uppercase text-slate-500 mb-1">Columns</div>
+      {# #1220: rows list in display order (specs arrive ordered by ?cols=).
+         ↑/↓ move a row; Apply sends the checked names in row order, which
+         is the new column order. #}
       {% for s in specs %}
-        <label class="block">
-          <input type="checkbox"
-                 value="{{ s.name }}"
-                 data-popover-checkbox="cols"
-                 {% if s.name in visible %}checked{% endif %}>
-          {{ s.label }}
-        </label>
+        <div class="flex items-center gap-1" data-col-row>
+          <label class="flex-1">
+            <input type="checkbox"
+                   value="{{ s.name }}"
+                   data-popover-checkbox="cols"
+                   {% if s.name in visible %}checked{% endif %}>
+            {{ s.label }}
+          </label>
+          <button type="button" data-col-move="up"
+                  aria-label="Move {{ s.label }} up"
+                  class="px-1 text-slate-500 hover:text-slate-900">↑</button>
+          <button type="button" data-col-move="down"
+                  aria-label="Move {{ s.label }} down"
+                  class="px-1 text-slate-500 hover:text-slate-900">↓</button>
+        </div>
       {% endfor %}
       <div class="mt-2 flex gap-1">
         <button type="button"

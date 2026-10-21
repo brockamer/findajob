@@ -117,9 +117,11 @@ def test_0012_drops_recall_audit_on_existing_stack(tmp_path: Path) -> None:
     try:
         apply_pending(conn)
         # Rebuild the pre-0012 state: the 0007 table + index, one audit row,
-        # one config_changes row, version stamped at 11.
+        # one config_changes row, version stamped at 11. Later migrations'
+        # changes are undone too, since a version-11 stack lacks them (0013).
         conn.executescript(
             """
+            ALTER TABLE view_prefs DROP COLUMN cols_ordered;
             CREATE TABLE recall_audit (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 job_id TEXT NOT NULL,

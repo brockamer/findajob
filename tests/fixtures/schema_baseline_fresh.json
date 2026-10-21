@@ -1532,11 +1532,19 @@
           "notnull": 1,
           "pk": 0,
           "type": "TEXT"
+        },
+        {
+          "cid": 3,
+          "dflt_value": "0",
+          "name": "cols_ordered",
+          "notnull": 1,
+          "pk": 0,
+          "type": "INTEGER"
         }
       ],
       "foreign_keys": [],
       "name": "view_prefs",
-      "sql": "CREATE TABLE view_prefs(tab TEXT PRIMARY KEY CHECK(tab IN('dashboard','applied','review','waitlist','fallback','rejected','not_selected','archive')),query_string TEXT NOT NULL,updated_at TEXT NOT NULL DEFAULT(datetime('now')))",
+      "sql": "CREATE TABLE view_prefs(tab TEXT PRIMARY KEY CHECK(tab IN('dashboard','applied','review','waitlist','fallback','rejected','not_selected','archive')),query_string TEXT NOT NULL,updated_at TEXT NOT NULL DEFAULT(datetime('now')),cols_ordered INTEGER NOT NULL DEFAULT 0)",
       "tbl_name": "view_prefs",
       "type": "table"
     }

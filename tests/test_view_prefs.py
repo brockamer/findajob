@@ -88,10 +88,10 @@ def test_serialize_drops_cols_when_matches_default_cols() -> None:
     assert view_prefs.serialize(parsed, default_cols=("title", "company")) == ""
 
 
-def test_serialize_drops_cols_when_set_equal_regardless_of_order() -> None:
-    """Order ignored — operators toggle checkboxes in arbitrary order."""
+def test_serialize_keeps_cols_when_default_set_is_reordered() -> None:
+    """Order counts since #1220 — cols order is the display order."""
     parsed = ParsedFilters(cols=("company", "title"))
-    assert view_prefs.serialize(parsed, default_cols=("title", "company")) == ""
+    assert view_prefs.serialize(parsed, default_cols=("title", "company")) == "cols=company%2Ctitle"
 
 
 def test_serialize_keeps_cols_when_subset_of_defaults() -> None:

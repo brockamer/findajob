@@ -2,13 +2,14 @@
 
 from findajob.web.filters.query import build_filter_clauses
 from findajob.web.filters.spec import ColumnSpec, Kind, validate_specs
-from findajob.web.filters.url import ParsedFilters, parse_filter_params
+from findajob.web.filters.url import ParsedFilters, ordered_specs, parse_filter_params
 
 __all__ = [
     "ColumnSpec",
     "Kind",
     "ParsedFilters",
     "build_filter_clauses",
+    "ordered_specs",
     "parse_filter_params",
     "validate_specs",
 ]

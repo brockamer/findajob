@@ -16,7 +16,8 @@ def test_0005_creates_view_prefs_table(tmp_path: Path) -> None:
     apply_pending(conn)
 
     cols = {row[1] for row in conn.execute("PRAGMA table_info(view_prefs)").fetchall()}
-    assert cols == {"tab", "query_string", "updated_at"}
+    # cols_ordered is added later in the chain by 0013 (#1220).
+    assert cols == {"tab", "query_string", "updated_at", "cols_ordered"}
 
     schema_sql = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='view_prefs'").fetchone()[0]
     assert "tab TEXT PRIMARY KEY" in schema_sql

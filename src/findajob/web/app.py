@@ -58,9 +58,11 @@ def create_app(
 
     def _reject_reason_options() -> tuple[str, ...]:
         from findajob.config_loader import load_reject_reasons
+        from findajob.web.reject_reason_order import order_reject_reasons, reject_reason_counts
 
         reasons, _title_signal = load_reject_reasons()
-        return reasons
+        # Most-used fit reasons first, bookkeeping reasons last (#1220).
+        return order_reject_reasons(reasons, reject_reason_counts(db_path))
 
     templates.env.globals["reject_reason_options"] = _reject_reason_options
 

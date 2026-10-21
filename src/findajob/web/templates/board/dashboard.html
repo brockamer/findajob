@@ -14,7 +14,8 @@
 {% include "board/_filter_proposals_widget.html" %}
 {% include "_filters.html" %}
 <table class="min-w-full bg-white shadow-sm rounded-sm density-{{ density | default('compact') }}">
-  {% set leading_cols = [('Status', ''), ('Reject', ''), ('Rule', '')] %}
+  {% set leading_cols = [('Status', ''), ('Reject', '')] %}
+  {% set trailing_cols = [('Rule', '')] %}
   {% include "_table_header.html" %}
   <tbody id="rows">
     {% include "_job_rows_fragment.html" %}
