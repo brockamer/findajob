@@ -19,6 +19,7 @@ from findajob.audit import log_event
 from findajob.db import connect
 from findajob.paths import IMAGE_ROOT
 from findajob.prep.briefing import briefing_age_days
+from findajob.urlcheck import is_http_url
 from findajob.web.auth import install_basic_auth
 from findajob.web.constants import FOLDER_STAGES
 from findajob.web.helpers import (
@@ -53,6 +54,7 @@ def create_app(
     templates.env.globals["stage_row_class"] = stage_row_class
     templates.env.globals["filter_qs_with"] = filter_qs_with
     templates.env.globals["briefing_age_days"] = briefing_age_days
+    templates.env.globals["is_http_url"] = is_http_url
 
     def _reject_reason_options() -> tuple[str, ...]:
         from findajob.config_loader import load_reject_reasons

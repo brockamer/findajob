@@ -47,7 +47,8 @@
       {% if field == 'title' and row[field] and row[field].startswith('[SPEC]') %}
         <span class="inline-block mr-1 px-1.5 py-0.5 text-[10px] font-bold uppercase bg-purple-100 text-purple-800 rounded align-middle">SPEC</span>
         <a class="underline" href="/jobs/{{ row.fingerprint }}/jd">{{ row[field] }}</a>
-      {% elif field == 'title' and row.url %}
+      {# Non-http(s) schemes fall through to plain text. #}
+      {% elif field == 'title' and row.url and is_http_url(row.url) %}
         <a class="underline" href="{{ row.url }}" target="_blank" rel="noopener noreferrer">{{ row[field] }}</a>
       {# Hyperlink the company cell when a folder exists. For synthetic
          (speculative) rows pre-prep, the [SPEC] title-prefix convention
