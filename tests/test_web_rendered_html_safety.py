@@ -282,3 +282,85 @@ def test_jd_viewer_serves_hostile_job_description_inert(tmp_path: Path) -> None:
     assert "Hover me" in r.text
     assert "Apply here" in r.text
     assert "Acme" in r.text
+
+
+class _AnchorCollector(HTMLParser):
+    """Collects ``(href, text)`` for every ``<a>`` element."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.anchors: list[tuple[str | None, str]] = []
+        self._open: list[str | None] | None = None
+        self._text: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "a":
+            self._open = [dict(attrs).get("href")]
+            self._text = []
+
+    def handle_data(self, data: str) -> None:
+        if self._open is not None:
+            self._text.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "a" and self._open is not None:
+            self.anchors.append((self._open[0], "".join(self._text).strip()))
+            self._open = None
+
+
+def _anchors(markup: str) -> list[tuple[str | None, str]]:
+    parser = _AnchorCollector()
+    parser.feed(markup)
+    parser.close()
+    return parser.anchors
+
+
+# (title, url): a job-row title link renders an href only for http(s) URLs.
+_NON_HTTP_TITLE_URLS: list[tuple[str, str]] = [
+    ("Acme Widget Engineer JS", "javascript:alert(1)"),
+    ("Acme Widget Engineer JS Mixed", "  JaVaScRiPt:alert(1)"),
+    ("Acme Widget Engineer Data", "data:text/html,x"),
+    ("Acme Widget Engineer File", "file:///etc/passwd"),
+]
+
+
+@pytest.mark.parametrize("path", ["/board/dashboard", "/board/dashboard/rows"])
+def test_job_row_title_link_renders_href_only_for_http_urls(tmp_path: Path, path: str) -> None:
+    db = tmp_path / "pipeline.db"
+    init_test_db(db)
+    rows = [*_NON_HTTP_TITLE_URLS, ("Acme Widget Engineer Https", "https://example.com/job")]
+    conn = sqlite3.connect(db)
+    for i, (title, url) in enumerate(rows):
+        conn.execute(
+            "INSERT INTO jobs (id, fingerprint, url, title, company, source, stage, relevance_score) "
+            "VALUES (?, ?, ?, ?, ?, 'test', 'scored', 8)",
+            (f"jid-{i}", f"fp-link-{i}", url, title, "Acme Widgets"),
+        )
+    conn.commit()
+    conn.close()
+    companies = tmp_path / "companies"
+    companies.mkdir()
+    mark_complete(tmp_path)
+    client = TestClient(create_app(companies_root=companies, db_path=db, base_root=tmp_path))
+
+    r = client.get(path, headers={"HX-Request": "true"})
+    assert r.status_code == 200
+    anchors = _anchors(r.text)
+
+    # Every row rendered, so the absence checks below cannot pass vacuously.
+    for title, _url in rows:
+        assert title in r.text, f"row {title!r} did not render"
+
+    # A non-http(s) URL leaves the title as plain text: no anchor carries it.
+    for title, _url in _NON_HTTP_TITLE_URLS:
+        assert not [a for a in anchors if a[1] == title], f"{title!r} rendered as a link"
+    # No href anywhere on the page uses a scheme other than http(s).
+    for href, text in anchors:
+        if href is not None:
+            assert _scheme(href) in (None, "http", "https"), f"href={href!r} on {text!r}"
+    raw = r.text.lower()
+    for needle in ("javascript:", "data:text", "file:///"):
+        assert needle not in raw, f"{needle!r} reached the page"
+
+    # An http(s) URL still links.
+    assert ("https://example.com/job", "Acme Widget Engineer Https") in anchors

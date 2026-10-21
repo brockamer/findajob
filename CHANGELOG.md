@@ -10,6 +10,10 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The job-row title link renders an `href` only for `http(s)` URLs.** A job whose stored URL used another scheme (`javascript:`, `data:`, `file:`) was linked as-is from the board. Those titles now render as plain text; `http(s)` titles and `[SPEC]` rows link as before.
+
 ### Documentation
 
 - **`AGENTS.md` holds the rules; task-specific reference moves to `docs/architecture/`.** Coding agents load `AGENTS.md` at the start of every session, and about two thirds of it was reference that only some tasks need. Five new files hold that reference: `models-and-paths.md` (per-role models, pipeline plumbing, container path shifts), `data-ownership.md` (backup classification), `web-frontend.md` (URL groups and the per-column filter framework), `board-lifecycle.md` (route table, generator subprocesses, stage semantics) and `scripts.md` (the scripts reference). `AGENTS.md` keeps every architecture rule, adds a Commands section with the four CI checks, and lists which reference to read for which kind of task (59 KB → 23 KB). The same-PR docs rule now names `board-lifecycle.md` for a new state transition. `CONTRIBUTING.md`, `docs/architecture.md`, `docs/architecture/file-map.md` and `docs/operations/fly-deploy.md` link the new files. No behavior change.
