@@ -13,6 +13,7 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 ### Fixed
 
 - **The job-row title link renders an `href` only for `http(s)` URLs.** A job whose stored URL used another scheme (`javascript:`, `data:`, `file:`) was linked as-is from the board. Those titles now render as plain text; `http(s)` titles and `[SPEC]` rows link as before.
+- **Links in page content get a link colour and underline.** The job entries on `/materials/` are bare anchors, and Tailwind's CSS reset gave them the surrounding text colour with no underline, so the list read as plain text. `static/app.css` now styles anchors that carry no `class` inside `<main>` (blue, underlined, darker on hover and keyboard focus). Navigation, buttons and other Tailwind-styled links, and rendered Markdown, are unchanged; the column-header sort links, which were bare anchors, now carry a class so they keep their plain look.
 
 ### Documentation
 
