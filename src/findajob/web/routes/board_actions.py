@@ -64,6 +64,16 @@ of jobs. When the cap is reached, /prep and /regenerate return 429; the
 dashboard row stays actionable so the operator can retry in a few minutes.
 """
 
+ROW_OUTCOME_HEADER = "X-Row-Outcome"
+"""Names why a response removes its row ("rejected", "waitlisted", "applied",
+"flagged"). /static/row_fade.js tints the row for that outcome and delays the
+swap so it fades out first (#1219). Only success paths set it; idempotent
+no-ops and errors keep the instant removal."""
+
+
+def _row_leaves(outcome: str) -> HTMLResponse:
+    return HTMLResponse("", headers={ROW_OUTCOME_HEADER: outcome})
+
 
 def _prep_in_flight(db: sqlite3.Connection) -> int:
     return db.execute("SELECT COUNT(*) FROM jobs WHERE stage='prep_in_progress'").fetchone()[0]
@@ -724,11 +734,13 @@ def apply(
     _move_folder_to_applied(db, job)
 
     templates = request.app.state.templates
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         request=request,
         name="board/_undo_toast.html",
         context={"fingerprint": fingerprint},
     )
+    response.headers[ROW_OUTCOME_HEADER] = "applied"
+    return response
 
 
 @router.post("/board/jobs/{fingerprint}/un-apply", response_class=HTMLResponse, dependencies=_HTMX)
@@ -868,7 +880,7 @@ def waitlist(
     if job["stage"] == "waitlisted":
         return HTMLResponse("")
     handle_waitlist(db, job)
-    return HTMLResponse("")
+    return _row_leaves("waitlisted")
 
 
 @router.post("/board/jobs/{fingerprint}/reactivate", response_class=HTMLResponse, dependencies=_HTMX)
@@ -961,7 +973,7 @@ def reactivate_and_prep(
     full_job = db.execute("SELECT id, title, company, url, stage FROM jobs WHERE id=?", (job["id"],)).fetchone()
     _launch_prep_subprocess(db, full_job)
 
-    return HTMLResponse("")
+    return _row_leaves("flagged")
 
 
 _PROMOTABLE_STAGES = ("manual_review", "scored")
@@ -1175,7 +1187,7 @@ def reject(
         return HTMLResponse("")
     handle_rejection(db, job, (reason or "").strip() or "Other")
     notify_waitlist_resurface(db, job["company"])
-    return HTMLResponse("")
+    return _row_leaves("rejected")
 
 
 @router.post("/board/jobs/{fingerprint}/not-selected", response_class=HTMLResponse, dependencies=_HTMX)

@@ -58,6 +58,8 @@ Some transitions also spawn detached generator subprocesses:
 | Skip filter proposal | `POST /board/filter-proposals/{id}/skip` | Filter-proposals queue |
 | Revert filter proposal | `POST /board/filter-proposals/{id}/revert` | Filter-proposals queue "Applied rules" section |
 
+**Row fade-out (#1219).** A success path that removes its row from the board names the outcome in the `X-Row-Outcome` response header (`ROW_OUTCOME_HEADER` in `routes/board_actions.py`): `/reject` → `rejected`, `/waitlist` → `waitlisted`, `/apply` → `applied`, `/reactivate-and-prep` → `flagged`. Idempotent no-ops and errors send no header and keep the instant removal; `/prep` on the Dashboard re-renders its row, so it fades nothing. A new route that removes a row on success and should fade it sets the header through `_row_leaves(outcome)` and gets a `tr[data-row-outcome="<outcome>"]` tint in `static/app.css`. See [`web-frontend.md`](web-frontend.md) § Row fade-out.
+
 The rejections-review row is keyed by `rejection_suggestions.id` rather than `jobs.fingerprint` — the suggestion is the source row, the job_id is found via `matched_job_id` (or operator-supplied on reattribute). Confirm/reattribute call `handle_not_selected(..., changed_by='gmail_rejection_detector')` so the audit trail tags the transition.
 
 ## Reject reasons

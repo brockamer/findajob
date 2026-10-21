@@ -75,3 +75,30 @@ main a:not([class]):not(.prose a):focus-visible {
 .htmx-indicator { opacity: 0; transition: opacity 150ms ease-in; }
 .htmx-request .htmx-indicator { opacity: 1; }
 .htmx-request.htmx-indicator { opacity: 1; }
+
+/* Row fade-out (#1219). static/row_fade.js sets data-row-outcome on a row that is
+   about to leave the board and delays the swap; htmx adds `htmx-swapping` for that
+   delay. The tint names the outcome; the row then fades out over --row-fade-ms
+   (clamped to 300–1000 ms by the script). Selectors carry the `tr` type so they
+   out-rank the row-level .row-applied-* backgrounds. */
+:root {
+  --row-fade-ms: 500ms;
+  --row-tint-rejected:   #fecaca;  /* light red */
+  --row-tint-waitlisted: #fef08a;  /* light yellow */
+  --row-tint-applied:    #bbf7d0;  /* light green */
+  --row-tint-flagged:    #bbf7d0;  /* light green */
+}
+tr[data-row-outcome="rejected"],   tr[data-row-outcome="rejected"] > td   { background-color: var(--row-tint-rejected); }
+tr[data-row-outcome="waitlisted"], tr[data-row-outcome="waitlisted"] > td { background-color: var(--row-tint-waitlisted); }
+tr[data-row-outcome="applied"],    tr[data-row-outcome="applied"] > td    { background-color: var(--row-tint-applied); }
+tr[data-row-outcome="flagged"],    tr[data-row-outcome="flagged"] > td    { background-color: var(--row-tint-flagged); }
+tr[data-row-outcome].htmx-swapping {
+  opacity: 0;
+  transition: opacity var(--row-fade-ms) ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  tr[data-row-outcome].htmx-swapping {
+    transition: none;
+    opacity: 1;
+  }
+}
