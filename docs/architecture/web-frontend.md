@@ -12,6 +12,14 @@ Lives at `src/findajob/web/`. One file per URL group in `routes/` (e.g. `routes/
 - `/docs/` — renders pages from `docs/getting-started/*`, `docs/usage/*`, `docs/operations/*`, `docs/troubleshooting.md` inline. Slug allowlist in `findajob.web.routes.docs._PAGES`. Breadcrumb navigation on subpages, sequential "Next step" links on getting-started pages, primary CTA on the index.
 - `/tools/` — guided LLM prompts (`findajob.web.tools_registry`) plus direct-edit shortcuts. Each prompt tile loads its body from `config/tool_prompts/{slug}.md` and renders a Copy-prompt button plus an "Open in Claude" anchor pointing at `claude.ai/new?q=<urlencoded prompt>` (anchor is omitted when the encoded prompt exceeds 6 KB). Adding a new tool = append a tile to `TILES` + drop a markdown file in `config/tool_prompts/` — no schema, no migration. Prompts steer their output into gitignored `candidate_context/profile.md` sections (`## Excluded Categories`, `## Title Calibration Notes`, etc.) rather than tracked role files, keeping the surface generalization-safe (#150).
 
+## Row fade-out
+
+A board row that leaves the table tints for its outcome, then fades out, instead of vanishing when the response lands. The server names the outcome in the `X-Row-Outcome` header (routes and values: [`board-lifecycle.md`](board-lifecycle.md)). `static/row_fade.js` listens for `htmx:beforeSwap` on `document.body`; when the swap target is a `<tr>` and the header is present, it sets `data-row-outcome` on the row and overrides the swap to `outerHTML swap:<n>ms` through `detail.swapOverride`. htmx adds `htmx-swapping` for that delay, and `static/app.css` does the rest: a tint per outcome (`rejected` light red, `waitlisted` light yellow, `applied` and `flagged` light green) and an opacity transition. Responses without the header swap as before, so only rows that leave are delayed.
+
+- **Duration** is the `--row-fade-ms` custom property in `app.css` (default `500ms`). The script clamps it to 300–1000 ms and falls back to 500 ms when it cannot parse the value. The delay is the fade time; there is no JS timer.
+- **`prefers-reduced-motion: reduce`** turns the transition off and keeps the row at full opacity. The tint stays for the 300 ms minimum.
+- The listener is tied to `<tr>` targets, so action cells that swap a `<td>` or a modal are unaffected.
+
 ## Per-column filter framework
 
 Declarative framework at `findajob.web.filters`. Each board tab declares a `tuple[ColumnSpec, ...]` in `findajob.web.filters.registry`; framework parses URL params, builds parameterized SQL clauses, and renders header inputs via shared partials.

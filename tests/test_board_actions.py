@@ -3214,3 +3214,63 @@ class TestNotesHistoryTimezone:
         assert r.status_code == 200
         assert "2026-06-01 11:30 JST" in r.text, "time must render in the configured TZ (JST)"
         assert "PDT" not in r.text and "PST" not in r.text, "must not hardcode Pacific"
+
+
+# ── #1219: outcome header drives the row fade-out ──────────────────────────
+
+
+class TestRowOutcomeHeader:
+    """A response that removes a row from the board names the outcome in
+    X-Row-Outcome, so /static/row_fade.js can tint the row and delay the swap.
+    No-op and error paths carry no header and keep the instant removal."""
+
+    HEADER = "X-Row-Outcome"
+
+    def test_reject_names_rejected(self, client: TestClient):
+        response = client.post("/board/jobs/fp_scored/reject", data={"reason": "Low Fit Score"})
+        assert response.status_code == 200
+        assert response.headers[self.HEADER] == "rejected"
+
+    def test_reject_on_already_rejected_row_has_no_header(self, client: TestClient):
+        client.post("/board/jobs/fp_scored/reject", data={"reason": "Low Fit Score"})
+        response = client.post("/board/jobs/fp_scored/reject", data={"reason": "Low Fit Score"})
+        assert response.status_code == 200
+        assert self.HEADER not in response.headers
+
+    def test_waitlist_names_waitlisted(self, client: TestClient):
+        response = client.post("/board/jobs/fp_drafted/waitlist")
+        assert response.status_code == 200
+        assert response.headers[self.HEADER] == "waitlisted"
+
+    def test_waitlist_on_already_waitlisted_row_has_no_header(self, client: TestClient):
+        response = client.post("/board/jobs/fp_waitlisted/waitlist")
+        assert response.status_code == 200
+        assert self.HEADER not in response.headers
+
+    def test_apply_names_applied_and_keeps_the_undo_toast(self, client: TestClient):
+        response = client.post("/board/jobs/fp_drafted/apply")
+        assert response.status_code == 200
+        assert response.headers[self.HEADER] == "applied"
+        assert 'id="undo-toast"' in response.text
+
+    def test_apply_on_already_applied_row_has_no_header(self, client: TestClient):
+        response = client.post("/board/jobs/fp_applied/apply")
+        assert response.status_code == 200
+        assert self.HEADER not in response.headers
+
+    def test_flag_for_prep_from_waitlist_names_flagged(self, client: TestClient, popen_calls):
+        response = client.post("/board/jobs/fp_waitlisted/reactivate-and-prep")
+        assert response.status_code == 200
+        assert response.headers[self.HEADER] == "flagged"
+
+    def test_flag_for_prep_on_in_flight_row_has_no_header(self, client: TestClient, popen_calls):
+        response = client.post("/board/jobs/fp_prep/reactivate-and-prep")
+        assert response.status_code == 200
+        assert self.HEADER not in response.headers
+
+    def test_flag_for_prep_on_dashboard_re_renders_the_row_without_a_header(self, client: TestClient, popen_calls):
+        """/prep keeps the row on the Dashboard (stage becomes prep_in_progress), so
+        nothing leaves the board and nothing fades."""
+        response = client.post("/board/jobs/fp_scored/prep")
+        assert response.status_code == 200
+        assert self.HEADER not in response.headers

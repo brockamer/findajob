@@ -10,6 +10,10 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Added
+
+- **A board row fades out with an outcome tint instead of vanishing.** Rejecting, waitlisting, applying, or flagging a waitlisted job for prep used to remove its row the instant the response arrived, so a user who picked a reject reason saw nothing happen. The row now takes a light tint for the outcome (red for reject, yellow for waitlist, green for applied or flagged) and fades out over 500 ms before the swap removes it. The duration is the `--row-fade-ms` custom property in `static/app.css`, clamped to 300–1000 ms. With `prefers-reduced-motion: reduce` the fade is off and the tint shows for 300 ms. The four routes send an `X-Row-Outcome` response header and the new `static/row_fade.js` reads it; responses without the header, such as an idempotent repeat click, remove the row at once as before.
+
 ### Fixed
 
 - **The job-row title link renders an `href` only for `http(s)` URLs.** A job whose stored URL used another scheme (`javascript:`, `data:`, `file:`) was linked as-is from the board. Those titles now render as plain text; `http(s)` titles and `[SPEC]` rows link as before.
