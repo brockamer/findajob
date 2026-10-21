@@ -21,8 +21,10 @@
 
 reasons:
   # The labels you want available when rejecting jobs. Keep them short — they
-  # appear in dropdowns and filter chips. Order matters
-  # (this is the dropdown order). The shipped defaults below are field-
+  # appear in dropdowns and filter chips. The board's dropdowns list the
+  # most-used reasons first and "Already Applied", "Stale/Closed",
+  # "Company passed" and "Other" last; this order breaks ties and is the
+  # order until you have rejected some jobs. The shipped defaults below are field-
   # agnostic; tailor them to how YOU think about why a posting isn't right.
   #
   # Field examples (pick what fits — don't try to be exhaustive):

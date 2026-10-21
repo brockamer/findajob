@@ -17,8 +17,9 @@ Issue: #277
 from __future__ import annotations
 
 import sqlite3
-from urllib.parse import urlencode
+from urllib.parse import parse_qsl, urlencode
 
+from findajob.web.filters.registry import STORAGE_TAB_COLUMNS
 from findajob.web.filters.url import ParsedFilters
 
 ALLOWED_TABS: frozenset[str] = frozenset(
@@ -35,7 +36,9 @@ def serialize(parsed: ParsedFilters, *, default_cols: tuple[str, ...] | None = N
     outside this set is filtered by construction.
 
     When ``default_cols`` is provided and ``parsed.cols`` equals it
-    (set-equal, ordering ignored), the ``cols=`` clause is dropped.
+    (same names in the same order), the ``cols=`` clause is dropped.
+    Order counts since #1220: the ``cols`` order is the display order, so
+    a reordered default set is a real preference and persists.
     Persisting "cols=<defaults>" would cause the redirect-on-cold-load
     cascade to bring back a no-op clause and render the chip-strip's
     cols pill on what the operator perceives as a default view (#844).
@@ -62,7 +65,7 @@ def serialize(parsed: ParsedFilters, *, default_cols: tuple[str, ...] | None = N
             pairs.append((f"{name}_from", d_from))
         if d_to is not None:
             pairs.append((f"{name}_to", d_to))
-    if parsed.cols and (default_cols is None or set(parsed.cols) != set(default_cols)):
+    if parsed.cols and (default_cols is None or tuple(parsed.cols) != tuple(default_cols)):
         pairs.append(("cols", ",".join(parsed.cols)))
     return urlencode(pairs)
 
@@ -84,9 +87,45 @@ def _ensure_tab(tab: str) -> None:
 
 
 def load(conn: sqlite3.Connection, tab: str) -> str | None:
+    """The tab's saved query string, or None.
+
+    A row saved before #1220 (``cols_ordered=0``, migration 0013) holds its
+    ``cols`` in the old registry order by accident. Its ``cols`` are put in
+    the current registry order once, here, and the row is marked.
+    """
     _ensure_tab(tab)
-    row = conn.execute("SELECT query_string FROM view_prefs WHERE tab=?", (tab,)).fetchone()
-    return row[0] if row else None
+    row = conn.execute("SELECT query_string, cols_ordered FROM view_prefs WHERE tab=?", (tab,)).fetchone()
+    if row is None:
+        return None
+    query_string, cols_ordered = row[0], row[1]
+    if not cols_ordered:
+        query_string = _registry_ordered_cols(tab, query_string)
+        conn.execute(
+            "UPDATE view_prefs SET query_string=?, cols_ordered=1 WHERE tab=?",
+            (query_string, tab),
+        )
+        conn.commit()
+    return query_string
+
+
+def _registry_ordered_cols(tab: str, query_string: str) -> str:
+    """``query_string`` with its ``cols`` names in registry order.
+
+    The clause is dropped when the result equals the tab's default columns
+    (#844), and every other pair is kept in place.
+    """
+    specs = STORAGE_TAB_COLUMNS[tab]
+    index = {s.name: i for i, s in enumerate(specs)}
+    defaults = [s.name for s in specs if s.default_visible]
+    pairs: list[tuple[str, str]] = []
+    for key, value in parse_qsl(query_string, keep_blank_values=True):
+        if key == "cols":
+            names = sorted((n for n in value.split(",") if n in index), key=index.__getitem__)
+            if not names or names == defaults:
+                continue
+            value = ",".join(names)
+        pairs.append((key, value))
+    return urlencode(pairs)
 
 
 def save(conn: sqlite3.Connection, tab: str, query_string: str) -> None:
@@ -101,10 +140,11 @@ def save(conn: sqlite3.Connection, tab: str, query_string: str) -> None:
     if not query_string:
         return
     conn.execute(
-        "INSERT INTO view_prefs(tab, query_string, updated_at) "
-        "VALUES(?, ?, datetime('now')) "
+        "INSERT INTO view_prefs(tab, query_string, cols_ordered, updated_at) "
+        "VALUES(?, ?, 1, datetime('now')) "
         "ON CONFLICT(tab) DO UPDATE SET "
         "  query_string=excluded.query_string, "
+        "  cols_ordered=1, "
         "  updated_at=datetime('now')",
         (tab, query_string),
     )

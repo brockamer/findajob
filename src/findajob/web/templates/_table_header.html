@@ -6,6 +6,8 @@
      leading_cols — list of (label, css) tuples for non-spec columns rendered first
                     (e.g., dashboard renders Status + Reject cells before the spec
                      columns; archive renders a Promote cell)
+     trailing_cols — same shape, for non-spec columns rendered after the spec
+                    columns (dashboard's exclusion-Rule cell, #1220)
    Renders the entire <thead>: column-title row + filter-input row.
 
    The filter inputs all carry data-filter-input so HTMX hx-include picks them
@@ -41,6 +43,9 @@
         {% endif %}
         {% if is_filtered %} <span class="text-blue-700">●</span>{% endif %}
       </th>
+    {% endfor %}
+    {% for label, css in (trailing_cols or []) %}
+      <th class="px-3 py-2 {{ css or '' }}">{{ label }}</th>
     {% endfor %}
   </tr>
   <tr class="bg-slate-50 border-b border-slate-200 normal-case">
@@ -186,6 +191,9 @@
           <span class="text-slate-400">—</span>
         {% endif %}
       </th>
+    {% endfor %}
+    {% for label, css in (trailing_cols or []) %}
+      <th class="px-1 py-1"><span class="text-slate-400">—</span></th>
     {% endfor %}
   </tr>
   {# Hidden sort inputs so HTMX hx-include picks them up regardless of column visibility.

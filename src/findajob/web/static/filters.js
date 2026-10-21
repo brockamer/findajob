@@ -53,10 +53,48 @@
     if (hiddenFrom) htmx.trigger(hiddenFrom, 'change');
   }
 
+  // #1220: Columns Apply loads the page with the new ?cols= instead of
+  // swapping only the rows. The <thead> renders once per page load, so a
+  // rows-only swap after a column change or reorder would leave every cell
+  // under the wrong heading. The rest of the stale-header problem
+  // (Clear, last-filter reload) is #1232.
+  function commitColumns() {
+    var checked = $$('input[type=checkbox][data-popover-checkbox="cols"]:checked');
+    var url = new URL(window.location.href);
+    var value = checked.map(function (cb) { return cb.value; }).join(',');
+    if (value) {
+      url.searchParams.set('cols', value);
+    } else {
+      url.searchParams.delete('cols');
+    }
+    window.location.assign(url.toString());
+  }
+
+  function moveColumnRow(button) {
+    var row = button.closest('[data-col-row]');
+    if (!row) return;
+    if (button.dataset.colMove === 'up') {
+      var prev = row.previousElementSibling;
+      if (prev && prev.hasAttribute('data-col-row')) row.parentNode.insertBefore(row, prev);
+    } else {
+      var next = row.nextElementSibling;
+      if (next && next.hasAttribute('data-col-row')) row.parentNode.insertBefore(next, row);
+    }
+    button.focus();
+  }
+
   document.addEventListener('click', function (e) {
-    var t = e.target.closest('[data-popover-apply], [data-popover-clear], [data-copy-link]');
+    var t = e.target.closest('[data-popover-apply], [data-popover-clear], [data-copy-link], [data-col-move]');
     if (!t) return;
 
+    if (t.dataset.colMove) {
+      moveColumnRow(t);
+      return;
+    }
+    if (t.dataset.popoverApply === 'cols') {
+      commitColumns();
+      return;
+    }
     if (t.dataset.popoverApply) {
       var name = t.dataset.popoverApply;
       // Date popovers have separate from/to hidden inputs; ENUM has one.

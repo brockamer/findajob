@@ -10,6 +10,16 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Migration required
+
+- **Migration `0013_view_prefs_cols_ordered.sql` adds `view_prefs.cols_ordered`** (#1220). It applies itself at container start (`init_db` runs every pending migration); there is no operator step. Every saved board view is marked as saved before column ordering existed. The first load of each tab after the upgrade puts that view's saved columns in the new default order and clears the mark; the view's filters and sort are kept. A view saved after the upgrade keeps the order the user chose.
+
+### Changed
+
+- **Board columns start with status, title, company and location.** On every board tab the default order is now title, company, location, then the score columns (Rel, Likelihood, Fit, Prob), then the rest; the Status and Reject cells stay first. On the dashboard, the exclusion-rule cell moves from third to last. A user's saved column choice keeps its columns and shows them in the new default order.
+- **Columns can be reordered.** Each row of the Columns dropdown has ↑ and ↓ buttons; Apply shows the columns in the dropdown's order and saves it with the tab's view, so a reload keeps it. Apply now reloads the page, so the header always matches the rows after a column change (the stale-header case in Clear is still open).
+- **The reject-reason dropdowns list the most-used reasons first.** Reasons sort by how often they were used to reject a job (`feedback_log`); Already Applied, Stale/Closed, Company passed and Other always come last. With no rejections yet, the order is the `reject_reasons.yaml` order with those four moved to the end. No config change.
+
 ### Added
 
 - **A board row fades out with an outcome tint instead of vanishing.** Rejecting, waitlisting, applying, or flagging a waitlisted job for prep used to remove its row the instant the response arrived, so a user who picked a reject reason saw nothing happen. The row now takes a light tint for the outcome (red for reject, yellow for waitlist, green for applied or flagged) and fades out over 500 ms before the swap removes it. The duration is the `--row-fade-ms` custom property in `static/app.css`, clamped to 300–1000 ms. With `prefers-reduced-motion: reduce` the fade is off and the tint shows for 300 ms. The four routes send an `X-Row-Outcome` response header and the new `static/row_fade.js` reads it; responses without the header, such as an idempotent repeat click, remove the row at once as before.

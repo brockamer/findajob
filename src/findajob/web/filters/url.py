@@ -94,3 +94,19 @@ def parse_filter_params(specs: Sequence[ColumnSpec], params: Mapping[str, str]) 
         sort=sort,
         desc=desc,
     )
+
+
+def ordered_specs(specs: Sequence[ColumnSpec], cols: Sequence[str] | None) -> tuple[ColumnSpec, ...]:
+    """Specs in display order: the ``?cols=`` names first, in that order,
+    then every other spec in registry order (#1220).
+
+    ``cols`` is the user's order from the Columns dropdown. Hidden specs
+    follow so the dropdown can still list them. Without ``cols`` the
+    registry order is the display order.
+    """
+    if not cols:
+        return tuple(specs)
+    by_name = {s.name: s for s in specs}
+    head = [by_name[c] for c in cols if c in by_name]
+    picked = {s.name for s in head}
+    return (*head, *(s for s in specs if s.name not in picked))

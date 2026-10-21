@@ -17,6 +17,7 @@ import subprocess
 import sys
 from collections.abc import Callable
 from datetime import UTC, datetime
+from urllib.parse import parse_qsl
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -45,8 +46,10 @@ from findajob.classification import is_synthetic_job
 from findajob.paths import BASE, IMAGE_ROOT
 from findajob.spend_ceiling import check_launch_gate
 from findajob.timeutil import local_zoneinfo
+from findajob.web import view_prefs
 from findajob.web.company_history import build_history_by_fp, fetch_company_history
 from findajob.web.cron_dispatch import dispatch_cron
+from findajob.web.filters import ColumnSpec, ordered_specs, parse_filter_params
 from findajob.web.filters import registry as filter_registry
 from findajob.web.htmx_guard import require_htmx
 from findajob.web.routes.materials import get_db
@@ -240,6 +243,20 @@ def _fetch_dashboard_row(db: sqlite3.Connection, fingerprint: str) -> sqlite3.Ro
     return db.execute(_DASHBOARD_ROW_SQL, (fingerprint,)).fetchone()
 
 
+def _persisted_columns(
+    db: sqlite3.Connection, tab: str, specs: tuple[ColumnSpec, ...]
+) -> tuple[tuple[ColumnSpec, ...], set[str]]:
+    """Display-ordered specs and visible names from the tab's saved view.
+
+    A re-rendered row must match the header the user is looking at, which
+    the page rendered from the same persisted view (#1220). No saved
+    ``cols`` falls back to the registry order and ``default_visible``.
+    """
+    parsed = parse_filter_params(specs, dict(parse_qsl(view_prefs.load(db, tab) or "")))
+    visible = set(parsed.cols) if parsed.cols else {s.name for s in specs if s.default_visible}
+    return ordered_specs(specs, parsed.cols), visible
+
+
 def _render_dashboard_row(request: Request, row: sqlite3.Row, db: sqlite3.Connection) -> HTMLResponse:
     """Render a single dashboard row for HTMX outerHTML swap.
 
@@ -248,8 +265,7 @@ def _render_dashboard_row(request: Request, row: sqlite3.Row, db: sqlite3.Connec
     """
     templates = request.app.state.templates
     history_by_fp = build_history_by_fp([row], fetch_company_history(db))
-    specs = filter_registry.DASHBOARD_COLUMNS
-    visible = {s.name for s in specs if s.default_visible}
+    specs, visible = _persisted_columns(db, "dashboard", filter_registry.DASHBOARD_COLUMNS)
     return templates.TemplateResponse(
         request=request,
         name="_job_row.html",
@@ -287,11 +303,10 @@ def _fetch_applied_row(db: sqlite3.Connection, fingerprint: str) -> sqlite3.Row 
     return db.execute(_APPLIED_ROW_SQL, (fingerprint,)).fetchone()
 
 
-def _render_applied_row(request: Request, row: sqlite3.Row) -> HTMLResponse:
+def _render_applied_row(request: Request, row: sqlite3.Row, db: sqlite3.Connection) -> HTMLResponse:
     """Render a single Applied-tab row for HTMX outerHTML swap."""
     templates = request.app.state.templates
-    specs = filter_registry.APPLIED_COLUMNS
-    visible = {s.name for s in specs if s.default_visible}
+    specs, visible = _persisted_columns(db, "applied", filter_registry.APPLIED_COLUMNS)
     return templates.TemplateResponse(
         request=request,
         name="_job_row.html",
@@ -322,7 +337,9 @@ def _stage_change_toast_html(request: Request, new_stage: str) -> str:
     return templates.get_template("board/_stage_change_toast.html").render({"message": f"Stage changed to {label}."})
 
 
-def _applied_row_with_stage_toast(request: Request, row: sqlite3.Row, new_stage: str) -> HTMLResponse:
+def _applied_row_with_stage_toast(
+    request: Request, row: sqlite3.Row, new_stage: str, db: sqlite3.Connection
+) -> HTMLResponse:
     """Render the Applied-tab row plus an OOB stage-change toast (#830).
 
     Used by /interview and /offer where the row stays on the Applied tab
@@ -330,7 +347,7 @@ def _applied_row_with_stage_toast(request: Request, row: sqlite3.Row, new_stage:
     OOB toast in one response. HTMX strips OOB elements before applying
     the primary swap, so concatenation order doesn't matter.
     """
-    row_html = bytes(_render_applied_row(request, row).body).decode()
+    row_html = bytes(_render_applied_row(request, row, db).body).decode()
     return HTMLResponse(row_html + _stage_change_toast_html(request, new_stage))
 
 
@@ -810,7 +827,7 @@ def interview(
     _launch_interview_prep_subprocess(db, job)
     updated = _fetch_applied_row(db, fingerprint)
     assert updated is not None
-    return _applied_row_with_stage_toast(request, updated, "interview")
+    return _applied_row_with_stage_toast(request, updated, "interview", db)
 
 
 @router.post("/board/jobs/{fingerprint}/offer", response_class=HTMLResponse, dependencies=_HTMX)
@@ -826,7 +843,7 @@ def offer(
         _transition_stage(db, job, "offer", event_name="web_offer")
     updated = _fetch_applied_row(db, fingerprint)
     assert updated is not None
-    return _applied_row_with_stage_toast(request, updated, "offer")
+    return _applied_row_with_stage_toast(request, updated, "offer", db)
 
 
 @router.post("/board/jobs/{fingerprint}/un-interview", response_class=HTMLResponse, dependencies=_HTMX)
@@ -846,7 +863,7 @@ def un_interview(
     restored_stage = un_interview_job(db, job)
     updated = _fetch_applied_row(db, fingerprint)
     assert updated is not None
-    return _applied_row_with_stage_toast(request, updated, restored_stage)
+    return _applied_row_with_stage_toast(request, updated, restored_stage, db)
 
 
 @router.post("/board/jobs/{fingerprint}/withdraw", response_class=HTMLResponse, dependencies=_HTMX)

@@ -17,7 +17,13 @@ from findajob.triage.schedule import next_triage_time
 from findajob.web import update_check, view_prefs
 from findajob.web.company_history import build_history_by_fp, fetch_company_history
 from findajob.web.discoveries import load_discoveries_summary
-from findajob.web.filters import ColumnSpec, ParsedFilters, build_filter_clauses, parse_filter_params
+from findajob.web.filters import (
+    ColumnSpec,
+    ParsedFilters,
+    build_filter_clauses,
+    ordered_specs,
+    parse_filter_params,
+)
 from findajob.web.filters import registry as filter_registry
 from findajob.web.routes.materials import get_db
 
@@ -92,16 +98,7 @@ def _default_cols_for_storage_tab(tab: str) -> tuple[str, ...]:
     return tuple(s.name for s in specs if s.default_visible)
 
 
-_STORAGE_TAB_SPECS: dict[str, tuple[ColumnSpec, ...]] = {
-    "dashboard": filter_registry.DASHBOARD_COLUMNS,
-    "applied": filter_registry.APPLIED_COLUMNS,
-    "review": filter_registry.REVIEW_COLUMNS,
-    "waitlist": filter_registry.WAITLIST_COLUMNS,
-    "fallback": filter_registry.FALLBACK_COLUMNS,
-    "rejected": filter_registry.REJECTED_COLUMNS,
-    "not_selected": filter_registry.NOT_SELECTED_COLUMNS,
-    "archive": filter_registry.ARCHIVE_COLUMNS,
-}
+_STORAGE_TAB_SPECS: dict[str, tuple[ColumnSpec, ...]] = filter_registry.STORAGE_TAB_COLUMNS
 
 
 _DASHBOARD_DEFAULT_SORT = "relevance_score"
@@ -275,7 +272,7 @@ def dashboard(
         request=request,
         name="board/dashboard.html",
         context={
-            "specs": specs,
+            "specs": ordered_specs(specs, parsed.cols),
             "visible": visible,
             "parsed": parsed,
             "rows": rows,
@@ -466,7 +463,7 @@ def applied(
         request=request,
         name="board/applied.html",
         context={
-            "specs": specs,
+            "specs": ordered_specs(specs, parsed.cols),
             "visible": visible,
             "parsed": parsed,
             "rows": rows,
@@ -515,7 +512,7 @@ def review(
         request=request,
         name="board/review.html",
         context={
-            "specs": specs,
+            "specs": ordered_specs(specs, parsed.cols),
             "visible": visible,
             "parsed": parsed,
             "rows": rows,
@@ -578,7 +575,7 @@ def waitlist(
         request=request,
         name="board/waitlist.html",
         context={
-            "specs": specs,
+            "specs": ordered_specs(specs, parsed.cols),
             "visible": visible,
             "parsed": parsed,
             "rows": rows,
@@ -646,7 +643,7 @@ def fallback(
         request=request,
         name="board/fallback.html",
         context={
-            "specs": specs,
+            "specs": ordered_specs(specs, parsed.cols),
             "visible": visible,
             "parsed": parsed,
             "rows": rows,
@@ -677,7 +674,7 @@ def fallback_rows(
         request=request,
         name="_job_rows_fragment.html",
         context={
-            "specs": specs,
+            "specs": ordered_specs(specs, parsed.cols),
             "visible": visible,
             "rows": rows,
             "tab": "fallback",
@@ -747,7 +744,7 @@ def rejected(
         request=request,
         name="board/rejected.html",
         context={
-            "specs": specs,
+            "specs": ordered_specs(specs, parsed.cols),
             "visible": visible,
             "parsed": parsed,
             "rows": rows,
@@ -778,7 +775,7 @@ def rejected_rows(
         request=request,
         name="_job_rows_fragment.html",
         context={
-            "specs": specs,
+            "specs": ordered_specs(specs, parsed.cols),
             "visible": visible,
             "rows": rows,
             "tab": "rejected",
@@ -849,7 +846,7 @@ def not_selected(
         request=request,
         name="board/not_selected.html",
         context={
-            "specs": specs,
+            "specs": ordered_specs(specs, parsed.cols),
             "visible": visible,
             "parsed": parsed,
             "rows": rows,
@@ -880,7 +877,7 @@ def not_selected_rows(
         request=request,
         name="_job_rows_fragment.html",
         context={
-            "specs": specs,
+            "specs": ordered_specs(specs, parsed.cols),
             "visible": visible,
             "rows": rows,
             "tab": "not_selected",
@@ -956,7 +953,7 @@ def archive(
         request=request,
         name="board/archive.html",
         context={
-            "specs": specs,
+            "specs": ordered_specs(specs, parsed.cols),
             "visible": visible,
             "parsed": parsed,
             "rows": rows,
@@ -991,7 +988,7 @@ def archive_rows(
         request=request,
         name="board/_archive_rows.html",
         context={
-            "specs": specs,
+            "specs": ordered_specs(specs, parsed.cols),
             "visible": visible,
             "parsed": parsed,
             "rows": rows,
@@ -1068,7 +1065,7 @@ def dashboard_rows(
         request=request,
         name="_job_rows_fragment.html",
         context={
-            "specs": specs,
+            "specs": ordered_specs(specs, parsed.cols),
             "visible": visible,
             "rows": rows,
             "history_by_fp": history_by_fp,
@@ -1099,7 +1096,7 @@ def applied_rows(
         request=request,
         name="_job_rows_fragment.html",
         context={
-            "specs": specs,
+            "specs": ordered_specs(specs, parsed.cols),
             "visible": visible,
             "rows": rows,
             "tab": "applied",
@@ -1129,7 +1126,7 @@ def review_rows(
         request=request,
         name="_job_rows_fragment.html",
         context={
-            "specs": specs,
+            "specs": ordered_specs(specs, parsed.cols),
             "visible": visible,
             "rows": rows,
             "tab": "review",
@@ -1160,7 +1157,7 @@ def waitlist_rows(
         request=request,
         name="_job_rows_fragment.html",
         context={
-            "specs": specs,
+            "specs": ordered_specs(specs, parsed.cols),
             "visible": visible,
             "rows": rows,
             "history_by_fp": history_by_fp,
