@@ -10,29 +10,31 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+## [0.37.0] — 2026-10-21
+
 ### Migration required
 
 - **Migration `0013_view_prefs_cols_ordered.sql` adds `view_prefs.cols_ordered`** (#1220). It applies itself at container start (`init_db` runs every pending migration); there is no operator step. Every saved board view is marked as saved before column ordering existed. The first load of each tab after the upgrade puts that view's saved columns in the new default order and clears the mark; the view's filters and sort are kept. A view saved after the upgrade keeps the order the user chose.
 
 ### Changed
 
-- **Board columns start with status, title, company and location.** On every board tab the default order is now title, company, location, then the score columns (Rel, Likelihood, Fit, Prob), then the rest; the Status and Reject cells stay first. On the dashboard, the exclusion-rule cell moves from third to last. A user's saved column choice keeps its columns and shows them in the new default order.
-- **Columns can be reordered.** Each row of the Columns dropdown has ↑ and ↓ buttons; Apply shows the columns in the dropdown's order and saves it with the tab's view, so a reload keeps it. Apply now reloads the page, so the header always matches the rows after a column change (the stale-header case in Clear is still open).
-- **The reject-reason dropdowns list the most-used reasons first.** Reasons sort by how often they were used to reject a job (`feedback_log`); Already Applied, Stale/Closed, Company passed and Other always come last. With no rejections yet, the order is the `reject_reasons.yaml` order with those four moved to the end. No config change.
+- **Board columns start with status, title, company and location.** On every board tab the default order is now title, company, location, then the score columns (Rel, Likelihood, Fit, Prob), then the rest; the Status and Reject cells stay first. On the dashboard, the exclusion-rule cell moves from third to last. A user's saved column choice keeps its columns and shows them in the new default order (#1220).
+- **Columns can be reordered.** Each row of the Columns dropdown has ↑ and ↓ buttons; Apply shows the columns in the dropdown's order and saves it with the tab's view, so a reload keeps it. Apply now reloads the page, so the header always matches the rows after a column change (the stale-header case in Clear is still open) (#1220).
+- **The reject-reason dropdowns list the most-used reasons first.** Reasons sort by how often they were used to reject a job (`feedback_log`); Already Applied, Stale/Closed, Company passed and Other always come last. With no rejections yet, the order is the `reject_reasons.yaml` order with those four moved to the end. No config change (#1220).
 
 ### Added
 
-- **A board row fades out with an outcome tint instead of vanishing.** Rejecting, waitlisting, applying, or flagging a waitlisted job for prep used to remove its row the instant the response arrived, so a user who picked a reject reason saw nothing happen. The row now takes a light tint for the outcome (red for reject, yellow for waitlist, green for applied or flagged) and fades out over 500 ms before the swap removes it. The duration is the `--row-fade-ms` custom property in `static/app.css`, clamped to 300–1000 ms. With `prefers-reduced-motion: reduce` the fade is off and the tint shows for 300 ms. The four routes send an `X-Row-Outcome` response header and the new `static/row_fade.js` reads it; responses without the header, such as an idempotent repeat click, remove the row at once as before.
+- **A board row fades out with an outcome tint instead of vanishing.** Rejecting, waitlisting, applying, or flagging a waitlisted job for prep used to remove its row the instant the response arrived, so a user who picked a reject reason saw nothing happen. The row now takes a light tint for the outcome (red for reject, yellow for waitlist, green for applied or flagged) and fades out over 500 ms before the swap removes it. The duration is the `--row-fade-ms` custom property in `static/app.css`, clamped to 300–1000 ms. With `prefers-reduced-motion: reduce` the fade is off and the tint shows for 300 ms. The four routes send an `X-Row-Outcome` response header and the new `static/row_fade.js` reads it; responses without the header, such as an idempotent repeat click, remove the row at once as before (#1219).
 
 ### Fixed
 
-- **The job-row title link renders an `href` only for `http(s)` URLs.** A job whose stored URL used another scheme (`javascript:`, `data:`, `file:`) was linked as-is from the board. Those titles now render as plain text; `http(s)` titles and `[SPEC]` rows link as before.
-- **Links in page content get a link colour and underline.** The job entries on `/materials/` are bare anchors, and Tailwind's CSS reset gave them the surrounding text colour with no underline, so the list read as plain text. `static/app.css` now styles anchors that carry no `class` inside `<main>` (blue, underlined, darker on hover and keyboard focus). Navigation, buttons and other Tailwind-styled links, and rendered Markdown, are unchanged; the column-header sort links, which were bare anchors, now carry a class so they keep their plain look.
+- **The job-row title link renders an `href` only for `http(s)` URLs.** A job whose stored URL used another scheme (`javascript:`, `data:`, `file:`) was linked as-is from the board. Those titles now render as plain text; `http(s)` titles and `[SPEC]` rows link as before (#1240).
+- **Links in page content get a link colour and underline.** The job entries on `/materials/` are bare anchors, and Tailwind's CSS reset gave them the surrounding text colour with no underline, so the list read as plain text. `static/app.css` now styles anchors that carry no `class` inside `<main>` (blue, underlined, darker on hover and keyboard focus). Navigation, buttons and other Tailwind-styled links, and rendered Markdown, are unchanged; the column-header sort links, which were bare anchors, now carry a class so they keep their plain look (#1225).
 
 ### Documentation
 
-- **`AGENTS.md` holds the rules; task-specific reference moves to `docs/architecture/`.** Coding agents load `AGENTS.md` at the start of every session, and about two thirds of it was reference that only some tasks need. Five new files hold that reference: `models-and-paths.md` (per-role models, pipeline plumbing, container path shifts), `data-ownership.md` (backup classification), `web-frontend.md` (URL groups and the per-column filter framework), `board-lifecycle.md` (route table, generator subprocesses, stage semantics) and `scripts.md` (the scripts reference). `AGENTS.md` keeps every architecture rule, adds a Commands section with the four CI checks, and lists which reference to read for which kind of task (59 KB → 23 KB). The same-PR docs rule now names `board-lifecycle.md` for a new state transition. `CONTRIBUTING.md`, `docs/architecture.md`, `docs/architecture/file-map.md` and `docs/operations/fly-deploy.md` link the new files. No behavior change.
-- **Plan conventions move to `docs/superpowers/README.md`.** The required sections of an implementation plan and the spec/plan relationship now sit with the plans they govern (§ Plan structure). `AGENTS.md` links there and keeps the rule that a plan without a Documentation Impact section is incomplete. A triplicated list of path, binary and LLM-call rules under § Pipeline Context is cut to the one line it alone carried. No behavior change.
+- **`AGENTS.md` holds the rules; task-specific reference moves to `docs/architecture/`.** Coding agents load `AGENTS.md` at the start of every session, and about two thirds of it was reference that only some tasks need. Five new files hold that reference: `models-and-paths.md` (per-role models, pipeline plumbing, container path shifts), `data-ownership.md` (backup classification), `web-frontend.md` (URL groups and the per-column filter framework), `board-lifecycle.md` (route table, generator subprocesses, stage semantics) and `scripts.md` (the scripts reference). `AGENTS.md` keeps every architecture rule, adds a Commands section with the four CI checks, and lists which reference to read for which kind of task (59 KB → 23 KB). The same-PR docs rule now names `board-lifecycle.md` for a new state transition. `CONTRIBUTING.md`, `docs/architecture.md`, `docs/architecture/file-map.md` and `docs/operations/fly-deploy.md` link the new files. No behavior change (#1238).
+- **Plan conventions move to `docs/superpowers/README.md`.** The required sections of an implementation plan and the spec/plan relationship now sit with the plans they govern (§ Plan structure). `AGENTS.md` links there and keeps the rule that a plan without a Documentation Impact section is incomplete. A triplicated list of path, binary and LLM-call rules under § Pipeline Context is cut to the one line it alone carried. No behavior change (#1239).
 
 ## [0.36.0] — 2026-10-14
 
@@ -1721,7 +1723,8 @@ from GHCR and deployed via Docker Compose on a shared Docker host.
 - Documentation cleanup — removing `sigoden/aichat` references in favor of
   `blob42/aichat-ng` — is tracked in #70
 
-[Unreleased]: https://github.com/brockamer/findajob/compare/v0.36.0...HEAD
+[Unreleased]: https://github.com/brockamer/findajob/compare/v0.37.0...HEAD
+[0.37.0]: https://github.com/brockamer/findajob/releases/tag/v0.37.0
 [0.36.0]: https://github.com/brockamer/findajob/releases/tag/v0.36.0
 [0.35.0]: https://github.com/brockamer/findajob/releases/tag/v0.35.0
 [0.34.1]: https://github.com/brockamer/findajob/releases/tag/v0.34.1
