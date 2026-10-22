@@ -3,7 +3,7 @@
 Opinionated defaults so a coding assistant can work without clarifying questions.
 
 ## Purpose
-- Primary task context: docs(architecture): refresh architecture.md and the file map against main
+- Primary task context: docs(ops): correct the Docker install and operations reference
 
 ## Stack & layout
 - Read the top-level README first, then module entrypoints.
