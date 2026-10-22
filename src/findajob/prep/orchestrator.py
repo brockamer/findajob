@@ -29,6 +29,7 @@ from findajob.llm.role_runner import run_role
 from findajob.notifications.ntfy import send as ntfy_send
 from findajob.paths import BASE, IMAGE_ROOT, load_env
 from findajob.prep.briefing import read_briefing
+from findajob.prep.change_report import check_change_report, resume_diff_summary
 from findajob.prep.cost_projection import compute_projection
 from findajob.prep.docx_postprocess import _add_cover_letter_spacing, _linkify_contact_info
 from findajob.prep.docx_render import render_md_to_docx
@@ -737,12 +738,27 @@ def _run_prep_phase_b(company: str, title: str, url: str, job_id: str) -> None:
         render_md_to_docx(out["resume_md"], out["resume_docx"])
 
         # ── Stage 5: resume_change_reviewer ──
+        # #1099: the reviewer explains a computed diff of the kept master (marked
+        # sections would all read as removals) and returns JSON; every passage it
+        # quotes is checked here, and unfound ones are marked [UNVERIFIED].
+        diff_summary = resume_diff_summary(kept_master, resume_md)
         changes_prompt = (
-            f"ORIGINAL MASTER RESUME:\n{master_text}\n\nTAILORED RESUME:\n{resume_md}\n\nTARGET JD:\n{jd_text}"
+            f"ORIGINAL MASTER RESUME:\n{kept_master}\n\nTAILORED RESUME:\n{resume_md}\n\n"
+            f"LINE DIFF:\n{diff_summary}\n\nTARGET JD:\n{jd_text}"
         )
-        changes_md = run_role("resume_change_reviewer", changes_prompt, conn=conn, job_id=job_id)
+        raw_changes = run_role("resume_change_reviewer", changes_prompt, conn=conn, job_id=job_id)
+        checked = check_change_report(raw_changes, kept_master, resume_md)
+        log_event(
+            "change_report_checked",
+            company=company,
+            title=title,
+            job_id=job_id,
+            claims=checked.claims,
+            unsupported=checked.unsupported,
+            parse_failed=checked.parse_failed,
+        )
         with open(out["changes_md"], "w") as f:
-            f.write(changes_md)
+            f.write(checked.markdown)
 
         # ── Stage 6: cover_letter_writer ──
         today_str = datetime.now().strftime("%B %d, %Y")
@@ -811,7 +827,7 @@ def _run_prep_phase_b(company: str, title: str, url: str, job_id: str) -> None:
     Generated: {date}
 
 {fix_block}    ## Before sending, complete these steps:
-    - [ ] Open `{fn["changes_md"]}` — review every flagged reorder/keyword add
+    - [ ] Open `{fn["changes_md"]}` — review every change; a line marked [UNVERIFIED] was not found in the documents
     - [ ] Open `{fn["resume_docx"]}` — fill any [MISSING: ...] placeholders
     - [ ] Open `{fn["cover_docx"]}` — fill any [MISSING: ...] placeholders (expect 1-2 max)
     - [ ] Read cover letter aloud — does it sound like you?

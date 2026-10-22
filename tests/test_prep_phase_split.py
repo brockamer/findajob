@@ -859,3 +859,47 @@ def test_unrecognized_marker_is_logged(isolated_base, mocked_orchestrator, isola
 
     events = [e for e in _events(isolate_event_log) if e.get("event") == "master_resume_marker_unrecognized"]
     assert len(events) == 1, events
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# #1099 — the change reviewer gets a computed diff; its quotes are checked
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_reviewer_gets_kept_master_and_line_diff(
+    isolated_base, mocked_orchestrator, isolate_event_log, monkeypatch
+) -> None:
+    calls = _run_both_phases_recording(isolated_base, monkeypatch, master=MARKED_MASTER)
+
+    prompt = _call(calls, "resume_change_reviewer")[1]
+    assert "LINE DIFF:\n" in prompt
+    assert "SECTION ORDER IN MASTER:" in prompt
+    assert "steadiest team" not in prompt
+
+
+def test_fabricated_claim_is_marked_and_counted(
+    isolated_base, mocked_orchestrator, isolate_event_log, monkeypatch
+) -> None:
+    import json
+
+    import findajob.prep.orchestrator as orch
+
+    fabricated = json.dumps({"added": [{"text": "certified forklift trainer", "section": "Summary", "reason": "JD"}]})
+
+    def _reviewer_fabricates(role: str, prompt: str, **kwargs) -> str:
+        if role == "resume_change_reviewer":
+            return fabricated
+        return _fake_run_role(role, prompt, **kwargs)
+
+    monkeypatch.setattr(orch, "run_role", _reviewer_fabricates)
+    db_path = str(isolated_base / "data" / "pipeline.db")
+    _seed_job(db_path)
+    orch._run_prep_phase_a(COMPANY, TITLE, URL, JOB_ID)
+    orch._run_prep_phase_b(COMPANY, TITLE, URL, JOB_ID)
+
+    folder = Path(_read_job(db_path)["prep_folder_path"])
+    changes = next(folder.glob("* Resume Changes - *.md")).read_text()
+    assert '[UNVERIFIED] "certified forklift trainer"' in changes
+    events = [e for e in _events(isolate_event_log) if e.get("event") == "change_report_checked"]
+    assert len(events) == 1, events
+    assert (events[0]["claims"], events[0]["unsupported"], events[0]["parse_failed"]) == (1, 1, False)
