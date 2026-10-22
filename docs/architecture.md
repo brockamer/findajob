@@ -145,10 +145,12 @@ scripts/prep_application.py (45-line entry-point shim, detached subprocess)
 | 2 | `briefing_writer` | Claude Opus 4.8 | profile + master + JD + raw research | structured briefing ending with `## Overall Recommendation` | `shared_candidate_jd` |
 | 3 | `fit_analyst` | Perplexity sonar-reasoning-pro | profile + master + JD + briefing | Fit Matrix + Probability Assessment (6+3 percent dimensions) | none |
 | — | **Merge** | (deterministic) | briefing + fit_analysis | `briefing.md` — fit spliced **BEFORE** the Overall Recommendation so the doc reads detail → synthesis → verdict | — |
-| 4 | `resume_tailor` | Claude Opus 4.8 | profile + master + JD + merged briefing | `resume.md` (tailored) | `shared_candidate_jd` |
-| 5 | `resume_change_reviewer` | Gemini Flash | master resume + tailored resume + JD | `CHANGES.md` — diff/justification | none (cheap diff) |
-| 6 | `cover_letter_writer` | Claude Opus 4.8 | profile + master + JD + voice samples + merged briefing + tailored resume | `cover.md` | `shared_with_voice` |
+| 4 | `resume_tailor` | Claude Opus 4.8 | profile + master without marked sections + JD + merged briefing | `resume.md` (tailored); checked for copied marked text | `shared_candidate_jd` |
+| 5 | `resume_change_reviewer` | Gemini Flash | master without marked sections + tailored resume + computed line diff + JD | `CHANGES.md` — explanation of the computed diff; every quoted passage checked, unfound ones marked `[UNVERIFIED]` | none (cheap diff) |
+| 6 | `cover_letter_writer` | Claude Opus 4.8 | profile + master without marked sections + JD + voice samples + marked sections + merged briefing + tailored resume | `cover.md` | `shared_with_voice` |
 | 7 | `recruiter_critic` | Claude Opus 4.8 | company + title + JD + tailored resume + cover (**not** profile/briefing/fit) | `critique.md` — skeptical outside read | `jd-only` |
+
+"Marked sections" are master-resume sections marked "not for submitted resumes" (`findajob.prep.resume_markers`; convention in [`config-reference.md`](operations/config-reference.md#candidate_contextmaster_resumemd)). Phase A roles get the whole master. The change report is reliable for what its verified quotes show; it is not a complete list of changes.
 
 After stage 7, the outreach sidecar runs as a blocking subprocess:
 
@@ -172,7 +174,7 @@ The judgment behind each pick:
 
 - **Opus 4.8 for high-voice creative outputs** (`briefing_writer`, `resume_tailor`, `cover_letter_writer`, `recruiter_critic`, `outreach_drafter`) — these stages own the voice; Opus produces materials that read like they were written by someone who actually researched the company.
 - **Perplexity sonar-reasoning-pro for web-research roles** (`company_researcher`, `fit_analyst`) — built-in web grounding with citations, lower cost than running a coding-model + tool-call loop.
-- **Gemini Flash for simple diffs** (`resume_change_reviewer`) — the model only needs to produce a structured comparison; spending Opus tokens on this is wasteful.
+- **Gemini Flash for simple diffs** (`resume_change_reviewer`) — code computes the diff and checks every quote, so the model only explains and groups the changes; spending Opus tokens on this is wasteful.
 - **DeepSeek v3.2 for high-volume scoring** (`job_scorer`, separate triage pipeline) — 100–500 calls per daily triage; cost-sensitive; DeepSeek's structured-output reliability is sufficient at scoring depth.
 
 ### Speculative cold-outreach branch

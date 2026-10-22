@@ -29,10 +29,12 @@ from findajob.llm.role_runner import run_role
 from findajob.notifications.ntfy import send as ntfy_send
 from findajob.paths import BASE, IMAGE_ROOT, load_env
 from findajob.prep.briefing import read_briefing
+from findajob.prep.change_report import check_change_report, resume_diff_summary
 from findajob.prep.cost_projection import compute_projection
 from findajob.prep.docx_postprocess import _add_cover_letter_spacing, _linkify_contact_info
 from findajob.prep.docx_render import render_md_to_docx
 from findajob.prep.quarantine import quarantine_stale_prep_folders
+from findajob.prep.resume_markers import MARKER_RE, find_marked_text, split_marked_sections
 from findajob.prep_naming import abbrev_title, build_prep_filenames
 from findajob.profile import load_voice_samples, read_file_prefix
 
@@ -638,18 +640,32 @@ def _run_prep_phase_b(company: str, title: str, url: str, job_id: str) -> None:
         except FileNotFoundError:
             master_text = ""
 
+        # #1098: sections marked "not for submitted resumes" never reach
+        # resume_tailor or the change reviewer. The cover letter may use them,
+        # so they follow the voice samples in its prefix — after the part it
+        # shares with the tailor, which keeps that prefix's cache hit.
+        kept_master, marked_master = split_marked_sections(master_text)
+        if MARKER_RE.search(kept_master):
+            log_event("master_resume_marker_unrecognized", company=company, title=title, job_id=job_id)
+        marked_section = (
+            "MASTER RESUME SECTIONS NOT FOR SUBMITTED RESUMES "
+            f"(the cover letter may use these; the resume must not):\n{marked_master}\n\n"
+            if marked_master
+            else ""
+        )
+
         # ── Re-load voice samples ──
         voice_samples = load_voice_samples()
         log_event("voice_samples_loaded", caller="prep_phase_b", chars=len(voice_samples))
         voice_section = f"VOICE SAMPLES:\n{voice_samples}\n\n" if voice_samples else ""
         shared_candidate_jd = (
             f"CANDIDATE PROFILE:\n{profile_text}\n\n"
-            f"MASTER RESUME:\n{master_text}\n\n"
+            f"MASTER RESUME:\n{kept_master}\n\n"
             f"Company: {company}\nTitle: {title}\n\n"
             f"JD:\n{jd_text}\n\n"
             f"---\n\n"
         )
-        shared_with_voice = f"{shared_candidate_jd}{voice_section}---\n\n"
+        shared_with_voice = f"{shared_candidate_jd}{voice_section}{marked_section}---\n\n"
 
         # ── Re-read briefing from disk ──
         # find_briefing handles both {Prefix} Briefing - ... .md (regular) and
@@ -683,6 +699,17 @@ def _run_prep_phase_b(company: str, title: str, url: str, job_id: str) -> None:
         rlines = [line for i, line in enumerate(rlines) if not (i < first_hdr and line.startswith("[VERIFY:"))]
         resume_md = "\n".join(rlines).strip()
         resume_md = _linkify_contact_info(resume_md)
+        # Post-check (#1098): the briefing can still carry marked text to the tailor.
+        marked_hits = find_marked_text(resume_md, marked_master, kept_master) if marked_master else []
+        if marked_hits:
+            log_event(
+                "resume_marked_content",
+                severity="HIGH",
+                company=company,
+                title=title,
+                job_id=job_id,
+                count=len(marked_hits),
+            )
         with open(out["resume_md"], "w") as f:
             f.write(resume_md)
 
@@ -711,12 +738,27 @@ def _run_prep_phase_b(company: str, title: str, url: str, job_id: str) -> None:
         render_md_to_docx(out["resume_md"], out["resume_docx"])
 
         # ── Stage 5: resume_change_reviewer ──
+        # #1099: the reviewer explains a computed diff of the kept master (marked
+        # sections would all read as removals) and returns JSON; every passage it
+        # quotes is checked here, and unfound ones are marked [UNVERIFIED].
+        diff_summary = resume_diff_summary(kept_master, resume_md)
         changes_prompt = (
-            f"ORIGINAL MASTER RESUME:\n{master_text}\n\nTAILORED RESUME:\n{resume_md}\n\nTARGET JD:\n{jd_text}"
+            f"ORIGINAL MASTER RESUME:\n{kept_master}\n\nTAILORED RESUME:\n{resume_md}\n\n"
+            f"LINE DIFF:\n{diff_summary}\n\nTARGET JD:\n{jd_text}"
         )
-        changes_md = run_role("resume_change_reviewer", changes_prompt, conn=conn, job_id=job_id)
+        raw_changes = run_role("resume_change_reviewer", changes_prompt, conn=conn, job_id=job_id)
+        checked = check_change_report(raw_changes, kept_master, resume_md)
+        log_event(
+            "change_report_checked",
+            company=company,
+            title=title,
+            job_id=job_id,
+            claims=checked.claims,
+            unsupported=checked.unsupported,
+            parse_failed=checked.parse_failed,
+        )
         with open(out["changes_md"], "w") as f:
-            f.write(changes_md)
+            f.write(checked.markdown)
 
         # ── Stage 6: cover_letter_writer ──
         today_str = datetime.now().strftime("%B %d, %Y")
@@ -771,12 +813,21 @@ def _run_prep_phase_b(company: str, title: str, url: str, job_id: str) -> None:
         )
 
         # ── Step 6: Review checklist ──
+        fix_block = ""
+        if marked_hits:
+            hit_lines = "".join(f"      - {hit[:120]}\n" for hit in marked_hits)
+            fix_block = (
+                "    ## Fix before sending\n"
+                "    - [ ] The resume contains text from a master-resume section marked "
+                '"not for submitted resumes". Remove it:\n'
+                f"{hit_lines}\n"
+            )
         with open(out["checklist_md"], "w") as f:
             f.write(f"""# Review Checklist — {company} / {title}
     Generated: {date}
 
-    ## Before sending, complete these steps:
-    - [ ] Open `{fn["changes_md"]}` — review every flagged reorder/keyword add
+{fix_block}    ## Before sending, complete these steps:
+    - [ ] Open `{fn["changes_md"]}` — review every change; a line marked [UNVERIFIED] was not found in the documents
     - [ ] Open `{fn["resume_docx"]}` — fill any [MISSING: ...] placeholders
     - [ ] Open `{fn["cover_docx"]}` — fill any [MISSING: ...] placeholders (expect 1-2 max)
     - [ ] Read cover letter aloud — does it sound like you?

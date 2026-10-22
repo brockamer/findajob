@@ -10,6 +10,11 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Master-resume sections marked "not for submitted resumes" no longer reach the tailored resume.** The resume tailor got the whole master resume and only the model's reading of the marker kept such sections out; in one observed prep it put a peer quote into the Summary. Prep now removes every section whose heading, or the first line under it, says "not for submitted resumes" before the tailor and the change reviewer see the master resume; the cover letter, outreach and interview prep still use it. Because the briefing can still carry the text, the tailored resume is also checked: six or more consecutive words from a marked section log a HIGH `resume_marked_content` event, add a "Fix before sending" item to the review checklist, and show a red warning on the job's materials page until the resume is edited. A reworded copy is not detected. A master resume with no marked section gets exactly the prompts it got before. Convention in `docs/operations/config-reference.md` (#1098).
+- **The resume change report marks every quoted edit it cannot find in the resumes.** The change reviewer compared the two resumes free-form and reported edits the tailored resume did not contain, in both observed preps. It now gets a line diff computed in code and returns JSON that quotes each passage verbatim; prep checks every quote against the right document and writes the report with unfound quotes marked `[UNVERIFIED]`. Each prep logs `change_report_checked` with the number of claims and unsupported claims (#1099).
+
 ## [0.37.0] — 2026-10-21
 
 ### Migration required

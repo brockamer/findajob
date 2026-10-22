@@ -740,3 +740,166 @@ def test_phase_b_post_success_db_error_does_not_revert_or_false_notify(
     assert not any(kw.get("kind") == "prep_failure" for kw in ntfy_calls), (
         "prep actually succeeded — no prep_failure ntfy should fire on a post-commit hiccup"
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# #1098 — marked master-resume sections
+# ═══════════════════════════════════════════════════════════════════════════
+
+MARKED_QUOTE = "Turned a struggling night shift into the steadiest team in the building."
+MARKED_MASTER = FAKE_MASTER_RESUME + f'\n## Selected Quotes\n*(not for submitted resumes)*\n- "{MARKED_QUOTE}"\n'
+
+
+def _run_both_phases_recording(
+    base: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    master: str | None = None,
+    tailor_output: str | None = None,
+) -> list[tuple[str, str, dict]]:
+    """Run Phase A then Phase B with a run_role stand-in that records every
+    call as ``(role, prompt, kwargs)``."""
+    import findajob.prep.orchestrator as orch
+
+    if master is not None:
+        (base / "candidate_context" / "master_resume.md").write_text(master)
+    calls: list[tuple[str, str, dict]] = []
+
+    def _recording(role: str, prompt: str, **kwargs) -> str:
+        calls.append((role, prompt, kwargs))
+        if role == "resume_tailor" and tailor_output is not None:
+            return tailor_output
+        return _fake_run_role(role, prompt, **kwargs)
+
+    monkeypatch.setattr(orch, "run_role", _recording)
+    _seed_job(str(base / "data" / "pipeline.db"))
+    orch._run_prep_phase_a(COMPANY, TITLE, URL, JOB_ID)
+    orch._run_prep_phase_b(COMPANY, TITLE, URL, JOB_ID)
+    return calls
+
+
+def _call(calls: list[tuple[str, str, dict]], role: str) -> tuple[str, str, dict]:
+    return next(c for c in calls if c[0] == role)
+
+
+def _checklist_text(base: Path) -> str:
+    folder = Path(_read_job(str(base / "data" / "pipeline.db"))["prep_folder_path"])
+    return next(folder.glob("Review Checklist - *.md")).read_text()
+
+
+def test_tailor_prefix_excludes_marked_section(
+    isolated_base, mocked_orchestrator, isolate_event_log, monkeypatch
+) -> None:
+    calls = _run_both_phases_recording(isolated_base, monkeypatch, master=MARKED_MASTER)
+
+    tailor_prefix = _call(calls, "resume_tailor")[2]["cached_prefix"]
+    assert "History here." in tailor_prefix
+    assert "steadiest team" not in tailor_prefix
+
+
+def test_cover_letter_prefix_extends_tailor_prefix_and_has_marked_text(
+    isolated_base, mocked_orchestrator, isolate_event_log, monkeypatch
+) -> None:
+    calls = _run_both_phases_recording(isolated_base, monkeypatch, master=MARKED_MASTER)
+
+    tailor_prefix = _call(calls, "resume_tailor")[2]["cached_prefix"]
+    cover_prefix = _call(calls, "cover_letter_writer")[2]["cached_prefix"]
+    assert cover_prefix.startswith(tailor_prefix), "the cover letter must keep the tailor's cache prefix"
+    assert "steadiest team" in cover_prefix
+
+
+def test_briefing_writer_still_gets_marked_section(
+    isolated_base, mocked_orchestrator, isolate_event_log, monkeypatch
+) -> None:
+    calls = _run_both_phases_recording(isolated_base, monkeypatch, master=MARKED_MASTER)
+
+    assert "steadiest team" in _call(calls, "briefing_writer")[2]["cached_prefix"]
+
+
+def test_no_marker_keeps_phase_b_prefixes_unchanged(
+    isolated_base, mocked_orchestrator, isolate_event_log, monkeypatch
+) -> None:
+    calls = _run_both_phases_recording(isolated_base, monkeypatch)
+
+    expected = (
+        f"CANDIDATE PROFILE:\n{FAKE_PROFILE}\n\nMASTER RESUME:\n{FAKE_MASTER_RESUME}\n\n"
+        f"Company: {COMPANY}\nTitle: {TITLE}\n\nJD:\n{FAKE_JD}\n\n---\n\n"
+    )
+    assert _call(calls, "resume_tailor")[2]["cached_prefix"] == expected
+    assert _call(calls, "cover_letter_writer")[2]["cached_prefix"] == expected + "---\n\n"
+
+
+def test_copied_marked_text_is_logged_high_and_in_checklist(
+    isolated_base, mocked_orchestrator, isolate_event_log, monkeypatch
+) -> None:
+    leaked = "# Resume\n\n## Summary\nTurned a struggling night shift into the steadiest team.\n" + "x" * 600
+    _run_both_phases_recording(isolated_base, monkeypatch, master=MARKED_MASTER, tailor_output=leaked)
+
+    events = [e for e in _events(isolate_event_log) if e.get("event") == "resume_marked_content"]
+    assert len(events) == 1, events
+    assert events[0]["severity"] == "HIGH"
+    assert events[0]["count"] == 1
+    checklist = _checklist_text(isolated_base)
+    assert "Fix before sending" in checklist
+    assert "steadiest team" in checklist
+
+
+def test_clean_resume_logs_no_marked_content_event(
+    isolated_base, mocked_orchestrator, isolate_event_log, monkeypatch
+) -> None:
+    _run_both_phases_recording(isolated_base, monkeypatch, master=MARKED_MASTER)
+
+    assert not [e for e in _events(isolate_event_log) if e.get("event") == "resume_marked_content"]
+    assert "Fix before sending" not in _checklist_text(isolated_base)
+
+
+def test_unrecognized_marker_is_logged(isolated_base, mocked_orchestrator, isolate_event_log, monkeypatch) -> None:
+    master = "# Resume\n\n## Experience\n- Ran the night shift.\n- This line is not for submitted resumes.\n"
+    _run_both_phases_recording(isolated_base, monkeypatch, master=master)
+
+    events = [e for e in _events(isolate_event_log) if e.get("event") == "master_resume_marker_unrecognized"]
+    assert len(events) == 1, events
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# #1099 — the change reviewer gets a computed diff; its quotes are checked
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_reviewer_gets_kept_master_and_line_diff(
+    isolated_base, mocked_orchestrator, isolate_event_log, monkeypatch
+) -> None:
+    calls = _run_both_phases_recording(isolated_base, monkeypatch, master=MARKED_MASTER)
+
+    prompt = _call(calls, "resume_change_reviewer")[1]
+    assert "LINE DIFF:\n" in prompt
+    assert "SECTION ORDER IN MASTER:" in prompt
+    assert "steadiest team" not in prompt
+
+
+def test_fabricated_claim_is_marked_and_counted(
+    isolated_base, mocked_orchestrator, isolate_event_log, monkeypatch
+) -> None:
+    import json
+
+    import findajob.prep.orchestrator as orch
+
+    fabricated = json.dumps({"added": [{"text": "certified forklift trainer", "section": "Summary", "reason": "JD"}]})
+
+    def _reviewer_fabricates(role: str, prompt: str, **kwargs) -> str:
+        if role == "resume_change_reviewer":
+            return fabricated
+        return _fake_run_role(role, prompt, **kwargs)
+
+    monkeypatch.setattr(orch, "run_role", _reviewer_fabricates)
+    db_path = str(isolated_base / "data" / "pipeline.db")
+    _seed_job(db_path)
+    orch._run_prep_phase_a(COMPANY, TITLE, URL, JOB_ID)
+    orch._run_prep_phase_b(COMPANY, TITLE, URL, JOB_ID)
+
+    folder = Path(_read_job(db_path)["prep_folder_path"])
+    changes = next(folder.glob("* Resume Changes - *.md")).read_text()
+    assert '[UNVERIFIED] "certified forklift trainer"' in changes
+    events = [e for e in _events(isolate_event_log) if e.get("event") == "change_report_checked"]
+    assert len(events) == 1, events
+    assert (events[0]["claims"], events[0]["unsupported"], events[0]["parse_failed"]) == (1, 1, False)
