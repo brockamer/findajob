@@ -2,6 +2,8 @@
 
 **Self-hosted job search infrastructure: AI triages thousands of listings down to a handful, generates tailored materials for the ones worth applying to, and learns from every rejection.**
 
+> **Notice (October 2026).** findajob is in a top-to-bottom audit while its maintenance moves to an automated work queue. Until the audit completes, documentation and behaviour may change or break between releases. Issues and pull requests are still welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
+
 The modern job search grinds people down — hundreds of listings per day, most irrelevant; the same cover letter rewritten at midnight; black-hole rejections that tell you nothing about whether you targeted wrong, wrote wrong, or got unlucky. findajob absorbs the triage, the tailoring, and the tracking so your attention goes to the few applications actually worth sending.
 
 Pre-1.0 means active development.
