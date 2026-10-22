@@ -30,13 +30,16 @@ Fetches jobs from all sources, deduplicates, enriches with JD text, then scores 
 Generates a full application package for one job. LLM calls run sequentially.
 
 **Outputs (in `companies/{Company}_{AbbrevTitle}_{date}_{time}/`):**
-- `tailored_resume_DRAFT.md` + `.docx`
-- `tailored_resume_CHANGES.md`
-- `cover_letter_DRAFT.md` + `.docx`
-- `company_briefing.md` + `.docx`
-- `outreach_*.txt` (one per matching contact, if any)
-- `job_description.txt`
-- `REVIEW_CHECKLIST.md`
+- `{Prefix} Resume - {Company} - {Title} - {timestamp}.md` + `.docx`
+- `{Prefix} Resume Changes - {Company} - {Title} - {timestamp}.md` (checked change report; unfound quotes marked `[UNVERIFIED]`)
+- `{Prefix} Cover - {Company} - {Title} - {timestamp}.md` + `.docx`
+- `{Prefix} Briefing - {Company} - {Title} - {timestamp}.md` + `.docx`
+- `{Prefix} Critique - {Company} - {Title} - {timestamp}.md`
+- `{Prefix} Outreach to {Contact} - {Company} - {timestamp}.txt` (one per matching contact, if any)
+- `JD - {Company} - {Title}.txt`
+- `Review Checklist - {Company} - {Title}.md`
+
+Names come from `findajob.prep_naming.build_prep_filenames`.
 
 After completion: updates DB to `stage=materials_drafted`, sends ntfy notification.
 

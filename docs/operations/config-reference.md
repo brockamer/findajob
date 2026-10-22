@@ -42,6 +42,15 @@ The resume tailor selects and reorders content from this file — it doesn't add
 
 Tailored resumes include your Education section whenever this file has one. To leave it off, say so in `profile.md` under `## Employer Formatting Rules` or `## Things to Avoid Mentioning`.
 
+**Material that must never go on a submitted resume** — peer quotes, for example — can stay in this file for the cover letter, outreach and interview prep. Mark its section: put the words "not for submitted resumes" in the section's heading or on the first line under it, for example:
+
+```markdown
+## Selected Quotes
+*(For interview prep, cover letters, and outreach — not for submitted resumes)*
+```
+
+The section runs to the next heading of the same or higher level, so its sub-sections are covered too. The resume tailor and the resume change report never see a marked section; the cover letter, outreach and interview prep still use it. As a second check, a tailored resume that contains six or more consecutive words from a marked section gets a red warning on its materials page and a "Fix before sending" item in its review checklist. A reworded version of marked text is not detected. The words anywhere else in the file mark nothing, and prep logs `master_resume_marker_unrecognized` when it finds them there.
+
 ---
 
 ## config/jsearch_queries.txt

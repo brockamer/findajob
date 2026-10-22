@@ -208,12 +208,13 @@ Prep runs in the background. An ntfy notification arrives when materials are rea
 |---|---|
 | `resume.md` | Tailored resume (your master resume reshaped for this posting) |
 | `resume.docx` | Same, converted to Word for submission |
+| `Resume Changes - ….md` | What the tailor changed against your master resume. Every quoted passage is checked against the two resumes; a line marked `[UNVERIFIED]` quotes text that was not found, so do not rely on it |
 | `cover_letter.md` | Cover letter, voice-calibrated against your writing samples |
 | `company_briefing.md` | Perplexity-sourced notes on the company — recent news, culture, known fit issues |
 | `network_outreach_*.md` | Drafts for messaging LinkedIn connections at the company |
 | `job_description.md` | JD snapshot from ingest (so you don't re-fetch the URL) |
 
-**Viewing materials:** the web UI at `/materials/<folder>/` renders everything inline — Markdown is styled, the JD is linked, `.docx` is offered as a download. You don't need to sync or copy anything.
+**Viewing materials:** the web UI at `/materials/<folder>/` renders everything inline — Markdown is styled, the JD is linked, `.docx` is offered as a download. You don't need to sync or copy anything. If a tailored resume contains text from a master-resume section you marked "not for submitted resumes", the page shows a red warning that lists it; edit the resume and the warning goes away.
 
 ---
 

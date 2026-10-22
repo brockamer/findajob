@@ -65,6 +65,8 @@ When this map drifts from the actual code (renamed file, new route module, retir
 <repo>/src/findajob/web/templates/           # Jinja2 templates — base.html + one subdir per route group + shared _*.html partials
 <repo>/src/findajob/prep/orchestrator.py     # prep_application implementation (called by scripts/prep_application.py shim)
 <repo>/src/findajob/prep/briefing.py         # canonical find_briefing()/read_briefing() resolver — single source of truth for the 4 briefing readers (podcast/study/interview-prep/Phase-B), handles Title-Cased + bare briefing.md (#1031)
+<repo>/src/findajob/prep/resume_markers.py   # split master-resume sections marked "not for submitted resumes"; find copied marked text in a tailored resume (#1098)
+<repo>/src/findajob/prep/change_report.py    # line diff for resume_change_reviewer; check every passage its JSON quotes and render the Resume Changes report (#1099)
 <repo>/src/findajob/find_contacts.py         # find_contacts implementation (called by scripts/find_contacts.py shim)
 <repo>/src/findajob/critique_aggregator/      # recruiter_critic aggregator (#265) — parse, anchor (fuzzy source-line), cluster, corpus, analyze, report, pipeline
 
