@@ -392,6 +392,22 @@ Before running `docker compose pull && docker compose up -d`:
 
 The "Action required" section is driven by PRs labeled `migration-required` (see [`docs/maintainers/release-process.md`](../maintainers/release-process.md) for the criteria). If a release has no such PRs in its range, the section won't appear.
 
+You do not need to update on every release: a stable stack can skip versions and move to the latest in one step. Releases are announced in [CHANGELOG.md](https://github.com/brockamer/findajob/blob/main/CHANGELOG.md).
+
+### Automatic updates with Watchtower
+
+If your compose stack runs Watchtower and it watches the `findajob` service, a new release is pulled and the container recreated within an hour of each release, with no action from you. Watchtower is watching the service when the scheduler service does **not** carry this label:
+
+    com.centurylinklabs.watchtower.enable: "false"
+
+Automatic updates skip the "Action required" check above, so a stack that pins a release tag (see [Tag pinning strategy](#tag-pinning-strategy)) should carry that label and update by hand.
+
+**Optional: an "Update now" button in the dashboard.** To trigger an update on demand instead of waiting for Watchtower's poll, enable Watchtower's HTTP API and tell findajob about it:
+
+1. Start Watchtower with `--http-api-update`, a token via `WATCHTOWER_HTTP_API_TOKEN`, and `--http-api-periodic-polls` (so scheduled polling still runs).
+2. Set two env vars on the findajob container: `FINDAJOB_WATCHTOWER_HTTP_URL` (for example `http://watchtower:8080`) and `FINDAJOB_WATCHTOWER_HTTP_TOKEN` (the same token).
+3. When both are set and an update is available, the dashboard banner shows an **Update now** button. It asks Watchtower, which runs outside the container, to pull and recreate the findajob image only.
+
 ### Optional tuning: RapidAPI multi-page
 
 Operators on PRO tier can raise per-query page counts via env vars in `data/.env`:
