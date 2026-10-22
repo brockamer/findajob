@@ -7,7 +7,7 @@ If you're trying to *use* findajob, start with [`docs/getting-started/`](docs/ge
 **New here?** Read [`docs/architecture.md`](docs/architecture.md) first — it walks the system design, the prep pipeline's stage-by-stage data flow, the data model, and the rationale behind the key design choices. It's the fastest way to understand how the whole thing fits together before you touch code.
 
 Architectural invariants and implementation guardrails live in [`AGENTS.md`](AGENTS.md); task-specific reference is in [`docs/architecture/`](docs/architecture/).
-Board conventions and project roadmap live at [`docs/project-board.md`](docs/project-board.md) and the [GitHub project board](https://github.com/users/brockamer/projects/1).
+Where the project stands, what is next and the standing rules every change follows are one page: [`docs/status.md`](docs/status.md). Board conventions live at [`docs/project-board.md`](docs/project-board.md) and the [GitHub project board](https://github.com/users/brockamer/projects/1); the numbered decision log is [`docs/roadmap.md`](docs/roadmap.md).
 
 ---
 
