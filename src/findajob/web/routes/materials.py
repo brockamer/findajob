@@ -24,6 +24,7 @@ import subprocess
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse
@@ -31,6 +32,7 @@ from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Red
 from findajob.prep.briefing import find_briefing, read_briefing
 from findajob.prep.docx_postprocess import _linkify_contact_info
 from findajob.prep.docx_render import render_md_to_docx
+from findajob.prep.resume_markers import find_marked_text, split_marked_sections
 from findajob.web.folder_resolver import resolve_folder
 from findajob.web.htmx_guard import require_htmx
 from findajob.web.markdown import render_markdown
@@ -268,6 +270,34 @@ def _group_files(folder: Path, title: str = "", company: str = "") -> list[dict]
     return sorted(by_label.values(), key=lambda g: (g["order"], g["label"]))
 
 
+def _marked_content_warnings(folder: Path, base_root: Path) -> list[dict[str, Any]]:
+    """One ``{"file", "lines"}`` entry per tailored resume in the folder that
+    holds text from a master-resume section marked "not for submitted
+    resumes" (#1098). Computed from the current files on each view, so an
+    edit that removes the text clears the warning. Fails open."""
+    try:
+        master = (base_root / "candidate_context" / "master_resume.md").read_text(encoding="utf-8")
+    except OSError:
+        return []
+    kept, marked = split_marked_sections(master)
+    if not marked:
+        return []
+    warnings: list[dict[str, Any]] = []
+    for p in sorted(folder.iterdir()):
+        if not p.is_file() or p.suffix != ".md" or _HIDE_FROM_VIEW_RE.search(p.name):
+            continue
+        if _classify_file(p.name)[0] != "Resume":
+            continue
+        try:
+            text = p.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        hits = find_marked_text(text, marked, kept)
+        if hits:
+            warnings.append({"file": p.name, "lines": [h[:160] for h in hits]})
+    return warnings
+
+
 def get_db() -> sqlite3.Connection:  # pragma: no cover — overridden in app factory
     raise NotImplementedError("DB dependency must be overridden by create_app()")
 
@@ -458,6 +488,7 @@ def folder_view(
             "stage": stage,
             "last_generated_iso": row["stage_updated"] if row else None,
             "groups": groups,
+            "marked_content_warnings": _marked_content_warnings(folder, request.app.state.base_root),
             "breakdown": breakdown,
             "breakdown_total": breakdown_total,
             "is_post_applied": is_post_applied,

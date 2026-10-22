@@ -30,6 +30,21 @@
   </div>
 </header>
 
+{# #1098: a tailored resume holds text from a master-resume section marked
+   "not for submitted resumes". Computed from the current files on each view. #}
+{% if marked_content_warnings %}
+<aside role="alert" class="mb-5 border-2 border-rose-300 bg-rose-50 rounded-md px-4 py-3">
+  <h2 class="text-base font-semibold text-rose-900">Remove marked text before you send this resume</h2>
+  <p class="text-sm text-slate-700 mt-1">Your master resume marks some sections “not for submitted resumes”. This resume contains text from them:</p>
+  {% for w in marked_content_warnings %}
+  <p class="font-mono text-xs text-slate-500 mt-2">{{ w.file }}</p>
+  <ul class="list-disc ml-5 text-sm text-slate-800">
+    {% for line in w.lines %}<li>{{ line }}</li>{% endfor %}
+  </ul>
+  {% endfor %}
+</aside>
+{% endif %}
+
 {# Briefing-first gate (#691). When Phase A is done and we're waiting for
    the operator to decide whether to spend ~$0.63–1.80 on Phase B, surface
    the decision affordances inline: Continue prep (POST /continue-prep)
