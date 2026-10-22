@@ -148,9 +148,9 @@ scripts/prep_application.py (45-line entry-point shim, detached subprocess)
 | 4 | `resume_tailor` | Claude Opus 4.8 | profile + master without marked sections + JD + merged briefing | `resume.md` (tailored); checked for copied marked text | `shared_candidate_jd` |
 | 5 | `resume_change_reviewer` | Gemini Flash | master without marked sections + tailored resume + computed line diff + JD | `CHANGES.md` — explanation of the computed diff; every quoted passage checked, unfound ones marked `[UNVERIFIED]` | none (cheap diff) |
 | 6 | `cover_letter_writer` | Claude Opus 4.8 | profile + master without marked sections + JD + voice samples + marked sections + merged briefing + tailored resume | `cover.md` | `shared_with_voice` |
+| 7 | `recruiter_critic` | Claude Opus 4.8 | company + title + JD + tailored resume + cover (**not** profile/briefing/fit) | `critique.md` — skeptical outside read | `jd-only` |
 
 "Marked sections" are master-resume sections marked "not for submitted resumes" (`findajob.prep.resume_markers`; convention in [`config-reference.md`](operations/config-reference.md#candidate_contextmaster_resumemd)). Phase A roles get the whole master. The change report is reliable for what its verified quotes show; it is not a complete list of changes.
-| 7 | `recruiter_critic` | Claude Opus 4.8 | company + title + JD + tailored resume + cover (**not** profile/briefing/fit) | `critique.md` — skeptical outside read | `jd-only` |
 
 After stage 7, the outreach sidecar runs as a blocking subprocess:
 

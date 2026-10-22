@@ -32,6 +32,7 @@ _CHECKED_NOTE = (
     "do not rely on it."
 )
 _UNVERIFIED = "[UNVERIFIED] "
+_REPORT_KEYS = ("reordered_sections", "added", "reworded", "removed", "missing_info")
 _LINE_MARKER_RE = re.compile(r"^\s*(?:#{1,6}\s+|[-*+]\s+|\d+\.\s+)")
 
 
@@ -80,8 +81,9 @@ def _field(item: object, key: str) -> str:
 
 
 def _found(needle: str, haystack_norm: str) -> bool:
+    """Whole-word containment: "safe" is not found in "safety"."""
     n = normalize_for_match(needle)
-    return bool(n) and n in haystack_norm
+    return bool(n) and re.search(rf"(?<!\w){re.escape(n)}(?!\w)", haystack_norm) is not None
 
 
 def _items(payload: dict[str, Any], key: str) -> list[object]:
@@ -115,7 +117,9 @@ def check_change_report(raw_output: str, master_text: str, tailored_text: str) -
     ``Resume Changes`` Markdown. Unparseable output is kept verbatim under a
     note saying none of it was checked."""
     payload = _parse_json(raw_output)
-    if not isinstance(payload, dict):
+    # An object with none of the report keys (a wrapper object, renamed keys)
+    # would otherwise render as a clean, fully checked empty report.
+    if not isinstance(payload, dict) or not any(key in payload for key in _REPORT_KEYS):
         return CheckedReport(f"# Resume Changes\n\n{PARSE_FAILED_NOTE}\n\n{raw_output}\n", 0, 0, True)
 
     master_norm = normalize_for_match(master_text)

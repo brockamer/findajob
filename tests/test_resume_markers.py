@@ -132,3 +132,13 @@ def test_find_matches_across_case_quotes_and_emphasis() -> None:
 
 def test_find_with_empty_marked_text() -> None:
     assert find_marked_text("anything at all goes in this resume text", "", MASTER) == []
+
+
+def test_marker_under_the_title_does_not_strip_the_whole_master() -> None:
+    # A legend line under the H1 title would otherwise mark the entire file.
+    master = "# Jane Candidate\n*(Sections marked not for submitted resumes are for prep only)*\n" + MASTER[17:]
+
+    kept, marked = split_marked_sections(master)
+
+    assert kept == master
+    assert marked == ""

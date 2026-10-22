@@ -97,6 +97,11 @@ def split_marked_sections(master_text: str) -> tuple[str, str]:
     if not any(is_marked):
         return master_text, ""
     kept = "".join(line for line, m in zip(lines, is_marked, strict=True) if not m)
+    if not kept.strip():
+        # A marker under the title (a legend line, say) would mark the whole
+        # file. Honour nothing instead: the marker stays in the kept text, so
+        # Phase B logs it as unrecognised and the tailor still gets a resume.
+        return master_text, ""
     marked = "".join(line for line, m in zip(lines, is_marked, strict=True) if m)
     return kept, marked
 

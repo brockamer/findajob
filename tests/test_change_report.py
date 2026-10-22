@@ -115,3 +115,19 @@ def test_non_dict_item_is_unverified() -> None:
 
     assert report.unsupported == 1
     assert "- [UNVERIFIED] just a string" in report.markdown
+
+
+def test_quote_must_match_whole_words() -> None:
+    # "safe" appears only inside "safety": a part-word hit is not a match.
+    report = _check(added=[{"text": "safe", "section": "Summary", "reason": "JD term"}])
+
+    assert report.unsupported == 1
+
+
+def test_object_without_any_report_key_is_a_parse_failure() -> None:
+    raw = json.dumps({"report": {"added": [{"text": "Shift lead focused on safety."}]}})
+
+    report = check_change_report(raw, MASTER, TAILORED)
+
+    assert report.parse_failed is True
+    assert report.markdown.startswith("# Resume Changes\n\n" + PARSE_FAILED_NOTE)
