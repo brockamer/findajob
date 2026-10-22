@@ -10,6 +10,10 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Added
+
+- **`docs/status.md`: one page on who findajob is for, its maintenance posture, what is next and the standing rules every change follows.** README and CONTRIBUTING point at it; `docs/roadmap.md` stays the numbered decision log (#1157).
+
 ### Fixed
 
 - **Master-resume sections marked "not for submitted resumes" no longer reach the tailored resume.** The resume tailor got the whole master resume and only the model's reading of the marker kept such sections out; in one observed prep it put a peer quote into the Summary. Prep now removes every section whose heading, or the first line under it, says "not for submitted resumes" before the tailor and the change reviewer see the master resume; the cover letter, outreach and interview prep still use it. Because the briefing can still carry the text, the tailored resume is also checked: six or more consecutive words from a marked section log a HIGH `resume_marked_content` event, add a "Fix before sending" item to the review checklist, and show a red warning on the job's materials page until the resume is edited. A reworded copy is not detected. A master resume with no marked section gets exactly the prompts it got before. Convention in `docs/operations/config-reference.md` (#1098).

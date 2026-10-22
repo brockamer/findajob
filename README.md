@@ -8,7 +8,7 @@ The modern job search grinds people down — hundreds of listings per day, most 
 
 Pre-1.0 means active development.
 
-**Who this is for.** findajob is maintained for operators who are comfortable with Docker, a terminal, git and SQLite, and who run it for themselves or on behalf of other people. It is not optimized for a non-technical job seeker installing it alone, and the documentation assumes those skills ([Decision 37](docs/roadmap.md)).
+**Who this is for.** findajob is maintained for operators who are comfortable with Docker, a terminal, git and SQLite, and who run it for themselves or on behalf of other people. It is not optimized for a non-technical job seeker installing it alone, and the documentation assumes those skills ([Decision 37](docs/roadmap.md)). Where the project stands, what is next and the rules every change follows: [`docs/status.md`](docs/status.md).
 
 ![Dashboard](docs/screenshots/dashboard.png)
 
