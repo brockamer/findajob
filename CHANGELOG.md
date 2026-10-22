@@ -10,6 +10,10 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Removed
+
+- **`docs/updating.md` and `docs/maintainers/generalization.md`.** The Updating guide duplicated the Docker install guide's Updating section and its version check read a file the image does not ship; its Watchtower material now lives in `docs/operations/install-docker.md` § Updating, and the dashboard update banner links there. The generalization tracker described code that had moved and repeated vocabulary the repo had already removed; its still-live rule is `AGENTS.md` § PII and Domain-Neutrality. The `/docs/updating` page and its smoke-test slug go with it (2026-10 docs audit).
+
 ### Added
 
 - **`docs/status.md`: one page on who findajob is for, its maintenance posture, what is next and the standing rules every change follows.** README and CONTRIBUTING point at it; `docs/roadmap.md` stays the numbered decision log (#1157).

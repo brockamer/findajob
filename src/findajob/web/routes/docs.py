@@ -30,7 +30,6 @@ _PAGES: dict[str, str] = {
     "usage": "usage.md",
     "usage/expanding-sources": "usage/expanding-sources.md",
     "troubleshooting": "troubleshooting.md",
-    "updating": "updating.md",
     # Operations
     "operations": "operations/README.md",
     "operations/fly-deploy": "operations/fly-deploy.md",
@@ -71,11 +70,6 @@ _INDEX_GUIDES = [
         "slug": "operations",
         "title": "Operations",
         "blurb": "Running the stack by hand: manual commands, log rotation, restore, internet exposure.",
-    },
-    {
-        "slug": "updating",
-        "title": "Updating",
-        "blurb": "Picking up a new release — the steps differ by deploy type (Fly, or Docker with/without Watchtower).",
     },
     {
         "slug": "troubleshooting",

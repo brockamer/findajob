@@ -77,7 +77,6 @@ GETTING_STARTED_NOTIFICATIONS_MD = "# Notifications\n\nntfy setup.\n"
 GETTING_STARTED_INSTALL_DOCKER_MD = "# Install with Docker\n\nThe primary install path.\n"
 CONFIG_REFERENCE_MD = "# Config Reference\n\nFile-by-file config walkthrough.\n"
 TUNING_MD = "# Tuning\n\nHow to tune the scorer.\n"
-UPDATING_MD = "# Updating\n\nHow to update findajob.\n"
 OPERATIONS_README_MD = "# Operations\n\nManual commands, log rotation, restore.\n"
 OPERATIONS_INTERNET_EXPOSURE_MD = "# Exposing findajob to the public internet\n\nBasic auth pattern.\n"
 
@@ -97,7 +96,6 @@ def client(tmp_path: Path) -> TestClient:
     (docs / "operations").mkdir(parents=True)
     (docs / "usage.md").write_text(USAGE_MD)
     (docs / "tuning.md").write_text(TUNING_MD)
-    (docs / "updating.md").write_text(UPDATING_MD)
     (docs / "troubleshooting.md").write_text(TROUBLESHOOTING_MD)
     (docs / "getting-started" / "README.md").write_text(GETTING_STARTED_README_MD + GETTING_STARTED_README_IMG)
     (docs / "getting-started" / "prerequisites.md").write_text(GETTING_STARTED_PREREQ_MD)
@@ -131,11 +129,12 @@ def test_index_lists_guides(client: TestClient) -> None:
     assert "Daily workflow" in r.text
 
 
-def test_index_surfaces_updating(client: TestClient) -> None:
-    """#938: updating.md is in _PAGES but was undiscoverable from the index."""
+def test_index_omits_removed_updating_guide(client: TestClient) -> None:
+    """The Updating guide was folded into the Docker install guide (2026-10 docs prune)."""
     r = client.get("/docs/")
     assert r.status_code == 200
-    assert 'href="/docs/updating"' in r.text
+    assert 'href="/docs/updating"' not in r.text
+    assert client.get("/docs/updating").status_code == 404
 
 
 def test_index_omits_removed_tuning_guide(client: TestClient) -> None:
