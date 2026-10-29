@@ -378,8 +378,7 @@ surfacing in the public tree. Add them to **both** your local `PATTERNS` array a
 specifics of such patterns stay operator-side and are **not** enumerated in this tracked
 doc — the same rule as the `<operator-domain>` / `<deployment-host>` placeholders.
 
-See also `docs/maintainers/generalization.md` for the broader tracking of domain-specific content that
-should not land in tracked files.
+The rule for domain-specific content in tracked files is `AGENTS.md` § PII and Domain-Neutrality.
 
 ## Rotating API keys on a deployed stack
 

@@ -37,7 +37,7 @@ The repo is public. Tracked files must not contain personal identifiers (real na
 Two categories the hook can't fully catch — be deliberate about these:
 
 - **Operator topology** — hostnames, deployment paths (`/opt/stacks/...`), backup destinations, consumer infra brand names (hypervisor / NAS / VPN mesh products), per-stack port numbers, the operator's domain. Setup docs use placeholders: `<deployment-host>`, `<operator-handle>`, `<operator-domain>`.
-- **Field-locked content** — hardcoded company lists, single-field title patterns, industry vocabulary in role prompts. Belong in gitignored config (`config/target_companies.md`, `config/prefilter_rules.yaml`) or referenced from the candidate profile, not enumerated in tracked files. Tracking doc: [`docs/maintainers/generalization.md`](docs/maintainers/generalization.md).
+- **Field-locked content** — hardcoded company lists, single-field title patterns, industry vocabulary in role prompts. Belong in gitignored config (`config/target_companies.md`, `config/prefilter_rules.yaml`) or referenced from the candidate profile, not enumerated in tracked files. Role prompts are made candidate-neutral under #1153.
 
 Plans, specs, and experiment notes for public features are committed under [`docs/superpowers/`](docs/superpowers/README.md) (#1188). They are public like every other tracked file, so every rule in this section applies to them. Anything about running a specific instance of findajob stays out of this repo — see [`## Project Board, Plans, Releases`](#project-board-plans-releases). Plan-content conventions are in [`docs/superpowers/README.md` § Plan structure](docs/superpowers/README.md#plan-structure).
 

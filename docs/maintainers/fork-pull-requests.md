@@ -55,8 +55,8 @@ and a write token.
    The steps run your own hook from `.git/hooks/`, not a file from the pull request,
    and they execute none of the pull request's code.
 3. **Read the diff for what the hook cannot match.** Patterns catch known identifiers.
-   They do not catch operator topology or field-locked content (see
-   [`generalization.md`](generalization.md) and the PII section of `AGENTS.md`).
+   They do not catch operator topology or field-locked content (see the
+   PII and Domain-Neutrality section of `AGENTS.md`).
 
 CI does not scan the merge either: `pii-scan.yml` runs only on `pull_request`, not on
 a push to `main`. For a pull request from a fork, the local scan is the only scan.

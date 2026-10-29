@@ -113,6 +113,7 @@ When this map drifts from the actual code (renamed file, new route module, retir
 <repo>/docs/operations/install-docker.md               # external-user Docker install + operations guide
 
 # ── Agent / maintainer reference (linked from AGENTS.md § Key File Locations) ─
+<repo>/docs/status.md                         # one page: audience, posture, what is next, standing rulings (#1157); roadmap.md stays the decision log
 <repo>/docs/architecture/models-and-paths.md   # per-role models, pipeline plumbing, container path shifts
 <repo>/docs/architecture/data-ownership.md     # backup-critical vs rebuildable state, per path
 <repo>/docs/architecture/web-frontend.md       # URL groups, /settings/ + /onboarding/ detail, per-column filter framework
