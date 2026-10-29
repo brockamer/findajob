@@ -130,6 +130,13 @@ Every issue carries exactly one **Type** label. The other groups are optional.
 | PR / automation | `migration-required` | Manual step required (schema/config/crontab/mount/compose-down) before docker compose pull | Hand, at PR-open time; `create-release.yml` lists these PRs first in the release notes |
 | PR / automation | `dependencies` | Pull requests that update a dependency file | Dependabot |
 | PR / automation | `github_actions` | Pull requests that update GitHub Actions code | Dependabot (`.github/dependabot.yml`) |
+| Work queue | `queue` | File this as a new idea for the agent queue. | Hand |
+| Work queue | `paused` | On the pinned issue: stop new work for this project. | Hand, on the pinned issue |
+| Work queue | `approve` | The queue applies your approve to this item, then removes the label. | Hand |
+| Work queue | `needs me` | The queue moves this item to Needs me, then removes the label. | The work queue |
+| Work queue | `done` | The queue applies your done to this item, then removes the label. | Hand |
+| Work queue | `follow-up` | A Codex concern filed as its own item after you approved the result it was raised on. | The work queue |
+| Work queue | `queue:check-failed` | The queue sets this when a build fails its own checks. | The work queue (created once by hand at go-live, so it carries this description) |
 
 Retired 2026-09-26 (Decision 38(g)): `severity:major` / `severity:minor` (duplicated the Priority field), the six `area:*` labels (each duplicated a Type label or grouped by theme — a theme belongs in sub-issues, see Epics), `help wanted`, `good first issue`, and a label from an early beta walkthrough. The older `priority: high / med / low` labels were retired earlier and no longer exist.
 
