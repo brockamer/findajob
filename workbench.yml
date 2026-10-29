@@ -1,0 +1,6 @@
+sensitivity: public          # the code is public; client data never enters a sandbox, issue, PR, fixture or plan
+pinned_issue: 0              # the pause switch and the project's state; set to its issue number at go-live
+roadmap: docs/status.md       # the one-page status document; docs/roadmap.md stays the decision log
+approval_allow:
+  - Merge to main             # an item that changes a guarded file adds its exact approval line here first (operator's word)
+merge_check: [sh, -c, "pip install -q --user --break-system-packages uv==0.11.7 && export PATH=$HOME/.local/bin:$PATH && uv sync --locked --extra dev && uv run ruff check src/ scripts/ tests/ && uv run ruff format --check src/ scripts/ tests/ && uv run mypy src/findajob/ && uv run pytest tests/ -q"]
