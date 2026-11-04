@@ -29,6 +29,42 @@ _PROFILE_FILE_PREFIX_RE: re.Pattern[str] = re.compile(
     re.IGNORECASE,
 )
 
+# Shared with findajob.discoverer.prompt — one section parser for ``## <name>``
+# markdown sections, so a profile schema change only needs one matching regex.
+_SECTION_RE_TEMPLATE = r"^##\s+{name}\s*$\n(?P<body>.*?)(?=^##\s|\Z)"
+
+_NOT_OPEN_TO_LINE_RE = re.compile(
+    r"^\s*\*{0,2}\s*Not open to\s*:.*$\n?",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def extract_section(profile_text: str, *aliases: str) -> str:
+    """Return the body of the first matching ``## <name>`` section, stripped.
+
+    Tries each alias in order and returns on the first match; empty string if
+    none of the aliases appear in the profile.
+    """
+    for name in aliases:
+        pattern = _SECTION_RE_TEMPLATE.format(name=re.escape(name))
+        match = re.search(pattern, profile_text, re.MULTILINE | re.DOTALL | re.IGNORECASE)
+        if match:
+            return match.group("body").strip()
+    return ""
+
+
+def target_role_text(profile_text: str) -> str:
+    """Return the Target Role(s) section body with 'Not open to:' lines stripped.
+
+    Used by the filter-proposal generator as a guard: a proposed "always
+    reject" regex must never also match the candidate's own stated target
+    role. The "Not open to:" line is deliberately excluded from that check —
+    it names roles the candidate already rejects, so a rule matching it is
+    expected and desired.
+    """
+    body = extract_section(profile_text, "Target Roles", "Target Role")
+    return _NOT_OPEN_TO_LINE_RE.sub("", body).strip()
+
 
 def _clean_profile_field(raw: str | None) -> str:
     """Strip surrounding whitespace, asterisks, and backticks from a profile field value."""
