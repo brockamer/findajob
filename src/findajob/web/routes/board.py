@@ -685,7 +685,10 @@ def fallback_rows(
 
 
 _REJECTED_DEFAULT_SORT = "rejected_date"
-_REJECTED_BASE_WHERE = "j.stage IN ('rejected','not_selected')"
+# Triage writes a duplicate as stage='rejected' with dupe_of set
+# (triage/orchestrator.py). Those are not user rejections, so the Rejected
+# views leave them out, as every other reader of rejected rows does.
+_REJECTED_BASE_WHERE = "j.stage IN ('rejected','not_selected') AND (j.dupe_of = '' OR j.dupe_of IS NULL)"
 
 
 def _rejected_source() -> str:
