@@ -107,3 +107,42 @@ def test_rejected_rows_filter_endpoint(client: TestClient) -> None:
     assert r.status_code == 200
     assert "Principal Eng" in r.text
     assert "Wrong Stack" not in r.text
+
+
+def _add_triage_dupe(client: TestClient) -> None:
+    """A row the way triage writes a duplicate (orchestrator.py): stage='rejected'
+    with dupe_of set, no score, no reject_reason, and a 'system' audit row."""
+    db = client.app.state.db_path
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT INTO jobs (id, fingerprint, url, title, company, source, stage, dupe_of) "
+        "VALUES ('id-dupe','fp-dupe','https://example.com/j9','Syndicated Copy Role','Acme',"
+        "'gmail_linkedin','rejected','id-rej')"
+    )
+    conn.execute(
+        "INSERT INTO audit_log (job_id, field_changed, old_value, new_value, changed_at, changed_by) "
+        "VALUES ('id-dupe','stage','discovered','rejected',datetime('now'),'system')"
+    )
+    conn.commit()
+    conn.close()
+
+
+def test_rejected_excludes_triage_duplicates(client: TestClient) -> None:
+    """A triage duplicate is not a user rejection: it must not appear on the
+    Rejected tab (labelled 'user', with an un-reject button) next to real passes."""
+    _add_triage_dupe(client)
+    r = client.get("/board/rejected")
+    assert r.status_code == 200
+    assert "Wrong Stack" in r.text
+    assert "Principal Eng" in r.text
+    assert "Syndicated Copy Role" not in r.text
+
+
+def test_materials_rejected_section_excludes_triage_duplicates(client: TestClient) -> None:
+    """The /materials/ Rejected section lists newest-first under a cap, so
+    duplicates from one large triage run would push every real rejection out."""
+    _add_triage_dupe(client)
+    r = client.get("/materials/")
+    assert r.status_code == 200
+    assert "Wrong Stack" in r.text
+    assert "Syndicated Copy Role" not in r.text

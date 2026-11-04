@@ -307,7 +307,9 @@ _INDEX_QUERY_SECTIONS = [
     ("Applied", "stage IN ('applied', 'interview', 'offer')", "COALESCE(stage_updated, created_at) DESC"),
     ("Waitlisted", "stage = 'waitlisted'", "created_at DESC"),
 ]
-_REJECTED_CLAUSE = "stage IN ('rejected', 'not_selected')"
+# Leaves out triage duplicates (stage='rejected' with dupe_of set): they are
+# not user rejections, and a large triage run would fill the capped list.
+_REJECTED_CLAUSE = "stage IN ('rejected', 'not_selected') AND (dupe_of = '' OR dupe_of IS NULL)"
 _PER_SECTION_CAP = 50
 
 
