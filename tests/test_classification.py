@@ -177,7 +177,7 @@ def test_strip_trailing_boilerplate_removed() -> None:
 
 
 def test_strip_stops_at_real_content() -> None:
-    middle = "The team works on-site three days a week in Los Angeles."
+    middle = "The team works on-site three days a week in Seattle."
     text = _REAL + "\n\n" + middle + "\n\n" + _EEO
     result = strip_jd_boilerplate(text)
     # EEO trimmed, but the non-boilerplate middle paragraph is retained.

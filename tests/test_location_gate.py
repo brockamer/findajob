@@ -273,10 +273,10 @@ class TestReviewFindings:
 
     @pytest.mark.parametrize(
         "location",
-        ["Los Angeles / LA", "Santa Monica (LA)", "LA (Hybrid)", "SF / LA", "LA or SF", "LA", "Los Angeles, CA"],
+        ["Seattle / LA", "Downtown (LA)", "LA (Hybrid)", "SF / LA", "LA or SF", "LA", "San Francisco, CA"],
     )
     def test_a_code_without_a_comma_is_not_a_state(self, location):
-        assert location_mismatch(location, parse_targets(["Los Angeles, CA"])) is None
+        assert location_mismatch(location, parse_targets(["San Francisco, CA"])) is None
 
     @pytest.mark.parametrize(
         "location",

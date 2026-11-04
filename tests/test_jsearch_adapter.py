@@ -184,8 +184,8 @@ def test_fetch_api_id_is_str(monkeypatch: pytest.MonkeyPatch) -> None:
                 "job_id": 12345,  # integer — API may return this
                 "job_title": "Nurse",
                 "employer_name": "Hospital",
-                "job_city": "LA",
-                "job_state": "CA",
+                "job_city": "Seattle",
+                "job_state": "WA",
                 "job_apply_link": "https://example.com/apply/1",
             },
         ],

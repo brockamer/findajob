@@ -57,7 +57,7 @@ The **Launch an App from GitHub** dialog opens. Repository selection and the ful
    ![Configuration form](install-fly-web/05-launch-config-top.png)
 
    - **App name:** Fly pre-fills a random name like `findajob-p-a8gq`. Change it to `findajob-<your-handle>` (e.g. `findajob-jane`). Must be globally unique — lowercase letters, digits, hyphens only.
-   - **Region:** The dropdown defaults to **`ams` (Amsterdam)** — it is *not* auto-set to the location nearest you, so change it. US East → `iad` (Ashburn, VA). US West → `lax` (Los Angeles). Europe → `ams` (Amsterdam).
+   - **Region:** The dropdown defaults to **`ams` (Amsterdam)** — it is *not* auto-set to the location nearest you, so change it. US East → `iad` (Ashburn, VA). US West → `sjc`. Europe → `ams` (Amsterdam).
    - **Memory:** Change from the default **256MB** to **1GB**.
 
    ![Region, internal port, CPU, and memory settings](install-fly-web/05b-launch-config-middle.png)

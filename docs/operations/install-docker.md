@@ -290,7 +290,7 @@ The image reads its supercronic schedule from `ops/scheduled-jobs.yaml` (baked i
 
 `<JOB>` is the upper-cased YAML key with `-` → `_`. So `triage` reads `FINDAJOB_TRIAGE_SCHEDULE` / `FINDAJOB_TRIAGE_ENABLED`; `notify-apply` reads `FINDAJOB_NOTIFY_APPLY_SCHEDULE` / `FINDAJOB_NOTIFY_APPLY_ENABLED`.
 
-Example for two same-TZ stacks sharing a host (LA-TZ):
+Example for two stacks with the same timezone on one host:
 
 ```env
 # stack-a/.env — keeps default

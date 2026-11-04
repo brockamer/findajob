@@ -36,8 +36,8 @@ def test_read_target_locations_returns_configured_values(tmp_path: Path) -> None
 
 def test_read_target_locations_strips_blank_lines(tmp_path: Path) -> None:
     f = tmp_path / "target_locations.txt"
-    f.write_text("Los Angeles, CA\n\nSan Francisco, CA\n")
-    assert read_target_locations(f) == ["Los Angeles, CA", "San Francisco, CA"]
+    f.write_text("Seattle, WA\n\nSan Francisco, CA\n")
+    assert read_target_locations(f) == ["Seattle, WA", "San Francisco, CA"]
 
 
 # ---------------------------------------------------------------------------
@@ -175,7 +175,7 @@ def test_jsearch_uses_fallback_location(monkeypatch: pytest.MonkeyPatch, tmp_pat
 def test_jsearch_passes_location_param(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("JSEARCH_API_KEY", "k")
     locs_file = tmp_path / "target_locations.txt"
-    locs_file.write_text("Remote\nLos Angeles, CA\n")
+    locs_file.write_text("Remote\nSeattle, WA\n")
 
     fake = MagicMock(status_code=200, headers={})
     fake.json.return_value = {"data": []}
@@ -190,4 +190,4 @@ def test_jsearch_passes_location_param(monkeypatch: pytest.MonkeyPatch, tmp_path
 
     assert mock_get.call_count == 2
     locations_seen = [c.kwargs["params"]["location"] for c in mock_get.call_args_list]
-    assert locations_seen == ["Remote", "Los Angeles, CA"]
+    assert locations_seen == ["Remote", "Seattle, WA"]
