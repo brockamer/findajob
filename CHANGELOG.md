@@ -10,6 +10,10 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The orphan sweep, the prep-start quarantine and the health check's orphan count no longer move or count a live prep folder whose stored path carries a stale base prefix.** All three compared a job's `prep_folder_path` to the folder's exact filesystem path; after an install-directory move, a row's saved path keeps the old base while the folder itself sits, correctly named, under the current `companies/`, so the exact-path comparison treated the folder as untracked. They now share one helper that matches by folder name, requiring the stored path's immediate parent segment to be literally `companies` — a row tracking a stage subfolder (e.g. `.../_applied/<name>`) still does not protect a top-level folder of the same name (#1263).
+
 ## [0.37.1] — 2026-11-04
 
 ### Removed

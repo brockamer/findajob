@@ -40,6 +40,7 @@ from findajob.audit import cron_event_span, log_event
 from findajob.background_tasks import KIND_TIMEOUT_MINUTES, find_stuck, record_failed
 from findajob.db import connect
 from findajob.paths import BASE
+from findajob.prep.quarantine import tracked_top_level_folder_names
 
 DB_PATH = f"{BASE}/data/pipeline.db"
 ORPHAN_FOLDER_MIN_AGE_MIN = 120
@@ -274,9 +275,11 @@ def sweep_orphan_folders(conn: sqlite3.Connection) -> int:
     """Move orphan top-level folders in companies/ to companies/.stale/.
 
     An orphan is a top-level subdirectory (not starting with `_` or `.`) that
-    no `jobs` row's `prep_folder_path` references AND whose mtime is older
-    than ORPHAN_FOLDER_MIN_AGE_MIN. The age guard prevents sweeping a folder
-    mid-prep — a slow in-flight run hasn't yet written prep_folder_path.
+    no `jobs` row's `prep_folder_path` tracks by name (see
+    :func:`findajob.prep.quarantine.tracked_top_level_folder_names`) AND whose
+    mtime is older than ORPHAN_FOLDER_MIN_AGE_MIN. The age guard prevents
+    sweeping a folder mid-prep — a slow in-flight run hasn't yet written
+    prep_folder_path.
 
     Caused-by paths covered:
     - prep orchestrator exception handler nulls prep_folder_path but doesn't
@@ -292,12 +295,7 @@ def sweep_orphan_folders(conn: sqlite3.Connection) -> int:
     if not companies_dir.is_dir():
         return 0
 
-    db_paths = {
-        r[0]
-        for r in conn.execute(
-            "SELECT prep_folder_path FROM jobs WHERE prep_folder_path IS NOT NULL AND prep_folder_path != ''"
-        ).fetchall()
-    }
+    tracked = tracked_top_level_folder_names(conn)
 
     cutoff_ts = (datetime.now(UTC) - timedelta(minutes=ORPHAN_FOLDER_MIN_AGE_MIN)).timestamp()
     stale_dir = companies_dir / ".stale"
@@ -308,8 +306,10 @@ def sweep_orphan_folders(conn: sqlite3.Connection) -> int:
             continue
         if entry.name.startswith(("_", ".")):
             continue
-        # DB stores paths as `/app/companies/<name>` (per BASE inside container)
-        if str(entry) in db_paths:
+        # Matched by name, not exact path — a stored path can carry a stale
+        # base prefix and still be tracked, as long as its parent segment is
+        # literally "companies" (see tracked_top_level_folder_names).
+        if entry.name in tracked:
             continue
         try:
             mtime = entry.stat().st_mtime
