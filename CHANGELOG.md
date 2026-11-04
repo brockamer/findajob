@@ -10,6 +10,10 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Filter-rule proposals no longer suggest rejecting the candidate's own target role.** `generate_proposals` now checks each candidate "always reject" regex against the candidate profile's Target Role(s) text (its "Not open to:" lines excluded) before queuing it; a match is skipped and logged as `filter_proposal_skipped_target_role` instead of surfacing in the pending-proposals review queue. The section parser used to read that text is now shared with the company-discoverer prompt builder instead of duplicated (#1264).
+
 ## [0.37.1] — 2026-11-04
 
 ### Removed

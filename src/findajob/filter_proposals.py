@@ -20,6 +20,8 @@ from findajob.config_loader import (
     add_prefilter_title_pattern,
     remove_prefilter_title_pattern,
 )
+from findajob.paths import BASE
+from findajob.profile import target_role_text
 
 # Stages a job sits in while still surfaced and un-actioned by the operator.
 _ACTIVE_STAGES = ("scored", "manual_review")
@@ -59,20 +61,48 @@ def _preview(regex: str, jobs: list[sqlite3.Row]) -> tuple[int, int, list[dict]]
     return (len(matches), len(danger), sample)
 
 
-def generate_proposals(conn: sqlite3.Connection) -> int:
+def _read_profile_text(profile_path: str | None = None) -> str:
+    if profile_path is None:
+        profile_path = f"{BASE}/candidate_context/profile.md"
+    try:
+        with open(profile_path) as f:
+            return f.read()
+    except (FileNotFoundError, OSError):
+        return ""
+
+
+def generate_proposals(conn: sqlite3.Connection, profile_text: str | None = None) -> int:
     """Mine candidates, compute previews, queue new pending proposals.
 
     Idempotent: INSERT OR IGNORE on the UNIQUE pattern_norm index means an
     already-queued/decided pattern is never re-proposed. Returns the number of
     rows newly inserted.
+
+    Guard: a candidate whose regex also matches the candidate's own stated
+    Target Role(s) (``## Target Role`` / ``## Target Roles``, excluding its
+    "Not open to:" lines) is skipped rather than queued, and logged as
+    ``filter_proposal_skipped_target_role`` — proposing a rule that would
+    hard-reject the candidate's own target role is never useful. ``profile_text``
+    defaults to reading the candidate profile file; pass it explicitly in tests.
     """
     candidates = analyze(conn).get("prefilter_candidates", [])
     if not candidates:
         return 0
+    if profile_text is None:
+        profile_text = _read_profile_text()
+    target_text = target_role_text(profile_text)
     jobs = _active_jobs(conn)
     inserted = 0
     for c in candidates:
         regex = c["proposed_regex"]
+        if target_text:
+            try:
+                targets_own_role = bool(re.search(regex, target_text, re.IGNORECASE))
+            except re.error:
+                targets_own_role = False
+            if targets_own_role:
+                log_event("filter_proposal_skipped_target_role", pattern=regex)
+                continue
         match_count, danger_count, sample = _preview(regex, jobs)
         support_sample = json.dumps(c.get("examples", [])[:3])
         cur = conn.execute(

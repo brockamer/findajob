@@ -28,6 +28,8 @@ from __future__ import annotations
 
 import re
 
+from findajob.profile import extract_section
+
 _TEMPLATE = (
     "Identify 6-10 emerging or less-prominent organizations actively"
     " hiring {role_headline}{role_descriptor_clause}. Include a verifiable"
@@ -63,8 +65,6 @@ _TEMPLATE = (
     "respond with the literal text INSUFFICIENT_PROFILE and nothing else.\n"
 )
 
-_SECTION_RE_TEMPLATE = r"^##\s+{name}\s*$\n(?P<body>.*?)(?=^##\s|\Z)"
-
 # Match the first bullet line that has a bold-marked headline. Captures the
 # bold text and (optionally) the post-em-dash / post-hyphen descriptor up to
 # the first sentence-ending punctuation or newline.
@@ -81,16 +81,6 @@ _FIRST_BULLET_RE = re.compile(
 # part of the section body but should not be used as the role anchor.
 _METADATA_PREFIX_RE = re.compile(r"^(open to|not open to|note)\s*:", re.IGNORECASE)
 _HEADLINE_DESCRIPTOR_SPLIT_RE = re.compile(r"\s*[;—–]\s*")
-
-
-def _extract_section(profile_text: str, *aliases: str) -> str:
-    """Return the body of the first matching ``## <name>`` section, stripped."""
-    for name in aliases:
-        pattern = _SECTION_RE_TEMPLATE.format(name=re.escape(name))
-        match = re.search(pattern, profile_text, re.MULTILINE | re.DOTALL | re.IGNORECASE)
-        if match:
-            return match.group("body").strip()
-    return ""
 
 
 def _extract_role_anchor(target_roles_body: str) -> tuple[str, str]:
@@ -139,9 +129,9 @@ def build_prompt(profile_text: str) -> str:
     ``## Target Companies / Organizations`` section is passed as an
     explicit exclusion list so the model surfaces NOVEL companies.
     """
-    target_roles = _extract_section(profile_text, "Target Roles", "Target Role")
-    core_competencies = _extract_section(profile_text, "Core Competencies", "Core Competency")
-    exclusion_list = _extract_section(
+    target_roles = extract_section(profile_text, "Target Roles", "Target Role")
+    core_competencies = extract_section(profile_text, "Core Competencies", "Core Competency")
+    exclusion_list = extract_section(
         profile_text,
         "Target Companies / Organizations",
         "Target Companies/Organizations",
