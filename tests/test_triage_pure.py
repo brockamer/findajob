@@ -96,7 +96,7 @@ class TestFingerprint:
 
     def test_location_matters(self):
         a = fingerprint("Engineer", "Google", "NYC")
-        b = fingerprint("Engineer", "Google", "LA")
+        b = fingerprint("Engineer", "Google", "SF")
         assert a != b
 
     def test_empty_location_same_as_omitted(self):

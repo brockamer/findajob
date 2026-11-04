@@ -251,7 +251,7 @@ Extract 1–3 *specific, machine-readable target values* from the answer — the
 per-line entries in `target_locations.txt` (always emitted in Phase 5). The paid job-search
 feeds search these places, and the scorer gives a low score, without reading the posting,
 to any job whose US state or country is not on the list.
-Accepted forms: `Remote`, `New York, NY`, `Boston, MA`, `Los Angeles, CA`, `United States`,
+Accepted forms: `Remote`, `New York, NY`, `Boston, MA`, `Seattle, WA`, `United States`,
 and a city with its country, written in full, outside the US (`London, United Kingdom`).
 If the user is open to the full US with no preference, a single `United States` line is correct.
 If the commute area crosses a state line, add one line for a city in each state — a posting

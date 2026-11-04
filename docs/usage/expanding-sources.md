@@ -49,7 +49,7 @@ The pipeline's scorer + prefilter will reject obviously-off-domain hits, so it's
 
 ### Geo splits
 A single search across "United States" tends to flatten regional signal. A common pattern is to run **the same keywords in 3–4 separate searches** with different location filters:
-- Your primary metro (e.g. *Los Angeles, CA*)
+- Your primary metro (e.g. *Seattle, WA*)
 - A second metro you'd accept (*San Francisco Bay Area*, *New York City*, etc.)
 - *Remote — United States*
 - *Hybrid* in your primary metro
@@ -73,10 +73,10 @@ These are starting templates. Pick the field closest to yours, replace the keywo
 ### Engineering / data center / hardware ops
 | Keywords | Geo | Frequency |
 |---|---|---|
-| `"data center operations manager"` | LA Metro | Daily |
+| `"data center operations manager"` | Seattle Metro | Daily |
 | `"data center operations manager"` | Remote — US | Daily |
 | `(npi OR "new product introduction") hardware` | SF Bay Area | Daily |
-| `"infrastructure operations" director` | LA Metro | Weekly |
+| `"infrastructure operations" director` | Seattle Metro | Weekly |
 
 ### Healthcare
 | Keywords | Geo | Frequency |
