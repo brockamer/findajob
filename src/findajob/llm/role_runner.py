@@ -73,8 +73,8 @@ def run_role(
                     success=False,
                     error_message=f"{e.kind}: {str(e)[:200]}",
                     cost_usd_override=e.cost_usd,
-                    input_tokens_override=e.prompt_tokens,
-                    output_tokens_override=e.completion_tokens,
+                    input_tokens_override=e.prompt_tokens or 0,
+                    output_tokens_override=e.completion_tokens or 0,
                 )
                 conn.commit()
             except Exception as log_err:  # noqa: BLE001 — cost tracking is best-effort
