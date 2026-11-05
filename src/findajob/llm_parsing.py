@@ -39,13 +39,19 @@ def extract_json_payload(raw_output: str) -> str:
 
     Handles, in order:
     1. Whole response is a fenced block (```...```, possibly with a
-       language tag like ```json). Strip the fences.
+       language tag like ```json). Strip the opening fence and cut at
+       the closing fence, discarding any trailing prose after it.
     2. Response contains a fenced ```json…``` block somewhere inside
        prose. Return the contents of the first such block.
-    3. Response has prose before the JSON. Find the first '{' or '[',
-       return the substring from there onward (the parser will reject
-       trailing prose only if it's also non-JSON, which is fine — we
-       optimize for prose-before-JSON, the observed failure mode).
+    3. Response has prose before the JSON. Scan every '{' and '['
+       character in order of occurrence and anchor on the first
+       position where `json.JSONDecoder().raw_decode` actually produces
+       a value, returning the substring from there onward. This skips a
+       bracket in lead-in prose that doesn't itself decode (e.g. a
+       bracketed label or a markdown link before the real object or
+       array), and is never fooled by a bracket inside a string value or
+       a nested list inside a bare object, since the real outer bracket
+       always occurs first and decodes successfully.
     4. Otherwise return the input unchanged.
 
     This is best-effort recovery for scorer responses that drift from
@@ -58,13 +64,17 @@ def extract_json_payload(raw_output: str) -> str:
     # Case 1: whole-response fenced block
     if text.startswith("```"):
         # Drop the opening fence line (which may carry a language tag
-        # like "```json"), then strip a trailing fence if present.
+        # like "```json"), then cut at the closing fence rather than
+        # requiring it to be the last thing in the string — a response
+        # can add prose after the closing fence.
         first_newline = text.find("\n")
         if first_newline != -1:
             inner = text[first_newline + 1 :]
-            if inner.rstrip().endswith("```"):
-                inner = inner.rstrip()[: -len("```")]
-            return inner.strip()
+            close_idx = inner.find("```")
+            if close_idx != -1:
+                return inner[:close_idx].strip()
+            # No closing fence found — fall through to case 2 instead of
+            # returning the unclosed block with trailing prose attached.
 
     # Case 2: fenced block embedded in prose. Match the first ```json
     # or ``` (with optional lang tag) ... ``` block.
@@ -72,13 +82,19 @@ def extract_json_payload(raw_output: str) -> str:
     if fence_match:
         return fence_match.group(1).strip()
 
-    # Case 3: bare JSON preceded by prose. Anchor at the first { or [
-    # that opens a JSON value.
-    for opener in ("{", "["):
-        idx = text.find(opener)
-        if idx > 0:  # strictly prose-before; idx == 0 already parses
-            text = text[idx:].strip()
-            break
+    # Case 3: bare JSON preceded by prose. Scan every '{' and '[' in
+    # order of occurrence and anchor on the first one where raw_decode
+    # actually produces a value, rather than the first bracket character
+    # encountered in a fixed order.
+    decoder = json.JSONDecoder()
+    for match in re.finditer(r"[{\[]", text):
+        idx = match.start()
+        try:
+            decoder.raw_decode(text, idx)
+        except json.JSONDecodeError:
+            continue
+        text = text[idx:].strip()
+        break
 
     # Defensive: strip markdown-bold around keys (#638). Anchored regex only
     # matches at line-start or after JSON delimiters, so legitimate `**`

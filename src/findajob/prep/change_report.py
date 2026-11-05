@@ -102,8 +102,7 @@ def _join(head: str, section: str, tail: str) -> str:
 
 def _parse_json(raw_output: str) -> object:
     """Bare JSON first. ``extract_json_payload`` is only the fallback for
-    fenced or prose-wrapped output: given a bare object that contains a list,
-    it cuts the text at the first ``[``."""
+    fenced or prose-wrapped output."""
     for candidate in (raw_output.strip(), extract_json_payload(raw_output)):
         try:
             return json.loads(candidate)
