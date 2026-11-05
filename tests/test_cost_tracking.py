@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 
 import pytest
@@ -79,7 +80,7 @@ def test_pricing_table_has_entry_for_production_models(model: str, expected_in: 
 
 
 def test_log_call_with_cost_usd_override_bypasses_heuristic(tmp_path: Path) -> None:
-    """cost_usd_override -> row's cost_usd is the override, not the heuristic estimate."""
+    """cost_usd_override -> row's cost_usd is the override, not a chars/4 estimate."""
     import sqlite3
 
     from findajob.cost_tracking import log_call
@@ -112,12 +113,14 @@ def test_log_call_with_cost_usd_override_bypasses_heuristic(tmp_path: Path) -> N
         input_text="x" * 4000,
         output_text="y" * 200,
         cost_usd_override=0.001234,
+        input_tokens_override=900,
+        output_tokens_override=40,
     )
     row = conn.execute("SELECT cost_usd, input_tokens, output_tokens FROM cost_log").fetchone()
     assert row[0] == pytest.approx(0.001234)
-    # Token columns still populated by heuristic for forward compat.
-    assert row[1] > 0
-    assert row[2] > 0
+    # Token columns are the explicit override, not a heuristic estimate.
+    assert row[1] == 900
+    assert row[2] == 40
 
 
 def test_log_call_with_token_overrides_writes_authoritative_counts(tmp_path: Path) -> None:
@@ -161,11 +164,11 @@ def test_log_call_with_token_overrides_writes_authoritative_counts(tmp_path: Pat
     assert row[2] == 42
 
 
-def test_log_call_without_override_uses_heuristic(tmp_path: Path) -> None:
-    """Default behavior (no override) still computes cost_usd via the heuristic."""
+def test_log_call_without_override_raises(tmp_path: Path) -> None:
+    """#1145: omitting an override is a loud TypeError, not a silent chars/4 estimate."""
     import sqlite3
 
-    from findajob.cost_tracking import estimate_cost_usd, log_call
+    from findajob.cost_tracking import log_call
 
     db = tmp_path / "test.db"
     conn = sqlite3.connect(db)
@@ -180,15 +183,51 @@ def test_log_call_without_override_uses_heuristic(tmp_path: Path) -> None:
         )
         """
     )
-    model = "openrouter:deepseek/deepseek-v3.2"
-    log_call(
-        conn,
-        job_id="j-2",
-        operation="score",
-        model=model,
-        input_text="x" * 4000,
-        output_text="y" * 200,
-    )
-    row = conn.execute("SELECT cost_usd FROM cost_log WHERE job_id = 'j-2'").fetchone()
-    _, _, expected = estimate_cost_usd(model, "x" * 4000, "y" * 200)
-    assert row[0] == pytest.approx(expected)
+    with pytest.raises(TypeError):
+        log_call(
+            conn,
+            job_id="j-2",
+            operation="score",
+            model="openrouter:deepseek/deepseek-v3.2",
+            input_text="x" * 4000,
+            output_text="y" * 200,
+        )
+
+
+# ── #1145: every non-test log_call call site must be explicit ──────────────
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_OVERRIDE_KEYWORDS = ("cost_usd_override", "input_tokens_override", "output_tokens_override")
+
+
+def _log_call_sites() -> list[tuple[Path, ast.Call]]:
+    sites = []
+    for base in (_REPO_ROOT / "src", _REPO_ROOT / "scripts"):
+        for path in sorted(base.rglob("*.py")):
+            tree = ast.parse(path.read_text(), filename=str(path))
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+                func = node.func
+                name = func.id if isinstance(func, ast.Name) else getattr(func, "attr", None)
+                if name == "log_call":
+                    sites.append((path, node))
+    return sites
+
+
+def test_log_call_explicit_cost_sites() -> None:
+    """Every non-test log_call call site passes cost + token overrides explicitly.
+
+    #1145: log_call has no chars/4 heuristic fallback anymore, so a call site
+    that omits an override crashes immediately. This statically confirms no
+    production call site relies on a default or passes a bare ``None``.
+    """
+    sites = _log_call_sites()
+    assert sites, "expected at least one log_call call site under src/ or scripts/"
+    for path, node in sites:
+        keywords = {kw.arg: kw.value for kw in node.keywords if kw.arg is not None}
+        for required in _OVERRIDE_KEYWORDS:
+            assert required in keywords, f"{path}:{node.lineno} missing {required}="
+            value = keywords[required]
+            is_bare_none = isinstance(value, ast.Constant) and value.value is None
+            assert not is_bare_none, f"{path}:{node.lineno} passes {required}=None literally"

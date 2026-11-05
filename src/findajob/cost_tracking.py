@@ -6,10 +6,11 @@ input_text=prompt, output_text=result.text, latency_ms=..., success=True,
 cost_usd_override=result.cost_usd, input_tokens_override=result.prompt_tokens,
 output_tokens_override=result.completion_tokens)`.
 
-The override trio carries API-authoritative cost from
-``response.usage.cost``. Every production caller uses it; the legacy
-char-heuristic path at ``cost_usd()`` exists only as a no-override
-fallback for tests and is not exercised in production.
+The override trio carries API-authoritative cost from ``response.usage.cost``
+(or 0.0 / 0 tokens for a deterministic prefilter hit that never called the
+LLM). `log_call` no longer estimates missing values via a chars/4 heuristic
+(#1145) — every caller must supply the trio explicitly. `estimate_cost_usd`
+and `estimate_tokens` remain for test use only.
 
 Usage:
     from findajob.cost_tracking import log_call, role_model
@@ -39,8 +40,7 @@ def role_model(role_name: str, roles_dir: Path | None = None) -> str:
     """Read the ``model:`` field from a role's YAML frontmatter.
 
     Returns ``"unknown"`` if the role file is missing or has no ``model:``
-    line; the heuristic in ``estimate_cost_usd`` then falls back to the
-    conservative default rate from ``config/model_pricing.yaml``.
+    line.
 
     ``roles_dir`` is for tests; production callers omit it and read from
     ``$BASE/config/roles/``.
@@ -81,7 +81,10 @@ _MODELS, _DEFAULT = _load_pricing()
 
 
 def estimate_tokens(text: str | None) -> int:
-    """Estimate token count from character length (chars/4 heuristic)."""
+    """Estimate token count from character length (chars/4 heuristic).
+
+    Test-only (#1145) — ``log_call`` no longer calls this in production.
+    """
     if not text:
         return 0
     return max(1, len(text) // 4)
@@ -103,7 +106,10 @@ def _rates(model: str) -> dict:
 
 
 def estimate_cost_usd(model: str, input_text: str | None, output_text: str | None) -> tuple[int, int, float]:
-    """Return (input_tokens, output_tokens, cost_usd) for a call."""
+    """Return (input_tokens, output_tokens, cost_usd) for a call.
+
+    Test-only (#1145) — ``log_call`` no longer calls this in production.
+    """
     rates = _rates(model)
     in_tok = estimate_tokens(input_text)
     out_tok = estimate_tokens(output_text)
@@ -117,29 +123,26 @@ def log_call(
     job_id: str | None,
     operation: str,
     model: str,
+    cost_usd_override: float | None,
+    input_tokens_override: int | None,
+    output_tokens_override: int | None,
     input_text: str | None = None,
     output_text: str | None = None,
     latency_ms: int | None = None,
     success: bool = True,
     error_message: str | None = None,
-    cost_usd_override: float | None = None,
-    input_tokens_override: int | None = None,
-    output_tokens_override: int | None = None,
 ) -> None:
     """Insert a cost_log row.
 
-    By default, every column comes from the chars/4 heuristic + pricing
-    table. Wrapper-driven callers (``findajob.llm.openrouter``) pass the
-    three ``*_override`` kwargs together so the row is fully
-    API-authoritative — billed dollars and token counts both from
-    ``response.usage``. Mixing overrides (e.g. cost from API but tokens
-    from heuristic) creates rows where ``cost / token`` ratios are
-    inconsistent, so use the trio together when on the wrapper path.
+    ``cost_usd_override``, ``input_tokens_override`` and
+    ``output_tokens_override`` are required (#1145) — every caller must
+    supply the real cost/token counts explicitly. Wrapper-driven callers
+    (``findajob.llm.openrouter``) pass ``response.usage``-derived values;
+    a deterministic prefilter hit that never called the LLM passes
+    ``0.0`` / ``0`` / ``0``. There is no chars/4 heuristic fallback —
+    ``input_text``/``output_text`` are no longer used to compute cost and
+    exist only so existing call sites keep working unchanged.
     """
-    heuristic_in, heuristic_out, heuristic_cost = estimate_cost_usd(model, input_text, output_text)
-    in_tok = input_tokens_override if input_tokens_override is not None else heuristic_in
-    out_tok = output_tokens_override if output_tokens_override is not None else heuristic_out
-    cost = cost_usd_override if cost_usd_override is not None else heuristic_cost
     conn.execute(
         """
         INSERT INTO cost_log
@@ -154,8 +157,8 @@ def log_call(
             latency_ms,
             1 if success else 0,
             error_message,
-            in_tok,
-            out_tok,
-            cost,
+            input_tokens_override,
+            output_tokens_override,
+            cost_usd_override,
         ),
     )

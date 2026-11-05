@@ -12,6 +12,7 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ### Fixed
 
+- **A pre-filter-rejected job's cost_log row now reads cost_usd=0.0 with zero tokens, not a chars/4 heuristic guess.** `log_call` no longer estimates cost/tokens from reconstructed prompt text when the LLM was never called; callers (triage, rescoring) now pass a real `0.0` / `0` / `0` for prefilter hits, and every other production call site now supplies the cost and token overrides explicitly — `log_call` raises if any are missing instead of silently falling back (#1145).
 - **Filter-rule proposals no longer suggest rejecting the candidate's own target role.** `generate_proposals` now checks each candidate "always reject" regex against the candidate profile's Target Role(s) text (its "Not open to:" lines excluded) before queuing it; a match is skipped and logged as `filter_proposal_skipped_target_role` instead of surfacing in the pending-proposals review queue. The section parser used to read that text is now shared with the company-discoverer prompt builder instead of duplicated (#1264).
 
 ## [0.37.1] — 2026-11-04
