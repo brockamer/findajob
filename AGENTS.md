@@ -127,7 +127,10 @@ Every LLM call goes through `findajob.llm.openrouter.complete()`, which writes `
 ### Rejection-Driven Filter Proposals Are Human-Gated
 `analyze_feedback._prefilter_candidates` mines rejection reasons into proposed Stage-1
 prefilter regexes; `findajob.filter_proposals` surfaces them in a review queue at
-`/board/filter-proposals` (weekly refresh via the notify-feedback cron). Machine-applied
+`/board/filter-proposals` (weekly refresh via the notify-feedback cron). Generation never
+queues a candidate whose regex matches the profile's own Target Role(s) section (its
+`Not open to:` lines excluded): it skips it and logs `filter_proposal_skipped_target_role`
+(`findajob.profile.target_role_text`, #1264). Machine-applied
 rules live in `prefilter_rules.yaml` `hard_rejects.auto_added` (separate from operator
 categories, so revert is surgical). Apply re-scores matching active jobs to 1 (no stage
 change, NEVER writes `feedback_log`) so the change is visible immediately, and records
