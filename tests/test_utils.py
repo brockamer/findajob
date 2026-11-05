@@ -662,8 +662,33 @@ class TestExtractJsonPayload:
         assert json.loads(extract_json_payload(text)) == {"relevance_score": 7}
 
     def test_payload_anchor_or_fence_leadin_bracket_before_object(self):
-        text = 'Status: {pending} Result: {"relevance_score": 7}'
+        text = 'Score [final]: {"relevance_score": 7}'
         assert json.loads(extract_json_payload(text)) == {"relevance_score": 7}
+
+    def test_payload_anchor_or_fence_leadin_decodable_bracket_loses_to_larger_object(self):
+        # "[7]" is itself valid JSON, unlike "[final]" above — the anchor
+        # must still prefer the much larger object that follows it rather
+        # than stopping at the first bracket that merely decodes.
+        text = 'Score [7]: {"relevance_score": 7, "notes": "strong fit"}'
+        assert json.loads(extract_json_payload(text)) == {
+            "relevance_score": 7,
+            "notes": "strong fit",
+        }
+
+    def test_payload_anchor_or_fence_leadin_prose_with_bold_keys(self):
+        # Bold-key stripping (#638) must run before the case-3 scan, or a
+        # bold-wrapped key stops raw_decode from ever anchoring and the
+        # lead-in prose is kept instead of being stripped.
+        text = 'Here is the result: {\n**score_status**: "scored",\n**"relevance_score": 6\n}'
+        parsed = json.loads(extract_json_payload(text))
+        assert parsed["score_status"] == "scored"
+        assert parsed["relevance_score"] == 6
+
+    def test_payload_anchor_or_fence_fenced_block_with_backticks_in_string(self):
+        # A string value that itself contains "```" must not be mistaken
+        # for the closing fence; only a "```" on its own line closes it.
+        text = '```json\n{"notes": "use a ```code``` block"}\n```'
+        assert json.loads(extract_json_payload(text)) == {"notes": "use a ```code``` block"}
 
 
 # ── is_synthetic_job ───────────────────────────────────────────────────────
