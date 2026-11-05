@@ -7,6 +7,7 @@ from pathlib import Path
 
 from findajob.notifications.ntfy import db_connect, recent_log_events, send
 from findajob.paths import BASE
+from findajob.prep.quarantine import tracked_top_level_folder_names
 
 REVIEW_BACKLOG_WARN = 100  # warn if manual_review backlog exceeds this
 TARGET_LOWSCORE_DAYS = 7  # check for mis-scored target company jobs within this window
@@ -292,13 +293,11 @@ def cmd_health_check() -> None:
             issues.append(f"  • {prefix} ({count} copies)")
 
     # ── Orphan folders (on disk but no DB record points to them) ────────────
-    db_paths = {
-        r[0]
-        for r in conn.execute(
-            "SELECT prep_folder_path FROM jobs WHERE prep_folder_path IS NOT NULL AND prep_folder_path != ''"
-        ).fetchall()
-    }
-    orphan_folders = [name for name in folder_names if os.path.join(companies_dir, name) not in db_paths]
+    # Matched by folder name at the top level of companies/, not exact path —
+    # survives a stale base prefix on the stored path (e.g. an
+    # install-directory move).
+    tracked_names = tracked_top_level_folder_names(conn)
+    orphan_folders = [name for name in folder_names if name not in tracked_names]
     if orphan_folders:
         issues.append(f"WARN: {len(orphan_folders)} folder(s) in companies/ with no matching DB record:")
         for name in orphan_folders[:5]:

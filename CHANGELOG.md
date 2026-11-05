@@ -12,6 +12,7 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ### Fixed
 
+- **The nightly orphan sweep, the prep-start quarantine, and the health check's orphan-folder count no longer move or miscount a live prep folder just because its saved path has a stale base prefix (e.g. from an install-directory move).** All three used to compare a folder's exact on-disk path against `jobs.prep_folder_path` byte-for-byte; a path recorded under an old install directory no longer matched the folder's current real path, so a live folder looked orphaned. All three now go through one shared helper that matches by folder name at the top level of `companies/` instead — a row tracking a stage subfolder (e.g. `.../_applied/<name>`) still does not protect a top-level folder of the same name (#1263).
 - **Filter-rule proposals no longer suggest rejecting the candidate's own target role.** `generate_proposals` now checks each candidate "always reject" regex against the candidate profile's Target Role(s) text (its "Not open to:" lines excluded) before queuing it; a match is skipped and logged as `filter_proposal_skipped_target_role` instead of surfacing in the pending-proposals review queue. The section parser used to read that text is now shared with the company-discoverer prompt builder instead of duplicated (#1264).
 
 ## [0.37.1] — 2026-11-04

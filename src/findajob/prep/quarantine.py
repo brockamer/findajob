@@ -24,6 +24,27 @@ import sqlite3
 from findajob.audit import log_event
 
 
+def tracked_top_level_folder_names(conn: sqlite3.Connection) -> set[str]:
+    """Return the basenames of folders tracked at the top level of companies/.
+
+    A ``jobs.prep_folder_path`` value counts only when its parent directory
+    is literally named ``companies`` — this makes the match survive a stale
+    base prefix (e.g. an install-directory move changed everything before
+    ``companies/`` but the folder itself didn't move), while a row tracking
+    a stage subfolder (``.../companies/_applied/<name>``) does not protect a
+    top-level folder of the same name, since its parent is ``_applied``, not
+    ``companies``.
+    """
+    names: set[str] = set()
+    for row in conn.execute(
+        "SELECT prep_folder_path FROM jobs WHERE prep_folder_path IS NOT NULL AND prep_folder_path != ''"
+    ).fetchall():
+        path = row[0]
+        if os.path.basename(os.path.dirname(path)) == "companies":
+            names.add(os.path.basename(path))
+    return names
+
+
 def quarantine_stale_prep_folders(
     conn: sqlite3.Connection,
     companies_dir: str,
@@ -35,7 +56,9 @@ def quarantine_stale_prep_folders(
     Called at prep start, before the new folder is created. Only folders whose
     name starts with ``folder_prefix`` are considered. A folder is **kept** if:
       * its basename equals ``current_folder_name`` (this run's folder), or
-      * its absolute path appears as ``prep_folder_path`` on any jobs row, or
+      * its name is tracked at the top level of ``companies_dir`` per
+        :func:`tracked_top_level_folder_names` (matched by folder name, not
+        exact path — survives a stale base prefix on the stored path), or
       * its name starts with ``_`` (stage holding directories:
         ``_applied``, ``_rejected``, ``_waitlisted``), or
       * its name equals ``.stale``, or
@@ -52,12 +75,7 @@ def quarantine_stale_prep_folders(
     except FileNotFoundError:
         return []
 
-    tracked: set[str] = {
-        row[0]
-        for row in conn.execute(
-            "SELECT prep_folder_path FROM jobs WHERE prep_folder_path IS NOT NULL AND prep_folder_path != ''"
-        ).fetchall()
-    }
+    tracked = tracked_top_level_folder_names(conn)
 
     stale_dir = os.path.join(companies_dir, ".stale")
     moved: list[str] = []
@@ -69,7 +87,7 @@ def quarantine_stale_prep_folders(
         src = os.path.join(companies_dir, entry)
         if not os.path.isdir(src):
             continue
-        if src in tracked:
+        if entry in tracked:
             continue
         os.makedirs(stale_dir, exist_ok=True)
         dest = os.path.join(stale_dir, entry)
