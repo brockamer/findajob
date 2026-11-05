@@ -630,6 +630,41 @@ class TestExtractJsonPayload:
         # String value preserves the bold markers as-is (no semantic change)
         assert "**strongly**" in parsed["strengths_alignment"]
 
+    # ── raw_decode-anchored scan + fence-cut (#1144) ────────────────────────
+    # The old case-3 logic checked a fixed order ("{" then "["): if the
+    # first-checked bracket type appeared anywhere in the text at idx > 0,
+    # it sliced there even when that bracket was inside a string value or a
+    # nested list/object, truncating a perfectly good bare payload. The old
+    # case-1 logic required the closing fence to be the very last thing in
+    # the string, so trailing prose after it defeated the whole-response
+    # fenced-block path.
+
+    def test_payload_anchor_or_fence_bracket_inside_string_value(self):
+        text = '{"relevance_score": 7, "notes": "range [1-10] applies"}'
+        assert json.loads(extract_json_payload(text)) == {
+            "relevance_score": 7,
+            "notes": "range [1-10] applies",
+        }
+
+    def test_payload_anchor_or_fence_bare_array(self):
+        text = '[{"a": 1}, {"b": 2}]'
+        assert json.loads(extract_json_payload(text)) == [{"a": 1}, {"b": 2}]
+
+    def test_payload_anchor_or_fence_bare_object_with_list_value(self):
+        text = '{"relevance_score": 7, "tags": ["a", "b"]}'
+        assert json.loads(extract_json_payload(text)) == {
+            "relevance_score": 7,
+            "tags": ["a", "b"],
+        }
+
+    def test_payload_anchor_or_fence_fenced_block_with_trailing_prose(self):
+        text = '```json\n{"relevance_score": 7}\n```\n\nThat is my analysis.'
+        assert json.loads(extract_json_payload(text)) == {"relevance_score": 7}
+
+    def test_payload_anchor_or_fence_leadin_bracket_before_object(self):
+        text = 'Status: {pending} Result: {"relevance_score": 7}'
+        assert json.loads(extract_json_payload(text)) == {"relevance_score": 7}
+
 
 # ── is_synthetic_job ───────────────────────────────────────────────────────
 
