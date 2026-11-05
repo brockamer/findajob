@@ -10,6 +10,10 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Added
+
+- **`/materials/` now has a "Briefing ready" group at the top, above "In flight".** It lists jobs whose research briefing is done but whose resume and cover letter aren't generated yet — `briefing_ready` rows, plus `scored` rows the decision-window reaper reset but whose prep folder still holds a briefing. Previously those rows showed up nowhere on the page until Phase B started; the link into either now reaches the existing Continue-prep decision panel on the folder page (#1273).
+
 ## [0.37.2] — 2026-11-05
 
 ### Fixed

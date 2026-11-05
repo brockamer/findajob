@@ -1,7 +1,8 @@
 """Materials viewer + editor routes.
 
 GET routes:
-  /materials/                              — index across In flight / Applied / Waitlisted / Rejected sections
+  /materials/                              — index across Briefing ready / In flight / Applied / Waitlisted /
+                                              Rejected sections
   /materials/{fp}                          — per-job folder view (with post-applied banner #210)
   /materials/{fp}/{file}                   — inline render for .md/.txt, blob download for binaries
 
@@ -320,13 +321,49 @@ def _fetch_section(db: sqlite3.Connection, where: str, order: str) -> list[sqlit
     ).fetchall()
 
 
+def _fetch_briefing_ready_rows(db: sqlite3.Connection) -> list[sqlite3.Row]:
+    """Stage='briefing_ready' rows plus reset 'scored' rows whose prep folder
+    still holds a briefing (#1222: the decision-window reaper drops the stage
+    back to scored but leaves the folder in place). Two stage values, one of
+    them needing a filesystem check, don't fit the single-WHERE-clause
+    _fetch_section shape, so this group is fetched and merged separately.
+
+    Each sub-query is capped at _PER_SECTION_CAP + 1 before the filesystem
+    check — safe because a non-empty prep_folder_path only shows up on
+    'scored' rows that already went through prep and were reset, a narrow
+    slice of that stage, not the common not-yet-prepped case.
+    """
+    cols = "fingerprint, title, company, stage, fit_score, created_at, stage_updated, prep_folder_path"
+    order = "COALESCE(stage_updated, created_at) DESC"
+    gate_rows = db.execute(
+        f"SELECT {cols} FROM jobs WHERE stage = 'briefing_ready' ORDER BY {order} LIMIT {_PER_SECTION_CAP + 1}"
+    ).fetchall()
+    scored_candidates = db.execute(
+        f"SELECT {cols} FROM jobs WHERE stage = 'scored' AND prep_folder_path IS NOT NULL "
+        f"AND prep_folder_path != '' ORDER BY {order} LIMIT {_PER_SECTION_CAP + 1}"
+    ).fetchall()
+    reset_rows = [row for row in scored_candidates if find_briefing(row["prep_folder_path"]) is not None]
+    return sorted(
+        [*gate_rows, *reset_rows],
+        key=lambda row: row["stage_updated"] or row["created_at"],
+        reverse=True,
+    )
+
+
 @router.get("/materials/", response_class=HTMLResponse)
 def materials_index(
     request: Request,
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
     regen_error: str = "",
 ) -> HTMLResponse:
-    sections = []
+    briefing_ready_rows = _fetch_briefing_ready_rows(db)
+    sections = [
+        {
+            "name": "Briefing ready",
+            "rows": briefing_ready_rows[:_PER_SECTION_CAP],
+            "overflow": len(briefing_ready_rows) > _PER_SECTION_CAP,
+        }
+    ]
     for name, where, order in _INDEX_QUERY_SECTIONS:
         rows = _fetch_section(db, where, order)
         overflow = len(rows) > _PER_SECTION_CAP
