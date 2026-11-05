@@ -40,18 +40,23 @@ def extract_json_payload(raw_output: str) -> str:
     Handles, in order:
     1. Whole response is a fenced block (```...```, possibly with a
        language tag like ```json). Strip the opening fence and cut at
-       the closing fence, discarding any trailing prose after it.
+       a closing fence on its own line, discarding any trailing prose
+       after it.
     2. Response contains a fenced ```json…``` block somewhere inside
        prose. Return the contents of the first such block.
     3. Response has prose before the JSON. Scan every '{' and '['
-       character in order of occurrence and anchor on the first
-       position where `json.JSONDecoder().raw_decode` actually produces
-       a value, returning the substring from there onward. This skips a
-       bracket in lead-in prose that doesn't itself decode (e.g. a
-       bracketed label or a markdown link before the real object or
-       array), and is never fooled by a bracket inside a string value or
-       a nested list inside a bare object, since the real outer bracket
-       always occurs first and decodes successfully.
+       character in order of occurrence and collect every position
+       where `json.JSONDecoder().raw_decode` actually produces a value,
+       then anchor on whichever of those decodes the longest span of
+       text (ties go to the earliest position). This skips a bracket in
+       lead-in prose that doesn't itself decode (e.g. a bracketed label
+       or a markdown link before the real object or array); it also
+       isn't fooled by a short decodable bracket in lead-in prose (e.g.
+       "Score [7]: {...}"), since the real payload is normally the
+       largest JSON value in the text. A bracket inside a string value
+       or a nested list inside a bare object never out-competes the
+       enclosing object/array, since the enclosing value's span always
+       covers it.
     4. Otherwise return the input unchanged.
 
     This is best-effort recovery for scorer responses that drift from
@@ -64,15 +69,18 @@ def extract_json_payload(raw_output: str) -> str:
     # Case 1: whole-response fenced block
     if text.startswith("```"):
         # Drop the opening fence line (which may carry a language tag
-        # like "```json"), then cut at the closing fence rather than
-        # requiring it to be the last thing in the string — a response
-        # can add prose after the closing fence.
+        # like "```json"), then cut at a closing fence that sits on its
+        # own line rather than requiring it to be the last thing in the
+        # string — a response can add prose after the closing fence.
+        # Anchoring on a line-start fence (vs. a bare substring search)
+        # means a "```" that appears mid-line inside a JSON string value
+        # doesn't get mistaken for the close.
         first_newline = text.find("\n")
         if first_newline != -1:
             inner = text[first_newline + 1 :]
-            close_idx = inner.find("```")
-            if close_idx != -1:
-                return inner[:close_idx].strip()
+            close_match = re.search(r"^```", inner, re.MULTILINE)
+            if close_match:
+                return inner[: close_match.start()].strip()
             # No closing fence found — fall through to case 2 instead of
             # returning the unclosed block with trailing prose attached.
 
@@ -82,24 +90,33 @@ def extract_json_payload(raw_output: str) -> str:
     if fence_match:
         return fence_match.group(1).strip()
 
+    # Defensive: strip markdown-bold around keys (#638) before the case-3
+    # scan below so that raw_decode sees real JSON syntax instead of
+    # failing to decode a bold-wrapped key and leaving the lead-in prose
+    # un-anchored. Anchored regex only matches at line-start or after
+    # JSON delimiters, so legitimate `**` inside string values is
+    # preserved.
+    text = _BOLD_KEY_RE.sub(r'\g<anchor>"\g<key>":', text)
+
     # Case 3: bare JSON preceded by prose. Scan every '{' and '[' in
-    # order of occurrence and anchor on the first one where raw_decode
-    # actually produces a value, rather than the first bracket character
-    # encountered in a fixed order.
+    # order of occurrence, collect every position where raw_decode
+    # actually produces a value, and anchor on whichever decodes the
+    # longest span (ties go to the earliest position). A short decodable
+    # bracket in lead-in prose (e.g. "Score [7]: {...}") loses to the
+    # real payload because the real payload is normally the larger span.
     decoder = json.JSONDecoder()
+    best: tuple[int, int] | None = None
     for match in re.finditer(r"[{\[]", text):
         idx = match.start()
         try:
-            decoder.raw_decode(text, idx)
+            _value, end = decoder.raw_decode(text, idx)
         except json.JSONDecodeError:
             continue
-        text = text[idx:].strip()
-        break
+        if best is None or (end - idx) > (best[1] - best[0]):
+            best = (idx, end)
+    if best is not None:
+        text = text[best[0] :].strip()
 
-    # Defensive: strip markdown-bold around keys (#638). Anchored regex only
-    # matches at line-start or after JSON delimiters, so legitimate `**`
-    # inside string values is preserved.
-    text = _BOLD_KEY_RE.sub(r'\g<anchor>"\g<key>":', text)
     return text
 
 
