@@ -10,6 +10,8 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+## [0.37.2] — 2026-11-05
+
 ### Fixed
 
 - **The nightly orphan sweep, the prep-start quarantine, and the health check's orphan-folder count no longer move or miscount a live prep folder just because its saved path has a stale base prefix (e.g. from an install-directory move).** All three used to compare a folder's exact on-disk path against `jobs.prep_folder_path` byte-for-byte; a path recorded under an old install directory no longer matched the folder's current real path, so a live folder looked orphaned. All three now go through one shared helper that matches by folder name at the top level of `companies/` instead — a row tracking a stage subfolder (e.g. `.../_applied/<name>`) still does not protect a top-level folder of the same name (#1263).
@@ -1744,7 +1746,8 @@ from GHCR and deployed via Docker Compose on a shared Docker host.
 - Documentation cleanup — removing `sigoden/aichat` references in favor of
   `blob42/aichat-ng` — is tracked in #70
 
-[Unreleased]: https://github.com/brockamer/findajob/compare/v0.37.1...HEAD
+[Unreleased]: https://github.com/brockamer/findajob/compare/v0.37.2...HEAD
+[0.37.2]: https://github.com/brockamer/findajob/releases/tag/v0.37.2
 [0.37.1]: https://github.com/brockamer/findajob/releases/tag/v0.37.1
 [0.37.0]: https://github.com/brockamer/findajob/releases/tag/v0.37.0
 [0.36.0]: https://github.com/brockamer/findajob/releases/tag/v0.36.0
