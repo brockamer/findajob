@@ -98,9 +98,9 @@ def _log_cost_safely(
     output_text: str,
     latency_ms: int,
     success: bool,
-    cost_usd_override: float | None = None,
-    input_tokens_override: int | None = None,
-    output_tokens_override: int | None = None,
+    cost_usd_override: float,
+    input_tokens_override: int,
+    output_tokens_override: int,
 ) -> None:
     """Best-effort cost_log write. Swallows all errors so cost tracking
     can never break the discovery run's never-raise contract.

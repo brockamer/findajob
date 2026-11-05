@@ -13,6 +13,7 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 ### Fixed
 
 - **LLM-response JSON extraction no longer truncates a bare payload that itself contains a bracket, or drops a fenced block followed by trailing prose.** A bare object or array containing a list value, or a string value with a `[`/`{` character, used to get cut at that inner bracket instead of its own opening one; a response whose fenced JSON block was followed by extra text used to be returned unparsed. Both now parse correctly (#1144).
+- **A pre-filter-rejected job's cost_log row now reads `cost_usd = 0.0` with zero tokens instead of a few-tenths-of-a-cent chars/4 heuristic guess.** Triage's and `rescore_all.py`'s scoring loops now hand `log_call` an explicit `0.0`/`0`/`0` for any no-completion hit (prefilter reject or pre-response scorer error) instead of `None`. `log_call` itself no longer silently estimates a missing override from input/output text length — the cost and token overrides are required on every call, so a caller that cannot supply a real value gets an immediate error instead of a quietly wrong number (#1145).
 
 ## [0.37.2] — 2026-11-05
 

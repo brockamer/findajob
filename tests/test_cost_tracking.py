@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 
 import pytest
@@ -112,12 +113,13 @@ def test_log_call_with_cost_usd_override_bypasses_heuristic(tmp_path: Path) -> N
         input_text="x" * 4000,
         output_text="y" * 200,
         cost_usd_override=0.001234,
+        input_tokens_override=1000,
+        output_tokens_override=50,
     )
     row = conn.execute("SELECT cost_usd, input_tokens, output_tokens FROM cost_log").fetchone()
     assert row[0] == pytest.approx(0.001234)
-    # Token columns still populated by heuristic for forward compat.
-    assert row[1] > 0
-    assert row[2] > 0
+    assert row[1] == 1000
+    assert row[2] == 50
 
 
 def test_log_call_with_token_overrides_writes_authoritative_counts(tmp_path: Path) -> None:
@@ -161,11 +163,17 @@ def test_log_call_with_token_overrides_writes_authoritative_counts(tmp_path: Pat
     assert row[2] == 42
 
 
-def test_log_call_without_override_uses_heuristic(tmp_path: Path) -> None:
-    """Default behavior (no override) still computes cost_usd via the heuristic."""
+def test_log_call_without_override_raises(tmp_path: Path) -> None:
+    """Tightened contract (#1145): the override trio is required, not optional.
+
+    log_call no longer falls back to the chars/4 heuristic when an override
+    is omitted — a caller that cannot supply a real cost/token value is a
+    bug, so Python's own missing-required-keyword-argument error surfaces
+    immediately instead of silently writing an estimate.
+    """
     import sqlite3
 
-    from findajob.cost_tracking import estimate_cost_usd, log_call
+    from findajob.cost_tracking import log_call
 
     db = tmp_path / "test.db"
     conn = sqlite3.connect(db)
@@ -180,15 +188,57 @@ def test_log_call_without_override_uses_heuristic(tmp_path: Path) -> None:
         )
         """
     )
-    model = "openrouter:deepseek/deepseek-v3.2"
-    log_call(
-        conn,
-        job_id="j-2",
-        operation="score",
-        model=model,
-        input_text="x" * 4000,
-        output_text="y" * 200,
-    )
-    row = conn.execute("SELECT cost_usd FROM cost_log WHERE job_id = 'j-2'").fetchone()
-    _, _, expected = estimate_cost_usd(model, "x" * 4000, "y" * 200)
-    assert row[0] == pytest.approx(expected)
+    with pytest.raises(TypeError):
+        log_call(
+            conn,
+            job_id="j-2",
+            operation="score",
+            model="openrouter:deepseek/deepseek-v3.2",
+            input_text="x" * 4000,
+            output_text="y" * 200,
+        )
+
+
+# ── Every non-test log_call call site passes its overrides explicitly (#1145) ──
+#
+# log_call's override trio has no default (see test_log_call_without_override_raises
+# above) so an omitted override is already a hard TypeError at call time. This
+# walks the source tree as a second line of defense against a caller that
+# supplies the keyword but with a literal ``None`` value, which the required-
+# keyword-argument change above would not catch.
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_OVERRIDE_KWARGS = ("cost_usd_override", "input_tokens_override", "output_tokens_override")
+
+
+def _log_call_sites(py_file: Path) -> list[ast.Call]:
+    tree = ast.parse(py_file.read_text(), filename=str(py_file))
+    sites = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            func = node.func
+            name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", None)
+            if name == "log_call":
+                sites.append(node)
+    return sites
+
+
+def test_log_call_explicit_cost_sites() -> None:
+    """Every non-test call to log_call() passes all three overrides, each a
+    non-None expression — none can fall through to a heuristic estimate."""
+    search_roots = [_REPO_ROOT / "src" / "findajob", _REPO_ROOT / "scripts"]
+    py_files = [f for root in search_roots for f in root.rglob("*.py")]
+    assert py_files, "expected to find source files to scan"
+
+    checked_sites = 0
+    for py_file in py_files:
+        for call in _log_call_sites(py_file):
+            checked_sites += 1
+            passed_kwargs = {kw.arg: kw.value for kw in call.keywords if kw.arg is not None}
+            for required in _OVERRIDE_KWARGS:
+                assert required in passed_kwargs, f"{py_file}:{call.lineno} log_call() missing {required}"
+                value = passed_kwargs[required]
+                is_literal_none = isinstance(value, ast.Constant) and value.value is None
+                assert not is_literal_none, f"{py_file}:{call.lineno} log_call() passes {required}=None"
+
+    assert checked_sites > 0, "expected at least one log_call() call site in src/ or scripts/"

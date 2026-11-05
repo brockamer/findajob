@@ -545,9 +545,10 @@ def main(gmail_since_days: int | None = None):
 
                 # cost_usd_override + token overrides come from response.usage when
                 # the LLM was actually called (#470). All three travel together so
-                # the row is fully API-authoritative on the wrapper path. Prefilter
-                # hits (completion=None) fall back to the heuristic against the
-                # reconstructed input/output text — same behavior as pre-#470.
+                # the row is fully API-authoritative on the wrapper path. A
+                # no-completion hit (prefilter reject, pre-response scorer error)
+                # logs an explicit zero rather than a heuristic estimate (#1145) —
+                # log_call requires a real value and can never fall back silently.
                 scoring_input = (row["raw_jd_text"] or "") + candidate_profile + (feedback_block or "")
                 scoring_output = str(scored)
                 log_call(
@@ -559,9 +560,9 @@ def main(gmail_since_days: int | None = None):
                     output_text=scoring_output,
                     latency_ms=latency_ms,
                     success=True,
-                    cost_usd_override=(completion.cost_usd if completion is not None else None),
-                    input_tokens_override=(completion.prompt_tokens if completion is not None else None),
-                    output_tokens_override=(completion.completion_tokens if completion is not None else None),
+                    cost_usd_override=(completion.cost_usd if completion is not None else 0.0),
+                    input_tokens_override=(completion.prompt_tokens if completion is not None else 0),
+                    output_tokens_override=(completion.completion_tokens if completion is not None else 0),
                 )
                 conn.commit()
 
