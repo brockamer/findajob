@@ -26,7 +26,7 @@ CI (`.github/workflows/ci.yml`) runs these four; run them all before pushing.
 - `uv sync --extra dev` — install findajob (editable) + dev deps. A plain `uv sync` removes the dev deps: they are the optional `dev` extra.
 - `uv run ruff check src/ scripts/ tests/` and `uv run ruff format --check src/ scripts/ tests/`
 - `uv run mypy src/findajob/`
-- `uv run pytest tests/ -v`
+- `uv run pytest tests/ -q -n 2` — the full suite in parallel (pytest-xdist, in the dev extra). CI runs the same suite serially as `uv run pytest tests/ -v`.
 
 ---
 
