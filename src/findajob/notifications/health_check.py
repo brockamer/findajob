@@ -1,16 +1,20 @@
 """Operator diagnostic — surface errors and stale automations."""
 
 import os
+import re
 from collections import Counter
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from findajob.config_loader import ConfigError, load_hard_reject_patterns
 from findajob.notifications.ntfy import db_connect, recent_log_events, send
 from findajob.paths import BASE
 from findajob.prep.quarantine import tracked_top_level_folder_names
+from findajob.profile import target_role_text
 
 REVIEW_BACKLOG_WARN = 100  # warn if manual_review backlog exceeds this
 TARGET_LOWSCORE_DAYS = 7  # check for mis-scored target company jobs within this window
+TARGET_OVERLAP_MAX_LINES = 5  # cap on listed rule matches in the prefilter/target-role WARN block
 
 # Legacy top-level keys on jobs_fetched events (pre-2026-05-04). After the
 # adapter-extraction migration (#410.5), per-source counts moved into a nested
@@ -134,6 +138,93 @@ def _dead_slug_warning(dead_slugs: list[str]) -> str | None:
     return f"WARN: {len(dead_slugs)} feed URL(s) 404'd last triage: {listed}"
 
 
+def _prefilter_target_overlap_issues(profile_text: str) -> list[str]:
+    """WARN: block lines for hard-reject rules that also match the candidate's
+    own stated Target Role, or [] when there's nothing to report (#1265).
+
+    Silent — not an error — when there's no profile, or no ``## Target
+    Role(s)`` section: both make target_role_text() return "". "Not open
+    to:" lines are stripped by target_role_text() before this ever sees
+    them, so a rule matching only one of those is expected and never warns.
+    A malformed ``prefilter_rules.yaml`` produces a single generic WARN
+    rather than crashing the health check or going silent — the config is
+    also broken for the live prefilter, so the operator needs to hear about
+    it even though this check can't name the specific rule (#1265 F4).
+
+    Evaluated per comma-separated phrase within each line of the Target
+    Role text, not over the whole line or section: production's
+    ``scorer_prefilter._hard_reject_match`` only ever sees one job title at
+    a time, and a suppressor cancels a reject only when it matches that
+    same title. A Target Role line listing several roles ("Site Reliability
+    Engineer, Platform Engineer") is the multi-title analogue, so a
+    suppressor co-occurring with one role in that list must not cancel an
+    unrelated hard-reject match on a different role in the same list —
+    checking the suppressor against the whole line (instead of the matched
+    phrase) would hide a real conflict (#1265 F1). Never includes
+    target_text itself in the output — only each rule's own category/pattern.
+    """
+    target_text = target_role_text(profile_text)
+    if not target_text:
+        return []
+
+    try:
+        rules, suppressor_patterns = load_hard_reject_patterns()
+    except ConfigError:
+        return ["WARN: prefilter_rules.yaml unreadable — target-role overlap check skipped"]
+    if not rules:
+        return []
+
+    compiled_suppressors: list[re.Pattern[str]] = []
+    for sp in suppressor_patterns:
+        try:
+            compiled_suppressors.append(re.compile(sp, re.IGNORECASE))
+        except re.error:
+            continue
+
+    matches: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for line in target_text.splitlines():
+        if not line.strip():
+            continue
+        for phrase in line.split(","):
+            if not phrase.strip():
+                continue
+            for category, pattern in rules:
+                try:
+                    if not re.search(pattern, phrase, re.IGNORECASE):
+                        continue
+                except re.error:
+                    continue
+                if any(sup.search(phrase) for sup in compiled_suppressors):
+                    continue
+                key = (category, pattern)
+                if key not in seen:
+                    seen.add(key)
+                    matches.append(key)
+
+    if not matches:
+        return []
+
+    lines = [f"WARN: {len(matches)} prefilter rule(s) hard-reject a phrase your Target Role asks for:"]
+    for category, pattern in matches[:TARGET_OVERLAP_MAX_LINES]:
+        lines.append(f"  • {category}: {pattern}")
+    return lines
+
+
+def _read_profile_text(base: str) -> str:
+    """Read ``candidate_context/profile.md`` under ``base``, or "" if missing (#1265).
+
+    A fresh install with no profile yet (or no ``base`` match) must not crash
+    the daily health check — mirrors the OSError-tolerant reads elsewhere in
+    this module.
+    """
+    try:
+        with open(os.path.join(base, "candidate_context", "profile.md")) as f:
+            return f.read()
+    except OSError:
+        return ""
+
+
 def cmd_health_check() -> None:
     events = recent_log_events(hours=25)
 
@@ -213,6 +304,12 @@ def cmd_health_check() -> None:
     dead_slug_warn = _dead_slug_warning(_detect_dead_slugs(events))
     if dead_slug_warn:
         issues.append(dead_slug_warn)
+
+    # ── Prefilter rules vs. candidate's Target Role (#1265) ──────────────
+    # A hard-reject rule that also matches a phrase in the candidate's own
+    # Target Role section would silently score-1 a job the candidate wants —
+    # surface it so the operator can edit the rule or the profile.
+    issues.extend(_prefilter_target_overlap_issues(_read_profile_text(BASE)))
 
     # ── System resource checks ──────────────────────────────────────────
     try:

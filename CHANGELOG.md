@@ -10,6 +10,10 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Added
+
+- **The daily health check now warns when a prefilter hard-reject rule also matches a phrase in the candidate's own Target Role(s) section.** Such a rule silently scores the matching job 1 before the LLM ever sees it, which would otherwise hide a wanted job from the operator with no visible cause. The warning names each matching rule's category and pattern (never quoting the profile text itself), skips a rule a `context_suppressors` pattern also covers, is capped at 5 listed rules, and stays silent when there's no profile or no Target Role section (#1265). The check is evaluated per comma-separated phrase, so a suppressor next to one role in a multi-role Target Role line ("Site Reliability Engineer, Platform Engineer") can no longer mask a hard-reject rule matching an unrelated role in that same line; a malformed `prefilter_rules.yaml` now surfaces a single generic WARN instead of skipping the check silently.
+
 ### Fixed
 
 - **LLM-response JSON extraction no longer truncates a bare payload that itself contains a bracket, or drops a fenced block followed by trailing prose.** A bare object or array containing a list value, or a string value with a `[`/`{` character, used to get cut at that inner bracket instead of its own opening one; a response whose fenced JSON block was followed by extra text used to be returned unparsed. Both now parse correctly (#1144).
