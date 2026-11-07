@@ -6,7 +6,7 @@ from collections import Counter
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from findajob.config_loader import load_hard_reject_patterns
+from findajob.config_loader import ConfigError, load_hard_reject_patterns
 from findajob.notifications.ntfy import db_connect, recent_log_events, send
 from findajob.paths import BASE
 from findajob.prep.quarantine import tracked_top_level_folder_names
@@ -146,35 +146,55 @@ def _prefilter_target_overlap_issues(profile_text: str) -> list[str]:
     Role(s)`` section: both make target_role_text() return "". "Not open
     to:" lines are stripped by target_role_text() before this ever sees
     them, so a rule matching only one of those is expected and never warns.
-    Mirrors scorer_prefilter's own suppressor semantics: a context_suppressors
-    pattern matching the Target Role text cancels every hard-reject candidate
-    for that text, not just the one it happens to co-occur with, so any
-    suppressor match there means none of the matches would actually fire in
-    production. Never includes target_text itself in the output — only each
-    rule's own category/pattern.
+    Also silent when ``prefilter_rules.yaml`` itself is malformed — a daily
+    health check that crashes on a hand-edit typo is worse than one that
+    misses this one warning.
+
+    Evaluated per line of the Target Role text, not over the whole section:
+    production's ``scorer_prefilter._hard_reject_match`` only ever sees one
+    job title at a time, and a suppressor cancels a reject only when it
+    matches that same title. A multi-role Target Role section is the
+    multi-title analogue, so a suppressor on one role's line must not cancel
+    an unrelated hard-reject match on a different line — doing so (matching
+    the suppressor against the whole section) would hide a real conflict.
+    Never includes target_text itself in the output — only each rule's own
+    category/pattern.
     """
     target_text = target_role_text(profile_text)
     if not target_text:
         return []
 
-    rules, suppressor_patterns = load_hard_reject_patterns()
+    try:
+        rules, suppressor_patterns = load_hard_reject_patterns()
+    except ConfigError:
+        return []
     if not rules:
         return []
 
+    compiled_suppressors: list[re.Pattern[str]] = []
     for sp in suppressor_patterns:
         try:
-            if re.search(sp, target_text, re.IGNORECASE):
-                return []
+            compiled_suppressors.append(re.compile(sp, re.IGNORECASE))
         except re.error:
             continue
 
     matches: list[tuple[str, str]] = []
-    for category, pattern in rules:
-        try:
-            if re.search(pattern, target_text, re.IGNORECASE):
-                matches.append((category, pattern))
-        except re.error:
+    seen: set[tuple[str, str]] = set()
+    for line in target_text.splitlines():
+        if not line.strip():
             continue
+        for category, pattern in rules:
+            try:
+                if not re.search(pattern, line, re.IGNORECASE):
+                    continue
+            except re.error:
+                continue
+            if any(sup.search(line) for sup in compiled_suppressors):
+                continue
+            key = (category, pattern)
+            if key not in seen:
+                seen.add(key)
+                matches.append(key)
 
     if not matches:
         return []
@@ -183,6 +203,20 @@ def _prefilter_target_overlap_issues(profile_text: str) -> list[str]:
     for category, pattern in matches[:TARGET_OVERLAP_MAX_LINES]:
         lines.append(f"  • {category}: {pattern}")
     return lines
+
+
+def _read_profile_text(base: str) -> str:
+    """Read ``candidate_context/profile.md`` under ``base``, or "" if missing (#1265).
+
+    A fresh install with no profile yet (or no ``base`` match) must not crash
+    the daily health check — mirrors the OSError-tolerant reads elsewhere in
+    this module.
+    """
+    try:
+        with open(os.path.join(base, "candidate_context", "profile.md")) as f:
+            return f.read()
+    except OSError:
+        return ""
 
 
 def cmd_health_check() -> None:
@@ -269,12 +303,7 @@ def cmd_health_check() -> None:
     # A hard-reject rule that also matches a phrase in the candidate's own
     # Target Role section would silently score-1 a job the candidate wants —
     # surface it so the operator can edit the rule or the profile.
-    try:
-        with open(os.path.join(BASE, "candidate_context", "profile.md")) as f:
-            profile_text = f.read()
-    except OSError:
-        profile_text = ""
-    issues.extend(_prefilter_target_overlap_issues(profile_text))
+    issues.extend(_prefilter_target_overlap_issues(_read_profile_text(BASE)))
 
     # ── System resource checks ──────────────────────────────────────────
     try:
