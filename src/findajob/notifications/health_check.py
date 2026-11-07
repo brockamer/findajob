@@ -146,19 +146,22 @@ def _prefilter_target_overlap_issues(profile_text: str) -> list[str]:
     Role(s)`` section: both make target_role_text() return "". "Not open
     to:" lines are stripped by target_role_text() before this ever sees
     them, so a rule matching only one of those is expected and never warns.
-    Also silent when ``prefilter_rules.yaml`` itself is malformed — a daily
-    health check that crashes on a hand-edit typo is worse than one that
-    misses this one warning.
+    A malformed ``prefilter_rules.yaml`` produces a single generic WARN
+    rather than crashing the health check or going silent — the config is
+    also broken for the live prefilter, so the operator needs to hear about
+    it even though this check can't name the specific rule (#1265 F4).
 
-    Evaluated per line of the Target Role text, not over the whole section:
-    production's ``scorer_prefilter._hard_reject_match`` only ever sees one
-    job title at a time, and a suppressor cancels a reject only when it
-    matches that same title. A multi-role Target Role section is the
-    multi-title analogue, so a suppressor on one role's line must not cancel
-    an unrelated hard-reject match on a different line — doing so (matching
-    the suppressor against the whole section) would hide a real conflict.
-    Never includes target_text itself in the output — only each rule's own
-    category/pattern.
+    Evaluated per comma-separated phrase within each line of the Target
+    Role text, not over the whole line or section: production's
+    ``scorer_prefilter._hard_reject_match`` only ever sees one job title at
+    a time, and a suppressor cancels a reject only when it matches that
+    same title. A Target Role line listing several roles ("Site Reliability
+    Engineer, Platform Engineer") is the multi-title analogue, so a
+    suppressor co-occurring with one role in that list must not cancel an
+    unrelated hard-reject match on a different role in the same list —
+    checking the suppressor against the whole line (instead of the matched
+    phrase) would hide a real conflict (#1265 F1). Never includes
+    target_text itself in the output — only each rule's own category/pattern.
     """
     target_text = target_role_text(profile_text)
     if not target_text:
@@ -167,7 +170,7 @@ def _prefilter_target_overlap_issues(profile_text: str) -> list[str]:
     try:
         rules, suppressor_patterns = load_hard_reject_patterns()
     except ConfigError:
-        return []
+        return ["WARN: prefilter_rules.yaml unreadable — target-role overlap check skipped"]
     if not rules:
         return []
 
@@ -183,18 +186,21 @@ def _prefilter_target_overlap_issues(profile_text: str) -> list[str]:
     for line in target_text.splitlines():
         if not line.strip():
             continue
-        for category, pattern in rules:
-            try:
-                if not re.search(pattern, line, re.IGNORECASE):
+        for phrase in line.split(","):
+            if not phrase.strip():
+                continue
+            for category, pattern in rules:
+                try:
+                    if not re.search(pattern, phrase, re.IGNORECASE):
+                        continue
+                except re.error:
                     continue
-            except re.error:
-                continue
-            if any(sup.search(line) for sup in compiled_suppressors):
-                continue
-            key = (category, pattern)
-            if key not in seen:
-                seen.add(key)
-                matches.append(key)
+                if any(sup.search(phrase) for sup in compiled_suppressors):
+                    continue
+                key = (category, pattern)
+                if key not in seen:
+                    seen.add(key)
+                    matches.append(key)
 
     if not matches:
         return []

@@ -77,7 +77,11 @@ context_suppressors:
         )
         monkeypatch.setattr(config_loader, "_RULES_PATH", rules_path)
 
-        lines = _prefilter_target_overlap_issues(PROFILE_WITH_TARGET)
+        # Suppressor and match co-occur in the same comma-separated phrase —
+        # the case the suppressor exemption is meant for (F1, round 2: a
+        # suppressor elsewhere in a multi-role line must NOT also cancel this).
+        profile = "## Target Roles\n\nSite Reliability Platform Engineer\n"
+        lines = _prefilter_target_overlap_issues(profile)
 
         assert lines == []
 
@@ -127,17 +131,39 @@ Site Reliability Engineer, Platform Engineer at TopSecret Corp Classified Projec
         assert "Platform Engineer" in joined
 
 
-class TestPrefilterTargetOverlapSuppressorIsPerLine:
-    """A suppressor on one Target Role line must not cancel a hard-reject
-    match on a different, unrelated line (F1, round 2).
+class TestPrefilterTargetOverlapSuppressorIsPerPhrase:
+    """A suppressor co-occurring with one role must not cancel a hard-reject
+    match on a different, unrelated role — whether that role is on a
+    different line (F1, round 2) or a different comma-separated phrase on
+    the *same* line (F1, round 3: onboarding's 'one sentence' target-role
+    phrasing is often a comma list like 'Site Reliability Engineer,
+    Platform Engineer', all on one line).
 
     Production (``scorer_prefilter._hard_reject_match``) evaluates one job
     title at a time, so a suppressor only ever cancels a reject for the same
-    title it co-occurs with. A multi-role Target Role section is the
-    multi-title analogue: checking the suppressor against the whole section
-    (instead of the matched line) would let an unrelated suppressor silence
-    a real conflict.
+    title it co-occurs with. A multi-role Target Role line is the
+    multi-title analogue: checking the suppressor against the whole line
+    (instead of the matched phrase) would let an unrelated suppressor
+    silence a real conflict.
     """
+
+    def test_unrelated_comma_phrase_suppressor_does_not_cancel_match(self, monkeypatch, tmp_path):
+        rules_path = _write_rules(
+            tmp_path,
+            """
+hard_rejects:
+  software:
+    - "\\\\bplatform\\\\s+engineer\\\\b"
+context_suppressors:
+  - "\\\\bsite\\\\s+reliability\\\\b"
+""",
+        )
+        monkeypatch.setattr(config_loader, "_RULES_PATH", rules_path)
+
+        lines = _prefilter_target_overlap_issues(PROFILE_WITH_TARGET)
+
+        assert lines
+        assert any("software" in line for line in lines[1:])
 
     def test_unrelated_line_suppressor_does_not_cancel_match(self, monkeypatch, tmp_path):
         rules_path = _write_rules(
@@ -177,23 +203,28 @@ context_suppressors:
         assert lines == []
 
 
-class TestPrefilterTargetOverlapMalformedConfigIsSilent:
+class TestPrefilterTargetOverlapMalformedConfigWarnsOnce:
     """A malformed prefilter_rules.yaml must not crash the daily health check
-    (F2 / sec-SEC-1265-1, round 2) — it should be treated like the other
-    non-fatal gaps this check already tolerates (no profile, invalid regex).
+    (F2 / sec-SEC-1265-1, round 2), and must not go silent either (F4, round
+    2) — the same broken file also breaks the live prefilter, so a single
+    generic WARN surfaces that even though this check can't name the rule.
     """
 
-    def test_bad_hard_rejects_shape_does_not_raise(self, monkeypatch, tmp_path):
+    def test_bad_hard_rejects_shape_warns_without_raising(self, monkeypatch, tmp_path):
         rules_path = _write_rules(tmp_path, "hard_rejects: 'not-a-mapping'\n")
         monkeypatch.setattr(config_loader, "_RULES_PATH", rules_path)
 
-        assert _prefilter_target_overlap_issues(PROFILE_WITH_TARGET) == []
+        assert _prefilter_target_overlap_issues(PROFILE_WITH_TARGET) == [
+            "WARN: prefilter_rules.yaml unreadable — target-role overlap check skipped"
+        ]
 
-    def test_invalid_yaml_syntax_does_not_raise(self, monkeypatch, tmp_path):
+    def test_invalid_yaml_syntax_warns_without_raising(self, monkeypatch, tmp_path):
         rules_path = _write_rules(tmp_path, "hard_rejects: [oops\n")
         monkeypatch.setattr(config_loader, "_RULES_PATH", rules_path)
 
-        assert _prefilter_target_overlap_issues(PROFILE_WITH_TARGET) == []
+        assert _prefilter_target_overlap_issues(PROFILE_WITH_TARGET) == [
+            "WARN: prefilter_rules.yaml unreadable — target-role overlap check skipped"
+        ]
 
 
 class TestReadProfileText:
