@@ -169,6 +169,7 @@ Typical failures on first boot:
 | **WARN: N null-score jobs in manual_review (scorer failure — check OpenRouter / pipeline.jsonl)** | Jobs were shunted to review because scoring returned null | Smoke-test the OpenRouter wrapper (above); inspect `pipeline.jsonl` for `score_failed` events |
 | **WARN: N real-flag jobs in manual_review backlog** | Queue growing past threshold | Triage the Review tab; tune profile if scorer is flagging too much |
 | **WARN: N target-company jobs scored 3–6 in last N days (potential mis-scores)** | Scorer rated Tier 1 company jobs low | Review each; if you disagree, add to profile's Tier 1 list and rescore |
+| **WARN: N prefilter rule(s) hard-reject a phrase your Target Role asks for: `category: pattern`, …** | A `hard_rejects` rule in `prefilter_rules.yaml` matches a phrase in the profile's Target Role(s) section, so a job with that phrase in its title scores 1 before the LLM ever runs — no `context_suppressors` pattern covers the match | Edit or remove the named rule at `/config/`, or reword the Target Role section if the rule should stay |
 
 ---
 
