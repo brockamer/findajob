@@ -171,6 +171,51 @@ def load_hard_reject_rules() -> tuple[re.Pattern[str], re.Pattern[str] | None]:
     return _hard_reject_cache
 
 
+def load_hard_reject_patterns() -> tuple[list[tuple[str, str]], list[str]]:
+    """(rules, suppressor_patterns). rules is a list of (category, pattern) pairs.
+
+    Unlike load_hard_reject_rules(), which compiles every category into one
+    alternation for prefilter matching, this keeps each rule's own category
+    and pattern string intact so a caller can name the specific rule that
+    matched (health_check's Target-Role-overlap warning, #1265). Not cached —
+    called at most once per health-check run. Missing/empty config returns
+    ([], []), mirroring load_hard_reject_rules' no-op-for-missing-config
+    behavior.
+    """
+    data = _safe_load_yaml(_RULES_PATH, "prefilter_rules.yaml")
+    if data is None:
+        return ([], [])
+
+    hard_rejects = data.get("hard_rejects", {})
+    if not isinstance(hard_rejects, dict):
+        raise ConfigError(
+            f"prefilter_rules.yaml: 'hard_rejects' must be a mapping of category→list, "
+            f"got {type(hard_rejects).__name__}"
+        )
+
+    rules: list[tuple[str, str]] = []
+    for category, patterns in hard_rejects.items():
+        if not isinstance(patterns, list):
+            raise ConfigError(
+                f"prefilter_rules.yaml: hard_rejects['{category}'] must be a list, got {type(patterns).__name__}"
+            )
+        for p in patterns:
+            if not isinstance(p, str):
+                raise ConfigError(f"prefilter_rules.yaml: pattern in '{category}' is not a string: {p!r}")
+            rules.append((category, p))
+
+    suppressors = data.get("context_suppressors", []) or []
+    if not isinstance(suppressors, list):
+        raise ConfigError(
+            f"prefilter_rules.yaml: 'context_suppressors' must be a list, got {type(suppressors).__name__}"
+        )
+    for p in suppressors:
+        if not isinstance(p, str):
+            raise ConfigError(f"prefilter_rules.yaml: context_suppressor pattern is not a string: {p!r}")
+
+    return (rules, list(suppressors))
+
+
 def load_in_domain_rules() -> tuple[re.Pattern[str], re.Pattern[str] | None]:
     """(in_domain_re, poison_re). poison_re is None if no poison configured."""
     global _in_domain_cache
