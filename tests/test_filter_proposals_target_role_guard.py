@@ -24,6 +24,20 @@ Open to: hybrid, remote
 Not open to: widget operations roles
 """
 
+_PROFILE_WB1269_NOT_OPEN_TO_BULLET = """
+## Target Role
+Gadget Assembly Lead for consumer electronics teams.
+Open to: hybrid, remote
+- Not open to: widget operations roles
+"""
+
+_PROFILE_WB1269_NOT_OPEN_TO_CLOSING_EMPHASIS_BEFORE_COLON = """
+## Target Role
+Gadget Assembly Lead for consumer electronics teams.
+Open to: hybrid, remote
+Not open to**: widget operations roles
+"""
+
 
 @pytest.fixture
 def conn(tmp_path, monkeypatch):
@@ -79,6 +93,36 @@ def test_target_role_guard_keeps_candidate_matching_not_open_to(conn, monkeypatc
     _seed_recurring_rejections(conn)
 
     n = filter_proposals.generate_proposals(conn, profile_text=_PROFILE_NOT_OPEN_TO_ONLY)
+
+    assert n >= 1
+    rows = conn.execute("SELECT pattern, status FROM filter_proposals").fetchall()
+    assert any("widget" in r["pattern"].lower() for r in rows)
+    assert all(r["status"] == "pending" for r in rows)
+    assert not any(name == "filter_proposal_skipped_target_role" for name, _ in events)
+
+
+def test_target_role_guard_wb1269_keeps_bulleted_not_open_to(conn, monkeypatch):
+    events = []
+    monkeypatch.setattr(filter_proposals, "log_event", lambda name, **kw: events.append((name, kw)))
+    _seed_recurring_rejections(conn)
+
+    n = filter_proposals.generate_proposals(conn, profile_text=_PROFILE_WB1269_NOT_OPEN_TO_BULLET)
+
+    assert n >= 1
+    rows = conn.execute("SELECT pattern, status FROM filter_proposals").fetchall()
+    assert any("widget" in r["pattern"].lower() for r in rows)
+    assert all(r["status"] == "pending" for r in rows)
+    assert not any(name == "filter_proposal_skipped_target_role" for name, _ in events)
+
+
+def test_target_role_guard_wb1269_keeps_closing_emphasis_before_colon(conn, monkeypatch):
+    events = []
+    monkeypatch.setattr(filter_proposals, "log_event", lambda name, **kw: events.append((name, kw)))
+    _seed_recurring_rejections(conn)
+
+    n = filter_proposals.generate_proposals(
+        conn, profile_text=_PROFILE_WB1269_NOT_OPEN_TO_CLOSING_EMPHASIS_BEFORE_COLON
+    )
 
     assert n >= 1
     rows = conn.execute("SELECT pattern, status FROM filter_proposals").fetchall()
