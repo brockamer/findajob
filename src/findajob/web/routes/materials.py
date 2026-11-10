@@ -320,13 +320,52 @@ def _fetch_section(db: sqlite3.Connection, where: str, order: str) -> list[sqlit
     ).fetchall()
 
 
+_BRIEFING_ROW_COLUMNS = "fingerprint, title, company, stage, fit_score, created_at, stage_updated, prep_folder_path"
+
+
+def _sort_key(row: sqlite3.Row) -> str:
+    """COALESCE(stage_updated, created_at) DESC, replicated in Python because
+    the merge below can't be expressed as a single SQL ORDER BY."""
+    return row["stage_updated"] if row["stage_updated"] is not None else row["created_at"]
+
+
+def _fetch_briefing_ready_rows(db: sqlite3.Connection) -> tuple[list[sqlite3.Row], bool]:
+    """Rows for the 'Briefing ready' group: stage='briefing_ready' plus
+    'scored' rows whose prep folder still holds a briefing (the decision-
+    window reaper's reset path, #1222).
+
+    The scored side needs a filesystem check (``find_briefing``) that SQL
+    can't express, so it's fetched and filtered separately from the
+    briefing_ready side, then the two are merged. That filter runs over
+    *every* scored candidate with a folder before any cap is applied — if
+    the cap were applied to the raw scored query first, a large batch of
+    newer scored-but-no-briefing rows could push an older row that still
+    has a briefing out of the result before the filter ever sees it (#1273).
+    The 50-row cap and its overflow flag apply only to the merged, sorted
+    result, matching every other section on this page.
+    """
+    briefing_ready = db.execute(
+        f"SELECT {_BRIEFING_ROW_COLUMNS} FROM jobs WHERE stage = ?",
+        (BRIEFING_GATE_STAGE,),
+    ).fetchall()
+    scored_candidates = db.execute(
+        f"SELECT {_BRIEFING_ROW_COLUMNS} FROM jobs "
+        "WHERE stage = 'scored' AND prep_folder_path IS NOT NULL AND prep_folder_path != ''"
+    ).fetchall()
+    scored_with_briefing = [row for row in scored_candidates if find_briefing(row["prep_folder_path"]) is not None]
+    merged = sorted([*briefing_ready, *scored_with_briefing], key=_sort_key, reverse=True)
+    overflow = len(merged) > _PER_SECTION_CAP
+    return merged[:_PER_SECTION_CAP], overflow
+
+
 @router.get("/materials/", response_class=HTMLResponse)
 def materials_index(
     request: Request,
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
     regen_error: str = "",
 ) -> HTMLResponse:
-    sections = []
+    briefing_ready_rows, briefing_ready_overflow = _fetch_briefing_ready_rows(db)
+    sections = [{"name": "Briefing ready", "rows": briefing_ready_rows, "overflow": briefing_ready_overflow}]
     for name, where, order in _INDEX_QUERY_SECTIONS:
         rows = _fetch_section(db, where, order)
         overflow = len(rows) > _PER_SECTION_CAP

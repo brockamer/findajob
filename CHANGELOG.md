@@ -10,6 +10,10 @@ changes may land in minor version bumps; patch releases are bugfix-only.
 
 ## [Unreleased]
 
+### Added
+
+- **`/materials/` now has a "Briefing ready" group at the top, above "In flight".** It lists every job whose company research and briefing are done but whose resume and cover letter haven't been generated yet — both freshly-prepped `briefing_ready` rows and a `scored` row the decision-window reaper reset that still has its saved briefing. Previously these rows showed up nowhere on this page until the next prep step started (#1273).
+
 ### Fixed
 
 - **LLM-response JSON extraction no longer truncates a bare payload that itself contains a bracket, or drops a fenced block followed by trailing prose.** A bare object or array containing a list value, or a string value with a `[`/`{` character, used to get cut at that inner bracket instead of its own opening one; a response whose fenced JSON block was followed by extra text used to be returned unparsed. Both now parse correctly (#1144).
