@@ -166,8 +166,10 @@ def score_job(
     Returns:
         Tuple of ``(score_dict, latency_ms, completion_result)``.
         ``completion_result`` is ``None`` for prefilter hits (no LLM call) and
-        config errors; populated for every other LLM call so callers can
-        write authoritative ``cost_usd`` to ``cost_log``.
+        for a scorer error that never billed (network/auth/config — raised
+        before OpenRouter returned usage); populated for every other LLM
+        call, including a billed-but-unusable scorer error (#1282), so
+        callers can write authoritative ``cost_usd`` to ``cost_log``.
     """
     usable = jd_is_usable(jd_text)
 
@@ -224,7 +226,26 @@ def score_job(
         )
         _err["scored_by"] = "llm"
         _err["company_tier"] = resolve_tier(company)
-        return _err, latency_ms, None
+        # #1282 (follow-up to #1145/#955): OpenRouter bills for consumed tokens
+        # even when the response is unusable. e.cost_usd is not None only when
+        # usage was actually returned (a billed-but-unusable response); carry
+        # it through so callers' log_call sites record the real spend instead
+        # of a 0.0/0/0 undercount. A pre-response failure (network/auth/config
+        # — e.cost_usd is None) never billed, so callers keep logging zero.
+        billed = (
+            CompletionResult(
+                text="",
+                prompt_tokens=e.prompt_tokens or 0,
+                completion_tokens=e.completion_tokens or 0,
+                cached_tokens=0,
+                cost_usd=e.cost_usd,
+                generation_id=None,
+                finish_reason=e.finish_reason,
+            )
+            if e.cost_usd is not None
+            else None
+        )
+        return _err, latency_ms, billed
     latency_ms = int((time.time() - start) * 1000)
 
     if not result.text.strip():

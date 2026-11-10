@@ -126,3 +126,67 @@ def test_prefilter_zero_cost_rescore(tmp_path, monkeypatch) -> None:
     )
     assert row is not None, "no cost_log row written for the prefilter-rejected job"
     assert row == (0.0, 0, 0)
+
+
+def _run_rescore_with_scorer_error(tmp_path, monkeypatch, raise_error) -> sqlite3.Row:
+    """Run rescore_all.main() against one non-prefiltered job whose LLM call
+    raises ``raise_error``. Returns the cost_log row for the rescore operation."""
+    db = tmp_path / "pipeline.db"
+    init_test_db(db)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT INTO jobs (id, fingerprint, url, title, company, location, source, raw_jd_text, stage) "
+        "VALUES ('j1', 'fp1', 'https://example.com/1', 'Product Manager', 'Acme', 'Remote', "
+        "'manual', 'A usable job description. ' , 'scored')"
+    )
+    conn.commit()
+    conn.close()
+
+    profile = tmp_path / "profile.md"
+    profile.write_text("Test profile.\n")
+
+    monkeypatch.setattr(rescore_all, "DB_PATH", str(db))
+    monkeypatch.setattr(rescore_all, "PROFILE_PATH", str(profile))
+    monkeypatch.setattr(sys, "argv", ["rescore_all.py"])
+    monkeypatch.setattr("findajob.scoring.complete", raise_error)
+
+    rescore_all.main()
+
+    row = (
+        sqlite3.connect(db)
+        .execute("SELECT cost_usd, input_tokens, output_tokens FROM cost_log WHERE job_id='j1'")
+        .fetchone()
+    )
+    assert row is not None, "no cost_log row written for the scorer-error job"
+    return row
+
+
+def test_rescore_billed_scorer_failure_cost(tmp_path, monkeypatch) -> None:
+    """A rescore scorer failure that OpenRouter billed for must log the real
+    cost and token counts, not a 0.0/0/0 undercount (#1282)."""
+    from findajob.llm.openrouter import OpenRouterError
+
+    def _raise_billed(**kw):
+        raise OpenRouterError(
+            "null content, finish_reason=length",
+            kind="malformed",
+            finish_reason="length",
+            prompt_tokens=333,
+            completion_tokens=444,
+            cost_usd=0.0912,
+        )
+
+    row = _run_rescore_with_scorer_error(tmp_path, monkeypatch, _raise_billed)
+    assert row == (0.0912, 333, 444)
+
+
+def test_unbilled_scorer_error_zero_cost(tmp_path, monkeypatch) -> None:
+    """A pre-response rescore scorer error (network/auth/config) never
+    billed, so the cost_log row must still carry an explicit 0.0/0/0 (#1282)."""
+    from findajob.llm.openrouter import OpenRouterError
+
+    def _raise_unbilled(**kw):
+        raise OpenRouterError("connection refused", kind="network")
+
+    row = _run_rescore_with_scorer_error(tmp_path, monkeypatch, _raise_unbilled)
+    assert row == (0.0, 0, 0)

@@ -308,3 +308,50 @@ def test_score_job_without_a_target_file_names_no_target_locations(monkeypatch):
 
     score_job("Product Manager", "Acme", "Boulder, CO", _USABLE_JD, "CANDIDATE PROFILE: example")
     assert "TARGET LOCATIONS" not in captured["cached_prefix"]
+
+
+# ── Billed scorer failures carry real cost/tokens (#1282) ────────────────────
+
+
+def test_score_job_billed_error_usage(monkeypatch):
+    from findajob.llm.openrouter import OpenRouterError
+    from findajob.scoring import score_job
+
+    def _raise_billed(**kw):
+        raise OpenRouterError(
+            "null content, finish_reason=length",
+            kind="malformed",
+            finish_reason="length",
+            prompt_tokens=123,
+            completion_tokens=456,
+            cost_usd=0.0789,
+        )
+
+    monkeypatch.setattr("findajob.scoring.complete", _raise_billed)
+    monkeypatch.setattr("findajob.scoring.prefilter_score", lambda *a, **kw: (None, None))
+
+    result, latency, completion = score_job(
+        "Product Manager", "Acme", "Remote", _USABLE_JD, "CANDIDATE PROFILE: example"
+    )
+    assert result["score_status"] == "manual_review"
+    assert completion is not None
+    assert completion.cost_usd == 0.0789
+    assert completion.prompt_tokens == 123
+    assert completion.completion_tokens == 456
+
+
+def test_score_job_unbilled_error_has_no_completion(monkeypatch):
+    from findajob.llm.openrouter import OpenRouterError
+    from findajob.scoring import score_job
+
+    def _raise_unbilled(**kw):
+        raise OpenRouterError("connection refused", kind="network")
+
+    monkeypatch.setattr("findajob.scoring.complete", _raise_unbilled)
+    monkeypatch.setattr("findajob.scoring.prefilter_score", lambda *a, **kw: (None, None))
+
+    result, latency, completion = score_job(
+        "Product Manager", "Acme", "Remote", _USABLE_JD, "CANDIDATE PROFILE: example"
+    )
+    assert result["score_status"] == "manual_review"
+    assert completion is None
