@@ -226,6 +226,28 @@ class TestPrefilterTargetOverlapMalformedConfigWarnsOnce:
             "WARN: prefilter_rules.yaml unreadable — target-role overlap check skipped"
         ]
 
+    def test_wb1284_invalid_hard_reject_regex_warns_instead_of_silently_skipping(self, monkeypatch, tmp_path):
+        """A hard-reject rule whose own pattern is an invalid regex (#1284).
+
+        Before this fix, the overlap check's own ``except re.error: continue``
+        swallowed this and returned ``[]`` — the operator never learned the
+        rule was broken, unlike the live scorer which raises loudly for the
+        same pattern.
+        """
+        rules_path = _write_rules(
+            tmp_path,
+            """
+hard_rejects:
+  software:
+    - "Platform Engineer("
+""",
+        )
+        monkeypatch.setattr(config_loader, "_RULES_PATH", rules_path)
+
+        assert _prefilter_target_overlap_issues(PROFILE_WITH_TARGET) == [
+            "WARN: prefilter_rules.yaml unreadable — target-role overlap check skipped"
+        ]
+
 
 class TestReadProfileText:
     """The BASE/candidate_context/profile.md read that feeds the overlap

@@ -180,7 +180,11 @@ def load_hard_reject_patterns() -> tuple[list[tuple[str, str]], list[str]]:
     matched (health_check's Target-Role-overlap warning, #1265). Not cached —
     called at most once per health-check run. Missing/empty config returns
     ([], []), mirroring load_hard_reject_rules' no-op-for-missing-config
-    behavior.
+    behavior. Each hard-reject pattern is compile-checked here too (#1284):
+    without it, a rule with an invalid pattern passed load silently, and the
+    caller's own re.compile of it failed the same way the live prefilter's
+    load_hard_reject_rules() already does loudly — except here the failure
+    was swallowed instead of surfaced.
     """
     data = _safe_load_yaml(_RULES_PATH, "prefilter_rules.yaml")
     if data is None:
@@ -202,6 +206,12 @@ def load_hard_reject_patterns() -> tuple[list[tuple[str, str]], list[str]]:
         for p in patterns:
             if not isinstance(p, str):
                 raise ConfigError(f"prefilter_rules.yaml: pattern in '{category}' is not a string: {p!r}")
+            try:
+                re.compile(p)
+            except re.error as e:
+                raise ConfigError(
+                    f"prefilter_rules.yaml: invalid regex in hard_rejects['{category}']: {p!r} — {e}"
+                ) from e
             rules.append((category, p))
 
     suppressors = data.get("context_suppressors", []) or []
