@@ -34,7 +34,7 @@ _PROFILE_FILE_PREFIX_RE: re.Pattern[str] = re.compile(
 _SECTION_RE_TEMPLATE = r"^##\s+{name}\s*$\n(?P<body>.*?)(?=^##\s|\Z)"
 
 _NOT_OPEN_TO_LINE_RE = re.compile(
-    r"^\s*\*{0,2}\s*Not open to\s*:.*$\n?",
+    r"^\s*(?:[-*+]\s*)?\*{0,2}\s*Not open to\s*\*{0,2}\s*:.*$\n?",
     re.IGNORECASE | re.MULTILINE,
 )
 
