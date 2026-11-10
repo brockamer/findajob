@@ -149,7 +149,11 @@ def _prefilter_target_overlap_issues(profile_text: str) -> list[str]:
     A malformed ``prefilter_rules.yaml`` produces a single generic WARN
     rather than crashing the health check or going silent — the config is
     also broken for the live prefilter, so the operator needs to hear about
-    it even though this check can't name the specific rule (#1265 F4).
+    it even though this check can't name the specific rule (#1265 F4). A
+    hard-reject rule whose own pattern fails to compile as a regex is one
+    such malformation: ``load_hard_reject_patterns`` now raises ``ConfigError``
+    for it (instead of returning it unchecked), so it also hits this same
+    generic WARN rather than being skipped with no trace (#1284).
 
     Evaluated per comma-separated phrase within each line of the Target
     Role text, not over the whole line or section: production's
@@ -190,10 +194,7 @@ def _prefilter_target_overlap_issues(profile_text: str) -> list[str]:
             if not phrase.strip():
                 continue
             for category, pattern in rules:
-                try:
-                    if not re.search(pattern, phrase, re.IGNORECASE):
-                        continue
-                except re.error:
+                if not re.search(pattern, phrase, re.IGNORECASE):
                     continue
                 if any(sup.search(phrase) for sup in compiled_suppressors):
                     continue
