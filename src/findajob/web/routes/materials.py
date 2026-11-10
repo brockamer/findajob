@@ -1,7 +1,7 @@
 """Materials viewer + editor routes.
 
 GET routes:
-  /materials/                              — index across In flight / Applied / Waitlisted / Rejected sections
+  /materials/                              — index: Briefing ready / In flight / Applied / Waitlisted / Rejected
   /materials/{fp}                          — per-job folder view (with post-applied banner #210)
   /materials/{fp}/{file}                   — inline render for .md/.txt, blob download for binaries
 
@@ -320,13 +320,43 @@ def _fetch_section(db: sqlite3.Connection, where: str, order: str) -> list[sqlit
     ).fetchall()
 
 
+def _fetch_briefing_ready_rows(db: sqlite3.Connection) -> list[sqlite3.Row]:
+    """Fetch the 'Briefing ready' group: stage='briefing_ready' rows plus
+    'scored' rows the decision-window reaper reset (#1222) that still hold
+    a briefing in their prep folder (checked via ``find_briefing``).
+
+    The scored side needs a per-row filesystem check, so it can't share
+    ``_fetch_section``'s single SQL ``LIMIT`` — capping before that check
+    would silently drop an older row with a briefing behind a wall of
+    newer scored rows without one. Fetch both groups unbounded, filter,
+    merge, sort by COALESCE(stage_updated, created_at) DESC, and cap only
+    the merged result (mirrors the other sections' overflow convention).
+    """
+    cols = "fingerprint, title, company, stage, fit_score, created_at, stage_updated, prep_folder_path"
+    ready_rows = db.execute(f"SELECT {cols} FROM jobs WHERE stage = 'briefing_ready'").fetchall()
+    scored_candidates = db.execute(
+        f"SELECT {cols} FROM jobs WHERE stage = 'scored' AND prep_folder_path IS NOT NULL AND prep_folder_path != ''"
+    ).fetchall()
+    scored_with_briefing = [row for row in scored_candidates if find_briefing(row["prep_folder_path"]) is not None]
+    merged = [*ready_rows, *scored_with_briefing]
+    merged.sort(key=lambda row: row["stage_updated"] or row["created_at"], reverse=True)
+    return merged
+
+
 @router.get("/materials/", response_class=HTMLResponse)
 def materials_index(
     request: Request,
     db: sqlite3.Connection = Depends(get_db),  # noqa: B008
     regen_error: str = "",
 ) -> HTMLResponse:
-    sections = []
+    briefing_ready_rows = _fetch_briefing_ready_rows(db)
+    sections = [
+        {
+            "name": "Briefing ready",
+            "rows": briefing_ready_rows[:_PER_SECTION_CAP],
+            "overflow": len(briefing_ready_rows) > _PER_SECTION_CAP,
+        }
+    ]
     for name, where, order in _INDEX_QUERY_SECTIONS:
         rows = _fetch_section(db, where, order)
         overflow = len(rows) > _PER_SECTION_CAP
